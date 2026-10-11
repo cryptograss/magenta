@@ -190,8 +190,10 @@ class RecordEventsTest(TestCase):
         self.post([ev('compaction', 20, trigger='manual', tokens_before=970145, summary='1. Banjo setlist.')],
                   session=session)
         summary = Message.objects.get(session_id=session, is_continuation_message=True)
+        self.assertEqual(summary.content, '1. Banjo setlist.')  # its own words, not Claude Code's opening line
         turns = self.client.get('/api/moods/m26/turns/').json()
         self.assertEqual(len(turns['compactions']), 1)
+        self.assertNotIn('1. Banjo setlist.', [t['text'] for t in turns['turns']])
         self.assertIn('Banjo setlist', turns['compactions'][0]['html'])
         self.assertNotEqual(summary.context_heap_id,
                             Message.objects.get(session_id=session, content__0__text='The second line is fiddle.')

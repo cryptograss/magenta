@@ -93,6 +93,12 @@ def is_compaction(text):
     return text.startswith(COMPACTION_PREFIX)
 
 
+def is_summary(msg, text=''):
+    """A compaction summary: marked on its row whatever harness wrote it, or,
+    on a row from before the mark was read, known by Claude Code's opening words."""
+    return bool(getattr(msg, 'is_continuation_message', False)) or is_compaction(text)
+
+
 def turns(mood, after=None):
     """Yield (message, text) for the readable conversation in a Mood.
 
@@ -110,7 +116,7 @@ def turns(mood, after=None):
         if msg.sender_id in MACHINERY_SENDERS or msg.sender_id not in speakers:
             continue
         text = prose(msg.content)
-        if not text or is_wrapper(text):
+        if not text or is_wrapper(text) or is_summary(msg):
             continue
         yield msg, text
 
@@ -712,7 +718,7 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
         reason = quiet_reason(text)
         if reason is not None:
             return ('quiet', msg, reason)
-        if is_compaction(text):
+        if is_summary(msg, text):
             return ('compaction', msg, text)
         if is_wrapper(text):
             return None
@@ -954,11 +960,11 @@ def compacted_since(mood, agent, when):
     `when` (its last measured turn); else None. What follows a summary
     before the next turn is only the command's own echo."""
     for row in (mood.messages.filter(sender_id=agent, is_sidechain=False, created_at__gt=when)
-                .order_by('-created_at').values('content', 'created_at')[:20]):
+                .order_by('-created_at').values('content', 'created_at', 'is_continuation_message')[:20]):
         content = row['content']
         if isinstance(content, list):
             content = ' '.join(b.get('text', '') for b in content if isinstance(b, dict) and b.get('type') == 'text')
-        if isinstance(content, str) and is_compaction(content):
+        if isinstance(content, str) and (row['is_continuation_message'] or is_compaction(content)):
             return _Summary(content, row['created_at'])
     return None
 

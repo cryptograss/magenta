@@ -23,7 +23,7 @@ from .services import delivery_kid, push, servers, wiki_auth, wiki_feed, wiki_up
 from .services import mood_auth
 from .services.mood_view import (
     from_wiki_tier,
-    MACHINERY_SENDERS, how_payload, activity, background_tasks, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
+    MACHINERY_SENDERS, how_payload, activity, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
     prose, render_html, step_detail, step_images, step_payload, timeline, turn_payload, turns, wiki_title, wikilinks_in,
 )
 
@@ -465,7 +465,7 @@ def api_wikilinks(request):
         if msg.sender_id not in names:
             continue
         text = prose(msg.content)
-        if not text or is_wrapper(text):
+        if not text or is_wrapper(text) or is_summary(msg):
             continue
         for title in wikilinks_in(text):
             if page and title != page:
@@ -522,7 +522,7 @@ def api_search(request):
         if msg.sender_id not in names:
             continue
         text = prose(msg.content)
-        if not text or is_wrapper(text) or q.lower() not in text.lower():
+        if not text or is_wrapper(text) or is_summary(msg) or q.lower() not in text.lower():
             continue
         hits.append({'id': str(msg.id), 'mood': msg.mood_slug, 'title': titles.get(msg.mood_slug, msg.mood_slug),
                      'sender': msg.sender_id, 'created_at': msg.created_at.isoformat(), 'text': snippet(text, q)})
@@ -565,7 +565,7 @@ def api_recent(request):
         if msg.sender_id not in names:
             continue
         text = prose(msg.content)
-        if not text or is_wrapper(text) or quiet_reason(text) is not None:
+        if not text or is_wrapper(text) or is_summary(msg) or quiet_reason(text) is not None:
             continue
         if msg.sender_id in agents and msg.stop_reason != 'end_turn':
             continue
@@ -623,7 +623,7 @@ def answered_by(msg, humans):
                .order_by('-created_at').only('content', 'sender_id')[:5])
     for m in earlier:  # the latest that is someone's words, not a harness wrapper
         text = prose(m.content)
-        if text and not is_wrapper(text):
+        if text and not is_wrapper(text) and not is_summary(m):
             return m.sender_id
     return None
 
@@ -664,7 +664,7 @@ def notices_for(name, since, limit=NOTICES_MAX):
         if msg.sender_id not in names or msg.sender_id == name:
             continue
         text = prose(msg.content)
-        if not text or is_wrapper(text):
+        if not text or is_wrapper(text) or is_summary(msg):
             continue
         if name in addressed_in(text, names, by=msg.sender_id):
             found.append({'kind': 'mention', 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
@@ -743,7 +743,7 @@ def api_mentions(request, name):
         if is_agent and from_wiki_tier(msg):
             continue  # signed in with PickiPedia: an @agent is just text, it wakes nobody
         text = prose(msg.content)
-        if not text or is_wrapper(text):
+        if not text or is_wrapper(text) or is_summary(msg):
             continue
         if name in addressed_in(text, names, by=msg.sender_id):
             found.append({'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})

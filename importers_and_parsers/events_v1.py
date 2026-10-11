@@ -20,7 +20,6 @@ from conversations.models import (
     ToolResult, ToolUse,
 )
 from conversations.services.media import markdown, store_base64
-from conversations.services.mood_view import COMPACTION_PREFIX
 from conversations.services.redaction import redact_value
 
 FORMAT = 'events/1'
@@ -174,14 +173,9 @@ class Turn:
                         tool_use_id=str(event['call_id'])[:100], is_error=bool(event.get('is_error')))
 
     def compaction(self, event):
-        # The record marks a summary by its opening words (mood_view's
-        # COMPACTION_PREFIX), Claude Code's to begin with: every reader that
-        # leaves summaries out of the conversation looks for them. A summary
-        # from another harness gets them too.
-        summary = str(event.get('summary', ''))
-        if not summary.startswith(COMPACTION_PREFIX):
-            summary = f'{COMPACTION_PREFIX}. The summary below covers the earlier portion of it.\n\n{summary}'
-        return self.row(Message, event, self.agent, summary, is_continuation_message=True)
+        # Marked as a summary on the row (is_continuation_message), which is
+        # how every reader knows to leave it out of the conversation.
+        return self.row(Message, event, self.agent, str(event.get('summary', '')), is_continuation_message=True)
 
     def task_notice(self, event):
         content = (f"<task-notification>\n<task-id>{event.get('task_id', '')}</task-id>\n"
