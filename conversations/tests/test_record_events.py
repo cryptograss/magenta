@@ -183,6 +183,8 @@ class RecordEventsTest(TestCase):
         later = Message.objects.get(session_id=fork)
         self.assertIsNotNone(later.parent_id)
         self.assertEqual(later.model_backend, 'claude-opus-5-5')  # the turn's stamp, inherited across posts
+        prompt = Message.objects.get(session_id=first, sender_id='mood-poller')
+        self.assertEqual((prompt.model_backend, prompt.cwd), (None, '/home/magent/workspace'))  # no model, but where
 
     def test_a_compaction_from_any_harness_reads_as_one(self):
         session = str(uuid.uuid4())

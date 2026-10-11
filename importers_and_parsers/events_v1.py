@@ -120,6 +120,8 @@ class Turn:
             'source_file': self.source_file, 'client_version': self.harness, 'created_at': timezone.now(),
             **self.stamp(),
         }
+        if sender != self.agent:  # a model and effort are the agent's; a prompt or a tool's output has neither
+            common.update(model_backend=None, effort=None)
         common.update({k: v for k, v in fields.items() if v is not None or k not in common})
         message, created = model.objects.get_or_create(id=event['id'], defaults=common)
         if created:
