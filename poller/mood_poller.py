@@ -501,6 +501,9 @@ class ClaudeCodeWaker:
                 if not isinstance(event, dict):
                     continue
                 if event.get('type') == 'result':
+                    # What this run cost, not the session's history: posted
+                    # with the result, so the record keeps the turn's own cost.
+                    event['run_cost_usd'] = max(0.0, float(event.get('total_cost_usd') or 0.0) - spent_before)
                     result = event
                 elif event.get('type') == 'assistant' and not event.get('parent_tool_use_id'):
                     blocks = (event.get('message') or {}).get('content') or []
@@ -517,8 +520,6 @@ class ClaudeCodeWaker:
             done.set()
         drain.join(5)
         self.last_result = dict(result or {})
-        if result is not None:  # what this run cost, not the session's history
-            self.last_result['run_cost_usd'] = max(0.0, float(result.get('total_cost_usd') or 0.0) - spent_before)
         if result is None:
             raise RuntimeError(f'claude exited {proc.returncode} without a result: {"".join(stderr).strip()[:500]}')
         # A run that ends in an error -- over its budget, say -- may still have
