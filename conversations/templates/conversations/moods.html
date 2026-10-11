@@ -848,6 +848,7 @@
       <span class="textsize">text size <button type="button" data-step="-1" aria-label="Smaller text">A−</button><span id="textSizeVal">100%</span><button type="button" data-step="1" aria-label="Larger text">A+</button></span>
       <button id="notify" type="button" hidden aria-label="Notifications"></button>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
+      <label class="readall" id="readSpeedLabel" hidden title="How fast anything is read aloud here: every voice, the narrator, and voice memos. Your browser's own playback speed, so it costs nothing and changes at once.">reading speed <select id="readSpeed"></select></label>
       <a href="#" id="voicesLink" hidden>voices</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
@@ -921,7 +922,7 @@
     <button type="button" id="toBottom">↓ newest</button>
     <div id="typing"></div>
     <div id="tasks"></div>
-    <div id="readBar" hidden><span class="what"></span><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button></div>
+    <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button></div>
     <div id="activity"><span class="dot"></span><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button></div>
@@ -1301,6 +1302,17 @@
       + ` title="${title}" aria-label="${title}">▶</button>`;
   }
   let speaking = null;  // {audio, button}
+  // How fast it's read, for this listener: the browser's playback rate, pitch kept.
+  // Every voice, the narrator and memos alike; nothing is made again, so it costs
+  // nothing. Set on each player before it plays (a new src goes back to
+  // defaultPlaybackRate, so that's set too).
+  const READ_SPEEDS = [1, 1.15, 1.25, 1.5, 1.75, 2];
+  let readSpeed = READ_SPEEDS.includes(store.get('readSpeed', 1)) ? store.get('readSpeed', 1) : 1;
+  function atSpeed(audio) {
+    audio.defaultPlaybackRate = readSpeed; audio.playbackRate = readSpeed;
+    audio.preservesPitch = true;
+    return audio;
+  }
   // A message read aloud comes in pieces (voice.pieces): the first is short, so it
   // starts at once. Each next piece is asked for as the one before starts playing --
   // made while it plays, and made knowing it, so they sound like one reading.
@@ -1335,7 +1347,7 @@
       speaking = { audio: memo, button: b };
       memo.addEventListener('ended', stopSpeaking, { once: true });
       b.classList.add('playing'); b.textContent = '■';
-      memo.play().catch(err => { showError('play: ' + err.message); stopSpeaking(); });
+      atSpeed(memo).play().catch(err => { showError('play: ' + err.message); stopSpeaking(); });
       return;
     }
     b.classList.add('busy'); b.textContent = '…';
@@ -1345,7 +1357,7 @@
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || r.status);
       if (ask !== speakAsk) { b.textContent = b.dataset.label || '▶'; return; }  // another ▶ was pressed meanwhile: that one plays
-      const audio = new Audio(body.url);
+      const audio = atSpeed(new Audio(body.url));
       const more = laterPieces(current, b.dataset.id, b.dataset.part, body.pieces || 1);
       let at = 0;
       speaking = { audio, button: b };
@@ -4080,6 +4092,21 @@
   let readMode = 'off', readSinceMs = 0, readLast = null, readNow = null, readHeld = false, readBlocked = false, readWhy = '';
   let clipDone = null;
   if (voiceOn && viewer) document.getElementById('readAllLabel').hidden = false;
+  const readSpeedSel = document.getElementById('readSpeed');
+  const readSpeedBtn = document.getElementById('readSpeedBtn');
+  const speedName = v => (v === 1 ? '1' : String(v)) + '×';
+  readSpeedSel.innerHTML = READ_SPEEDS.map(v => `<option value="${v}">${speedName(v)}</option>`).join('');
+  if (voiceOn) document.getElementById('readSpeedLabel').hidden = false;
+  function setReadSpeed(v) {
+    readSpeed = READ_SPEEDS.includes(v) ? v : 1;
+    store.set('readSpeed', readSpeed);
+    readSpeedSel.value = String(readSpeed);
+    readSpeedBtn.textContent = speedName(readSpeed);
+    for (const a of [reader, speaking && speaking.audio]) if (a) atSpeed(a);  // what's playing changes at once
+  }
+  setReadSpeed(readSpeed);
+  readSpeedSel.addEventListener('change', () => setReadSpeed(+readSpeedSel.value));
+  readSpeedBtn.addEventListener('click', () => setReadSpeed(READ_SPEEDS[(READ_SPEEDS.indexOf(readSpeed) + 1) % READ_SPEEDS.length]));
 
   function setReadMode(mode) {
     readMode = mode;
@@ -4121,7 +4148,7 @@
     return new Promise(resolve => {
       clipDone = resolve;
       reader.src = src;
-      reader.play().catch(err => {
+      atSpeed(reader).play().catch(err => {
         if (clipDone !== resolve) return;
         clipDone = null;
         clipError = `${err && err.name}: ${err && err.message}`.slice(0, 200);
