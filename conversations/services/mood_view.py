@@ -808,9 +808,39 @@ def model_label(model):
     return f'{family.capitalize()} {version}'.strip()
 
 
+# What a call costs at Anthropic's API list prices (September 2026), in dollars
+# per million tokens: fresh input, output, input read from the cache, and input
+# written to it. Claude Code writes its cache for an hour, at twice the input
+# price, so writes are priced so. On a subscription it's what the same work
+# would have cost through the API. The first prefix that matches is the model's;
+# a model not listed gets no price rather than a guess.
+PRICES = (
+    ('claude-opus-5-5', (4.00, 20.00, 0.20, 8.00)),
+    ('claude-opus-5', (5.00, 25.00, 0.50, 10.00)),
+    ('claude-opus-4-8', (5.00, 25.00, 0.50, 10.00)),
+    ('claude-opus-4-7', (5.00, 25.00, 0.50, 10.00)),
+    ('claude-opus-4-6', (5.00, 25.00, 0.50, 10.00)),
+    ('claude-sonnet-5', (2.00, 10.00, 0.20, 4.00)),     # Sonnet 5.5 and Sonnet 5
+    ('claude-sonnet-4-6', (3.00, 15.00, 0.30, 6.00)),
+    ('claude-fable-5-1', (10.00, 50.00, 0.25, 20.00)),
+    ('claude-mythos-5-1', (10.00, 50.00, 0.25, 20.00)),
+    ('claude-fable-5', (10.00, 50.00, 1.00, 20.00)),
+    ('claude-mythos-5', (10.00, 50.00, 1.00, 20.00)),
+    ('claude-haiku-4-5', (1.00, 5.00, 0.10, 2.00)),
+)
+
+
+def call_usd(model, fresh, out, read, written):
+    """Dollars a call cost at list prices, or None for a model with no price here."""
+    rates = next((r for prefix, r in PRICES if (model or '').startswith(prefix)), None)
+    if rates is None:
+        return None
+    return ((fresh or 0) * rates[0] + (out or 0) * rates[1] + (read or 0) * rates[2] + (written or 0) * rates[3]) / 1e6
+
+
 def how_payload(msg):
     """Model and effort an agent's message ran on ('' when unknown); what it
-    wrote and read, in tokens; and whether it ended its turn.
+    wrote and read, in tokens, and what that cost; and whether it ended its turn.
 
     One response the model gives can be stored as several rows (its thinking,
     its words, a tool call), each with that response's usage: the page counts
@@ -821,6 +851,10 @@ def how_payload(msg):
         out['ctx'] = sum(n or 0 for n in (msg.input_tokens, msg.cache_read_input_tokens,
                                           msg.cache_creation_input_tokens))
         out['cached'] = msg.cache_read_input_tokens or 0  # of ctx, read back from the cache: the cheap part
+        usd = call_usd(msg.model_backend, msg.input_tokens, msg.output_tokens, msg.cache_read_input_tokens,
+                       msg.cache_creation_input_tokens)
+        if usd is not None:
+            out['usd'] = round(usd, 5)
     if msg.stop_reason:
         out['stop'] = msg.stop_reason
     return out
