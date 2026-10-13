@@ -219,6 +219,10 @@ MOOD_RUNNER_KEYS = dict(
 # Moods when a server is being redeployed, with this key from the vault
 # (memory_lane_deploy_key). Unset, nobody can.
 MOOD_DEPLOY_KEY = os.getenv('MOOD_DEPLOY_KEY', '')
+# Hunter's SSH router (maybelle-config's route-ssh) says who has come in by SSH,
+# with this key from the vault (memory_lane_access_key). It can announce an SSH
+# session and nothing else. Unset, nobody can.
+MOOD_ACCESS_KEY = os.getenv('MOOD_ACCESS_KEY', '')
 # Voice (conversations/services/voice.py): ElevenLabs, for voice memos
 # (speech to text) and reading messages aloud. Unset: no voice, and the
 # page offers none.

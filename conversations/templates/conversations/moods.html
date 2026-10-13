@@ -2108,6 +2108,9 @@
         'kicked': `⛔ ${by} signed ${who} out of ${e.device ? `“${esc(e.device)}”` : 'every device'}`,
         'banned': `⛔ ${by} signed ${who} out of every device and barred their key`,
         'unbanned': `${by} let ${who} sign in again`,
+        // An SSH session on a server (hunter's route-ssh): into their own container, or someone else's.
+        'ssh': `🖥 ${who} came in to <b>${esc(e.server || 'a server')}</b> by SSH`
+          + (e.for ? ` · joined ${esc(shown(e.for))}'s container` : '') + (e.label ? ` · ${esc(e.label)}` : ''),
         'az5': `☢ ${who} pressed AZ5: everyone signed out, Moods locked`,
         'lifted': `${who} lifted AZ5: Moods open again`,
         // Taking back (services/retract.py): an admin's, of someone else's words; or a burst of them.

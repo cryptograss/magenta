@@ -62,6 +62,7 @@ urlpatterns = [
     path('api/moods/<slug:slug>/quiet/', views_runner.api_quiet, name='api_mood_quiet'),
     path('api/moods/<slug:slug>/held/', views_runner.api_held, name='api_mood_held'),
     path('api/deploys/', views_runner.api_deploys, name='api_deploys'),
+    path('api/access/ssh/', views_runner.api_ssh, name='api_ssh'),
     path('api/servers/', views_runner.api_servers, name='api_servers'),
     path('api/tokens/', views_moods.api_tokens, name='api_tokens'),
     path('moods/media/<str:sha256>.<str:ext>', views_moods.media_file, name='mood_media'),
