@@ -282,6 +282,17 @@ class ClaudeCodeScreen:
               '{agent}: people coordinating among themselves, thanks, small talk that needs nothing. '
               'When in doubt, PASS.')
 
+    # A long quiet: is anything waiting on the agent? Waking it to wonder reads its
+    # whole session, nothing cached after an hour away -- $2 to $3.40 a look at
+    # 400k tokens of context, mostly to say nothing.
+    QUIET = ('It has gone quiet in a group conversation where {agent}, an AI, takes part alongside people. '
+             'Decide whether {agent} should look in now, unasked. Answer with exactly one line: PASS or DISMISS, '
+             'then a few words of reason. PASS when something is plainly waiting on {agent} itself: a question put '
+             'to it that went unanswered, work it said it would do and has not reported back on, a problem someone '
+             'raised that nobody has taken up. DISMISS when the last word settled things or was {agent}\'s own '
+             'answer and the people are simply away, or when what is left is for the people to do. '
+             'When in doubt, PASS.')
+
     DIGEST = ('Summarize this stretch of a group conversation for {agent}, an AI who takes part in it and '
               'was away for it. In under 200 words of plain prose: what was decided, what is still open, and '
               'anything asked of or said about {agent}. Name who said what when it matters.')
@@ -305,10 +316,14 @@ class ClaudeCodeScreen:
             return '', 0.0
         return (data.get('result') or '').strip(), float(data.get('total_cost_usd') or 0.0)
 
-    def __call__(self, prompt):
+    def quiet(self, prompt):
+        """After a long quiet: ('pass' or 'dismiss', reason, cost in USD), as for posts."""
+        return self(prompt, system=self.QUIET)
+
+    def __call__(self, prompt, system=None):
         """('pass' or 'dismiss', reason, cost in USD)."""
         try:
-            result = subprocess.run(self.command(prompt), cwd=tempfile.gettempdir(), stdin=subprocess.DEVNULL,
+            result = subprocess.run(self.command(prompt, system=system), cwd=tempfile.gettempdir(), stdin=subprocess.DEVNULL,
                                     capture_output=True, text=True, timeout=self.timeout)
             data = json.loads(result.stdout)
         except (subprocess.SubprocessError, OSError, ValueError) as e:
@@ -1525,6 +1540,19 @@ class MoodPoller:
             return 'over budget'
         recent = self.api.recent(slug, limit=12)
         minutes = int(quiet_for.total_seconds() // 60)
+        # The screen looks first, as for posts: only what it passes wakes the agent itself.
+        if self.screen and hasattr(self.screen, 'quiet'):
+            mood = recent.get('mood') or {}
+            verdict, reason, screen_cost = self.screen.quiet('\n'.join(
+                [f"Mood: {mood.get('title', slug)} -- {mood.get('description', '')}",
+                 f'Nothing has been said here for {minutes} minutes. Its last turns, newest last:', '',
+                 *transcript_of(recent['turns']), '', f'Should {self.agent} look in now?']))
+            self.spend(screen_cost)
+            if verdict == 'dismiss':
+                if not self.dry_run and not self.api.quiet(slug, reason or 'nothing waiting on me', by='screen'):
+                    logger.info(f'{slug}: quiet screened (no runner key, so no dot): {reason}')
+                logger.info(f'{slug}: quiet screened: {reason}')
+                return 'screened'
         lines = quiet_opening(slug, minutes) + [*transcript_of(recent['turns']), '', QUIET_ASK]
         return self.consider_wake(slug, '\n'.join(lines + self.rules_lines(slug) + wake_footer()), after=after)
 
