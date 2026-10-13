@@ -160,7 +160,8 @@ def api_mood_turns(request, slug):
             compactions_out.append({'id': str(msg.id), 'session_id': str(msg.session_id or ''),
                                     'created_at': msg.created_at.isoformat(), 'html': render_html(text)})
         elif kind == 'quiet':
-            quiet_out.append({'id': str(msg.id), 'sender': msg.sender_id,
+            # With what it cost: a silent reply can read a whole session to say nothing.
+            quiet_out.append({**how_payload(msg), 'id': str(msg.id), 'sender': msg.sender_id,
                               'created_at': msg.created_at.isoformat(), **text})
         else:
             step_msgs.append(msg)

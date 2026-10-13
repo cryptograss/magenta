@@ -463,6 +463,8 @@
                     color: var(--ink); font-size: 13.5px; }
   .aturn.folded .ahead .preview { display: block; }
   .aturn.folded .abody { display: none; }
+  .aspent { font-size: 11.5px; color: var(--muted); padding: 0 0 2px 26px; }
+  .aspent:empty, .aturn.folded > .aspent { display: none; }
   /* An answer folded away still plays: its ▶ beside the fold (drawBlockHead). */
   .aturn > .speak.block { display: none; }
   .aturn.folded:has(> .speak.block) { display: flex; align-items: center; gap: 6px; }
@@ -2373,7 +2375,8 @@
     dot.type = 'button'; dot.className = 'dot' + (q.by === 'screen' ? ' screened' : '');
     dot.title = q.by === 'screen'
       ? `screened for ${q.sender}: let pass without waking it · ${stamp(q.created_at)}`
-      : `${q.sender} chose not to speak · ${stamp(q.created_at)}`;
+      : `${q.sender} chose not to speak · ${stamp(q.created_at)}`
+        + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
     dot.dataset.why = q.reason || '(no reason given)';
     row.appendChild(dot);
   }
@@ -2457,8 +2460,8 @@
     // From the words that set it going, when they're just before it.
     const asked = container._askedAt && container._askedAt <= at && at - container._askedAt < 6 * 3600 ? container._askedAt : at;
     Object.assign(b, { _agent: agent, _start: asked, _end: at, _out: 0, _ctx: 0, _read: 0, _cached: 0, _calls: 0, _seen: new Set(),
-                       _how: {}, _ended: false, _final: '' });
-    b.innerHTML = '<button type="button" class="ahead"></button><div class="abody"></div>';
+                       _usd: 0, _priced: false, _first: null, _lastOut: 0, _how: {}, _ended: false, _final: '' });
+    b.innerHTML = '<button type="button" class="ahead"></button><div class="aspent"></div><div class="abody"></div>';
     container.appendChild(b);
     return b;
   }
@@ -2468,25 +2471,45 @@
       const usage = v.out + ':' + v.ctx;  // one response stored as several rows carries one usage
       // Each call to the model reads its whole context again (mostly from the cache): what a turn spent is
       // all of those reads, and all it wrote -- not just how full its context ended.
-      if (!b._seen.has(usage)) { b._seen.add(usage); b._out += v.out; b._read += v.ctx || 0; b._cached += v.cached || 0; b._calls++; }
+      if (!b._seen.has(usage)) {
+        b._seen.add(usage); b._out += v.out; b._read += v.ctx || 0; b._cached += v.cached || 0; b._calls++;
+        if (v.usd != null) { b._usd += v.usd; b._priced = true; }
+        if (b._first === null && v.ctx) b._first = v.ctx;
+        b._lastOut = v.out;
+      }
       if (v.ctx) b._ctx = v.ctx;
     }
     if (v.model) b._how.model = v.model;
     if (v.effort) b._how.effort = v.effort;
   }
+  // What a turn cost, at API list prices (mood_view.PRICES): on a subscription,
+  // what the same work would have cost through the API.
+  function usdText(usd) { return usd < 0.005 ? '<$0.01' : '$' + usd.toFixed(2); }
   function drawBlockHead(b) {
     const took = Math.max(0, Math.round(b._end - b._start));
     const how = [b._how.model, b._how.effort].filter(Boolean).join(' · ');
-    const tokens = b._out || b._ctx ? `${kTokens(b._out)} out · ${kTokens(b._read)} read · ${kTokens(b._ctx)} context` : '';
-    const spent = tokens ? `This turn: ${b._calls} call${b._calls === 1 ? '' : 's'} to the model. Wrote ${b._out.toLocaleString()} tokens; `
-      + `read ${b._read.toLocaleString()} in all (${b._cached.toLocaleString()} from the cache, ${(b._read - b._cached).toLocaleString()} new), `
-      + `each call reading its whole context again. Its context at the end: ${b._ctx.toLocaleString()}.` : '';
+    // Added to its context by this turn: what each step wrote and what came back,
+    // and its answer -- not the message that woke it, nor the tools and
+    // instructions a wake carries (a wake with full tools carries more).
+    const added = b._first !== null ? Math.max(0, b._ctx - b._first + b._lastOut) : null;
+    const addedTitle = added === null ? '' : `This turn added ${added.toLocaleString()} tokens to its context: what each step wrote `
+      + `and what came back, and its answer. They stay in the context, read again on every later call, until it's compacted.`;
+    const costTitle = `At API list prices (${b._how.model || 'this model'}), for ${b._calls} call${b._calls === 1 ? '' : 's'} to the model: `
+      + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
     b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
       + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>`
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
-      + (tokens ? ` · <span class="spent" title="${esc(spent)}">${esc(tokens)}</span>` : '')
+      + (added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
+      + (b._priced ? ` · <span class="spent" title="${esc(costTitle)}">${esc(usdText(b._usd))}</span>` : '')
       + (!b._ended && isWorking(b) ? ' · working…' : '')
       + `<span class="preview">${esc(b._final)}</span>`;
+    // The tokens themselves, on a line of their own while the turn is open.
+    const spent = b._out || b._ctx ? `This turn: ${b._calls} call${b._calls === 1 ? '' : 's'} to the model. Wrote ${b._out.toLocaleString()} tokens; `
+      + `read ${b._read.toLocaleString()} in all (${b._cached.toLocaleString()} from the cache, ${(b._read - b._cached).toLocaleString()} not), `
+      + `each call reading its whole context again. Its context at the end: ${b._ctx.toLocaleString()}.` : '';
+    b.querySelector('.aspent').innerHTML = spent
+      ? `<span title="${esc(spent)}">${esc(kTokens(b._out))} out · ${esc(kTokens(b._read))} read (${esc(kTokens(b._cached))} from the cache) `
+        + `· ${esc(kTokens(b._ctx))} context · ${b._calls} call${b._calls === 1 ? '' : 's'}</span>` : '';
     // Its answer, read aloud without unfolding it (shown only while folded).
     if (voiceOn && viewer && b._ended && b._finalId && !b.querySelector(':scope > .speak.block')) {
       b.querySelector('.ahead').insertAdjacentHTML('afterend',
