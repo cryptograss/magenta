@@ -553,6 +553,8 @@
   .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .people .who { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--code); }
   .people .who.human { color: var(--human); }
+  .token.blue-railroad { color: #2563b8; font-size: 11px; font-weight: 600; text-decoration: none; margin-left: 5px; white-space: nowrap; }
+  .token.blue-railroad .ico { width: 14px; height: 12px; margin-right: 2px; vertical-align: -1px; }
   .people .who.agent { color: var(--agent); }
   .people .who.busy::after { content: ' ●'; animation: pulse 1.2s ease-in-out infinite; }
   /* Who is a person and who is an agent, wherever a name appears. */
@@ -1018,6 +1020,29 @@
     return h ? ICONS.human : ICONS.agent;
   }
 
+  // Tokens beside a person's name (/api/tokens/, services/tokens.py): for now the Blue
+  // Railroads they hold, all songs together. Asked for once the page is up, and filled
+  // in wherever a name already stands (.badges[data-for]).
+  const BLUE_RAILROAD = '<svg class="ico" viewBox="0 0 16 13" aria-hidden="true"><rect x="1" y="5" width="8.5" height="5" rx="1"/>'
+    + '<rect x="9" y="1.5" width="5.5" height="8.5" rx="1"/><rect x="2.8" y="1.6" width="2.2" height="3.6" rx=".5"/>'
+    + '<rect x="10.4" y="3" width="2.6" height="2.4" rx=".4" fill="#fff"/><rect x="0" y="9.6" width="16" height="1.1" rx=".5"/>'
+    + '<circle cx="3.6" cy="11.4" r="1.6"/><circle cx="7.4" cy="11.4" r="1.6"/><circle cx="12" cy="11.4" r="1.6"/></svg>';
+  let tokenCounts = null;
+  function tokenBadges(name) {
+    const n = tokenCounts && tokenCounts.blue_railroad && tokenCounts.blue_railroad[name];
+    return `<span class="badges" data-for="${esc(name)}">${n
+      ? `<a class="token blue-railroad" href="${esc("{{ pickipedia_url|escapejs }}" || 'https://pickipedia.xyz')}/wiki/Blue_Railroad_Leaderboard" target="_blank" rel="noopener" `
+        + `title="${esc(shown(name))} holds ${n} Blue Railroad token${n === 1 ? '' : 's'}, all songs together">${BLUE_RAILROAD}${n}</a>` : ''}</span>`;
+  }
+  async function loadTokens() {
+    try {
+      const r = await fetch('/api/tokens/');
+      if (!r.ok) return;
+      tokenCounts = await r.json();
+    } catch (e) { return; }
+    document.querySelectorAll('.badges[data-for]').forEach(el => { el.outerHTML = tokenBadges(el.dataset.for); });
+  }
+
   // Which model, at what effort, an agent's turn ran on.
   function how(item) {
     const bits = [item.model, item.effort].filter(Boolean);
@@ -1286,7 +1311,7 @@
       <div class="meta">${block ? block + ' · ' : ''}${m.message_count} messages in the record ·
         <a href="/moods/${encodeURIComponent(m.slug)}/rules/" title="What magent is told here: this Mood's rules, its settings, what each wake says">rules</a></div>
       <div class="people" id="people">${m.participants.map(n =>
-        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}">${icon(n)}${esc(shown(n))}</span>`).join('')}</div>
+        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}">${icon(n)}${esc(shown(n))}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
   }
 
@@ -1799,7 +1824,7 @@
       : t.restored ? `<span class="edited" title="put back ${esc(stamp(t.restored))}, with the recovery key${seeThem}"${versions}>(restored)</span>` : '';
     const answers = t.reply ? `<a class="replyto" href="#m-${esc(t.reply.id)}" data-reveal="${esc(t.reply.id)}" title="Go to the message this replies to">`
       + `↩ ${icon(t.reply.sender, human[t.reply.sender] !== false)}<b>${esc(shown(t.reply.sender))}</b> ${esc(t.reply.snippet || '(a message)')}</a>` : '';
-    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}</span>${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
+    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}${tokenBadges(t.sender)}</span>${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
       + answers
       + `<a class="permalink mini" href="#m-${esc(t.id)}" title="${esc(stamp(t.created_at))} · this message's link: click to copy">#</a>`
       + (voiceOn && viewer && !t.deleted ? speakButton(t, true) : '')
@@ -4800,6 +4825,7 @@
 
   (async function start() {
     try { await loadMoods(); } catch (e) { setStatus('cannot reach memory-lane', 'stale'); return; }
+    loadTokens();  // not awaited: badges fill in when they come
     await pullSeen();  // where you've read up to, on every device, before anything is counted
     const slug = initialSlug || (moods[0] && moods[0].slug);
     if (!slug) { inner.innerHTML = '<div class="empty">No Moods yet.</div>'; setStatus('live', 'live'); return; }

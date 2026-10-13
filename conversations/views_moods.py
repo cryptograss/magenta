@@ -106,6 +106,14 @@ def api_moods(request):
 
 
 @require_GET
+def api_tokens(request):
+    """Tokens to show beside people's names: {"blue_railroad": {name: count}}
+    (services/tokens.py). Its own request, so a slow wiki never holds up the page."""
+    from .services import tokens
+    return JsonResponse({'blue_railroad': tokens.blue_railroads()})
+
+
+@require_GET
 def api_mood_turns(request, slug):
     """The readable conversation in one Mood.
 
