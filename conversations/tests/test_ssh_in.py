@@ -51,3 +51,20 @@ class SshInTest(TestCase):
                      {'server': 'hunter', 'who': 'justin; rm -rf'}, {'server': 'hunter', 'who': 'justin', 'into': '<b>x</b>'}):
             self.assertEqual(self.tell(body).status_code, 400, body)
         self.assertEqual(self.lines(), [])
+
+    def test_as_root_on_any_box_and_an_unknown_key_by_its_fingerprint(self):
+        fp = 'SHA256:' + 'a' * 43
+        self.assertEqual(self.tell({'server': 'maybelle', 'who': 'justin', 'as': 'root'}).status_code, 201)
+        self.assertEqual(self.tell({'server': 'delivery-kid', 'who': 'someone', 'as': 'root', 'key': fp}).status_code, 201)
+        self.tell({'server': 'pickipedia', 'who': 'skyler', 'as': 'skyler'})  # as themselves: no "as"
+        self.assertEqual([(c['server'], c['who'], c.get('as'), c.get('key')) for c in self.lines()],
+                         [('maybelle', 'justin', 'root', None), ('delivery-kid', 'someone', 'root', fp),
+                          ('pickipedia', 'skyler', None, None)])
+        # As root is its own visit from as themselves.
+        self.assertEqual(self.tell({'server': 'maybelle', 'who': 'justin'}).status_code, 201)
+        events = self.client.get('/api/moods/general/turns/').json()['events']
+        self.assertEqual([(e['server'], e.get('as'), e.get('key')) for e in events][:2], [('maybelle', 'root', None), ('delivery-kid', 'root', fp)])
+
+    def test_a_key_must_look_like_a_fingerprint(self):
+        self.assertEqual(self.tell({'server': 'maybelle', 'who': 'someone', 'key': '<script>'}).status_code, 400)
+        self.assertEqual(self.tell({'server': 'maybelle', 'who': 'someone', 'as': 'Root!'}).status_code, 400)

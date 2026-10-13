@@ -277,6 +277,7 @@ def api_deploys(request):
 
 
 _SSH_NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
+_SSH_KEY = re.compile(r'^SHA256:[A-Za-z0-9+/]{43}$')
 
 
 @csrf_exempt  # authenticated by the access key, not a browser session
@@ -284,9 +285,11 @@ _SSH_NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
 def api_ssh(request):
     """A server's SSH router says someone came in.
 
-    Body: {"server": "hunter", "who": "<their account>", "into": "<whose
-    container, if not their own>", "how": "a shell" | "tmux magenta" | "a command"}.
-    Said in #general (services/access.py), once a visit.
+    Body: {"server": "hunter", "who": "<whose key it was, or 'someone'>",
+    "into": "<whose container, if not their own>", "how": "a shell" |
+    "tmux magenta" | "a command", "as": "<the account, e.g. root>", "key":
+    "<SHA256:... of a key nobody is known by>"}. Said in #general
+    (services/access.py), once a visit.
     """
     from .services import access, servers
 
@@ -299,11 +302,14 @@ def api_ssh(request):
         body = json.loads(request.body)
         server, who = str(body['server']), str(body['who'])
         into, how = str(body.get('into') or ''), str(body.get('how') or '')[:60]
+        account, key = str(body.get('as') or ''), str(body.get('key') or '')
     except (ValueError, KeyError, TypeError):
         return JsonResponse({'error': 'expected {"server": ..., "who": ...}'}, status=400)
-    if server not in servers.NAMES or not _SSH_NAME.match(who) or (into and not _SSH_NAME.match(into)):
-        return JsonResponse({'error': f'server: one of {servers.NAMES}; who and into: account names'}, status=400)
-    row = access.came_in_by_ssh(who, server, into=into, how=how)
+    if (server not in servers.NAMES or not _SSH_NAME.match(who) or (into and not _SSH_NAME.match(into))
+            or (account and not _SSH_NAME.match(account)) or (key and not _SSH_KEY.match(key))):
+        return JsonResponse({'error': f'server: one of {servers.NAMES}; who, into, as: account names; '
+                                      f'key: SHA256:<fingerprint>'}, status=400)
+    row = access.came_in_by_ssh(who, server, into=into, how=how, account=account if account != who else '', key=key)
     return JsonResponse({'announced': row is not None}, status=201 if row is not None else 200)
 
 

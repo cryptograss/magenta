@@ -553,6 +553,7 @@
   .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .people .who { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--code); }
   .people .who.human { color: var(--human); }
+  .event.access .as-root { color: var(--err, #c0392b); font-weight: 700; }
   .token.blue-railroad { color: #2563b8; font-size: 11px; font-weight: 600; text-decoration: none; margin-left: 5px; white-space: nowrap; }
   .token.blue-railroad .ico { width: 14px; height: 12px; margin-right: 2px; vertical-align: -1px; }
   .people .who.agent { color: var(--agent); }
@@ -2109,8 +2110,11 @@
         'banned': `⛔ ${by} signed ${who} out of every device and barred their key`,
         'unbanned': `${by} let ${who} sign in again`,
         // An SSH session on a server (hunter's route-ssh): into their own container, or someone else's.
+        // As root it says so, marked: the account that can do anything on the box.
         'ssh': `🖥 ${who} came in to <b>${esc(e.server || 'a server')}</b> by SSH`
-          + (e.for ? ` · joined ${esc(shown(e.for))}'s container` : '') + (e.label ? ` · ${esc(e.label)}` : ''),
+          + (e.as ? ` as <span class="${e.as === 'root' ? 'as-root' : ''}">${esc(e.as)}</span>` : '')
+          + (e.for ? ` · joined ${esc(shown(e.for))}'s container` : '') + (e.label ? ` · ${esc(e.label)}` : '')
+          + (e.key ? ` · key <code title="${esc(e.key)}">${esc(e.key.slice(0, 15))}…</code>, nobody's here` : ''),
         'az5': `☢ ${who} pressed AZ5: everyone signed out, Moods locked`,
         'lifted': `${who} lifted AZ5: Moods open again`,
         // Taking back (services/retract.py): an admin's, of someone else's words; or a burst of them.
