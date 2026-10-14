@@ -1,7 +1,7 @@
 """Who reads without signing in: a count for the signed-in, addresses for admins."""
 
 from django.core.cache import cache
-from django.test import Client, TestCase, override_settings
+from django.test import Client, TestCase
 
 from conversations.models import Mood, ThinkingEntity
 from conversations.services import mood_auth, watchers
@@ -10,7 +10,6 @@ FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.
 IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'
 
 
-@override_settings(MOOD_ADMINS=('justin',))
 class WatchersTest(TestCase):
 
     @classmethod
@@ -32,12 +31,12 @@ class WatchersTest(TestCase):
         client.cookies[mood_auth.COOKIE] = token
         return client
 
-    def test_readers_without_a_sign_in_are_counted_and_admins_see_where_from(self):
+    def test_readers_without_a_sign_in_are_counted_and_ssh_sign_ins_see_where_from(self):
         self.assertNotIn('watchers', self.look('general'))  # a reader isn't told who else reads
         self.look('general', agent=IPHONE, ip='198.51.100.7')
         self.look('jams', ip='192.0.2.1, 198.51.100.20')  # Caddy's own address is the last
-        seen = self.signed_in(self.skyler).get('/api/moods/general/turns/').json()['watchers']
-        self.assertEqual(seen, {'here': 2, 'all': 3})
+        seen = self.signed_in(self.skyler, tier='wiki').get('/api/moods/general/turns/').json()['watchers']
+        self.assertEqual(seen, {'here': 2, 'all': 3})  # a PickiPedia sign-in: the count only
         who = self.signed_in(self.justin).get('/api/moods/general/turns/').json()['watchers']['who']
         self.assertEqual([(w['ip'], w['browser'], w['mood']) for w in who],
                          [('203.0.113.9', 'Firefox on Linux', 'general'), ('198.51.100.7', 'Safari on iPhone', 'general'),

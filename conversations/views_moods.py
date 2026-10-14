@@ -115,12 +115,11 @@ def api_tokens(request):
 
 def _watchers(request, mood):
     from .services import watchers
-    from .services.retract import is_admin
     device = mood_auth.device_for(request)
     if device is None:
         watchers.seen(request, mood.slug)
         return {}
-    return {'watchers': watchers.now_watching(mood.slug, admin=is_admin(device))}
+    return {'watchers': watchers.now_watching(mood.slug, admin=device.tier == 'key')}
 
 
 @require_GET
@@ -228,7 +227,7 @@ def api_mood_turns(request, slug):
         'has_earlier': bool(limit) and first is not None and mood.messages.filter(
             is_sidechain=False, created_at__lt=first).exists(),
         'activity': activity(mood),
-        # Who reads without signing in: how many, to anyone signed in; their addresses, to an admin.
+        # Who reads without signing in: how many, to anyone signed in; their addresses, to an SSH-key sign-in.
         **_watchers(request, mood),
         # What an agent started in the background here and is still running.
         'tasks': background_tasks(mood),

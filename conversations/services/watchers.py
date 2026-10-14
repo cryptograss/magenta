@@ -1,5 +1,6 @@
 """Who is reading the Moods without signing in: a count for anyone signed in,
-and each one's address for the admins.
+and each one's address for those signed in with an SSH key (not a PickiPedia
+sign-in: those include people we barely know).
 
 Every open page asks for its Mood's news every few seconds, so a browser that
 asked within the last WATCHING_FOR seconds and has no sign-in is watching.
@@ -54,7 +55,7 @@ def seen(request, slug, now=None):
 
 
 def now_watching(slug, admin=False, now=None):
-    """{'here', 'all'} counts, and for an admin each one: {'ip', 'browser', 'mood', 'since'}."""
+    """{'here', 'all'} counts, and with `admin` (an SSH-key sign-in) each one: {'ip', 'browser', 'mood', 'since'}."""
     now = now or time.time()
     watching = [w for w in (cache.get(KEY) or {}).values() if now - w['last'] < WATCHING_FOR]
     out = {'here': sum(1 for w in watching if w['slug'] == slug), 'all': len(watching)}

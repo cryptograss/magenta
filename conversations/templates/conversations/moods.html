@@ -3486,14 +3486,14 @@
   setInterval(renderTasks, 1000);
 
   // Who reads without signing in (services/watchers.py): 👁 and how many, among the
-  // Mood's people; hovering says how many in all, and to an admin, each one's address.
+  // Mood's people; hovering says how many in all, and to an SSH-key sign-in, each one's address.
   function renderWatchers(w) {
     const people = document.getElementById('people');
     if (!people) return;
     let chip = people.querySelector('.watchers');
     if (!w || !w.all) { if (chip) chip.remove(); return; }
     if (!chip) { chip = document.createElement('span'); chip.className = 'who watchers'; people.appendChild(chip); }
-    chip.textContent = w.here ? `👁 ${w.here} reading` : `👁 ${w.all} reading elsewhere`;
+    chip.textContent = w.here ? `👁 ${w.here}` : `👁 ${w.all} elsewhere`;
     const ago = t => elapsed(t);
     chip.title = `${w.here} here and ${w.all} in all reading without signing in, in the last minute or so`
       + (w.who ? '\n\n' + w.who.map(x => `${x.ip} · ${x.browser} · #${x.mood} · for ${ago(x.since)}`).join('\n') : '');
