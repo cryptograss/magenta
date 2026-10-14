@@ -113,6 +113,14 @@ def api_tokens(request):
     return JsonResponse({'blue_railroad': tokens.blue_railroads()})
 
 
+def _watchers(request, mood):
+    from .services import watchers
+    device = mood_auth.device_for(request)
+    if device is None:
+        watchers.seen(request, mood.slug)
+    return {'watchers': watchers.now_watching(mood.slug, admin=device is not None and device.tier == 'key')}
+
+
 @require_GET
 def api_mood_turns(request, slug):
     """The readable conversation in one Mood.
@@ -218,6 +226,8 @@ def api_mood_turns(request, slug):
         'has_earlier': bool(limit) and first is not None and mood.messages.filter(
             is_sidechain=False, created_at__lt=first).exists(),
         'activity': activity(mood),
+        # Who reads without signing in: how many, to everyone; their addresses, to an SSH-key sign-in.
+        **_watchers(request, mood),
         # What an agent started in the background here and is still running.
         'tasks': background_tasks(mood),
         # Whether each agent is listening here (the hush menu in the head).

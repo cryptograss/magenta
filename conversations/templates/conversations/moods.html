@@ -553,6 +553,7 @@
   .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .people .who { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--code); }
   .people .who.human { color: var(--human); }
+  .people .who.watchers { color: var(--muted); cursor: help; }
   .event.access .as-root { color: var(--err, #c0392b); font-weight: 700; }
   .token.blue-railroad { color: #2563b8; font-size: 11px; font-weight: 600; text-decoration: none; margin-left: 5px; white-space: nowrap; }
   .token.blue-railroad .ico { width: 14px; height: 12px; margin-right: 2px; vertical-align: -1px; }
@@ -3140,6 +3141,7 @@
     renderLocked(data.scram || null);
     typingNow = (data.typing || []).filter(n => n !== viewer);
     renderTyping();
+    renderWatchers(data.watchers);
     const turnsEl = document.getElementById('turns');
     if (!turnsEl) return;
     if (data.now) changesAt[current] = data.now;
@@ -3482,6 +3484,20 @@
     if (where) { e.preventDefault(); reveal(where.dataset.step); }
   });
   setInterval(renderTasks, 1000);
+
+  // Who reads without signing in (services/watchers.py): 👁 and how many, among the
+  // Mood's people; hovering says how many in all, and to an SSH-key sign-in, each one's address.
+  function renderWatchers(w) {
+    const people = document.getElementById('people');
+    if (!people) return;
+    let chip = people.querySelector('.watchers');
+    if (!w || !w.all) { if (chip) chip.remove(); return; }
+    if (!chip) { chip = document.createElement('span'); chip.className = 'who watchers'; people.appendChild(chip); }
+    chip.textContent = w.here ? `👁 ${w.here}` : `👁 ${w.all} elsewhere`;
+    const ago = t => elapsed(t);
+    chip.title = `${w.here} here and ${w.all} in all reading without signing in, in the last minute or so`
+      + (w.who ? '\n\n' + w.who.map(x => `${x.ip} · ${x.browser} · #${x.mood} · for ${ago(x.since)}`).join('\n') : '');
+  }
 
   const typingEl = document.getElementById('typing');
   function renderTyping() {
