@@ -75,7 +75,8 @@ class Turn:
 
     def __init__(self, *, agent, mood, session_id, harness=None, forked_from=None, source='mood-runner',
                  keep_tool_output=True):
-        self.agent, _ = ThinkingEntity.objects.get_or_create(name=agent, defaults={'is_biological_human': False})
+        self.agent, _ = ThinkingEntity.objects.get_or_create(
+            name=agent, defaults={'is_biological_human': False, 'participant_type': 'ai'})
         self.mood, self.session_id, self.harness = mood, session_id, harness
         self.forked_from, self.keep = forked_from, keep_tool_output
         self.source_file = f'ingest-{source}'

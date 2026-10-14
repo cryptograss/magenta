@@ -204,4 +204,4 @@ class ActivityTest(TestCase):
         body = self.client.get('/api/moods/m26/turns/').json()
         self.assertEqual(body['activity']['doing'], 'waking')
         self.assertEqual({p['name'] for p in self.client.get('/api/moods/').json()['people']},
-                         {'justin', 'magent'})
+                         {'justin', 'magent', 're'})  # re: made by migration 0023, before its first turn

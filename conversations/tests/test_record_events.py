@@ -128,7 +128,7 @@ class RecordEventsTest(TestCase):
         self.assertEqual(Message.objects.filter(session_id=session).count(), 6)  # five, and the turn-result
 
     def test_any_agent_posts_events_but_only_magent_posts_claude_codes_stream(self):
-        ThinkingEntity.objects.create(name='re', is_biological_human=False)
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
         session = str(uuid.uuid4())
         with override_settings(MOOD_RUNNER_KEYS={'re': KEY}):
             self.assertEqual(self.post(a_turn(), session=session).status_code, 200)

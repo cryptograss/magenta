@@ -81,7 +81,7 @@ class EndToEndTest(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        ThinkingEntity.objects.create(name='re', is_biological_human=False)
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
         cls.mood = Mood.objects.create(slug='docs-tests-qa')
 
     def test_a_pi_turn_reaches_the_mood_as_re(self):
