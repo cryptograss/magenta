@@ -552,6 +552,10 @@
   @keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
   .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .people .who { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--code); }
+  .event .event-reply { visibility: hidden; margin-left: 6px; font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
+  .event:hover .event-reply, .event:focus-within .event-reply { visibility: visible; }
+  .event .event-reply:hover { color: var(--accent); }
+  @media (pointer: coarse) { .event .event-reply { visibility: visible; } }
   .people .who.human { color: var(--human); }
   .token.blue-railroad { color: #2563b8; font-size: 11px; font-weight: 600; text-decoration: none; margin-left: 5px; white-space: nowrap; }
   .token.blue-railroad .ico { width: 14px; height: 12px; margin-right: 2px; vertical-align: -1px; }
@@ -1823,7 +1827,8 @@
     const edited = t.edited ? `<span class="edited" title="edited ${esc(stamp(t.edited))}${seeThem}"${versions}>(edited)</span>`
       : t.restored ? `<span class="edited" title="put back ${esc(stamp(t.restored))}, with the recovery key${seeThem}"${versions}>(restored)</span>` : '';
     const answers = t.reply ? `<a class="replyto" href="#m-${esc(t.reply.id)}" data-reveal="${esc(t.reply.id)}" title="Go to the message this replies to">`
-      + `↩ ${icon(t.reply.sender, human[t.reply.sender] !== false)}<b>${esc(shown(t.reply.sender))}</b> ${esc(t.reply.snippet || '(a message)')}</a>` : '';
+      + (t.reply.event ? `↩ ${esc(t.reply.snippet || '(an event)')}</a>`
+        : `↩ ${icon(t.reply.sender, human[t.reply.sender] !== false)}<b>${esc(shown(t.reply.sender))}</b> ${esc(t.reply.snippet || '(a message)')}</a>`) : '';
     el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}${tokenBadges(t.sender)}</span>${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
       + answers
       + `<a class="permalink mini" href="#m-${esc(t.id)}" title="${esc(stamp(t.created_at))} · this message's link: click to copy">#</a>`
@@ -2043,7 +2048,18 @@
     if (seconds == null) return '';
     return seconds < 90 ? ` in ${seconds}s` : ` in ${Math.round(seconds / 60)}m`;
   }
+  // Any event -- a redeploy, a merge, a release, a change on the wiki -- can be
+  // replied to, as a message can: its line has its anchor, and ↩ for anyone signed in.
   function addEvent(e, container) {
+    const before = container.lastElementChild;
+    drawEvent(e, container);
+    const el = container.lastElementChild;
+    if (!el || el === before || !e.id || el.id) return;  // a run folded into the line before keeps that one's
+    el.id = 'm-' + e.id;
+    el.dataset.id = e.id;
+    if (viewer) el.insertAdjacentHTML('beforeend', `<button type="button" class="replybtn event-reply" data-reply="${esc(e.id)}" title="Reply to this" aria-label="Reply to this">↩</button>`);
+  }
+  function drawEvent(e, container) {
     const el = document.createElement('div');
     if (e.type === 'wiki') {  // a change on PickiPedia (services/wiki_feed.py), at the wiki's own time
       const page = `${WIKI}/wiki/${encodeURIComponent((e.title || '').replace(/ /g, '_'))}`;
@@ -4690,15 +4706,18 @@
   function setReply(id) {
     const el = document.getElementById('m-' + id);
     if (!el) return;
-    const sender = ((el.querySelector('.who .name') || {}).textContent || '').trim();
-    const snippet = ((el.querySelector('.body') || {}).innerText || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const isEvent = el.classList.contains('event');  // a redeploy, a merge: what it says is the quote
+    const sender = isEvent ? '' : ((el.querySelector('.who .name') || {}).textContent || '').trim();
+    const body = isEvent ? el : el.querySelector('.body');
+    const snippet = ((body || {}).innerText || '').replace(/↩\s*$/, '').replace(/\s+/g, ' ').trim().slice(0, 140);
     showReply({ id, sender, snippet });
     saveDraft();
     sayBox.focus();
   }
   function showReply(r) {
     replyTo = r;
-    replying.querySelector('.what').innerHTML = `↩ Replying to <b>${esc(r.sender || '')}</b>: ${esc(r.snippet || '')}`;
+    replying.querySelector('.what').innerHTML = r.sender ? `↩ Replying to <b>${esc(r.sender)}</b>: ${esc(r.snippet || '')}`
+      : `↩ Replying to: ${esc(r.snippet || '')}`;
     replying.hidden = false;
   }
   function cancelReply() { replyTo = null; replying.hidden = true; saveDraft(); }
