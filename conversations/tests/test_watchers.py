@@ -32,7 +32,7 @@ class WatchersTest(TestCase):
         return client
 
     def test_readers_without_a_sign_in_are_counted_and_ssh_sign_ins_see_where_from(self):
-        self.assertNotIn('watchers', self.look('general'))  # a reader isn't told who else reads
+        self.assertEqual(self.look('general')['watchers'], {'here': 1, 'all': 1})  # the count is public, never the addresses
         self.look('general', agent=IPHONE, ip='198.51.100.7')
         self.look('jams', ip='192.0.2.1, 198.51.100.20')  # Caddy's own address is the last
         seen = self.signed_in(self.skyler, tier='wiki').get('/api/moods/general/turns/').json()['watchers']

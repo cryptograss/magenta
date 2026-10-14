@@ -1,4 +1,4 @@
-"""Who is reading the Moods without signing in: a count for anyone signed in,
+"""Who is reading the Moods without signing in: a count for everyone,
 and each one's address for those signed in with an SSH key (not a PickiPedia
 sign-in: those include people we barely know).
 
