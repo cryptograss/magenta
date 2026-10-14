@@ -782,6 +782,11 @@ def transcript_of(turns, new_ids=(), limit=20_000, each=1500):
     lines = []
     for turn in turns:
         text = _WRAPPER_TAG.sub(r'‹\1\2', turn.get('text', ''))
+        # A reply says what it answers, a message or an event (a redeploy, a merge), not just its link.
+        reply = turn.get('reply')
+        if reply:
+            to = f"{reply['sender']}: " if reply.get('sender') else ''
+            text = re.sub(r'^↩ #m-[0-9a-f-]+\s*', f"(↩ to {to}“{reply.get('snippet', '')}”, #m-{reply.get('id', '')}) ", text)
         if len(text) > each:
             text = text[:each] + ' […]'
         mark = '► ' if turn['id'] in new_ids else ''

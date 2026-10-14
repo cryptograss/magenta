@@ -357,12 +357,49 @@ def snippet_of(text):
     return re.sub(r'\s+', ' ', text).strip()
 
 
+def event_line(content):
+    """A line saying what an event was -- a redeploy, a merge, a release, a change
+    on the wiki -- for a reply to it: its quote, and what an agent reads."""
+    c = content if isinstance(content, dict) else {}
+    kind, by = c.get('type'), c.get('by') or ''
+    by_ = f' by {by}' if by else ''
+    commit = f" · {c['commit'][:8]}" if c.get('commit') else ''
+    if kind == 'deploy':
+        said = {'started': 'began redeploying', 'finished': 'redeployed', 'failed': 'failed to redeploy'}
+        return f"⚙ {c.get('server', 'a server')} {said.get(c.get('state'), c.get('state', ''))}{commit}{by_}"
+    if kind == 'merged':
+        return f"✓ {c.get('pull') or c.get('title', 'a pull request')}{commit} merged{by_}: {c.get('title', '')}".rstrip(': ')
+    if kind == 'release':
+        return f"💿 a new release: {c.get('title') or c.get('cid', '')}{by_}"
+    if kind == 'release-draft':
+        return f"💿 a release draft: {c.get('title', '')}{by_}"
+    if kind == 'wiki':
+        return f"✎ {c.get('user', 'someone')} {'started' if c.get('kind') == 'new' else 'edited'} {c.get('title', '')} on PickiPedia"
+    if kind == 'wiki-upload':
+        return f"🖼 {by or 'someone'} put {c.get('file', 'a picture')} on PickiPedia"
+    if kind in ('handoff', 'handoff-sent'):
+        where = c.get('from_mood') if kind == 'handoff' else c.get('to_mood')
+        return f"🔀 {by or 'someone'} {'brought this from' if kind == 'handoff' else 'took this to'} #{where}: {c.get('about', '')}"
+    if kind == 'access':
+        if c.get('kind') == 'ssh':
+            return f"🖥 {c.get('who', 'someone')} came in to {c.get('server', 'a server')} by SSH" + (f" as {c['as']}" if c.get('as') else '')
+        return f"🔑 {c.get('who', 'someone')} {(c.get('kind') or '').replace('-', ' ')}"
+    if kind == 'interrupt':
+        return f"■ {by or 'someone'} stopped {c.get('agent', 'an agent')}"
+    return (kind or 'an event').replace('-', ' ')
+
+
 def replied(message_id):
-    """What a reply answers, as {'id', 'sender', 'snippet'}; None if it's gone."""
+    """What a reply answers, as {'id', 'sender', 'snippet'}; None if it's gone.
+    An event -- a redeploy, a merge, a release -- has no sender: its snippet
+    says what happened ('event': True)."""
     from conversations.models import Message
     target = Message.objects.filter(id=message_id).first()
     if target is None:
         return None
+    if target.sender_id == 'system' and isinstance(target.content, dict):
+        return {'id': str(target.id), 'sender': '', 'snippet': event_line(target.content)[:140], 'is_human': False,
+                'event': True}
     from conversations.models import ThinkingEntity
     _, said = reply_to(prose(target.content) or '')
     return {'id': str(target.id), 'sender': target.sender_id, 'snippet': snippet_of(said)[:140],
