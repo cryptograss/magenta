@@ -1151,6 +1151,14 @@ def _activity(mood, now=None):
 
     if now - _when(newest) > ACTIVITY_WINDOW:
         return None
+    # A runner writes what a turn came to once it has ended, and nothing of a
+    # turn is after that. Most turns end on a line that says so too, but a
+    # /compact run with -p streams only the summary -- never the "Compacted"
+    # a terminal writes -- so the summary was read as the agent thinking.
+    ended = (mood.messages.filter(sender_id='system', content__type='turn-result')
+             .order_by('-created_at').values_list('created_at', flat=True).first())
+    if ended is not None and ended >= newest.created_at:
+        return None
     if newest.sender_id in agents and newest.stop_reason in TURN_ENDS:
         return None
     # Rows imported before stop_reason was kept: a plain reply that has sat
@@ -1165,7 +1173,7 @@ def _activity(mood, now=None):
     for msg in recent:
         if msg.sender_id in agents and msg.stop_reason in TURN_ENDS:
             break
-        if msg.source_file in POSTED or _command_output(msg):
+        if msg.source_file in POSTED or _command_output(msg) or (ended is not None and msg.created_at <= ended):
             break
         streak.append(msg)
     agent = next((m.sender_id for m in streak if m.sender_id in agents), None) or sorted(agents or {'magent'})[0]
