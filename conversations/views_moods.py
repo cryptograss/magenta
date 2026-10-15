@@ -707,6 +707,29 @@ def notices_for(name, since, limit=NOTICES_MAX, everything=False):
             found.append({'kind': 'said', 'from': by, 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
         if len(found) >= limit:
             break
+    found += talk_page_notices(name, since)
+    found.sort(key=lambda n: n['turn']['created_at'], reverse=True)
+    return found[:limit]
+
+
+def talk_page_notices(name, since):
+    """Someone else edited `name`'s PickiPedia talk page: a 'talk' notice, from the
+    wiki feed's line for it (services/wiki_feed.py). Their talk page is where
+    people leave them word on the wiki, so it's word for them here too."""
+    from .services.mood_view import user_page_of
+    from .services.wiki_auth import local_name_for
+    found = []
+    rows = Message.objects.filter(source_file='wiki', created_at__gt=since,
+                                  content__title__startswith='User talk:').order_by('-created_at')
+    for msg in rows:
+        c = msg.content if isinstance(msg.content, dict) else {}
+        page = user_page_of(c.get('title'))
+        editor = c.get('user', '')
+        if not page or local_name_for(page[0]) != name or local_name_for(editor) == name:
+            continue
+        found.append({'kind': 'talk', 'from': 'person', 'mood': msg.mood_slug, 'turn': {
+            'id': str(msg.id), 'sender': editor, 'created_at': msg.created_at.isoformat(),
+            'text': f"edited your talk page on PickiPedia" + (f": {c['comment']}" if c.get('comment') else '')}})
     return found
 
 
