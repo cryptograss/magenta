@@ -38,25 +38,14 @@ def signed_in(device):
     return announce('signed-in', device.entity_id, tier=device.tier, label=device.label)
 
 
-SSH_AGAIN_AFTER = 30 * 60  # seconds: the same way in again within this is the same visit
-
-
 def came_in_by_ssh(who, server, into='', how='', account='', key=''):
-    """Someone opened an SSH session on a server: a line in #general -- unless
-    they came the same way within the half hour, which is the same visit (a
-    tmux reattach, a second terminal, a copy of a file). `account` is the one
-    they came in as when it isn't their own (root, most of all); `key` the
-    fingerprint of a key nobody here is known by. None if not announced."""
-    from datetime import timedelta
-    from django.utils import timezone
-    from conversations.models import Message
-    since = timezone.now() - timedelta(seconds=SSH_AGAIN_AFTER)
+    """Someone opened an SSH session on a server: a line in #general, every
+    time -- a second terminal or a reattach is someone at the keyboard too.
+    Deploys don't come through here: a box's login hook leaves out sessions
+    running deploy logic, which says itself. `account` is the one they came
+    in as when it isn't their own (root, most of all); `key` the fingerprint
+    of a key nobody here is known by."""
     into = '' if into == who else into
-    for row in Message.objects.filter(source_file=SOURCE, created_at__gt=since).values_list('content', flat=True):
-        c = row if isinstance(row, dict) else {}
-        if (c.get('kind') == 'ssh' and c.get('who') == who and c.get('server') == server and c.get('for', '') == into
-                and c.get('as', '') == account and c.get('key', '') == key):
-            return None
     return announce('ssh', who, server=server, label=how, **({'for': into} if into else {}),
                     **({'as': account} if account else {}), **({'key': key} if key else {}))
 

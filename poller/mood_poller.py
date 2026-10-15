@@ -213,8 +213,9 @@ class StreamPoster:
     conversation in, just later.
     """
 
-    def __init__(self, base, key, slug, session_id, http=requests, retries=3, pause=1.0):
+    def __init__(self, base, key, slug, session_id, http=requests, retries=3, pause=1.0, effort=None):
         self.url = f"{base.rstrip('/')}/api/moods/{slug}/stream/"
+        self.effort = effort  # what the turn was launched at: stream events don't say
         self.headers = {'Authorization': f'Bearer {key}'}
         self.slug, self.session_id = slug, session_id
         self.http, self.retries, self.pause = http, retries, pause
@@ -249,7 +250,8 @@ class StreamPoster:
                 self.send(events)
 
     def send(self, events):
-        body = {'harness': 'claude-code', 'session_id': self.session_id, 'events': events}
+        body = {'harness': 'claude-code', 'session_id': self.session_id, 'events': events,
+                **({'effort': self.effort} if self.effort else {})}
         for attempt in range(self.retries):
             try:
                 response = self.http.post(self.url, json=body, headers=self.headers, timeout=30)
@@ -1248,6 +1250,8 @@ class MoodPoller:
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
         new_session = str(uuid.uuid4())
         poster = self.streamer(slug, new_session) if self.streamer else None
+        if poster is not None and options.get('effort'):
+            poster.effort = options['effort']
         stop = self.stop_check(slug, options.pop('since', None))
         try:
             new_session, reply = self.waker.wake(session_id, prompt, new_session_id=new_session,

@@ -166,6 +166,13 @@ def api_stream(request, slug):
     now_iso = timezone.now().isoformat()
     lines = [line for line in (stream_line(e, now_iso) for e in events) if line]
     imported, skipped, errors = import_lines(lines, source=SOURCE, username=agent) if lines else (0, 0, [])
+    # The effort the runner launched the turn at. Stream events don't carry
+    # it, and the transcript that does may never reach a watcher (the turn
+    # ran in another container), so the runner says it with each post.
+    effort = str(body.get('effort') or '')
+    if re.fullmatch(r'[a-z]{2,12}', effort):
+        Message.objects.filter(session_id=session_id, sender_id=agent, model_backend__isnull=False,
+                               effort__isnull=True).update(effort=effort)
 
     finished = False
     for event in events:
@@ -289,7 +296,7 @@ def api_ssh(request):
     "into": "<whose container, if not their own>", "how": "a shell" |
     "tmux magenta" | "a command", "as": "<the account, e.g. root>", "key":
     "<SHA256:... of a key nobody is known by>"}. Said in #general
-    (services/access.py), once a visit.
+    (services/access.py), every time.
     """
     from .services import access, servers
 

@@ -1,4 +1,4 @@
-"""Someone came in to a server by SSH: said in #general, once a visit (services/access.py)."""
+"""Someone ssh'd into a server: said in #general, every time (services/access.py)."""
 
 import json
 
@@ -39,12 +39,13 @@ class SshInTest(TestCase):
         [event] = body['events']
         self.assertEqual((event['kind'], event['who'], event['server'], event['label']), ('ssh', 'justin', 'hunter', 'tmux magenta'))
 
-    def test_the_same_visit_is_said_once_and_joining_someone_is_its_own(self):
+    def test_every_login_is_said_and_joining_someone_is_its_own(self):
         self.tell({'server': 'hunter', 'who': 'skyler', 'how': 'a shell'})
-        self.assertEqual(self.tell({'server': 'hunter', 'who': 'skyler', 'how': 'tmux magenta'}).json(), {'announced': False})
+        self.assertEqual(self.tell({'server': 'hunter', 'who': 'skyler', 'how': 'tmux magenta'}).json(), {'announced': True})
         self.tell({'server': 'hunter', 'who': 'skyler', 'into': 'justin', 'how': 'tmux jam'})
         self.tell({'server': 'hunter', 'who': 'justin', 'into': 'justin'})  # their own container, said plainly
-        self.assertEqual([(c['who'], c.get('for')) for c in self.lines()], [('skyler', None), ('skyler', 'justin'), ('justin', None)])
+        self.assertEqual([(c['who'], c.get('for')) for c in self.lines()],
+                         [('skyler', None), ('skyler', None), ('skyler', 'justin'), ('justin', None)])
 
     def test_what_isnt_an_account_or_a_server_is_refused(self):
         for body in ({'server': 'hunter'}, {'server': 'elsewhere', 'who': 'justin'},

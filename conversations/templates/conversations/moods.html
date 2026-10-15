@@ -2126,11 +2126,11 @@
         'kicked': `⛔ ${by} signed ${who} out of ${e.device ? `“${esc(e.device)}”` : 'every device'}`,
         'banned': `⛔ ${by} signed ${who} out of every device and barred their key`,
         'unbanned': `${by} let ${who} sign in again`,
-        // An SSH session on a server (hunter's route-ssh): into their own container, or someone else's.
-        // As root it says so, marked: the account that can do anything on the box.
-        'ssh': `🖥 ${who} came in to <b>${esc(e.server || 'a server')}</b> by SSH`
-          + (e.as ? ` as <span class="${e.as === 'root' ? 'as-root' : ''}">${esc(e.as)}</span>` : '')
-          + (e.for ? ` · joined ${esc(shown(e.for))}'s container` : '') + (e.label ? ` · ${esc(e.label)}` : '')
+        // An SSH session on a server: as which account -- their own, someone else's container on
+        // hunter, or root, marked: the account that can do anything on the box.
+        'ssh': (as => `🖥 ${who} ssh'd into <b>${esc(e.server || 'a server')}</b>`
+          + ` as <span class="${as === 'root' ? 'as-root' : ''}">${esc(shown(as))}</span>`)(e.as || e.for || e.who || 'someone')
+          + (e.label ? ` · ${esc(e.label)}` : '')
           + (e.key ? ` · key <code title="${esc(e.key)}">${esc(e.key.slice(0, 15))}…</code>, nobody's here` : ''),
         'az5': `☢ ${who} pressed AZ5: everyone signed out, Moods locked`,
         'lifted': `${who} lifted AZ5: Moods open again`,

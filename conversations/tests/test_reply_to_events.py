@@ -30,7 +30,7 @@ class ReplyToEventsTest(TestCase):
         self.assertEqual(event_line({'type': 'wiki', 'user': 'JMyles', 'title': 'Maybelle', 'kind': 'edit'}),
                          '✎ JMyles edited Maybelle on PickiPedia')
         self.assertEqual(event_line({'type': 'access', 'kind': 'ssh', 'who': 'justin', 'server': 'maybelle', 'as': 'root'}),
-                         '🖥 justin came in to maybelle by SSH as root')
+                         "🖥 justin ssh'd into maybelle as root")
         self.assertEqual(event_line({'type': 'something-new'}), 'something new')
 
     def test_a_reply_to_an_event_quotes_it_and_addresses_nobody(self):
