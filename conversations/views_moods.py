@@ -106,6 +106,22 @@ def api_moods(request):
 
 
 @require_GET
+def api_tokens(request):
+    """Tokens to show beside people's names: {"blue_railroad": {name: count}}
+    (services/tokens.py). Its own request, so a slow wiki never holds up the page."""
+    from .services import tokens
+    return JsonResponse({'blue_railroad': tokens.blue_railroads()})
+
+
+def _watchers(request, mood):
+    from .services import watchers
+    device = mood_auth.device_for(request)
+    if device is None:
+        watchers.seen(request, mood.slug)
+    return {'watchers': watchers.now_watching(mood.slug, admin=device is not None and device.tier == 'key')}
+
+
+@require_GET
 def api_mood_turns(request, slug):
     """The readable conversation in one Mood.
 
@@ -149,7 +165,7 @@ def api_mood_turns(request, slug):
                                                    'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at',
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'about', 'context',
-                                                   'pulled', 'pull', 'commit_url', 'cid', 'draft')},
+                                                   'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
@@ -160,7 +176,8 @@ def api_mood_turns(request, slug):
             compactions_out.append({'id': str(msg.id), 'session_id': str(msg.session_id or ''),
                                     'created_at': msg.created_at.isoformat(), 'html': render_html(text)})
         elif kind == 'quiet':
-            quiet_out.append({'id': str(msg.id), 'sender': msg.sender_id,
+            # With what it cost: a silent reply can read a whole session to say nothing.
+            quiet_out.append({**how_payload(msg), 'id': str(msg.id), 'sender': msg.sender_id,
                               'created_at': msg.created_at.isoformat(), **text})
         else:
             step_msgs.append(msg)
@@ -209,6 +226,8 @@ def api_mood_turns(request, slug):
         'has_earlier': bool(limit) and first is not None and mood.messages.filter(
             is_sidechain=False, created_at__lt=first).exists(),
         'activity': activity(mood),
+        # Who reads without signing in: how many, to everyone; their addresses, to an SSH-key sign-in.
+        **_watchers(request, mood),
         # What an agent started in the background here and is still running.
         'tasks': background_tasks(mood),
         # Whether each agent is listening here (the hush menu in the head).

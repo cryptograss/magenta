@@ -25,6 +25,7 @@ speaks for (settings.MOOD_RUNNER_KEYS).
 
 import hmac
 import json
+import re
 import uuid
 
 from django.conf import settings
@@ -174,6 +175,13 @@ def api_stream(request, slug):
     now_iso = timezone.now().isoformat()
     lines = [line for line in (stream_line(e, now_iso) for e in events) if line]
     imported, skipped, errors = import_lines(lines, source=SOURCE, username=agent) if lines else (0, 0, [])
+    # The effort the runner launched the turn at. Stream events don't carry
+    # it, and the transcript that does may never reach a watcher (the turn
+    # ran in another container), so the runner says it with each post.
+    effort = str(body.get('effort') or '')
+    if re.fullmatch(r'[a-z]{2,12}', effort):
+        Message.objects.filter(session_id=session_id, sender_id=agent, model_backend__isnull=False,
+                               effort__isnull=True).update(effort=effort)
 
     finished = False
     for event in events:
@@ -309,6 +317,43 @@ def api_deploys(request):
     told = servers.record_deploy(name, state, commit=str(body.get('commit') or ''), by=str(body.get('by') or ''),
                                  note=str(body.get('note') or ''))
     return JsonResponse({'server': name, 'state': state, 'moods': told}, status=201)
+
+
+_SSH_NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
+_SSH_KEY = re.compile(r'^SHA256:[A-Za-z0-9+/]{43}$')
+
+
+@csrf_exempt  # authenticated by the access key, not a browser session
+@require_POST
+def api_ssh(request):
+    """A server's SSH router says someone came in.
+
+    Body: {"server": "hunter", "who": "<whose key it was, or 'someone'>",
+    "into": "<whose container, if not their own>", "how": "a shell" |
+    "tmux magenta" | "a command", "as": "<the account, e.g. root>", "key":
+    "<SHA256:... of a key nobody is known by>"}. Said in #general
+    (services/access.py), every time.
+    """
+    from .services import access, servers
+
+    key = getattr(settings, 'MOOD_ACCESS_KEY', '')
+    if not key:
+        return JsonResponse({'error': 'no access key is configured'}, status=503)
+    if not hmac.compare_digest(request.headers.get('Authorization', '').encode(), f'Bearer {key}'.encode()):
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    try:
+        body = json.loads(request.body)
+        server, who = str(body['server']), str(body['who'])
+        into, how = str(body.get('into') or ''), str(body.get('how') or '')[:60]
+        account, key = str(body.get('as') or ''), str(body.get('key') or '')
+    except (ValueError, KeyError, TypeError):
+        return JsonResponse({'error': 'expected {"server": ..., "who": ...}'}, status=400)
+    if (server not in servers.NAMES or not _SSH_NAME.match(who) or (into and not _SSH_NAME.match(into))
+            or (account and not _SSH_NAME.match(account)) or (key and not _SSH_KEY.match(key))):
+        return JsonResponse({'error': f'server: one of {servers.NAMES}; who, into, as: account names; '
+                                      f'key: SHA256:<fingerprint>'}, status=400)
+    row = access.came_in_by_ssh(who, server, into=into, how=how, account=account if account != who else '', key=key)
+    return JsonResponse({'announced': row is not None}, status=201 if row is not None else 200)
 
 
 @require_GET

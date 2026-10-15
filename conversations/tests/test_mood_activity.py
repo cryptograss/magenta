@@ -158,6 +158,27 @@ class ActivityTest(TestCase):
         self.add(self.magent, 30, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use')
         self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'thinking', 'since': NOW - 40})
 
+    def ran(self, seconds_ago):
+        """What a runner writes once a turn has ended."""
+        system = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})[0]
+        self.add(system, seconds_ago, {'type': 'turn-result', 'agent': 'magent', 'subtype': 'success'})
+
+    def test_a_runners_compaction_once_done_is_not_thinking(self):
+        # Run with -p, /compact streams the summary and no "Compacted" after it.
+        self.add(self.justin, 70, '/compact great run @magent', source_file='mood-web')
+        self.add(self.magent, 10, 'This session is being continued from a previous conversation that ran '
+                                  'out of context. The summary below covers the earlier portion.')
+        self.assertEqual(self.now()['doing'], 'thinking')  # while the run is still going
+        self.ran(9)
+        self.assertIsNone(self.now())
+
+    def test_a_turn_after_a_runners_turn_counts_from_its_own_start(self):
+        self.add(self.magent, 300, 'This session is being continued from a previous conversation.')
+        self.ran(299)
+        self.add(self.justin, 40, '<mood-wake mood="m26" reason="quiet">nothing said lately</mood-wake>')
+        self.add(self.magent, 30, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use')
+        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'thinking', 'since': NOW - 40})
+
     def test_a_web_post_naming_an_agent_is_waking_it(self):
         self.add(self.justin, 3, '@magent can you see?', source_file='mood-web')
         self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'waking', 'since': NOW - 3})

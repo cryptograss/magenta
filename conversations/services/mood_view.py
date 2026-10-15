@@ -363,12 +363,50 @@ def snippet_of(text):
     return re.sub(r'\s+', ' ', text).strip()
 
 
+def event_line(content):
+    """A line saying what an event was -- a redeploy, a merge, a release, a change
+    on the wiki -- for a reply to it: its quote, and what an agent reads."""
+    c = content if isinstance(content, dict) else {}
+    kind, by = c.get('type'), c.get('by') or ''
+    by_ = f' by {by}' if by else ''
+    commit = f" · {c['commit'][:8]}" if c.get('commit') else ''
+    if kind == 'deploy':
+        said = {'started': 'began redeploying', 'finished': 'redeployed', 'failed': 'failed to redeploy'}
+        return f"⚙ {c.get('server', 'a server')} {said.get(c.get('state'), c.get('state', ''))}{commit}{by_}"
+    if kind == 'merged':
+        return f"✓ {c.get('pull') or c.get('title', 'a pull request')}{commit} merged{by_}: {c.get('title', '')}".rstrip(': ')
+    if kind == 'release':
+        return f"💿 a new release: {c.get('title') or c.get('cid', '')}{by_}"
+    if kind == 'release-draft':
+        return f"💿 a release draft: {c.get('title', '')}{by_}"
+    if kind == 'wiki':
+        return f"✎ {c.get('user', 'someone')} {'started' if c.get('kind') == 'new' else 'edited'} {c.get('title', '')} on PickiPedia"
+    if kind == 'wiki-upload':
+        return f"🖼 {by or 'someone'} put {c.get('file', 'a picture')} on PickiPedia"
+    if kind in ('handoff', 'handoff-sent'):
+        where = c.get('from_mood') if kind == 'handoff' else c.get('to_mood')
+        return f"🔀 {by or 'someone'} {'brought this from' if kind == 'handoff' else 'took this to'} #{where}: {c.get('about', '')}"
+    if kind == 'access':
+        if c.get('kind') == 'ssh':
+            who = c.get('who', 'someone')
+            return f"🖥 {who} ssh'd into {c.get('server', 'a server')} as {c.get('as') or c.get('for') or who}"
+        return f"🔑 {c.get('who', 'someone')} {(c.get('kind') or '').replace('-', ' ')}"
+    if kind == 'interrupt':
+        return f"■ {by or 'someone'} stopped {c.get('agent', 'an agent')}"
+    return (kind or 'an event').replace('-', ' ')
+
+
 def replied(message_id):
-    """What a reply answers, as {'id', 'sender', 'snippet'}; None if it's gone."""
+    """What a reply answers, as {'id', 'sender', 'snippet'}; None if it's gone.
+    An event -- a redeploy, a merge, a release -- has no sender: its snippet
+    says what happened ('event': True)."""
     from conversations.models import Message
     target = Message.objects.filter(id=message_id).first()
     if target is None:
         return None
+    if target.sender_id == 'system' and isinstance(target.content, dict):
+        return {'id': str(target.id), 'sender': '', 'snippet': event_line(target.content)[:140], 'is_human': False,
+                'event': True}
     from conversations.models import ThinkingEntity
     _, said = reply_to(prose(target.content) or '')
     return {'id': str(target.id), 'sender': target.sender_id, 'snippet': snippet_of(said)[:140],
@@ -814,9 +852,39 @@ def model_label(model):
     return f'{family.capitalize()} {version}'.strip()
 
 
+# What a call costs at Anthropic's API list prices (September 2026), in dollars
+# per million tokens: fresh input, output, input read from the cache, and input
+# written to it. Claude Code writes its cache for an hour, at twice the input
+# price, so writes are priced so. On a subscription it's what the same work
+# would have cost through the API. The first prefix that matches is the model's;
+# a model not listed gets no price rather than a guess.
+PRICES = (
+    ('claude-opus-5-5', (4.00, 20.00, 0.20, 8.00)),
+    ('claude-opus-5', (5.00, 25.00, 0.50, 10.00)),
+    ('claude-opus-4-8', (5.00, 25.00, 0.50, 10.00)),
+    ('claude-opus-4-7', (5.00, 25.00, 0.50, 10.00)),
+    ('claude-opus-4-6', (5.00, 25.00, 0.50, 10.00)),
+    ('claude-sonnet-5', (2.00, 10.00, 0.20, 4.00)),     # Sonnet 5.5 and Sonnet 5
+    ('claude-sonnet-4-6', (3.00, 15.00, 0.30, 6.00)),
+    ('claude-fable-5-1', (10.00, 50.00, 0.25, 20.00)),
+    ('claude-mythos-5-1', (10.00, 50.00, 0.25, 20.00)),
+    ('claude-fable-5', (10.00, 50.00, 1.00, 20.00)),
+    ('claude-mythos-5', (10.00, 50.00, 1.00, 20.00)),
+    ('claude-haiku-4-5', (1.00, 5.00, 0.10, 2.00)),
+)
+
+
+def call_usd(model, fresh, out, read, written):
+    """Dollars a call cost at list prices, or None for a model with no price here."""
+    rates = next((r for prefix, r in PRICES if (model or '').startswith(prefix)), None)
+    if rates is None:
+        return None
+    return ((fresh or 0) * rates[0] + (out or 0) * rates[1] + (read or 0) * rates[2] + (written or 0) * rates[3]) / 1e6
+
+
 def how_payload(msg):
     """Model and effort an agent's message ran on ('' when unknown); what it
-    wrote and read, in tokens; and whether it ended its turn.
+    wrote and read, in tokens, and what that cost; and whether it ended its turn.
 
     One response the model gives can be stored as several rows (its thinking,
     its words, a tool call), each with that response's usage: the page counts
@@ -827,6 +895,10 @@ def how_payload(msg):
         out['ctx'] = sum(n or 0 for n in (msg.input_tokens, msg.cache_read_input_tokens,
                                           msg.cache_creation_input_tokens))
         out['cached'] = msg.cache_read_input_tokens or 0  # of ctx, read back from the cache: the cheap part
+        usd = call_usd(msg.model_backend, msg.input_tokens, msg.output_tokens, msg.cache_read_input_tokens,
+                       msg.cache_creation_input_tokens)
+        if usd is not None:
+            out['usd'] = round(usd, 5)
     if msg.stop_reason:
         out['stop'] = msg.stop_reason
     return out
@@ -1086,6 +1158,14 @@ def _activity(mood, now=None):
 
     if now - _when(newest) > ACTIVITY_WINDOW:
         return None
+    # A runner writes what a turn came to once it has ended, and nothing of a
+    # turn is after that. Most turns end on a line that says so too, but a
+    # /compact run with -p streams only the summary -- never the "Compacted"
+    # a terminal writes -- so the summary was read as the agent thinking.
+    ended = (mood.messages.filter(sender_id='system', content__type='turn-result')
+             .order_by('-created_at').values_list('created_at', flat=True).first())
+    if ended is not None and ended >= newest.created_at:
+        return None
     if newest.sender_id in agents and newest.stop_reason in TURN_ENDS:
         return None
     # Rows imported before stop_reason was kept: a plain reply that has sat
@@ -1100,7 +1180,7 @@ def _activity(mood, now=None):
     for msg in recent:
         if msg.sender_id in agents and msg.stop_reason in TURN_ENDS:
             break
-        if msg.source_file in POSTED or _command_output(msg):
+        if msg.source_file in POSTED or _command_output(msg) or (ended is not None and msg.created_at <= ended):
             break
         streak.append(msg)
     agent = next((m.sender_id for m in streak if m.sender_id in agents), None) or sorted(agents or {'magent'})[0]

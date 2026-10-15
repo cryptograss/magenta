@@ -397,8 +397,11 @@ class StreamingPollerTest(TestCase):
 
     def test_a_mention_gets_a_considered_answer(self):
         waker = FakeWaker()
-        self.make(waker, FakeHTTP(200)).poll_once()
+        http = FakeHTTP(200)
+        self.make(waker, http).poll_once()
         self.assertEqual(waker.options.get('effort'), 'high')
+        # ...and says so with the stream: its events don't, and the transcript may never be read.
+        self.assertEqual({p[1].get('effort') for p in http.posts}, {'high'})
 
     def test_a_turn_that_fails_is_closed_in_the_mood(self):
         http = FakeHTTP(200)
@@ -836,6 +839,10 @@ class FakeScreen:
         self.prompts.append(prompt)
         return self.verdict, self.reason, 0.004
 
+    def quiet(self, prompt):
+        self.quiet_prompts = getattr(self, 'quiet_prompts', []) + [prompt]
+        return getattr(self, 'quiet_verdict', 'pass'), self.reason, 0.004
+
 
 class ConsiderLoopTest(TestCase):
 
@@ -942,11 +949,27 @@ class ConsiderLoopTest(TestCase):
         self.at(minutes=51)
         self.assertEqual(poller.consider_once(), [('m26', 'silent')])
         self.assertIn('reason="quiet"', self.waker.woken[0][1])
-        self.assertEqual(screen.prompts, [])  # wondering is the agent's own business
+        self.assertEqual(screen.prompts, [])  # not the posts' question
+        self.assertIn('Nothing has been said here for 51 minutes', screen.quiet_prompts[0])  # its own
         self.at(minutes=51 + 99)
         self.assertEqual(poller.consider_once(), [])
         self.at(minutes=51 + 101)
         self.assertEqual(poller.consider_once(), [('m26', 'silent')])  # after 100, not 50
+
+    def test_a_long_quiet_the_screen_dismisses_wakes_nobody_and_still_waits_twice_as_long(self):
+        # A wake to wonder reads the agent's whole session, cold: $2-3 a time. The screen looks first.
+        api = ConsiderAPI([post('a', -10)], human_at=(T0 - timedelta(minutes=10)).isoformat())
+        screen = FakeScreen(reason='the last word was its own; they are away')
+        screen.quiet_verdict = 'dismiss'
+        poller = self.make(api, screen)
+        self.at(minutes=51)
+        self.assertEqual(poller.consider_once(), [('m26', 'screened')])
+        self.assertEqual(self.waker.woken, [])
+        self.assertEqual(api.quiets, [('m26', 'the last word was its own; they are away', 'screen')])
+        self.at(minutes=51 + 99)
+        self.assertEqual(poller.consider_once(), [])
+        self.at(minutes=51 + 101)
+        self.assertEqual(poller.consider_once(), [('m26', 'screened')])  # after 100, not 50
 
     def test_a_person_speaking_resets_the_wait(self):
         api = ConsiderAPI([post('a', -10)], human_at=(T0 - timedelta(minutes=10)).isoformat())

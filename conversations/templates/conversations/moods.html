@@ -463,6 +463,8 @@
                     color: var(--ink); font-size: 13.5px; }
   .aturn.folded .ahead .preview { display: block; }
   .aturn.folded .abody { display: none; }
+  .aspent { font-size: 11.5px; color: var(--muted); padding: 0 0 2px 26px; }
+  .aspent:empty, .aturn.folded > .aspent { display: none; }
   /* An answer folded away still plays: its ▶ beside the fold (drawBlockHead). */
   .aturn > .speak.block { display: none; }
   .aturn.folded:has(> .speak.block) { display: flex; align-items: center; gap: 6px; }
@@ -550,7 +552,15 @@
   @keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
   .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .people .who { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--code); }
+  .event .event-reply { visibility: hidden; margin-left: 6px; font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
+  .event:hover .event-reply, .event:focus-within .event-reply { visibility: visible; }
+  .event .event-reply:hover { color: var(--accent); }
+  @media (pointer: coarse) { .event .event-reply { visibility: visible; } }
   .people .who.human { color: var(--human); }
+  .people .who.watchers { color: var(--muted); cursor: help; }
+  .event.access .as-root { color: var(--err, #c0392b); font-weight: 700; }
+  .token.blue-railroad { color: #2563b8; font-size: 11px; font-weight: 600; text-decoration: none; margin-left: 5px; white-space: nowrap; }
+  .token.blue-railroad .ico { width: 14px; height: 12px; margin-right: 2px; vertical-align: -1px; }
   .people .who.agent { color: var(--agent); }
   .people .who.busy::after { content: ' ●'; animation: pulse 1.2s ease-in-out infinite; }
   /* Who is a person and who is an agent, wherever a name appears. */
@@ -848,6 +858,7 @@
       <span class="textsize">text size <button type="button" data-step="-1" aria-label="Smaller text">A−</button><span id="textSizeVal">100%</span><button type="button" data-step="1" aria-label="Larger text">A+</button></span>
       <button id="notify" type="button" hidden aria-label="Notifications"></button>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
+      <label class="readall" id="readSpeedLabel" hidden title="How fast anything is read aloud here: every voice, the narrator, and voice memos. Your browser's own playback speed, so it costs nothing and changes at once.">reading speed <select id="readSpeed"></select></label>
       <a href="#" id="voicesLink" hidden>voices</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
@@ -921,7 +932,7 @@
     <button type="button" id="toBottom">↓ newest</button>
     <div id="typing"></div>
     <div id="tasks"></div>
-    <div id="readBar" hidden><span class="what"></span><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button></div>
+    <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button></div>
     <div id="activity"><span class="dot"></span><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button></div>
@@ -931,7 +942,7 @@
       <div id="suggest"></div>
       <button type="button" id="agentsBtn" title="Agents here: listening, model, effort" aria-label="Agent settings" aria-expanded="false">⚙</button>
       <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
-      <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop. It's ready to send at once; its words are written in when it's sent." aria-label="Record a voice memo" hidden>🎙</button>
+      <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
       <textarea id="say" placeholder="Say something. @name to address someone; [[Page]] links PickiPedia. Enter sends; Ctrl+Enter for a new line." rows="2"></textarea>
       <button type="submit" id="send" aria-label="Send"><span class="label">Send</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z" fill="currentColor"/></svg></button>
@@ -1013,6 +1024,29 @@
   function icon(name, isHuman) {
     const h = isHuman === undefined ? !!human[name] : isHuman;
     return h ? ICONS.human : ICONS.agent;
+  }
+
+  // Tokens beside a person's name (/api/tokens/, services/tokens.py): for now the Blue
+  // Railroads they hold, all songs together. Asked for once the page is up, and filled
+  // in wherever a name already stands (.badges[data-for]).
+  const BLUE_RAILROAD = '<svg class="ico" viewBox="0 0 16 13" aria-hidden="true"><rect x="1" y="5" width="8.5" height="5" rx="1"/>'
+    + '<rect x="9" y="1.5" width="5.5" height="8.5" rx="1"/><rect x="2.8" y="1.6" width="2.2" height="3.6" rx=".5"/>'
+    + '<rect x="10.4" y="3" width="2.6" height="2.4" rx=".4" fill="#fff"/><rect x="0" y="9.6" width="16" height="1.1" rx=".5"/>'
+    + '<circle cx="3.6" cy="11.4" r="1.6"/><circle cx="7.4" cy="11.4" r="1.6"/><circle cx="12" cy="11.4" r="1.6"/></svg>';
+  let tokenCounts = null;
+  function tokenBadges(name) {
+    const n = tokenCounts && tokenCounts.blue_railroad && tokenCounts.blue_railroad[name];
+    return `<span class="badges" data-for="${esc(name)}">${n
+      ? `<a class="token blue-railroad" href="${esc("{{ pickipedia_url|escapejs }}" || 'https://pickipedia.xyz')}/wiki/Blue_Railroad_Leaderboard" target="_blank" rel="noopener" `
+        + `title="${esc(shown(name))} holds ${n} Blue Railroad token${n === 1 ? '' : 's'}, all songs together">${BLUE_RAILROAD}${n}</a>` : ''}</span>`;
+  }
+  async function loadTokens() {
+    try {
+      const r = await fetch('/api/tokens/');
+      if (!r.ok) return;
+      tokenCounts = await r.json();
+    } catch (e) { return; }
+    document.querySelectorAll('.badges[data-for]').forEach(el => { el.outerHTML = tokenBadges(el.dataset.for); });
   }
 
   // Which model, at what effort, an agent's turn ran on.
@@ -1283,7 +1317,7 @@
       <div class="meta">${block ? block + ' · ' : ''}${m.message_count} messages in the record ·
         <a href="/moods/${encodeURIComponent(m.slug)}/rules/" title="What magent is told here: this Mood's rules, its settings, what each wake says">rules</a></div>
       <div class="people" id="people">${m.participants.map(n =>
-        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}">${icon(n)}${esc(shown(n))}</span>`).join('')}</div>
+        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}">${icon(n)}${esc(shown(n))}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
   }
 
@@ -1301,6 +1335,17 @@
       + ` title="${title}" aria-label="${title}">▶</button>`;
   }
   let speaking = null;  // {audio, button}
+  // How fast it's read, for this listener: the browser's playback rate, pitch kept.
+  // Every voice, the narrator and memos alike; nothing is made again, so it costs
+  // nothing. Set on each player before it plays (a new src goes back to
+  // defaultPlaybackRate, so that's set too).
+  const READ_SPEEDS = [1, 1.15, 1.25, 1.5, 1.75, 2];
+  let readSpeed = READ_SPEEDS.includes(store.get('readSpeed', 1)) ? store.get('readSpeed', 1) : 1;
+  function atSpeed(audio) {
+    audio.defaultPlaybackRate = readSpeed; audio.playbackRate = readSpeed;
+    audio.preservesPitch = true;
+    return audio;
+  }
   // A message read aloud comes in pieces (voice.pieces): the first is short, so it
   // starts at once. Each next piece is asked for as the one before starts playing --
   // made while it plays, and made knowing it, so they sound like one reading.
@@ -1335,7 +1380,7 @@
       speaking = { audio: memo, button: b };
       memo.addEventListener('ended', stopSpeaking, { once: true });
       b.classList.add('playing'); b.textContent = '■';
-      memo.play().catch(err => { showError('play: ' + err.message); stopSpeaking(); });
+      atSpeed(memo).play().catch(err => { showError('play: ' + err.message); stopSpeaking(); });
       return;
     }
     b.classList.add('busy'); b.textContent = '…';
@@ -1345,7 +1390,7 @@
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || r.status);
       if (ask !== speakAsk) { b.textContent = b.dataset.label || '▶'; return; }  // another ▶ was pressed meanwhile: that one plays
-      const audio = new Audio(body.url);
+      const audio = atSpeed(new Audio(body.url));
       const more = laterPieces(current, b.dataset.id, b.dataset.part, body.pieces || 1);
       let at = 0;
       speaking = { audio, button: b };
@@ -1784,8 +1829,9 @@
     const edited = t.edited ? `<span class="edited" title="edited ${esc(stamp(t.edited))}${seeThem}"${versions}>(edited)</span>`
       : t.restored ? `<span class="edited" title="put back ${esc(stamp(t.restored))}, with the recovery key${seeThem}"${versions}>(restored)</span>` : '';
     const answers = t.reply ? `<a class="replyto" href="#m-${esc(t.reply.id)}" data-reveal="${esc(t.reply.id)}" title="Go to the message this replies to">`
-      + `↩ ${icon(t.reply.sender, human[t.reply.sender] !== false)}<b>${esc(shown(t.reply.sender))}</b> ${esc(t.reply.snippet || '(a message)')}</a>` : '';
-    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}</span>${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
+      + (t.reply.event ? `↩ ${esc(t.reply.snippet || '(an event)')}</a>`
+        : `↩ ${icon(t.reply.sender, human[t.reply.sender] !== false)}<b>${esc(shown(t.reply.sender))}</b> ${esc(t.reply.snippet || '(a message)')}</a>`) : '';
+    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}${tokenBadges(t.sender)}</span>${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
       + answers
       + `<a class="permalink mini" href="#m-${esc(t.id)}" title="${esc(stamp(t.created_at))} · this message's link: click to copy">#</a>`
       + (voiceOn && viewer && !t.deleted ? speakButton(t, true) : '')
@@ -2004,7 +2050,18 @@
     if (seconds == null) return '';
     return seconds < 90 ? ` in ${seconds}s` : ` in ${Math.round(seconds / 60)}m`;
   }
+  // Any event -- a redeploy, a merge, a release, a change on the wiki -- can be
+  // replied to, as a message can: its line has its anchor, and ↩ for anyone signed in.
   function addEvent(e, container) {
+    const before = container.lastElementChild;
+    drawEvent(e, container);
+    const el = container.lastElementChild;
+    if (!el || el === before || !e.id || el.id) return;  // a run folded into the line before keeps that one's
+    el.id = 'm-' + e.id;
+    el.dataset.id = e.id;
+    if (viewer) el.insertAdjacentHTML('beforeend', `<button type="button" class="replybtn event-reply" data-reply="${esc(e.id)}" title="Reply to this" aria-label="Reply to this">↩</button>`);
+  }
+  function drawEvent(e, container) {
     const el = document.createElement('div');
     if (e.type === 'wiki') {  // a change on PickiPedia (services/wiki_feed.py), at the wiki's own time
       const page = `${WIKI}/wiki/${encodeURIComponent((e.title || '').replace(/ /g, '_'))}`;
@@ -2069,6 +2126,12 @@
         'kicked': `⛔ ${by} signed ${who} out of ${e.device ? `“${esc(e.device)}”` : 'every device'}`,
         'banned': `⛔ ${by} signed ${who} out of every device and barred their key`,
         'unbanned': `${by} let ${who} sign in again`,
+        // An SSH session on a server: as which account -- their own, someone else's container on
+        // hunter, or root, marked: the account that can do anything on the box.
+        'ssh': (as => `🖥 ${who} ssh'd into <b>${esc(e.server || 'a server')}</b>`
+          + ` as <span class="${as === 'root' ? 'as-root' : ''}">${esc(shown(as))}</span>`)(e.as || e.for || e.who || 'someone')
+          + (e.label ? ` · ${esc(e.label)}` : '')
+          + (e.key ? ` · key <code title="${esc(e.key)}">${esc(e.key.slice(0, 15))}…</code>, nobody's here` : ''),
         'az5': `☢ ${who} pressed AZ5: everyone signed out, Moods locked`,
         'lifted': `${who} lifted AZ5: Moods open again`,
         // Taking back (services/retract.py): an admin's, of someone else's words; or a burst of them.
@@ -2361,7 +2424,8 @@
     dot.type = 'button'; dot.className = 'dot' + (q.by === 'screen' ? ' screened' : '');
     dot.title = q.by === 'screen'
       ? `screened for ${q.sender}: let pass without waking it · ${stamp(q.created_at)}`
-      : `${q.sender} chose not to speak · ${stamp(q.created_at)}`;
+      : `${q.sender} chose not to speak · ${stamp(q.created_at)}`
+        + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
     dot.dataset.why = q.reason || '(no reason given)';
     row.appendChild(dot);
   }
@@ -2445,8 +2509,8 @@
     // From the words that set it going, when they're just before it.
     const asked = container._askedAt && container._askedAt <= at && at - container._askedAt < 6 * 3600 ? container._askedAt : at;
     Object.assign(b, { _agent: agent, _start: asked, _end: at, _out: 0, _ctx: 0, _read: 0, _cached: 0, _calls: 0, _seen: new Set(),
-                       _how: {}, _ended: false, _final: '' });
-    b.innerHTML = '<button type="button" class="ahead"></button><div class="abody"></div>';
+                       _usd: 0, _priced: false, _first: null, _lastOut: 0, _how: {}, _ended: false, _final: '' });
+    b.innerHTML = '<button type="button" class="ahead"></button><div class="aspent"></div><div class="abody"></div>';
     container.appendChild(b);
     return b;
   }
@@ -2456,25 +2520,45 @@
       const usage = v.out + ':' + v.ctx;  // one response stored as several rows carries one usage
       // Each call to the model reads its whole context again (mostly from the cache): what a turn spent is
       // all of those reads, and all it wrote -- not just how full its context ended.
-      if (!b._seen.has(usage)) { b._seen.add(usage); b._out += v.out; b._read += v.ctx || 0; b._cached += v.cached || 0; b._calls++; }
+      if (!b._seen.has(usage)) {
+        b._seen.add(usage); b._out += v.out; b._read += v.ctx || 0; b._cached += v.cached || 0; b._calls++;
+        if (v.usd != null) { b._usd += v.usd; b._priced = true; }
+        if (b._first === null && v.ctx) b._first = v.ctx;
+        b._lastOut = v.out;
+      }
       if (v.ctx) b._ctx = v.ctx;
     }
     if (v.model) b._how.model = v.model;
     if (v.effort) b._how.effort = v.effort;
   }
+  // What a turn cost, at API list prices (mood_view.PRICES): on a subscription,
+  // what the same work would have cost through the API.
+  function usdText(usd) { return usd < 0.005 ? '<$0.01' : '$' + usd.toFixed(2); }
   function drawBlockHead(b) {
     const took = Math.max(0, Math.round(b._end - b._start));
     const how = [b._how.model, b._how.effort].filter(Boolean).join(' · ');
-    const tokens = b._out || b._ctx ? `${kTokens(b._out)} out · ${kTokens(b._read)} read · ${kTokens(b._ctx)} context` : '';
-    const spent = tokens ? `This turn: ${b._calls} call${b._calls === 1 ? '' : 's'} to the model. Wrote ${b._out.toLocaleString()} tokens; `
-      + `read ${b._read.toLocaleString()} in all (${b._cached.toLocaleString()} from the cache, ${(b._read - b._cached).toLocaleString()} new), `
-      + `each call reading its whole context again. Its context at the end: ${b._ctx.toLocaleString()}.` : '';
+    // Added to its context by this turn: what each step wrote and what came back,
+    // and its answer -- not the message that woke it, nor the tools and
+    // instructions a wake carries (a wake with full tools carries more).
+    const added = b._first !== null ? Math.max(0, b._ctx - b._first + b._lastOut) : null;
+    const addedTitle = added === null ? '' : `This turn added ${added.toLocaleString()} tokens to its context: what each step wrote `
+      + `and what came back, and its answer. They stay in the context, read again on every later call, until it's compacted.`;
+    const costTitle = `At API list prices (${b._how.model || 'this model'}), for ${b._calls} call${b._calls === 1 ? '' : 's'} to the model: `
+      + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
     b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
       + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>`
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
-      + (tokens ? ` · <span class="spent" title="${esc(spent)}">${esc(tokens)}</span>` : '')
+      + (added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
+      + (b._priced ? ` · <span class="spent" title="${esc(costTitle)}">${esc(usdText(b._usd))}</span>` : '')
       + (!b._ended && isWorking(b) ? ' · working…' : '')
       + `<span class="preview">${esc(b._final)}</span>`;
+    // The tokens themselves, on a line of their own while the turn is open.
+    const spent = b._out || b._ctx ? `This turn: ${b._calls} call${b._calls === 1 ? '' : 's'} to the model. Wrote ${b._out.toLocaleString()} tokens; `
+      + `read ${b._read.toLocaleString()} in all (${b._cached.toLocaleString()} from the cache, ${(b._read - b._cached).toLocaleString()} not), `
+      + `each call reading its whole context again. Its context at the end: ${b._ctx.toLocaleString()}.` : '';
+    b.querySelector('.aspent').innerHTML = spent
+      ? `<span title="${esc(spent)}">${esc(kTokens(b._out))} out · ${esc(kTokens(b._read))} read (${esc(kTokens(b._cached))} from the cache) `
+        + `· ${esc(kTokens(b._ctx))} context · ${b._calls} call${b._calls === 1 ? '' : 's'}</span>` : '';
     // Its answer, read aloud without unfolding it (shown only while folded).
     if (voiceOn && viewer && b._ended && b._finalId && !b.querySelector(':scope > .speak.block')) {
       b.querySelector('.ahead').insertAdjacentHTML('afterend',
@@ -3073,6 +3157,7 @@
     renderLocked(data.scram || null);
     typingNow = (data.typing || []).filter(n => n !== viewer);
     renderTyping();
+    renderWatchers(data.watchers);
     const turnsEl = document.getElementById('turns');
     if (!turnsEl) return;
     if (data.now) changesAt[current] = data.now;
@@ -3415,6 +3500,20 @@
     if (where) { e.preventDefault(); reveal(where.dataset.step); }
   });
   setInterval(renderTasks, 1000);
+
+  // Who reads without signing in (services/watchers.py): 👁 and how many, among the
+  // Mood's people; hovering says how many in all, and to an SSH-key sign-in, each one's address.
+  function renderWatchers(w) {
+    const people = document.getElementById('people');
+    if (!people) return;
+    let chip = people.querySelector('.watchers');
+    if (!w || !w.all) { if (chip) chip.remove(); return; }
+    if (!chip) { chip = document.createElement('span'); chip.className = 'who watchers'; people.appendChild(chip); }
+    chip.textContent = w.here ? `👁 ${w.here}` : `👁 ${w.all} elsewhere`;
+    const ago = t => elapsed(t);
+    chip.title = `${w.here} here and ${w.all} in all reading without signing in, in the last minute or so`
+      + (w.who ? '\n\n' + w.who.map(x => `${x.ip} · ${x.browser} · #${x.mood} · for ${ago(x.since)}`).join('\n') : '');
+  }
 
   const typingEl = document.getElementById('typing');
   function renderTyping() {
@@ -3926,10 +4025,12 @@
   // A voice memo: recorded here, and in the box the moment it's stopped, ready
   // to send. The server hears it meanwhile (voice.hear_later); sent, it's
   // posted as soon as its words are in -- usually already -- and until then
-  // the page says it's on its way (memoOnItsWay).
+  // the page says it's on its way (memoOnItsWay). Send needn't wait for any
+  // of it: pressed while recording, it stops the recording; pressed while it
+  // uploads, it sends once it's up (memoThenSend, in say()).
   const memoBtn = document.getElementById('memoBtn');
   const MEMO_MAX_S = 600;
-  let recorder = null, memoTimer = null;
+  let recorder = null, memoTimer = null, memoSaving = false, memoThenSend = false;
   if (voiceOn && viewer && window.MediaRecorder && navigator.mediaDevices) memoBtn.hidden = false;
   const clock = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
   memoBtn.addEventListener('click', async () => {
@@ -3946,8 +4047,9 @@
       clearInterval(memoTimer);
       stream.getTracks().forEach(t => t.stop());
       const seconds = (Date.now() - started) / 1000;
-      recorder = null;
+      recorder = null; memoSaving = true;
       memoBtn.classList.remove('recording'); memoBtn.classList.add('busy'); memoBtn.textContent = 'saving…';
+      let ready = false;
       try {
         const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/memo/', {
           method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: new Blob(chunks, { type: chunks[0]?.type || type || 'audio/webm' }) });
@@ -3956,12 +4058,20 @@
         insertAtCaret(`🎙 [voice memo · ${clock(seconds)}](${body.url})`);
         sayBox.dispatchEvent(new Event('input'));
         sayBox.focus();
-        composer.insertAdjacentHTML('beforeend', '<span class="note">Ready to send: its words are written in as it goes.</span>');
-      } catch (e) { showError('voice memo: ' + e.message); }
-      finally { memoBtn.classList.remove('busy'); memoBtn.textContent = '🎙'; }
+        ready = true;
+      } catch (e) { memoThenSend = false; showError('voice memo: ' + e.message); }
+      finally { memoSaving = false; memoBtn.classList.remove('busy'); memoBtn.textContent = '🎙'; }
+      composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
+      if (ready && memoThenSend) { memoThenSend = false; say(); }
+      else if (ready) composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">Ready to send: its words are written in as it goes.</span>');
     });
-    recorder.start(1000);
+    try { recorder.start(1000); }
+    catch (e) {  // a microphone that can't be recorded: nothing under way, nothing for Send to wait on
+      recorder = null; stream.getTracks().forEach(t => t.stop());
+      showError('voice memo: ' + e.message); return;
+    }
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
+    composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Recording: ■ stops it to add words; Send sends it as it is.</span>');
     memoBtn.classList.add('recording');
     memoBtn.textContent = '■ 0:00';
     memoTimer = setInterval(() => {
@@ -4069,6 +4179,21 @@
   let readMode = 'off', readSinceMs = 0, readLast = null, readNow = null, readHeld = false, readBlocked = false, readWhy = '';
   let clipDone = null;
   if (voiceOn && viewer) document.getElementById('readAllLabel').hidden = false;
+  const readSpeedSel = document.getElementById('readSpeed');
+  const readSpeedBtn = document.getElementById('readSpeedBtn');
+  const speedName = v => (v === 1 ? '1' : String(v)) + '×';
+  readSpeedSel.innerHTML = READ_SPEEDS.map(v => `<option value="${v}">${speedName(v)}</option>`).join('');
+  if (voiceOn) document.getElementById('readSpeedLabel').hidden = false;
+  function setReadSpeed(v) {
+    readSpeed = READ_SPEEDS.includes(v) ? v : 1;
+    store.set('readSpeed', readSpeed);
+    readSpeedSel.value = String(readSpeed);
+    readSpeedBtn.textContent = speedName(readSpeed);
+    for (const a of [reader, speaking && speaking.audio]) if (a) atSpeed(a);  // what's playing changes at once
+  }
+  setReadSpeed(readSpeed);
+  readSpeedSel.addEventListener('change', () => setReadSpeed(+readSpeedSel.value));
+  readSpeedBtn.addEventListener('click', () => setReadSpeed(READ_SPEEDS[(READ_SPEEDS.indexOf(readSpeed) + 1) % READ_SPEEDS.length]));
 
   function setReadMode(mode) {
     readMode = mode;
@@ -4110,7 +4235,7 @@
     return new Promise(resolve => {
       clipDone = resolve;
       reader.src = src;
-      reader.play().catch(err => {
+      atSpeed(reader).play().catch(err => {
         if (clipDone !== resolve) return;
         clipDone = null;
         clipError = `${err && err.name}: ${err && err.message}`.slice(0, 200);
@@ -4604,15 +4729,18 @@
   function setReply(id) {
     const el = document.getElementById('m-' + id);
     if (!el) return;
-    const sender = ((el.querySelector('.who .name') || {}).textContent || '').trim();
-    const snippet = ((el.querySelector('.body') || {}).innerText || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const isEvent = el.classList.contains('event');  // a redeploy, a merge: what it says is the quote
+    const sender = isEvent ? '' : ((el.querySelector('.who .name') || {}).textContent || '').trim();
+    const body = isEvent ? el : el.querySelector('.body');
+    const snippet = ((body || {}).innerText || '').replace(/↩\s*$/, '').replace(/\s+/g, ' ').trim().slice(0, 140);
     showReply({ id, sender, snippet });
     saveDraft();
     sayBox.focus();
   }
   function showReply(r) {
     replyTo = r;
-    replying.querySelector('.what').innerHTML = `↩ Replying to <b>${esc(r.sender || '')}</b>: ${esc(r.snippet || '')}`;
+    replying.querySelector('.what').innerHTML = r.sender ? `↩ Replying to <b>${esc(r.sender)}</b>: ${esc(r.snippet || '')}`
+      : `↩ Replying to: ${esc(r.snippet || '')}`;
     replying.hidden = false;
   }
   function cancelReply() { replyTo = null; replying.hidden = true; saveDraft(); }
@@ -4649,6 +4777,14 @@
   const noAgents = document.getElementById('noAgents');
   noAgents.querySelector('button').addEventListener('click', () => { noAgents.close(); sayBox.focus(); });
   async function say() {
+    // A memo still recording or uploading: stop it, and send once it's in the box.
+    if (recorder || memoSaving) {
+      memoThenSend = true;
+      if (recorder) recorder.stop();
+      composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
+      composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Sending as soon as it\'s saved…</span>');
+      return;
+    }
     const text = sayBox.value.trim();
     if (!text || !current) return;
     if (viewerTier === 'wiki') {
@@ -4731,6 +4867,7 @@
 
   (async function start() {
     try { await loadMoods(); } catch (e) { setStatus('cannot reach memory-lane', 'stale'); return; }
+    loadTokens();  // not awaited: badges fill in when they come
     await pullSeen();  // where you've read up to, on every device, before anything is counted
     const slug = initialSlug || (moods[0] && moods[0].slug);
     if (!slug) { inner.innerHTML = '<div class="empty">No Moods yet.</div>'; setStatus('live', 'live'); return; }

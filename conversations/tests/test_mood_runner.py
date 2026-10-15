@@ -99,6 +99,17 @@ class StreamTest(TestCase):
         cost = Message.objects.get(sender_id='system', content__type='turn-result')
         self.assertEqual((cost.content['cost_usd'], cost.mood), (0.0123, self.mood))
 
+    def test_the_runner_says_the_effort_a_turn_ran_at(self):
+        # Stream events don't carry it, and the transcript that does may never
+        # reach a watcher: the runner sends it with each post.
+        use, result, reply, done = self.turn()
+        self.post([use, result, reply, done], effort='high')
+        agent_rows = Message.objects.filter(session_id=self.session, sender_id='magent')
+        self.assertEqual(set(agent_rows.values_list('effort', flat=True)), {'high'})
+        self.assertFalse(Message.objects.filter(session_id=self.session, sender_id='justin', effort='high').exists())
+        self.post([], effort='<script>')  # not an effort: ignored
+        self.assertEqual(set(agent_rows.values_list('effort', flat=True)), {'high'})
+
     def test_posting_the_same_events_again_adds_nothing(self):
         events = list(self.turn())
         self.post(events)
