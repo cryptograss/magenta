@@ -19,6 +19,7 @@ Usage: magenta.sh [TARGET] [OPTIONS]
        magenta.sh login [--key <path>] [--base <url>]
        magenta.sh kick <name> --all [--ban] | --device <id>   |   magenta.sh unban <name>
        magenta.sh AZ5 [TARGET]          |   magenta.sh AZ5 --lift
+       magenta.sh reconnect [TARGET]
 
 Connect to a container and drop into a tmux + Claude Code session.
 
@@ -74,6 +75,15 @@ SUBCOMMANDS:
                         whole command. Either kick needs an admin's key
                         (memory-lane's MOOD_ADMINS); signed like login.
   unban <name>          Let <name> sign in again.
+  reconnect [TARGET]    Sign Claude Code in again in the container (default:
+                        hunter), for when magent answers in Moods with
+                        "OAuth session expired" or "Please run /login". It
+                        runs `claude auth login` there as the container's
+                        user -- the same login the Mood poller's turns use --
+                        and shows who it's signed in as afterwards. Open the
+                        link it prints, approve, and paste the code back.
+                        The poller picks the new login up at its next turn;
+                        nothing needs restarting.
   AZ5 [TARGET]          The scram. Signs everyone out of Moods, locks them
                         (no posting, no signing in) and stills every agent
                         runner -- then drops you into the session picker on
@@ -112,6 +122,7 @@ EXAMPLES:
   magenta.sh kick skyler --device 21c74117    # sign out just that one device of theirs
   magenta.sh AZ5                              # everyone out, everything still, then the picker
   magenta.sh AZ5 --lift                       # back to normal
+  magenta.sh reconnect                        # sign Claude in again on hunter
 
 MENTAL MODEL:
   * tmux session name = what shows in `tmux list-sessions`
@@ -172,7 +183,15 @@ run_mood_tool() {
     python3 "$script" "$@"
 }
 
+RECONNECT=false
 case "${1:-}" in
+    reconnect)
+        # Then on as a connection to TARGET (default hunter): only what runs
+        # there differs (see the reconnect branch below).
+        shift
+        RECONNECT=true
+        set -- "${@:-hunter}"
+        ;;
     login)
         shift
         run_mood_tool mood_login.py MOOD_LOGIN_SCRIPT "$@"
@@ -485,6 +504,25 @@ except Exception:
     log_line \"   INNER: \$INNER\"
     tmux new-session -s \"\$SESSION_NAME\" \"\$INNER\"
 "
+
+# ─── reconnect: sign Claude Code in again, where it runs ───────────────
+# Not the session picker: just `claude auth login`, run in the container as
+# its user. Always a fresh sign-in -- `claude auth status` reads the saved
+# login and can say "loggedIn" when its refresh token is the thing that
+# expired.
+if [ "$RECONNECT" = true ]; then
+    # Starts with a plain word: route-ssh reads the first one (tmux, or a
+    # username to join).
+    RECONNECT_COMMAND="echo \"Signing Claude Code in again as \$(whoami) on \$(hostname).\"
+        echo 'Open the link below, approve, then paste the code here.'
+        echo ''
+        claude auth login --claudeai || exit \$?
+        echo ''
+        claude auth status
+    "
+    ssh -o StrictHostKeyChecking=accept-new -t -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "$RECONNECT_COMMAND"
+    exit $?
+fi
 
 # ─── --join branch (hunter multiplayer) ────────────────────────────────
 if [ -n "$JOIN_USER" ]; then
