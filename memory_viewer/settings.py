@@ -210,10 +210,11 @@ LOGGING = {
 # public. Raise this deliberately.
 TOOL_RESULT_CONTENT_CHARS = int(os.getenv('TOOL_RESULT_CONTENT_CHARS', '0'))
 
-# Runners (poller/mood_poller.py) that stream agent turns into Moods:
-# "agent:key,agent2:key2", each key from the vault. Unset, nobody can.
-MOOD_RUNNER_KEYS = dict(
-    pair.split(':', 1) for pair in os.getenv('MOOD_RUNNER_KEYS', '').split(',') if ':' in pair)
+# Runners (poller/mood_poller.py) that stream agent turns into Moods, each
+# with its agent's key from the vault: MOOD_RUNNER_KEY_<AGENT>, one variable
+# per agent (memory_viewer/runner_keys.py). Unset, nobody can.
+from memory_viewer.runner_keys import runner_keys  # noqa: E402
+MOOD_RUNNER_KEYS = runner_keys(os.environ)
 
 # The deploy scripts on maybelle (maybelle-config's report-deploy.sh) tell the
 # Moods when a server is being redeployed, with this key from the vault
