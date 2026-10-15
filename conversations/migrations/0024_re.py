@@ -16,6 +16,6 @@ def add_re(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
-    dependencies = [('conversations', '0022_yarn_stills')]
+    dependencies = [('conversations', '0023_task_notices_are_not_people')]
 
     operations = [migrations.RunPython(add_re, migrations.RunPython.noop)]
