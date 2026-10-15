@@ -162,8 +162,9 @@ def draft_page(draft_id):
     return f'{pickipedia_url()}/wiki/{quote("ReleaseDraft:" + draft_id, safe=":")}'
 
 
-def begin(draft_id, title, device, mood, redirect_uri):
-    """The first half, before PickiPedia's yes: {'go', 'state'}."""
+def begin(draft_id, title, device, mood, redirect_uri, then_page=False):
+    """The first half, before PickiPedia's yes: {'go', 'state'}. then_page: once it's written, land
+    on the draft page rather than back in the Mood (what Send asks for; Sky, 15 Oct)."""
     from urllib.parse import urlencode
     from .mood_view import pickipedia_url
     from .wiki_auth import new_state
@@ -179,7 +180,8 @@ def begin(draft_id, title, device, mood, redirect_uri):
     title = ' '.join(str(title or '').split())[:TITLE_MAX]
     state = new_state()
     cache.set(PENDING_PREFIX + state, {'draft': draft_id, 'title': title, 'by': device.entity_id,
-                                       'as': wiki_name, 'mood': mood.slug}, PENDING_FOR)
+                                       'as': wiki_name, 'mood': mood.slug,
+                                       'then_page': bool(then_page)}, PENDING_FOR)
     query = urlencode({'response_type': 'code', 'client_id': settings.PICKIPEDIA_UPLOAD_CLIENT_ID,
                        'redirect_uri': redirect_uri, 'state': state})
     return {'go': f'{pickipedia_url()}/rest.php/oauth2/authorize?{query}', 'state': state}
@@ -235,7 +237,7 @@ def finish(state, code, entity, redirect_uri, http=None):
               summary='New video draft, sent from magenta', token=csrf)
     details = {'title': title, 'page': draft_page(found['draft']), 'draft': found['draft']}
     _record(mood, name_here, **details)
-    return {**details, 'back': f'/moods/{mood.slug}/'}
+    return {**details, 'back': details['page'] if found.get('then_page') else f'/moods/{mood.slug}/'}
 
 
 def _title_from(draft):
