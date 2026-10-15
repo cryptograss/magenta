@@ -19,6 +19,7 @@ Usage: magenta.sh [TARGET] [OPTIONS]
        magenta.sh login [--key <path>] [--base <url>]
        magenta.sh kick <name> --all [--ban] | --device <id>   |   magenta.sh unban <name>
        magenta.sh AZ5 [TARGET]          |   magenta.sh AZ5 --lift
+       magenta.sh recovery [--fresh]
 
 Connect to a container and drop into a tmux + Claude Code session.
 
@@ -79,6 +80,17 @@ SUBCOMMANDS:
                         runner -- then drops you into the session picker on
                         TARGET (default: hunter), as `magenta.sh hunter` does.
                         Undo with `magenta.sh AZ5 --lift`.
+  recovery [--fresh]    For when you can't reach magent at all: no Mood
+                        answers, your container won't let you in, Docker
+                        itself is down. Opens Claude Code -- magent, with its
+                        memory -- on hunter's host, outside every container, in
+                        a tmux session that outlives the connection. It can
+                        read the journal, start containers and restart dockerd;
+                        it looks first and asks before it touches. --fresh
+                        starts the session over. Only Justin's key opens it
+                        (maybelle-config hunter/ansible/roles/recovery). Plain
+                        ssh, not mosh; MAGENTA_RECOVERY_HOST overrides the host
+                        (say, 5.78.83.4 when DNS is the trouble).
 
 OTHER OPTIONS:
   --dangerously-skip-permissions
@@ -112,6 +124,7 @@ EXAMPLES:
   magenta.sh kick skyler --device 21c74117    # sign out just that one device of theirs
   magenta.sh AZ5                              # everyone out, everything still, then the picker
   magenta.sh AZ5 --lift                       # back to normal
+  magenta.sh recovery                         # nothing answers: magent on hunter's host
 
 MENTAL MODEL:
   * tmux session name = what shows in `tmux list-sessions`
@@ -197,6 +210,19 @@ case "${1:-}" in
         shift
         run_mood_tool mood_admin.py MOOD_ADMIN_SCRIPT unban "$@"
         exit $?
+        ;;
+    recovery)
+        shift
+        # Straight to hunter's host as `recovery`, whose key only opens the
+        # recovery session; "fresh" (the one word it takes) starts it over.
+        # Needs nothing else of this script: no container, no router.
+        RECOVERY_WORD=""
+        case "${1:-}" in
+            "") ;;
+            --fresh) RECOVERY_WORD="fresh" ;;
+            *) echo "Usage: magenta.sh recovery [--fresh]"; exit 1 ;;
+        esac
+        exec ssh -t "recovery@${MAGENTA_RECOVERY_HOST:-hunter.cryptograss.live}" $RECOVERY_WORD
         ;;
     AZ5|az5)
         shift
