@@ -1518,6 +1518,34 @@ class NewMoodTest(TestCase):
         self.assertEqual(self.run_for(['s-remote']), [])
         self.assertEqual(self.waker.woken, [])
 
+    def test_an_agents_only_poller_starts_a_lost_session_over_from_the_record(self):
+        # re's home went with its container: its session there is in the
+        # record but on no disk, and there is no other poller it could be on.
+        self.assertEqual(self.run_for(['s-gone-1234'], only_poller=True), ['fresh'])
+        session, prompt = self.waker.woken[0]
+        self.assertIsNone(session)  # started over, not resumed
+        self.assertTrue(prompt.startswith('<session-lost mood="fresh">'))
+        self.assertIn('your session here (s-gone-1)', prompt)
+        self.assertIn('read_mood "fresh"', prompt)
+        self.assertIn('Dear me,', prompt)  # and the letter
+        self.assertIn('[justin, 2026-09-29T18:10Z] @magent hello, new place', prompt)
+
+    def test_a_session_still_on_disk_is_resumed_by_an_only_poller_as_ever(self):
+        self.assertEqual(self.run_for(['s-local'], only_poller=True), ['fresh'])
+        session, prompt = self.waker.woken[0]
+        self.assertEqual(session, 's-local')
+        self.assertNotIn('<session-lost', prompt)
+
+    def test_a_command_never_starts_a_lost_session_over(self):
+        api = FakeAPI([mention('fresh', dict(turn('a', 'justin', 10, '@magent /compact'), via='web'))],
+                      sessions={'fresh': ['s-gone']})
+        waker = FakeWaker()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=30),
+                   only_poller=True).poll_once()
+        self.assertEqual(waker.woken, [])
+
     def test_the_command_for_a_new_session_resumes_nothing(self):
         cmd = ClaudeCodeWaker(claude='claude').command(None, 'n-1', 'hi')
         self.assertNotIn('--resume', cmd)
