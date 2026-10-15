@@ -449,6 +449,13 @@
                      background: var(--rule, #ddd); border-radius: 2px; overflow: hidden; }
   #videoBar .fill { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
   #videoBar button { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
+  #videoCards { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+  #videoCards .vcard { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; padding: 8px 10px;
+                       border: 1px solid var(--rule, #ddd); border-radius: 8px; font-size: 13px; }
+  #videoCards .vcard .name { font-weight: 600; }
+  #videoCards .vcard input { flex: 1 1 14em; min-width: 0; font: inherit; padding: 3px 6px; }
+  #videoCards .vcard .make { font: inherit; cursor: pointer; }
+  #videoCards .vcard .later { font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; }
   #licenseBar button { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
   a.permalink:hover time { text-decoration: underline; }
   a.permalink[data-copied]::after { content: ' link copied'; color: var(--accent); font-size: 11px; }
@@ -938,6 +945,7 @@
     <div id="activity"><span class="dot"></span><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button></div>
+    <div id="videoCards"></div>
     <div id="videoBar" hidden><span class="what"></span><span class="track"><span class="fill"></span></span><span class="pct"></span> <button type="button" id="videoCancel">cancel</button></div>
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
     <form id="composer" autocomplete="off">
@@ -2179,6 +2187,7 @@
     }
     if (e.type === 'release-draft') {  // a video sent to delivery-kid, with its draft page (services/delivery_kid.py)
       el.className = 'event';
+      if (e.draft && videoWaiting) videoWaiting.drop(e.draft);  // its page is made: no more card
       el.innerHTML = `🎬 <b>${esc(shown(e.by || 'someone'))}</b> sent a video to delivery-kid: `
         + `<a href="${esc(e.page || '#')}" target="_blank" rel="noopener">${esc(e.title || 'its ReleaseDraft')}</a>`
         + ` · title it, review it and finalize it there · ${esc(stamp(e.created_at))}`;
@@ -2985,6 +2994,7 @@
     stash();
     gen++;
     current = slug;
+    renderVideoCards();  // the videos waiting for a draft page are per Mood
     restoreDraft();
     showLicense();  // pictures in the draft left behind aren't in this one
     if (push) history.pushState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/');
@@ -4038,21 +4048,63 @@
         form.append('files', file);
         xhr.send(form);
       });
-      videoSays(`${name} is on delivery-kid. Off to PickiPedia to make its draft page, as you…`, null);
-      const r2 = await fetch('/api/moods/' + encodeURIComponent(current) + '/video/draft/', { method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-        body: JSON.stringify({ draft: draft.draft_id, title: name.replace(/\.[^.]+$/, '') }) });
-      const body = await r2.json().catch(() => ({}));
-      if (!r2.ok) throw new Error(body.error || r2.status);
+      // In: a card under the box, and PickiPedia only when they ask for it (Sky, 12 Oct:
+      // being sent there the moment it landed was too abrupt). Kept in this browser, so
+      // a reload or a send in between doesn't lose it.
       videoSending = null;
-      saveDraft();
-      location.href = body.go;  // back in this Mood once the page is written, with a line saying so
+      videoBar.hidden = true;
+      videoWaiting.add({ draft: draft.draft_id, name, title: name.replace(/\.[^.]+$/, ''), mood: current });
     } catch (e) {
       videoSending = null;
       videoBar.hidden = true;
       showError('video: ' + e.message);
     }
   }
+  // Videos on delivery-kid still waiting for their ReleaseDraft page: a card each, for this Mood.
+  var videoWaiting = {  // var: the thread may render a 🎬 line, or switch Moods, before this line has run
+    KEY: 'dk-waiting',
+    all() { try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch (e) { return []; } },
+    save(list) { try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {} renderVideoCards(); },
+    add(v) { this.save(this.all().filter(w => w.draft !== v.draft).concat([v])); },
+    drop(draft) { if (this.all().some(w => w.draft === draft)) this.save(this.all().filter(w => w.draft !== draft)); },
+  };
+  function renderVideoCards() {
+    const box = document.getElementById('videoCards');
+    if (!box || !videoWaiting) return;
+    box.innerHTML = '';
+    for (const v of videoWaiting.all().filter(w => w.mood === current)) {
+      const card = document.createElement('div');
+      card.className = 'vcard';
+      card.innerHTML = `🎬 <span class="name"></span> is on delivery-kid. Its title: <input type="text" maxlength="200">`
+        + `<button type="button" class="make">Make its draft page on PickiPedia</button>`
+        + `<button type="button" class="later" title="Forget this card. The video stays on delivery-kid, without a draft page.">✕</button>`;
+      card.querySelector('.name').textContent = v.name;
+      const title = card.querySelector('input');
+      title.value = v.title || '';
+      card.querySelector('.make').addEventListener('click', async ev => {
+        ev.target.disabled = true;
+        ev.target.textContent = 'Off to PickiPedia…';
+        try {
+          const r = await fetch('/api/moods/' + encodeURIComponent(v.mood) + '/video/draft/', { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+            body: JSON.stringify({ draft: v.draft, title: title.value }) });
+          const body = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(body.error || r.status);
+          saveDraft();
+          location.href = body.go;  // back here once the page is written; its 🎬 line clears this card
+        } catch (e) {
+          ev.target.disabled = false;
+          ev.target.textContent = 'Make its draft page on PickiPedia';
+          showError('video: ' + e.message);
+        }
+      });
+      card.querySelector('.later').addEventListener('click', () => {
+        if (confirm(`Forget ${v.name}? It stays on delivery-kid, but without a draft page nobody can finalize it from there.`)) videoWaiting.drop(v.draft);
+      });
+      box.appendChild(card);
+    }
+  }
+  renderVideoCards();
   document.getElementById('videoCancel').addEventListener('click', () => videoSending?.xhr?.abort());
   // Leaving mid-upload loses it: say so first.
   window.addEventListener('beforeunload', e => { if (videoSending) { e.preventDefault(); e.returnValue = ''; } });
