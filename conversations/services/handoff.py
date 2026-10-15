@@ -13,7 +13,9 @@ here, writes a block anywhere in what it says:
 
 `to` is the Mood (its name, or #name); `about`, a few words; `for`, the
 agent it informs there (the writer, if not said); after `---`, the
-context.
+context. It wakes the agent it's for there (views_moods.handoff_mention);
+one the writer sends itself wakes it only with `wake: yes`, a few times an
+hour at most.
 
 It goes the other way too. "Look in #jams-and-events over the past twelve
 hours" -- the agent reads that Mood (its read_mood tool, from a time), and
@@ -56,14 +58,17 @@ def _parse(body):
     fields = {}
     for line in head.splitlines():
         key, colon, value = line.partition(':')
-        if colon and key.strip().lower() in ('to', 'from', 'about', 'for'):
+        if colon and key.strip().lower() in ('to', 'from', 'about', 'for', 'wake'):
             fields[key.strip().lower()] = value.strip()
     to = fields.get('to', '').lstrip('#').strip().lower()
     source = fields.get('from', '').lstrip('#').strip().lower()
     if not to and not source:
         return None
     return {'to': to, 'from': '' if to else source, 'about': fields.get('about', '')[:MAX_ABOUT],
-            'for': fields.get('for', '').lower(), 'context': context.strip()[:MAX_CONTEXT]}
+            'for': fields.get('for', '').lower(), 'context': context.strip()[:MAX_CONTEXT],
+            # wake: yes -- a handoff the writer sends itself wakes it there too
+            # (views_moods.handoff_mention); one for another agent always does.
+            **({'wake': True} if fields.get('wake', '').strip().lower() in ('yes', 'true', 'on', '1') else {})}
 
 
 def from_message(message):
@@ -94,6 +99,8 @@ def from_message(message):
         source, dest = (other, here) if pulled else (here, other)
         informed = block['for'] if block['for'] in agents else message.sender_id
         how = {'pulled': True} if pulled else {}
+        if block.get('wake') and not pulled:
+            how['wake'] = True
         now = int(time.time() * 1000)
         made.append(Message.objects.create(
             id=uuid.uuid4(), sender=system, mood=dest, source_file=SOURCE, timestamp=now,

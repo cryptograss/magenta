@@ -832,16 +832,36 @@ def wake_tools(session_id):
     return bool(session_id and MoodSession.objects.filter(session_id=session_id, full_tools=True).exists())
 
 
+# An agent waking itself in another Mood by handoff (`wake: yes`): soft loop
+# protection. Past this many in an hour, its handoffs to itself still arrive,
+# to ride along in its next wake there, but wake nothing.
+SELF_WAKES_PER_HOUR = 6
+
+
 def handoff_mention(msg, name, names):
-    """A handoff another agent brought into this Mood for `name`, as the
-    mention that wakes it here, or None. Its writer is the sender, and it
-    carries full tools only if the writer's own wake had them."""
+    """A handoff brought into this Mood for `name`, as the mention that wakes
+    it here, or None. Its writer is the sender, and it carries full tools only
+    if the writer's own wake had them. One for another agent always wakes it;
+    one the writer sent itself only with `wake: yes`, and only the first
+    SELF_WAKES_PER_HOUR in any hour."""
+    from datetime import timedelta
+    from .services import handoff
+
     c = msg.content if isinstance(msg.content, dict) else {}
     by = c.get('by')
-    if c.get('type') != 'handoff' or c.get('for') != name or c.get('pulled') or by == name or by not in names:
+    if c.get('type') != 'handoff' or c.get('for') != name or c.get('pulled') or by not in names:
         return None
+    if by == name:
+        if not c.get('wake'):
+            return None
+        earlier = Message.objects.filter(
+            source_file=handoff.SOURCE, content__type='handoff', content__by=name, content__for=name,
+            content__wake=True, created_at__gt=msg.created_at - timedelta(hours=1), created_at__lt=msg.created_at)
+        if earlier.count() >= SELF_WAKES_PER_HOUR:
+            return None
     origin = Message.objects.filter(id=c.get('message')).values_list('session_id', flat=True).first()
-    text = (f"@{name}: {by} handed this over from #{c.get('from_mood', '')}: {c.get('about', '')}\n\n"
+    whose = 'you' if by == name else by
+    text = (f"@{name}: {whose} handed this over from #{c.get('from_mood', '')}: {c.get('about', '')}\n\n"
             f"{c.get('context', '')}").strip()
     return {'id': str(msg.id), 'sender': by, 'is_human': False, 'created_at': msg.created_at.isoformat(),
             # Brought in, not typed into a live session: nobody here is about to answer it.

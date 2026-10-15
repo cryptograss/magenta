@@ -612,7 +612,8 @@ GREETING = ("Greeting anyone is never needed. If you do, make it theirs: the las
 # the block in its reply; it leaves a line in both Moods, and the context in its next wake there.
 HANDOFF_HOW = ('Asked to take this to another Mood, put in your reply a block: ```handoff, then "to: <mood>", '
                '"about: <a few words>", a line "---", the context someone there needs (what was settled, '
-               "what's open, #m- links to what matters), and ``` to close. Asked to look in another Mood for "
+               "what's open, #m- links to what matters), and ``` to close. Above the "
+               '"---", a line \"for: <agent>\" wakes that agent there; \"wake: yes\" wakes you there to take it up. Asked to look in another Mood for '
                'what bears on this one, read it (read_mood, from a time) and write the same block with '
                '"from: <mood>" instead of "to:", what you found as its context.')
 
@@ -1083,7 +1084,10 @@ class MoodPoller:
         pending = {}
         for m in sorted(mentions, key=lambda m: m['turn']['created_at']):
             turn = m['turn']
-            if turn['sender'] == self.agent or turn['id'] in handled:
+            # Its own words never wake it, but a handoff it sent itself from
+            # another Mood does (the server lets those through only with
+            # `wake: yes`, a few an hour).
+            if (turn['sender'] == self.agent and turn.get('via') != 'handoff') or turn['id'] in handled:
                 continue
             pending.setdefault(m['mood'], []).append(turn)
 
@@ -1333,6 +1337,8 @@ class MoodPoller:
     def prompt(self, slug, owed, full=False):
         if all(t.get('via') == 'web' for t in owed):
             why = 'this was posted from the web, where no session is listening.'
+        elif all(t.get('via') in UNLISTENED and t.get('sender') == self.agent for t in owed):
+            why = 'you handed this over to yourself here, from another Mood.'
         elif all(t.get('via') in UNLISTENED for t in owed):
             why = 'another agent handed this over to you here.'
         else:
