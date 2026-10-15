@@ -118,3 +118,14 @@ class PiCatalogTest(TestCase):
         self.assertEqual(sent['url'], 'http://ml/api/agents/re/models/')
         self.assertEqual(sent['headers'], {'Authorization': f'Bearer {KEY}'})
         self.assertFalse(MoodAPI('http://ml', http=HTTP).report_models('re', REPORT))  # no key, no report
+
+    def test_a_refused_report_says_why_in_the_log(self):
+        class Refused:
+            @staticmethod
+            def post(url, json=None, headers=None, timeout=None):
+                return mock.Mock(status_code=401, text='{"error": "unauthorized"}')
+
+        with self.assertLogs('mood_poller', level='WARNING') as logged:
+            self.assertFalse(MoodAPI('http://ml', http=Refused, key=KEY).report_models('re', REPORT))
+        self.assertIn('401', logged.output[0])
+        self.assertNotIn(KEY, logged.output[0])

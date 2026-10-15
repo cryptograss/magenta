@@ -132,6 +132,8 @@ class MoodAPI:
             return False
         response = self.http.post(f'{self.base}/api/agents/{agent}/models/', json=catalog,
                                   headers={'Authorization': f'Bearer {self.key}'}, timeout=60)
+        if response.status_code != 200:  # memory-lane says why (never the key); say it here too
+            logger.warning(f'reporting models: {response.status_code} {response.text[:200]}')
         return response.status_code == 200
 
     def interrupt(self, slug, agent):
@@ -1813,8 +1815,8 @@ def main(argv=None):
         # No transcript watcher reads Pi's sessions: without a key, nothing reaches the Mood.
         streamer = ((lambda slug, session, forked_from=None: EventsPoster(
             args.base, key, slug, session, harness=waker.harness(), forked_from=forked_from)) if key else None)
-        if not key:
-            logger.warning('no runner key: a Pi turn reaches no Mood without one')
+        logger.info(f'waking {args.agent} through {waker.harness()}, streaming its turns to their Moods'
+                    if key else 'no runner key: a Pi turn reaches no Mood without one')
     else:
         waker = ClaudeCodeWaker(model=args.model, full_timeout=args.full_timeout, quiet_limit=args.quiet_limit,
                                 new_cwd=args.new_cwd)
@@ -1835,15 +1837,19 @@ def main(argv=None):
                           full_tools_for=[n.strip() for n in args.full_tools_for.split(',') if n.strip()],
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
                           letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour)
-    reported = 0.0
+    report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on
-        # (new keys arrive with a redeploy, which restarts this anyway).
-        if hasattr(waker, 'catalog') and key and not args.dry_run and time.time() - reported > 24 * 3600:
-            reported = time.time()
+        # (new keys arrive with a redeploy, which restarts this anyway); after a
+        # failure, again in a quarter of an hour.
+        if hasattr(waker, 'catalog') and key and not args.dry_run and time.time() >= report_at:
+            report_at = time.time() + 15 * 60
             try:
                 catalog = waker.catalog()
-                if catalog and poller.api.report_models(args.agent, catalog):
+                if catalog is None:
+                    logger.warning('reporting models: the harness listed none')
+                elif poller.api.report_models(args.agent, catalog):
+                    report_at = time.time() + 24 * 3600
                     logger.info(f"reported {sum(len(v['models']) for v in catalog['vendors'])} models, "
                                 f"{sum(v['usable'] for v in catalog['vendors'])} vendors usable")
             except Exception as e:  # the menu can wait; the poller can't
