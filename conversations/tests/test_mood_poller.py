@@ -397,8 +397,11 @@ class StreamingPollerTest(TestCase):
 
     def test_a_mention_gets_a_considered_answer(self):
         waker = FakeWaker()
-        self.make(waker, FakeHTTP(200)).poll_once()
+        http = FakeHTTP(200)
+        self.make(waker, http).poll_once()
         self.assertEqual(waker.options.get('effort'), 'high')
+        # ...and says so with the stream: its events don't, and the transcript may never be read.
+        self.assertEqual({p[1].get('effort') for p in http.posts}, {'high'})
 
     def test_a_turn_that_fails_is_closed_in_the_mood(self):
         http = FakeHTTP(200)

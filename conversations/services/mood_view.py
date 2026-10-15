@@ -382,7 +382,8 @@ def event_line(content):
         return f"🔀 {by or 'someone'} {'brought this from' if kind == 'handoff' else 'took this to'} #{where}: {c.get('about', '')}"
     if kind == 'access':
         if c.get('kind') == 'ssh':
-            return f"🖥 {c.get('who', 'someone')} came in to {c.get('server', 'a server')} by SSH" + (f" as {c['as']}" if c.get('as') else '')
+            who = c.get('who', 'someone')
+            return f"🖥 {who} ssh'd into {c.get('server', 'a server')} as {c.get('as') or c.get('for') or who}"
         return f"🔑 {c.get('who', 'someone')} {(c.get('kind') or '').replace('-', ' ')}"
     if kind == 'interrupt':
         return f"■ {by or 'someone'} stopped {c.get('agent', 'an agent')}"
