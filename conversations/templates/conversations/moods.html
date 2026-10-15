@@ -752,7 +752,7 @@
   .pie { --pc: #2e9e4f; display: inline-block; flex: none; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px;
          margin-right: 4px; background: conic-gradient(var(--pc) var(--p), transparent 0);
          box-shadow: inset 0 0 0 1px var(--pc); cursor: help; }
-  .pie.warm { --pc: #d4a514; }
+  .pie.warm { --pc: #d4a514; }  /* yellow from 50%, orange from 70%, red from 85% */
   .pie.hot { --pc: #e8761c; }
   .pie.full { --pc: #d63a2f; }
   #locked { display: none; background: #3a0d0d; color: #ffd9d9; padding: 8px 16px; font-size: 13.5px; }
@@ -3418,7 +3418,7 @@
       let p = el.querySelector('.pie');
       if (!a) { if (p) p.remove(); return; }
       if (!p) { p = document.createElement('span'); el.prepend(p); }
-      p.className = 'pie' + (a.pct > 90 ? ' full' : a.pct > 80 ? ' hot' : a.pct > 70 ? ' warm' : '');
+      p.className = 'pie' + (a.pct >= 85 ? ' full' : a.pct >= 70 ? ' hot' : a.pct >= 50 ? ' warm' : '');
       p.style.setProperty('--p', a.pct + '%');
       p.title = a.title;
     });
