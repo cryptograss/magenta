@@ -737,6 +737,8 @@
                  max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .hush .agent select, .hush .agent label { flex: none; }
   .hush .ultra input { vertical-align: -2px; margin: 0 2px 0 0; }
+  /* A harness's whole catalog (Pi): the closed menu shows the choice, not the widest of 1,500 names. */
+  .hush select.catalog { max-width: 15em; text-overflow: ellipsis; }
   /* How full an agent's context is: a little pie, its details on hover. */
   /* Its colour says how close to compacting: green to 70%, yellow to 80, orange to 90, red above. */
   /* flex: none -- in an agent's one-line row of settings, too long for the bar, it would shrink to nothing. */
@@ -3330,6 +3332,54 @@
   const REPLY_LENGTHS = { brief: 'short replies', normal: 'mid replies', thorough: 'long replies' };  // beside discretion's "normal"
   const READS = [2500, 5000, 10000, 20000];  // tokens a wake reads word for word (catch_up_tokens)
   let agentsNow = {}, agentsShown = '';
+  // For an agent whose harness reports what it can run (Pi: api_agent_models),
+  // two menus: the vendor, greyed out without a key on the agent's machine,
+  // then that vendor's models. The setting is the one vendor/model id Pi reads.
+  // Fetched once a page.
+  const catalogs = {};  // agent -> {harness, vendors}, or 'loading', or null
+  function catalogFor(agent, a) {
+    if (a.catalog == null) return null;
+    if (catalogs[agent] === undefined) {
+      catalogs[agent] = 'loading';
+      fetch(`/api/agents/${encodeURIComponent(agent)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
+        .then(c => { catalogs[agent] = c; if (c) { agentsShown = ''; poll(false); } });
+    }
+    return catalogs[agent] === 'loading' ? null : catalogs[agent];
+  }
+  const vendorPicked = {};  // agent -> a vendor picked in the first menu, before one of its models is
+  function vendorOf(model) { const i = (model || '').indexOf('/'); return i > 0 ? model.slice(0, i) : ''; }
+  function catalogMenus(agent, c, chosen, fallback) {
+    const vendors = [...c.vendors].sort((x, y) => (y.usable - x.usable) || x.name.localeCompare(y.name));
+    const vendor = vendorPicked[agent] || vendorOf(chosen);
+    const v = vendors.find(x => x.name === vendor);
+    const first = `<select data-agent="${esc(agent)}" data-role="vendor" class="catalog" title="whose model: greyed out without a key">`
+      + `<option value=""${v ? '' : ' selected'}>${esc(fallback)}</option>`
+      + vendors.map(x => `<option value="${esc(x.name)}"${x === v ? ' selected' : ''}${x.usable ? '' : ' disabled'}>`
+        + `${esc(x.name)}${x.usable ? '' : ' · no key'} (${x.models.length})</option>`).join('') + '</select>';
+    if (!v) return first;
+    // Ids with a maker of their own (OpenRouter's moonshotai/kimi-k3) are grouped by it.
+    const groups = new Map();
+    for (const m of v.models) {
+      const at = m[0].indexOf('/'), maker = at > 0 ? m[0].slice(0, at).replace(/^~/, '') : '';
+      if (!groups.has(maker)) groups.set(maker, []);
+      groups.get(maker).push(m);
+    }
+    let found = false;
+    const option = ([id, ctx]) => {
+      const full = `${v.name}/${id}`, on = full === chosen;
+      found = found || on;
+      const name = id.slice(id.indexOf('/') + 1);  // under its maker's heading, just the model
+      return `<option value="${esc(full)}"${on ? ' selected' : ''}>${esc(name)}${ctx ? ' · ' + esc(kTokens(ctx)) : ''}</option>`;
+    };
+    const body = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([maker, ms]) => maker
+      ? `<optgroup label="${esc(maker)}">${ms.map(option).join('')}</optgroup>` : ms.map(option).join('')).join('');
+    const stale = vendorOf(chosen) === v.name;  // set, but no longer in the catalog
+    const pick = found ? '' : (stale ? `<option value="${esc(chosen)}" selected>${esc(chosen.slice(v.name.length + 1))}</option>`
+                                     : '<option value="" selected disabled>pick a model…</option>');
+    return first + ' ' + `<select data-agent="${esc(agent)}" data-knob="model" class="catalog" title="model for its wakes here"`
+      + `${v.usable ? '' : ' disabled'}>${pick}${body}</select>`;
+  }
+
   function describeListening(l) {
     const until = l.until ? ' till ' + new Date(l.until).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
     return l.mode === 'on' ? 'listen' : (l.mode === 'mentions' ? 'mention' : 'hush') + until;
@@ -3416,9 +3466,11 @@
       const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="listen: answers mentions and may speak up unasked · mention: answers mentions only · hush: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening(l))}</option>`
         + HUSH.map(([mode, minutes, label], i) => `<option value="${i}">${esc(label)}</option>`).join('') + '</select>';
       const models = MODELS.some(([v]) => v === a.model) ? MODELS : [...MODELS, [a.model, a.model]];
-      const model = `<select data-agent="${esc(agent)}" data-knob="model" title="model for its wakes here">`
-        + models.map(([v, label]) => `<option value="${esc(v)}"${v === a.model ? ' selected' : ''}>`
-          + `${esc(v ? label : (ctx.model ? `default (${shortModel(ctx.model)})` : label))}</option>`).join('') + '</select>';
+      const catalog = catalogFor(agent, a);
+      const model = catalog ? catalogMenus(agent, catalog, a.model, ctx.model ? `default (${ctx.model})` : 'default')
+        : `<select data-agent="${esc(agent)}" data-knob="model" title="model for its wakes here">`
+          + models.map(([v, label]) => `<option value="${esc(v)}"${v === a.model ? ' selected' : ''}>`
+            + `${esc(v ? label : (ctx.model ? `default (${shortModel(ctx.model)})` : label))}</option>`).join('') + '</select>';
       const effort = `<select data-agent="${esc(agent)}" data-knob="mention_effort" title="how hard it thinks when @mentioned here">`
         + EFFORTS.map(v => `<option value="${v}"${v === a.effort ? ' selected' : ''}>${EFFORT_LABELS[v] || v}</option>`).join('') + '</select>';
       // How much of what was said since its last word a wake reads word for word.
@@ -3438,6 +3490,16 @@
   document.addEventListener('change', async e => {
     const select = e.target.closest('#hush select, #hush input[type=checkbox]');
     if (!select) return;
+    // The vendor menu sets nothing by itself: it lists that vendor's models in the
+    // menu beside it (and back to the default does set it: no model).
+    if (select.dataset.role === 'vendor' && select.value) {
+      vendorPicked[select.dataset.agent] = select.value;
+      agentsShown = '';
+      poll(false);
+      return;
+    }
+    if (select.dataset.role === 'vendor' || select.dataset.knob === 'model') delete vendorPicked[select.dataset.agent];
+    if (select.dataset.role === 'vendor') select.dataset.knob = 'model';
     let key = select.dataset.knob, value = select.type === 'checkbox' ? select.checked : select.value;
     if (key === 'listening') {
       const [mode, minutes] = HUSH[Number(select.value)];

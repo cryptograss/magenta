@@ -366,3 +366,65 @@ def api_servers(request):
     from .services import servers
     from .views_moods import page_version
     return JsonResponse({'servers': servers.status(), 'page': page_version()})
+
+
+VENDOR_NAME = re.compile(r'[A-Za-z0-9._\-]{1,60}')
+MAX_VENDORS, MAX_MODELS = 200, 20_000
+
+
+def clean_vendors(vendors):
+    """A runner's report of what its harness can run, checked and trimmed to
+    [{'name', 'usable', 'models': [[id, context], ...]}]; ValueError if it isn't one."""
+    if not isinstance(vendors, list) or len(vendors) > MAX_VENDORS:
+        raise ValueError(f'vendors: a list of at most {MAX_VENDORS}')
+    cleaned, total = [], 0
+    for vendor in vendors:
+        if not isinstance(vendor, dict) or not VENDOR_NAME.fullmatch(str(vendor.get('name', ''))):
+            raise ValueError('each vendor: {"name": letters, digits, dots and dashes, ...}')
+        models = []
+        for model in vendor.get('models') or []:
+            model_id, context = (model + [None])[:2] if isinstance(model, list) else (model, None)
+            if not isinstance(model_id, str) or not 0 < len(model_id) <= 160 or any(c.isspace() for c in model_id):
+                raise ValueError(f"{vendor['name']}: a model id is a string without spaces")
+            models.append([model_id, context if isinstance(context, int) and context > 0 else None])
+        total += len(models)
+        if total > MAX_MODELS:
+            raise ValueError(f'at most {MAX_MODELS} models in all')
+        cleaned.append({'name': vendor['name'], 'usable': vendor.get('usable') is True, 'models': models})
+    return cleaned
+
+
+@csrf_exempt  # a POST is authenticated by the runner's key; reading is open, like the Moods
+def api_agent_models(request, name):
+    """What `name`'s harness can run, for the model menu: GET it, or (its
+    runner, with its key) POST it.
+
+    Body: {"harness": "pi 1.1.0", "vendors": [{"name": "anthropic",
+    "usable": true, "models": [["claude-opus-5-5", 1000000], ...]}, ...]}.
+    `usable`: the keys on the agent's machine reach that vendor. Which keys
+    those are is never sent, only whether there is one.
+    """
+    from .models import HarnessModels, ThinkingEntity
+    if request.method == 'GET':
+        found = HarnessModels.objects.filter(agent_id=name).first()
+        if found is None:
+            return JsonResponse({'error': f'{name} has reported no models'}, status=404)
+        return JsonResponse({'agent': name, 'harness': found.harness, 'vendors': found.vendors,
+                             'reported_at': found.reported_at.isoformat()})
+    if request.method != 'POST':
+        return JsonResponse({'error': 'GET or POST'}, status=405)
+    if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
+        return JsonResponse({'error': 'no runners are configured'}, status=503)
+    if runner_agent(request) != name:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    agent = ThinkingEntity.objects.filter(name=name).first()
+    if agent is None:
+        return JsonResponse({'error': f'no entity {name}'}, status=400)
+    try:
+        body = json.loads(request.body)
+        harness = str(body.get('harness') or '')[:60]
+        vendors = clean_vendors(body.get('vendors'))
+    except (ValueError, AttributeError, TypeError) as e:
+        return JsonResponse({'error': str(e) or 'expected {"harness": ..., "vendors": [...]}'}, status=400)
+    HarnessModels.objects.update_or_create(agent=agent, defaults={'harness': harness, 'vendors': vendors})
+    return JsonResponse({'agent': name, 'vendors': len(vendors), 'models': sum(len(v['models']) for v in vendors)})
