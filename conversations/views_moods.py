@@ -844,7 +844,8 @@ def handoff_mention(msg, name, names):
     text = (f"@{name}: {by} handed this over from #{c.get('from_mood', '')}: {c.get('about', '')}\n\n"
             f"{c.get('context', '')}").strip()
     return {'id': str(msg.id), 'sender': by, 'is_human': False, 'created_at': msg.created_at.isoformat(),
-            'via': 'session', 'tier': None, 'text': text, 'mentions': [name], 'reply': None,
+            # Brought in, not typed into a live session: nobody here is about to answer it.
+            'via': 'handoff', 'tier': None, 'text': text, 'mentions': [name], 'reply': None,
             'full_tools': wake_tools(origin)}
 
 

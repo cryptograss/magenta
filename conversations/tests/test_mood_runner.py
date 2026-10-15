@@ -96,6 +96,7 @@ class StreamTest(TestCase):
         self.assertEqual(found[0]['mood'], 'docs-tests-qa')
         turn = found[0]['turn']
         self.assertEqual((turn['sender'], turn['is_human'], turn['full_tools']), ('magent', False, True))
+        self.assertEqual(turn['via'], 'handoff')  # no live session behind it: woken at once
         self.assertIn('your first wake', turn['text'])
         self.assertIn('Read your letter first.', turn['text'])
         # Not for magent: a handoff wakes whom it's for, never its writer.

@@ -617,6 +617,12 @@ HANDOFF_HOW = ('Asked to take this to another Mood, put in your reply a block: `
                '"from: <mood>" instead of "to:", what you found as its context.')
 
 
+# Mentions with no live session behind them: typed into the web composer, or
+# brought in by another agent's handoff. None is owed a wait, and only a wake
+# that carried one answers it.
+UNLISTENED = ('web', 'handoff')
+
+
 def signed_in_with_key(turn):
     """Typed into magenta by a person whose device was enrolled with an SSH key
     (mood_auth: tier 'key'), not signed in with PickiPedia (tier 'wiki')."""
@@ -1127,7 +1133,7 @@ class MoodPoller:
         # session -- a reply that happens to come later (from a terminal, or
         # from a woken turn about something else) never read it -- so it is
         # owed until a wake that carried it has run.
-        answered = [t for t in mentioned if t.get('via') != 'web'
+        answered = [t for t in mentioned if t.get('via') not in UNLISTENED
                     and any(a > parse_time(t['created_at']) for a in agent_turns)]
         owed = [t for t in mentioned if t not in answered]
         settled = [t['id'] for t in answered]
@@ -1135,7 +1141,7 @@ class MoodPoller:
             return settled, 'answered'
         # A mention typed into a session gives that session time to answer;
         # one posted from the web has no session behind it, so none is owed.
-        grace = self.grace if any(t.get('via') != 'web' for t in owed) else timedelta(0)
+        grace = self.grace if any(t.get('via') not in UNLISTENED for t in owed) else timedelta(0)
         if self.now() - parse_time(owed[0]['created_at']) < grace:
             return settled, None
         recent = self.recent_wakes()
@@ -1327,6 +1333,8 @@ class MoodPoller:
     def prompt(self, slug, owed, full=False):
         if all(t.get('via') == 'web' for t in owed):
             why = 'this was posted from the web, where no session is listening.'
+        elif all(t.get('via') in UNLISTENED for t in owed):
+            why = 'another agent handed this over to you here.'
         else:
             why = f'nobody answered this in {int(self.grace.total_seconds() // 60)} minutes.'
         lines = mention_opening(slug, why)
