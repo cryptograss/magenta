@@ -661,6 +661,11 @@ def api_notices(request, name):
     who asked something and went elsewhere learns the agent is done, without
     the agent having to @mention them back.
 
+    With ?all=1, a third: 'said' -- anything else someone said, a person's
+    message or an agent's finished turn -- for the sounds and notifications
+    of every message someone has asked for. Each notice says who it's 'from':
+    'person' or 'agent'.
+
     ?since=<iso> (default: an hour ago). At most NOTICES_MAX.
     """
     from datetime import timedelta
@@ -670,12 +675,15 @@ def api_notices(request, name):
     if not ThinkingEntity.objects.filter(name=name).exists():
         raise Http404
     since = parse_datetime(request.GET.get('since') or '') or timezone.now() - timedelta(hours=1)
-    return JsonResponse({'name': name, 'notices': notices_for(name, since)})
+    everything = request.GET.get('all') in ('1', 'true')
+    return JsonResponse({'name': name, 'notices': notices_for(name, since, everything=everything)})
 
 
-def notices_for(name, since, limit=NOTICES_MAX):
+def notices_for(name, since, limit=NOTICES_MAX, everything=False):
     """api_notices' notices for `name` since a moment, newest first: what the
-    bell tells them, in the page and by push (services/push.py)."""
+    bell tells them, in the page and by push (services/push.py). `everything`
+    adds 'said' notices: whatever else people say, and agents' finished turns
+    (not their progress lines, nor a turn that stayed silent)."""
     from .services.mood_view import quiet_reason
     names = known_names()
     agents = set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
@@ -689,11 +697,14 @@ def notices_for(name, since, limit=NOTICES_MAX):
         text = prose(msg.content)
         if not text or is_wrapper(text) or is_summary(msg):
             continue
+        by = 'agent' if msg.sender_id in agents else 'person'
+        finished = msg.sender_id in agents and msg.stop_reason == 'end_turn' and quiet_reason(text) is None
         if name in addressed_in(text, names, by=msg.sender_id):
-            found.append({'kind': 'mention', 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
-        elif (msg.sender_id in agents and msg.stop_reason == 'end_turn' and quiet_reason(text) is None
-              and answered_by(msg, humans) == name):
-            found.append({'kind': 'answer', 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
+            found.append({'kind': 'mention', 'from': by, 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
+        elif finished and answered_by(msg, humans) == name:
+            found.append({'kind': 'answer', 'from': by, 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
+        elif everything and (msg.sender_id in humans or finished):
+            found.append({'kind': 'said', 'from': by, 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
         if len(found) >= limit:
             break
     return found

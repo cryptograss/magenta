@@ -1390,6 +1390,10 @@ class PushSubscription(models.Model):
     auth = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
     last_sent_at = models.DateTimeField(null=True, blank=True)
+    # Beyond mentions and answers, which every bell gets: every message from
+    # people, or from agents, as this browser's person chose in its menu.
+    from_people = models.BooleanField(default=False)
+    from_agents = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'push_subscriptions'

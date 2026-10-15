@@ -77,6 +77,12 @@
   body.has-me #userMenu label.only { display: flex; }
   body.writer #userMenu label.me { display: none; }
   #userMenu #notify { border: 0; background: none; font: inherit; cursor: pointer; }
+  /* Alerts: a sound, and the bell for every message, as this browser's person chose. */
+  #userMenu #alerts { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+                      margin: 4px 0; padding-top: 8px; padding-bottom: 8px; }
+  #userMenu #alerts[hidden] { display: none; }
+  #userMenu #alerts .head { color: var(--ink); font-size: 12px; margin-top: 2px; }
+  #userMenu #alerts label[hidden] { display: none; }
   /* The servers: four dots, pulsing while one is being redeployed. */
   .servers { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
   .servers .srv { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
@@ -866,6 +872,16 @@
       <label class="only"><input type="checkbox" id="onlyMine"> only mentions of me</label>
       <span class="textsize">text size <button type="button" data-step="-1" aria-label="Smaller text">A−</button><span id="textSizeVal">100%</span><button type="button" data-step="1" aria-label="Larger text">A+</button></span>
       <button id="notify" type="button" hidden aria-label="Notifications"></button>
+      <div id="alerts" hidden>
+        <span class="head">a sound for</span>
+        <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
+        <label><input type="checkbox" data-sound="agent-mention"> agents mentioning me</label>
+        <label><input type="checkbox" data-sound="person"> every message from people</label>
+        <label><input type="checkbox" data-sound="agent"> every message from agents</label>
+        <span class="head" id="tellHead">with the bell on, also tell me of</span>
+        <label><input type="checkbox" data-tell="person"> every message from people</label>
+        <label><input type="checkbox" data-tell="agent"> every message from agents</label>
+      </div>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
       <label class="readall" id="readSpeedLabel" hidden title="How fast anything is read aloud here: every voice, the narrator, and voice memos. Your browser's own playback speed, so it costs nothing and changes at once.">reading speed <select id="readSpeed"></select></label>
       <a href="#" id="voicesLink" hidden>voices</a>
@@ -1324,7 +1340,7 @@
       [...names].sort().map(n => `<option value="${esc(n)}" ${n === me ? 'selected' : ''}>${esc(n)}</option>`));
     meSelect.innerHTML = opts.join('');
     document.body.classList.toggle('has-me', !!me);
-    renderBell();
+    renderBell(); renderAlerts();
     if (!me) { onlyMine.checked = false; document.body.classList.remove('only-mine'); }
   }
 
@@ -2663,7 +2679,7 @@
   // new one also notifies (when this page is hidden, or it's in another Mood).
   // Asked every 15 s, and only for what's new since the last ask: the first
   // ask looks back to the oldest Mood seen (else a week), a scan on the server.
-  const NOTICE_MS = 15000;
+  const NOTICE_MS = 15000, ALERT_MS = 4000;
   const pageOpened = new Date().toISOString();
   let badgeCursor = null, badgeAt = 0;
   const counted = new Set();  // notices already seen, by turn id
@@ -2676,7 +2692,8 @@
   }
   async function refreshBadges(force) {
     if (!me) { badges = {}; renderNav(); setTitle(); return; }
-    if (!force && Date.now() - badgeAt < NOTICE_MS) return;
+    // Asked for sooner while a sound or the bell waits on every message: 15 s late is too late to chime.
+    if (!force && Date.now() - badgeAt < (alertsWanted() ? ALERT_MS : NOTICE_MS)) return;
     badgeAt = Date.now();
     const seen = Object.values(lastSeen).sort();
     const since = badgeCursor || seen[0] || new Date(Date.now() - 7 * 86400 * 1000).toISOString();
@@ -2684,15 +2701,27 @@
     // and a clock a few minutes off still misses nothing.
     const next = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     try {
-      const r = await fetch('/api/notices/' + encodeURIComponent(me) + '/?since=' + encodeURIComponent(since));
+      const r = await fetch('/api/notices/' + encodeURIComponent(me) + '/?since=' + encodeURIComponent(since)
+                            + (alertsWanted() ? '&all=1' : ''));
       if (!r.ok) return;
       const notices = (await r.json()).notices;
       // A Mood opened since this page loaded: list it first, so its badge
       // has somewhere to go and its notification its title.
       if (notices.some(n => !moods.some(m => m.slug === n.mood))) await loadMoods();
+      let ding = null;  // one chime per look, however many came: a mention's, if any was one
       for (const n of notices) {
         if (counted.has(n.turn.id)) continue;
         counted.add(n.turn.id);
+        // Sounds and the bell for every message: only for what's new since they
+        // were turned on, and not for the Mood in front of you, which you see arrive.
+        const inView = n.mood === current && !document.hidden;
+        if (n.turn.created_at > alertsFrom && !inView) {
+          const by = n.from || 'person';
+          if (n.kind === 'mention' && sounds[by + '-mention']) ding = 'mention';
+          else if (sounds[by] && ding !== 'mention') ding = 'message';
+          if (n.kind === 'said' && tellAll[by]) notify(n);
+        }
+        if (n.kind === 'said') continue;  // not a badge: badges count what's for you
         if (n.kind === 'answer') {
           forMe.add(n.turn.id);
           const el = document.getElementById('m-' + n.turn.id);
@@ -2704,6 +2733,7 @@
         if (!looking) (unread[n.mood] = unread[n.mood] || new Map()).set(n.turn.id, n.turn.created_at);
         if (!looking && n.turn.created_at > pageOpened) notify(n);
       }
+      if (ding) chime(ding === 'mention');
       badgeCursor = next;
     } catch (e) {}
     countBadges(); renderNav(); setTitle();
@@ -2747,7 +2777,8 @@
       const key = sub && sub.options && sub.options.applicationServerKey;
       if (sub && key && b64url(key) !== PUSH_KEY) { await sub.unsubscribe(); sub = null; }
       sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromB64url(PUSH_KEY) });
-      const r = await fetch('/api/push/subscribe/', { method: 'POST', body: JSON.stringify(sub.toJSON()),
+      const body = { ...sub.toJSON(), people: !!tellAll.person, agents: !!tellAll.agent };  // every message from them too
+      const r = await fetch('/api/push/subscribe/', { method: 'POST', body: JSON.stringify(body),
                                                      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() } });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
     } catch (e) { showError('notifications with magenta closed: ' + e.message); }
@@ -2766,8 +2797,9 @@
   async function notify(n) {
     if (!notifying()) return;
     const mood = moods.find(m => m.slug === n.mood);
-    const title = n.kind === 'answer' ? `${n.turn.sender} answered you` : `${n.turn.sender} mentioned you`;
-    const options = { body: (mood ? mood.title + ': ' : '') + n.turn.text.slice(0, 160), tag: n.turn.id,
+    const title = n.kind === 'answer' ? `${n.turn.sender} answered you` : n.kind === 'mention' ? `${n.turn.sender} mentioned you`
+      : `${n.turn.sender} in ${mood ? mood.title || mood.slug : n.mood}`;
+    const options = { body: (mood && n.kind !== 'said' ? mood.title + ': ' : '') + n.turn.text.slice(0, 160), tag: n.turn.id,
                       icon: '/moods/icon-192.png', data: { slug: n.mood, id: n.turn.id } };
     try {
       // Through the service worker: Android allows no other way.
@@ -2776,6 +2808,62 @@
     } catch (e) {}
     try { new Notification(title, options); } catch (e) {}
   }
+
+  // --- alerts: a sound, and the bell for every message ----------------------
+  // Each browser's own, as the bell is. Sounds: for people or agents
+  // mentioning `me`, and for every message from people or from agents (a
+  // finished turn, not its progress). The bell, when on, tells of mentions
+  // and answers; it can also tell of every message from people or agents --
+  // here, and by push with magenta closed (services/push.py).
+  const alertsBox = document.getElementById('alerts');
+  let sounds = store.get('sounds', {});    // 'person', 'agent', 'person-mention', 'agent-mention' -> true
+  let tellAll = store.get('tellAll', {});  // 'person', 'agent' -> true
+  let alertsFrom = new Date().toISOString();  // nothing from before a page opened, or an alert was turned on
+  function alertsWanted() {
+    return Object.values(sounds).some(Boolean) || (notifying() && Object.values(tellAll).some(Boolean));
+  }
+  function renderAlerts() {
+    alertsBox.hidden = !me;
+    const canTell = 'Notification' in window;
+    alertsBox.querySelectorAll('[data-sound]').forEach(i => { i.checked = !!sounds[i.dataset.sound]; });
+    alertsBox.querySelectorAll('[data-tell]').forEach(i => { i.checked = !!tellAll[i.dataset.tell]; i.closest('label').hidden = !canTell; });
+    document.getElementById('tellHead').hidden = !canTell;
+  }
+  alertsBox.addEventListener('change', e => {
+    const box = e.target;
+    if (box.checked) alertsFrom = new Date().toISOString();
+    if (box.dataset.sound) {
+      sounds[box.dataset.sound] = box.checked; store.set('sounds', sounds);
+      if (box.checked) chime(box.dataset.sound.endsWith('mention'));  // what it will sound like
+    }
+    if (box.dataset.tell) {
+      tellAll[box.dataset.tell] = box.checked; store.set('tellAll', tellAll);
+      if (notifying()) pushOn();  // the server's copy, for pushes with magenta closed
+    }
+  });
+  // Made here, not fetched: two rising notes for a mention, one soft one for a message.
+  let audioCtx = null;
+  function sound() {
+    try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    return audioCtx;
+  }
+  function chime(mention) {
+    const ctx = sound();
+    if (!ctx) return;
+    (mention ? [784, 1175] : [659]).forEach((freq, i) => {
+      const at = ctx.currentTime + i * 0.13, osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.2, at + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.4);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(at); osc.stop(at + 0.45);
+    });
+  }
+  // A browser lets a page sound only once someone has touched it: be ready from the first touch.
+  document.addEventListener('pointerdown', () => { if (Object.values(sounds).some(Boolean)) sound(); }, { once: true });
+  renderAlerts();
 
   // --- search: what was said, here or everywhere ------------------------------
   const searchBox = document.getElementById('search');
