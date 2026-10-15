@@ -192,6 +192,64 @@ def without_metadata(data, mime):
     return data
 
 
+_TIFF_TYPE_SIZES = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8}
+_XMP_GPS = re.compile(rb'(exif:GPS\w+)(="[^"]*"|>[^<]*<)')
+
+
+def heic_without_location(data):
+    """The HEIC with its GPS blanked in place, every other byte as it came; None if it can't be done.
+
+    Re-encoding a HEIC would cost the very fidelity the original is kept for,
+    so the EXIF GPS directory is emptied where it lies: its values zeroed,
+    its entry count set to none. XMP GPS fields are blanked to spaces. The
+    file keeps its length, so nothing that points into it moves.
+    """
+    try:
+        import pillow_heif
+        exif = pillow_heif.open_heif(data).info.get('exif')
+    except Exception:
+        return None
+    out = bytearray(data)
+    tiff = -1
+    if exif:  # libheif's copy of the EXIF item: where it lies in the file is where to blank it
+        body = exif[6:] if exif.startswith(b'Exif\x00\x00') else exif
+        tiff = out.find(body)
+        if tiff < 0:
+            return None
+    order = {b'II': 'little', b'MM': 'big'}.get(bytes(out[tiff:tiff + 2])) if tiff >= 0 else None
+    if tiff >= 0 and order is None:
+        return None
+
+    def num(offset, size):
+        if offset < 0 or offset + size > len(out):
+            raise ValueError
+        return int.from_bytes(out[offset:offset + size], order)
+
+    try:
+        ifd0 = tiff + num(tiff + 4, 4) if order else None
+        gps = None
+        for i in range(num(ifd0, 2) if order else 0):
+            entry = ifd0 + 2 + 12 * i
+            if num(entry, 2) == 0x8825:
+                gps = tiff + num(entry + 8, 4)
+        if gps is not None:
+            count = num(gps, 2)
+            for i in range(count):
+                entry = gps + 2 + 12 * i
+                size = _TIFF_TYPE_SIZES.get(num(entry + 2, 2), 1) * num(entry + 4, 4)
+                if size > 4:
+                    where = tiff + num(entry + 8, 4)
+                    num(where, size)  # in bounds
+                    out[where:where + size] = bytes(size)
+                out[entry:entry + 12] = bytes(12)
+            out[gps:gps + 2] = bytes(2)
+    except ValueError:
+        return None
+    out = bytearray(_XMP_GPS.sub(lambda m: m.group(1) + m.group(2)[:2] + b' ' * (len(m.group(2)) - 3)
+                                 + m.group(2)[-1:], bytes(out)))
+    return bytes(out)
+
+
 def store(data, added_by=None, audio=False, strip=True):
     """The Media for these bytes, stored if new; None if not an image (or,
     with audio=True, a sound) we take. A HEIC photo is stored as a JPEG.
@@ -201,10 +259,13 @@ def store(data, added_by=None, audio=False, strip=True):
 
     if not data or len(data) > (MAX_AUDIO_BYTES if audio else MAX_BYTES):
         return None
+    original = None
     if not audio and is_heif(data):
+        sent = data
         data = jpeg_from_heif(data, keep=not strip)
         if data is None:
             return None
+        original = _keep_original(sent if not strip else heic_without_location(sent), added_by)
     mime = sniff_audio(data) if audio else sniff(data)
     if mime is None:
         return None
@@ -212,8 +273,24 @@ def store(data, added_by=None, audio=False, strip=True):
         data = without_metadata(data, mime)
     sha = hashlib.sha256(data).hexdigest()
     media, _ = Media.objects.get_or_create(
-        sha256=sha, defaults={'mime': mime, 'data': data, 'size': len(data), 'added_by': added_by})
+        sha256=sha, defaults={'mime': mime, 'data': data, 'size': len(data), 'added_by': added_by,
+                              'original': original})
+    if original is not None and media.original_id is None:
+        media.original = original
+        media.save(update_fields=['original'])
     return media
+
+
+def _keep_original(data, added_by):
+    """The HEIC as sent (its location blanked if asked), stored beside its JPEG; None if it can't be.
+    Not shown in a Mood (browsers can't), but there to download whole."""
+    from conversations.models import Media
+    if not data:
+        return None  # couldn't blank its location without re-encoding: only the JPEG is kept
+    kept, _ = Media.objects.get_or_create(
+        sha256=hashlib.sha256(data).hexdigest(),
+        defaults={'mime': 'image/heic', 'data': data, 'size': len(data), 'added_by': added_by})
+    return kept
 
 
 def relicense(media, license, by):
@@ -223,6 +300,8 @@ def relicense(media, license, by):
     if media.license != license:
         type(media).objects.filter(pk=media.pk).update(license=license)
         media.license = license
+    if media.original_id:  # the photo as sent goes out under the same terms as what it's shown as
+        type(media).objects.filter(pk=media.original_id, added_by_id=media.added_by_id).update(license=license)
     return True
 
 
@@ -235,7 +314,10 @@ def store_base64(text, added_by=None):
 
 
 def markdown(media, alt='image'):
-    return f'![{alt}]({media.url})'
+    """The picture, and a link to the photo as sent where one was kept (a HEIC's original)."""
+    shown = f'![{alt}]({media.url})'
+    original = getattr(media, 'original', None)
+    return f'{shown} [original HEIC]({original.url})' if original else shown
 
 
 def _image_bytes(block):

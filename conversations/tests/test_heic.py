@@ -67,7 +67,7 @@ class HeicTest(TestCase):
     def test_the_same_photo_twice_is_stored_once(self):
         data = heic()
         self.assertEqual(media.store(data).pk, media.store(data).pk)
-        self.assertEqual(Media.objects.count(), 1)
+        self.assertEqual(Media.objects.count(), 2)  # the JPEG, and the photo as sent
 
     def test_a_broken_heic_is_refused_not_stored(self):
         broken = heic()[:200]
@@ -83,7 +83,7 @@ class HeicTest(TestCase):
         client.cookies[mood_auth.COOKIE] = token
         answer = client.post('/api/moods/uploads-and-embeds/media/', heic(), content_type='application/octet-stream')
         self.assertEqual(answer.status_code, 201, answer.content)
-        self.assertTrue(json.loads(answer.content)['markdown'].endswith('.jpg)'))
+        self.assertRegex(json.loads(answer.content)['markdown'], r'^!\[image\]\(/moods/media/\w+\.jpg\) \[original HEIC\]')
         refused = client.post('/api/moods/uploads-and-embeds/media/', b'not a picture at all',
                               content_type='application/octet-stream')
         self.assertIn('HEIC', json.loads(refused.content)['error'])
@@ -96,3 +96,30 @@ class HeicTest(TestCase):
             self.assertEqual(exif.get(0x010F), 'Apple')
             self.assertEqual(exif.get_ifd(0x8825).get(1), 'N')  # where it was taken
             self.assertNotIn(0x0112, exif)  # stored upright: no rotation to apply twice
+
+    def test_the_photo_as_sent_is_kept_beside_its_jpeg(self):
+        sent = heic(exif=gps_exif())
+        stored = media.store(sent, strip=False)
+        self.assertEqual(stored.original.mime, 'image/heic')
+        self.assertEqual(bytes(stored.original.data), sent)  # byte for byte
+        self.assertIn('[original HEIC](/moods/media/', media.markdown(stored))
+        answer = Client().get(stored.original.url)
+        self.assertEqual(answer.status_code, 200)
+        self.assertEqual(answer['Content-Type'], 'image/heic')
+        self.assertIn('attachment', answer['Content-Disposition'])
+
+    def test_ticked_the_original_loses_its_location_and_nothing_else(self):
+        sent = heic(exif=gps_exif())
+        kept = bytes(media.store(sent).original.data)
+        self.assertEqual(len(kept), len(sent))  # not re-encoded: blanked where it lies
+        with Image.open(io.BytesIO(kept)) as back:
+            self.assertEqual(dict(back.getexif().get_ifd(0x8825)), {})
+            self.assertEqual(back.getexif().get(0x010F), 'Apple')
+            back.load()
+
+    def test_the_original_shares_its_pictures_license(self):
+        justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        stored = media.store(heic(), added_by=justin)
+        self.assertTrue(media.relicense(stored, 'cc0', justin))
+        stored.original.refresh_from_db()
+        self.assertEqual(stored.original.license, 'cc0')

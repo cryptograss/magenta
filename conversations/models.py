@@ -1458,11 +1458,15 @@ class Media(models.Model):
     # What whoever shared it lets others do with it (services/media.LICENSES):
     # CC BY-SA 4.0 unless they made it CC0, said where it's attached.
     license = models.CharField(max_length=20, default='cc-by-sa-4.0')
+    # A HEIC photo is shown as a JPEG; the photo as it was sent is kept too,
+    # here (services/media.store), for whoever wants it whole (Justin, 15 Oct).
+    original = models.ForeignKey('self', models.SET_NULL, null=True, blank=True, related_name='copies')
 
     class Meta:
         db_table = 'media'
 
     EXTENSIONS = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp',
+                  'image/heic': 'heic',  # an original, kept beside the JPEG it's shown as
                   # Voice memos, and messages read aloud (services/voice.py).
                   'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3',
                   'audio/wav': 'wav',

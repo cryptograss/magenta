@@ -315,6 +315,8 @@ def media_file(request, sha256, ext):
     response['Cache-Control'] = 'public, max-age=31536000, immutable'
     response['X-Content-Type-Options'] = 'nosniff'
     response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    if item.mime == 'image/heic':  # an original kept whole: most browsers can't show it, so it's a download
+        response['Content-Disposition'] = f'attachment; filename="{sha256[:12]}.heic"'
     return response
 
 
