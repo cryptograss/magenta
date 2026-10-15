@@ -86,7 +86,7 @@ def _sources(since=None):
     from django.db.models import TextField
     from django.db.models.functions import Cast
     from conversations.models import Message, Mood
-    from .mood_view import MACHINERY_SENDERS, is_wrapper, prose, quiet_reason, reply_to
+    from .mood_view import MACHINERY_SENDERS, is_summary, is_wrapper, prose, quiet_reason, reply_to
     rows = (Message.objects.filter(mood_id__in=list(Mood.objects.values_list('id', flat=True)), is_sidechain=False)
             .exclude(sender_id__in=MACHINERY_SENDERS | {'mood-poller'}))
     if since is not None:
@@ -96,7 +96,7 @@ def _sources(since=None):
         if hasattr(message, 'tooluse') or hasattr(message, 'thought'):
             continue  # a tool's input, or thinking: not something said
         text = prose(message.content)
-        if not text or is_wrapper(text) or quiet_reason(text) is not None:
+        if not text or is_wrapper(text) or is_summary(message) or quiet_reason(text) is not None:
             continue
         target, _ = reply_to(text)
         refs = [target] if target else []

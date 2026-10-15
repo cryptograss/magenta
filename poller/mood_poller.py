@@ -518,6 +518,9 @@ class ClaudeCodeWaker:
                 if not isinstance(event, dict):
                     continue
                 if event.get('type') == 'result':
+                    # What this run cost, not the session's history: posted
+                    # with the result, so the record keeps the turn's own cost.
+                    event['run_cost_usd'] = max(0.0, float(event.get('total_cost_usd') or 0.0) - spent_before)
                     result = event
                 elif event.get('type') == 'assistant' and not event.get('parent_tool_use_id'):
                     blocks = (event.get('message') or {}).get('content') or []
@@ -534,8 +537,6 @@ class ClaudeCodeWaker:
             done.set()
         drain.join(5)
         self.last_result = dict(result or {})
-        if result is not None:  # what this run cost, not the session's history
-            self.last_result['run_cost_usd'] = max(0.0, float(result.get('total_cost_usd') or 0.0) - spent_before)
         if result is None:
             raise RuntimeError(f'claude exited {proc.returncode} without a result: {"".join(stderr).strip()[:500]}')
         # A run that ends in an error -- over its budget, say -- may still have
@@ -1265,7 +1266,13 @@ class MoodPoller:
     def run_turn_for(self, slug, session_id, prompt, **options):
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
         new_session = str(uuid.uuid4())
-        poster = self.streamer(slug, new_session) if self.streamer else None
+        poster = None
+        if self.streamer:
+            # A fork goes on from the session it copied; a poster that can say
+            # so (pi_harness.EventsPoster) is told which.
+            takes_parent = 'forked_from' in getattr(getattr(self.streamer, '__code__', None), 'co_varnames', ())
+            poster = (self.streamer(slug, new_session, forked_from=session_id) if takes_parent
+                      else self.streamer(slug, new_session))
         if poster is not None and options.get('effort'):
             poster.effort = options['effort']
         stop = self.stop_check(slug, options.pop('since', None))
@@ -1745,6 +1752,12 @@ def main(argv=None):
     parser.add_argument('--parallel', type=int, default=8,
                         help='Turns at once, at most one per Mood (0: one at a time, each run to its end)')
     parser.add_argument('--model', default=None)
+    parser.add_argument('--harness', choices=('claude-code', 'pi'), default='claude-code',
+                        help="What runs the agent's turns: Claude Code, or Pi (poller/pi_harness.py), which "
+                             "posts memory-lane's own record events")
+    parser.add_argument('--pi', default='pi', help="Pi's executable, with --harness pi")
+    parser.add_argument('--pi-sessions', default='~/.local/state/magenta/pi-sessions',
+                        help='Where Pi keeps the sessions the runner starts and forks')
     parser.add_argument('--mention-effort', default='high', help='Effort for a turn woken by a mention')
     parser.add_argument('--full-timeout', type=int, default=None,
                         help='Seconds a turn with full tools may run at most (default: no limit; others: 900)')
@@ -1782,12 +1795,28 @@ def main(argv=None):
     # The runner's key, from the vault via the hunter deploy. Without it,
     # woken turns still reach their Mood through the transcript watcher.
     key = runner_key()
-    streamer = (lambda slug, session: StreamPoster(args.base, key, slug, session)) if key else None
-    logger.info('streaming woken turns straight to their Moods' if key else
-                'no MEMORY_LANE_RUNNER_KEY: woken turns reach Moods through the transcript watcher')
-    screen = None if args.screen_model == 'none' else ClaudeCodeScreen(agent=args.agent, model=args.screen_model)
-    poller = MoodPoller(MoodAPI(args.base, key=key), ClaudeCodeWaker(model=args.model, full_timeout=args.full_timeout,
-                                                                quiet_limit=args.quiet_limit, new_cwd=args.new_cwd),
+    if args.harness == 'pi':
+        try:
+            from poller.pi_harness import EventsPoster, PiWaker
+        except ImportError:  # run as a script from its own directory, as deployed
+            from pi_harness import EventsPoster, PiWaker
+        waker = PiWaker(pi=args.pi, model=args.model, session_dir=args.pi_sessions, new_cwd=args.new_cwd,
+                        quiet_limit=args.quiet_limit)
+        # No transcript watcher reads Pi's sessions: without a key, nothing reaches the Mood.
+        streamer = ((lambda slug, session, forked_from=None: EventsPoster(
+            args.base, key, slug, session, harness=waker.harness(), forked_from=forked_from)) if key else None)
+        if not key:
+            logger.warning('no runner key: a Pi turn reaches no Mood without one')
+    else:
+        waker = ClaudeCodeWaker(model=args.model, full_timeout=args.full_timeout, quiet_limit=args.quiet_limit,
+                                new_cwd=args.new_cwd)
+        streamer = (lambda slug, session: StreamPoster(args.base, key, slug, session)) if key else None
+        logger.info('streaming woken turns straight to their Moods' if key else
+                    'no MEMORY_LANE_RUNNER_KEY: woken turns reach Moods through the transcript watcher')
+    # The screen is a Claude Code call; with Pi, the agent looks for itself.
+    screen = (None if args.screen_model == 'none' or args.harness == 'pi'
+              else ClaudeCodeScreen(agent=args.agent, model=args.screen_model))
+    poller = MoodPoller(MoodAPI(args.base, key=key), waker,
                           agent=args.agent, start_new={'auto': None, 'yes': True, 'no': False}[args.new_sessions],
                           state_path=Path(args.state).expanduser(), grace=args.grace,
                           max_wakes_per_hour=args.max_wakes_per_hour, parallel=args.parallel, dry_run=args.dry_run, streamer=streamer,

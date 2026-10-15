@@ -114,7 +114,11 @@ def finish_turn(mood, session_id, agent, result):
         'agent': agent,
         'subtype': result.get('subtype'),
         'is_error': bool(result.get('is_error')),
-        'cost_usd': result.get('total_cost_usd'),
+        # What this turn cost. A resumed or forked session's total_cost_usd is
+        # its whole history's plus this run's, so the runner works the run out
+        # (run_cost_usd) and the total is kept beside it.
+        'cost_usd': result['run_cost_usd'] if result.get('run_cost_usd') is not None else result.get('total_cost_usd'),
+        'session_cost_usd': result.get('total_cost_usd'),
         'duration_ms': result.get('duration_ms'),
         'num_turns': result.get('num_turns'),
         'stop_reason': result.get('stop_reason'),
@@ -141,9 +145,6 @@ def api_stream(request, slug):
     agent = runner_agent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
-    # The Claude Code importer speaks for magent; another agent needs its own.
-    if agent != 'magent':
-        return JsonResponse({'error': f'no importer speaks for {agent} yet'}, status=400)
     mood = Mood.by_slug_or_404(slug)
 
     try:
@@ -153,14 +154,22 @@ def api_stream(request, slug):
         assert isinstance(events, list)
     except (ValueError, KeyError, TypeError, AssertionError):
         return JsonResponse({'error': 'expected {"session_id": <uuid>, "events": [...]}'}, status=400)
-    if body.get('harness', 'claude-code') != 'claude-code':
-        return JsonResponse({'error': 'only claude-code streams are understood so far'}, status=400)
     if len(events) > MAX_EVENTS:
         return JsonResponse({'error': f'at most {MAX_EVENTS} events per post'}, status=413)
+    events_v1 = body.get('format') == 'events/1'
+    if not events_v1 and body.get('harness', 'claude-code') != 'claude-code':
+        return JsonResponse({'error': 'a harness other than claude-code posts format events/1'}, status=400)
+    # Claude Code's own stream is filed by the Claude Code importer, which
+    # speaks for magent; any agent can post events/1.
+    if not events_v1 and agent != 'magent':
+        return JsonResponse({'error': f'{agent} posts format events/1'}, status=400)
 
     # Launched for this Mood: it belongs here, whatever else might be guessed.
     if MoodSession.mood_for(session_id) != mood:
         mood.claim(session_id)
+
+    if events_v1:
+        return stream_events(mood, session_id, agent, body)
 
     from django.utils import timezone
     now_iso = timezone.now().isoformat()
@@ -181,6 +190,33 @@ def api_stream(request, slug):
             finished = True
 
     return JsonResponse({'imported': imported, 'skipped': skipped, 'errors': errors[:10], 'finished': finished})
+
+
+def stream_events(mood, session_id, agent, body):
+    """A post in memory-lane's own format (docs/RECORD_EVENTS.md)."""
+    from importers_and_parsers.events_v1 import Turn
+    from .views import scrub_texts
+
+    try:
+        forked_from = str(uuid.UUID(str(body['forked_from']))) if body.get('forked_from') else None
+    except ValueError:
+        return JsonResponse({'error': 'forked_from: a session uuid'}, status=400)
+    # The scrubber, when one is configured, reads every event as text; if it
+    # can't be reached, tool results keep their link and lose their output.
+    texts, scrubbed = scrub_texts([json.dumps(e) for e in body['events']])
+    events = []
+    for text in texts:
+        try:
+            events.append(json.loads(text))
+        except (TypeError, ValueError):
+            events.append(None)  # reported by the importer, as any malformed event
+    turn = Turn(agent=agent, mood=mood, session_id=session_id, harness=str(body.get('harness') or '')[:50] or None,
+                forked_from=forked_from, source=SOURCE, keep_tool_output=scrubbed)
+    imported, skipped, ignored, errors = turn.take(events)
+    if turn.finished:
+        finish_turn(mood, session_id, agent, turn.finished)
+    return JsonResponse({'imported': imported, 'skipped': skipped, 'ignored': ignored, 'errors': errors[:10],
+                         'finished': turn.finished is not None})
 
 
 @csrf_exempt  # authenticated by the runner's key

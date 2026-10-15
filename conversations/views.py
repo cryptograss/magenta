@@ -970,6 +970,31 @@ def ingest(request):
     })
 
 
+def scrub_texts(texts):
+    """(texts, scrubbed): texts through the external scrubber, if one is configured.
+
+    Optional: lines are pattern-redacted in the importers regardless. If the
+    scrubber was configured but couldn't scrub this batch, scrubbed is False
+    and its tool results keep their link and lose their output, rather than
+    going public unscrubbed.
+    """
+    scrubber_url = os.environ.get('SCRUBBER_URL')
+    if not scrubber_url or not texts:
+        return texts, not scrubber_url
+    try:
+        import requests
+        response = requests.post(f"{scrubber_url}/scrub/batch", json={"texts": texts}, timeout=10)
+        if response.status_code == 200:
+            result = response.json()
+            if result['redacted_count'] > 0:
+                logger.info(f"Scrubber redacted secrets in {result['redacted_count']} lines")
+            return result['texts'], True
+        logger.warning(f"Scrubber returned {response.status_code}; storing this batch without tool output")
+    except Exception as e:
+        logger.warning(f"Could not reach scrubber service: {e}; storing this batch without tool output")
+    return texts, False
+
+
 def import_lines(lines, *, era_name='Current Working Era (Era N)', source='unknown', username='justin'):
     """Scrub, import and heap-assign transcript lines: (imported, skipped, errors).
 
@@ -983,31 +1008,7 @@ def import_lines(lines, *, era_name='Current Working Era (Era N)', source='unkno
     from constant_sorrow.constants import EVENT_TYPE_WE_DO_NOT_HANDLE_YET
 
     era, _ = Era.objects.get_or_create(name=era_name)
-
-    # Optional: Apply secrets scrubbing via external scrubber service. Lines
-    # are pattern-redacted in the importer regardless; if the scrubber was
-    # configured but couldn't scrub this batch, its tool results keep their
-    # link and lose their output, rather than going public unscrubbed.
-    scrubber_url = os.environ.get('SCRUBBER_URL')
-    scrubbed = not scrubber_url
-    if scrubber_url and lines:
-        try:
-            import requests
-            response = requests.post(
-                f"{scrubber_url}/scrub/batch",
-                json={"texts": lines},
-                timeout=10
-            )
-            if response.status_code == 200:
-                result = response.json()
-                lines = result['texts']
-                scrubbed = True
-                if result['redacted_count'] > 0:
-                    logger.info(f"Scrubber redacted secrets in {result['redacted_count']} lines")
-            else:
-                logger.warning(f"Scrubber returned {response.status_code}; storing this batch without tool output")
-        except Exception as e:
-            logger.warning(f"Could not reach scrubber service: {e}; storing this batch without tool output")
+    lines, scrubbed = scrub_texts(lines)
 
     # Process lines
     imported = 0
