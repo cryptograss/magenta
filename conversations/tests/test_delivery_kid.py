@@ -249,3 +249,72 @@ class SendLandsOnTheDraftTest(TestCase):
 
     def test_the_button_comes_back_here(self):
         self.assertEqual(self.go(None), f'/moods/{self.mood.slug}/')
+
+
+ENCODING = {**ANALYSED, 'status': 'finalizing', 'queue_ahead': 0, 'finalize_log': [
+    {'ts': '2026-10-15T17:00:00Z', 'stage': 'queued', 'message': 'Queued', 'progress': 0},
+    {'ts': '2026-10-15T17:01:00Z', 'stage': 'transcode', 'message': 'Encoding 720p AV1', 'progress': 42}]}
+
+
+@override_settings(**SETUP)
+class VideoProgressTest(TestCase):
+    """The 🎬 line shows how its video is coming along: read-only, asked as its sender, from this Mood only."""
+
+    def setUp(self):
+        cache.clear()
+        self.mood = Mood.objects.create(slug='uploads-and-embeds', title='uploads-and-embeds')
+        delivery_kid._record(self.mood, 'justin', title='MOOS', page='p', draft=DRAFT, **{'as': 'JMyles'})
+        self.asked = []
+
+    def dk(self, body, status=200):
+        def get(url, params=None, timeout=None, headers=None):
+            self.asked.append((url, headers))
+            return Answer(body, status)
+        return mock.patch('requests.get', get)
+
+    def progress(self, draft=DRAFT, mood='uploads-and-embeds'):
+        return Client().get(f'/api/moods/{mood}/video/{draft}/progress/')
+
+    def test_encoding_with_its_stage_and_percent_for_anyone_reading(self):
+        with self.dk(ENCODING):
+            answer = self.progress()
+        self.assertEqual(answer.status_code, 200)
+        self.assertEqual(answer.json(), {'status': 'finalizing', 'stage': 'transcode', 'message': 'Encoding 720p AV1',
+                                         'progress': 42, 'queue_ahead': 0, 'release': None})
+        url, headers = self.asked[0]
+        self.assertEqual(url, f'https://dk.example/draft-content/{DRAFT}')
+        self.assertEqual(headers['X-Upload-User'], 'JMyles')  # as its sender
+        self.assertTrue(dk_verify(headers))  # an upload token: nothing that could finalize
+
+    def test_pinned_links_its_release_page(self):
+        with self.dk({'draft_id': DRAFT, 'status': 'finalized', 'final_cid': 'QmZLS8'}):
+            answer = self.progress().json()
+        self.assertEqual(answer['status'], 'finalized')
+        self.assertTrue(answer['release'].endswith('/wiki/Release:QmZLS8'))
+
+    def test_abandoned_is_gone(self):
+        with self.dk({'detail': 'Content draft not found'}, 404):
+            self.assertEqual(self.progress().json()['status'], 'gone')
+
+    def test_delivery_kid_is_asked_once_however_many_watch(self):
+        with self.dk(ENCODING):
+            for _ in range(5):
+                self.progress()
+        self.assertEqual(len(self.asked), 1)
+
+    def test_only_videos_sent_from_this_mood(self):
+        Mood.objects.create(slug='elsewhere', title='elsewhere')
+        other = 'aaaaaaaa-4b91-4b9e-9b89-24166905b7c3'
+        with self.dk(ENCODING):
+            self.assertEqual(self.progress(mood='elsewhere').status_code, 404)
+            self.assertEqual(self.progress(draft=other).status_code, 404)
+            self.assertEqual(self.progress(draft='not-a-draft').status_code, 400)
+        self.assertEqual(self.asked, [])
+
+    def test_older_lines_find_their_sender_in_the_names_list(self):
+        Message.objects.all().delete()
+        delivery_kid._record(self.mood, 'justin', title='MOOS', page='p', draft=DRAFT)
+        with mock.patch('conversations.services.wiki_auth.names', return_value={'justin': 'JMyles'}), \
+                self.dk(ENCODING):
+            self.assertEqual(self.progress().status_code, 200)
+        self.assertEqual(self.asked[0][1]['X-Upload-User'], 'JMyles')

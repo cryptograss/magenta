@@ -1187,6 +1187,18 @@ def api_video_ticket(request, slug):
         return JsonResponse({'error': str(e)}, status=e.status)
 
 
+@require_GET
+def api_video_progress(request, slug, draft):
+    """How a video sent from this Mood is coming along on delivery-kid (services/delivery_kid.progress).
+    Read-only, and for anyone who can read the Mood, as its 🎬 line is."""
+    from .services import delivery_kid
+    mood = Mood.by_slug_or_404(slug)
+    try:
+        return JsonResponse(delivery_kid.progress(mood, draft))
+    except delivery_kid.UploadError as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+
+
 @require_POST
 def api_video_draft(request, slug):
     """{"draft", "title"}: a video now on delivery-kid gets its ReleaseDraft page, written as its sender

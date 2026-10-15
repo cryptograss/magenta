@@ -19,7 +19,11 @@ finalized. This is the wiki's own Special:DeliverVideo, from a Mood:
    on PickiPedia: services/wiki_upload.py), and the permission is dropped
    once the page is written. What the page says about the files comes from
    delivery-kid itself, asked here, not from the browser.
-3. **A line in the Mood** (a 'release-draft' event) links the draft.
+3. **A line in the Mood** (a 'release-draft' event) links the draft, and
+   shows how it's coming along: waiting to be finalized, encoding (with
+   delivery-kid's own words and percent), pinned, failed (progress()).
+   Anyone reading the Mood sees it; it's read-only, asked of delivery-kid
+   as the video's sender, and only for drafts sent from that Mood.
 
 Finalizing stays on the ReleaseDraft page, under the wiki's own
 finalize-release right; delivery-kid runs it as a job of its own
@@ -235,7 +239,7 @@ def finish(state, code, entity, redirect_uri, http=None):
     csrf = wiki.call(action='query', meta='tokens')['query']['tokens']['csrftoken']
     wiki.call(post=True, action='edit', title=f'ReleaseDraft:{found["draft"]}', text=text, createonly=1,
               summary='New video draft, sent from magenta', token=csrf)
-    details = {'title': title, 'page': draft_page(found['draft']), 'draft': found['draft']}
+    details = {'title': title, 'page': draft_page(found['draft']), 'draft': found['draft'], 'as': profile['username']}
     _record(mood, name_here, **details)
     return {**details, 'back': details['page'] if found.get('then_page') else f'/moods/{mood.slug}/'}
 
@@ -267,3 +271,59 @@ def _record(mood, by, **details):
     return Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=SOURCE,
                                   content={'type': 'release-draft', 'by': by, **details},
                                   timestamp=int(time.time() * 1000))
+
+
+PROGRESS_PREFIX = 'video-progress:'
+PROGRESS_FOR = 8  # seconds: however many are watching, delivery-kid is asked once in this long
+
+
+def _sender_of(mood, draft_id):
+    """The PickiPedia name a draft sent from this Mood went up as, or None if it wasn't sent from here."""
+    from conversations.models import Message
+    from . import wiki_auth
+    line = (Message.objects.filter(mood=mood, source_file=SOURCE, content__draft=draft_id)
+            .order_by('-timestamp').first())
+    if line is None:
+        return None
+    # Lines from before 'as' was recorded: the names list has it, as ticket() found it.
+    return line.content.get('as') or wiki_auth.names().get(str(line.content.get('by', '')).lower())
+
+
+def progress(mood, draft_id, http=None):
+    """How a video sent from this Mood is coming along, as delivery-kid tells it:
+    {'status', 'stage', 'message', 'progress', 'queue_ahead', 'release'}.
+
+    'status' is delivery-kid's (uploaded, finalizing, finalized, finalize_failed, ...),
+    or 'gone' once its files are deleted (abandoned). Viewing only: nothing here can start or stop anything.
+    """
+    if not enabled():
+        raise UploadError("delivery-kid isn't set up here", status=503)
+    draft_id = str(draft_id or '').lower()
+    if not _DRAFT_ID.match(draft_id):
+        raise UploadError('not a delivery-kid draft id')
+    key = f'{PROGRESS_PREFIX}{mood.slug}:{draft_id}'
+    known = cache.get(key)
+    if known is not None:
+        return known
+    sender = _sender_of(mood, draft_id)
+    if not sender:
+        raise UploadError('no video by that id was sent from this Mood', status=404)
+    try:
+        draft = fetch_draft(draft_id, sender, http=http)
+    except UploadError as e:
+        if e.status != 404:
+            raise
+        draft = {'status': 'gone'}
+    last = (draft.get('finalize_log') or [{}])[-1]
+    cid = draft.get('final_cid')
+    from .mood_view import pickipedia_url
+    answer = {
+        'status': draft.get('status') or 'unknown',
+        'stage': last.get('stage'),
+        'message': last.get('error') or last.get('message'),
+        'progress': last.get('progress') if isinstance(last.get('progress'), (int, float)) else None,
+        'queue_ahead': draft.get('queue_ahead') or 0,
+        'release': f'{pickipedia_url()}/wiki/Release:{cid}' if cid else None,
+    }
+    cache.set(key, answer, PROGRESS_FOR)
+    return answer
