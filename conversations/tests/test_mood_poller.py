@@ -376,6 +376,19 @@ class StreamPosterTest(TestCase):
         self.assertEqual([e['type'] for p in http.posts for e in p[1]['events']], ['assistant', 'result', 'system'])
         self.assertEqual((poster.sent, poster.failed), (3, 0))
 
+    def test_it_says_whether_the_wake_has_full_tools(self):
+        http = FakeHTTP(200)
+        poster = self.poster(http)
+        poster.full_tools = True
+        poster.put({'type': 'assistant', 'uuid': 'a'})
+        poster.close()
+        self.assertIs(http.posts[0][1]['full_tools'], True)
+        unsaid = FakeHTTP(200)
+        poster = self.poster(unsaid)
+        poster.put({'type': 'assistant', 'uuid': 'a'})
+        poster.close()
+        self.assertNotIn('full_tools', unsaid.posts[0][1])
+
     def test_a_refusal_is_not_retried_and_a_failure_is(self):
         import requests
         refused = FakeHTTP(401)
@@ -1277,6 +1290,20 @@ class GlovesOffTest(TestCase):
                 self.assertFalse(waker.options['full'])
                 self.assertIn('This turn can look but not touch', waker.woken[0][1])
 
+    def test_an_agent_woken_with_full_tools_wakes_another_with_them(self):
+        # justin, 2026-10-15: "you can wake an agent with tools, but only if you yourself have tools."
+        waker = self.wake_for('re', is_human=False, via='session', full_tools=True)
+        self.assertTrue(waker.options['full'])
+        self.assertIn('This turn has your full tools', waker.woken[0][1])
+
+    def test_an_agent_woken_look_only_passes_on_only_looking(self):
+        for how in ({'full_tools': False}, {}):  # {}: a server that doesn't say, or a terminal session
+            with self.subTest(how=how):
+                waker = self.wake_for('re', is_human=False, via='session', **how)
+                self.assertFalse(waker.options['full'])
+        # A person claiming it in their own post changes nothing: it's the agents' alone.
+        self.assertFalse(self.wake_for('skyler', is_human=True, tier='wiki', full_tools=True).options['full'])
+
     def test_the_full_command_has_no_tool_limits(self):
         from unittest import mock
         with mock.patch('poller.mood_poller.mcp_config_for_wakes', return_value='/tmp/x.json'):
@@ -1331,6 +1358,16 @@ class CompactTest(TestCase):
     def test_only_from_someone_trusted_with_real_work(self):
         prompts = self.run_for(('skyler', '@magent /compact'))
         self.assertTrue(prompts[0].startswith('<mood-wake'))  # just a mention: it can say why not
+
+    def test_an_agent_with_full_tools_can_ask_but_not_command(self):
+        api = FakeAPI([mention('m26', dict(turn('m0', 're', 0, '@magent /compact'), via='session',
+                                           is_human=False, full_tools=True))], sessions={'m26': ['s-local']})
+        waker = FakeWaker(reply='')
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=30)).poll_once()
+        self.assertTrue(waker.woken[0][1].startswith('<mood-wake'))  # a mention, not the command
+        self.assertTrue(waker.options['full'])
 
     def test_a_mention_of_compacting_is_not_the_command(self):
         prompts = self.run_for(('justin', '@magent should we /compact soon?'))

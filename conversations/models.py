@@ -408,6 +408,10 @@ class MoodSession(models.Model):
     session_id = models.UUIDField(primary_key=True)
     mood = models.ForeignKey(Mood, models.CASCADE, related_name='claimed_sessions')
     claimed_at = models.DateTimeField(auto_now_add=True)
+    # Whether the runner woke this session with the agent's full tools (a wake
+    # a trusted person asked for, or one such an agent's mention started).
+    # None: not said (a terminal session, or an older runner).
+    full_tools = models.BooleanField(null=True, blank=True)
 
     class Meta:
         db_table = 'mood_sessions'

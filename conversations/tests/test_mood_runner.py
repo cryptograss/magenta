@@ -69,6 +69,35 @@ class StreamTest(TestCase):
         with override_settings(MOOD_RUNNER_KEYS={'otheragent': KEY}):
             self.assertEqual(self.post([]).status_code, 400)
 
+    # --- a wake with full tools passes them on --------------------------------------
+
+    def test_the_runner_says_whether_it_woke_with_full_tools_and_a_mention_carries_it(self):
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        reply = event('assistant', [{'type': 'text', 'text': '@re have a look at the docs PR'}], session_id=self.session)
+        self.assertEqual(self.post([reply], full_tools=True).status_code, 200)
+        self.assertIs(MoodSession.objects.get(session_id=self.session).full_tools, True)
+        mention = self.client.get('/api/mentions/re/').json()['mentions'][0]['turn']
+        self.assertEqual((mention['sender'], mention['full_tools']), ('magent', True))
+
+        self.session = str(uuid.uuid4())  # a look-only wake's mention
+        reply = event('assistant', [{'type': 'text', 'text': '@re and this one'}], session_id=self.session)
+        self.post([reply], full_tools=False)
+        newest = self.client.get('/api/mentions/re/').json()['mentions'][0]['turn']
+        self.assertEqual((newest['text'], newest['full_tools']), ('@re and this one', False))
+
+    def test_a_runner_that_doesnt_say_leaves_it_unsaid(self):
+        self.post([event('assistant', [{'type': 'text', 'text': 'hi'}], session_id=self.session)])
+        self.assertIsNone(MoodSession.objects.get(session_id=self.session).full_tools)
+        self.post([], full_tools='yes')  # not a boolean: ignored
+        self.assertIsNone(MoodSession.objects.get(session_id=self.session).full_tools)
+
+    def test_a_persons_mention_carries_no_such_claim(self):
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=self.mood, content='@re hello',
+                               timestamp=1, source_file='mood-post')
+        turn = self.client.get('/api/mentions/re/').json()['mentions'][0]['turn']
+        self.assertNotIn('full_tools', turn)
+
     def test_a_bad_body_is_refused(self):
         response = self.client.post('/api/moods/m26/stream/', json.dumps({'session_id': 'nope', 'events': []}),
                                     content_type='application/json', **AUTH)

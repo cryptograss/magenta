@@ -18,7 +18,7 @@ from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import Message, Mood, ThinkingEntity, mood_slug
+from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, push, servers, wiki_auth, wiki_feed, wiki_upload
 from .services import mood_auth
 from .services.mood_view import (
@@ -780,7 +780,13 @@ def api_mentions(request, name):
         if not text or is_wrapper(text) or is_summary(msg):
             continue
         if name in addressed_in(text, names, by=msg.sender_id):
-            found.append({'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
+            turn = turn_payload(msg, text, names)
+            if not turn['is_human']:
+                # Whether the agent that wrote it was itself woken with full
+                # tools: if so, it may wake this one with them (mood_poller.trusted).
+                turn['full_tools'] = bool(msg.session_id and MoodSession.objects.filter(
+                    session_id=msg.session_id, full_tools=True).exists())
+            found.append({'mood': msg.mood_slug, 'turn': turn})
             if len(found) >= limit:
                 break
 

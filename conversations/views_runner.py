@@ -167,6 +167,11 @@ def api_stream(request, slug):
     # Launched for this Mood: it belongs here, whatever else might be guessed.
     if MoodSession.mood_for(session_id) != mood:
         mood.claim(session_id)
+    # Whether the runner woke it with full tools: an agent it mentions may be
+    # woken with full tools too (api_mentions, mood_poller.trusted).
+    if isinstance(body.get('full_tools'), bool):
+        MoodSession.objects.filter(session_id=session_id).exclude(full_tools=body['full_tools']).update(
+            full_tools=body['full_tools'])
 
     if events_v1:
         return stream_events(mood, session_id, agent, body)
