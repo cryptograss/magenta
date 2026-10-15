@@ -380,7 +380,7 @@ def event_line(content):
     if kind == 'release-draft':
         return f"💿 a release draft: {c.get('title', '')}{by_}"
     if kind == 'wiki':
-        return f"✎ {c.get('user', 'someone')} {'started' if c.get('kind') == 'new' else 'edited'} {c.get('title', '')} on PickiPedia"
+        return wiki_sentence(c)
     if kind == 'wiki-upload':
         return f"🖼 {by or 'someone'} put {c.get('file', 'a picture')} on PickiPedia"
     if kind in ('handoff', 'handoff-sent'):
@@ -394,6 +394,31 @@ def event_line(content):
     if kind == 'interrupt':
         return f"■ {by or 'someone'} stopped {c.get('agent', 'an agent')}"
     return (kind or 'an event').replace('-', ' ')
+
+
+# --- edits to someone's user page or talk page --------------------------------
+# Said as what they are (Justin, 2026-10-15): "Sky edited Justin's user page",
+# "Sky made a user page edit" when it's their own; and a talk page edited by
+# someone else is news for its owner, a notice (views_moods.notices_for).
+_USER_PAGE = re.compile(r'^User( talk)?:([^/#]+)', re.I)
+
+
+def user_page_of(title):
+    """(owner's wiki name, is_talk) for a User: or User talk: page or subpage; None for any other."""
+    found = _USER_PAGE.match((title or '').replace('_', ' '))
+    return (found.group(2).strip(), bool(found.group(1))) if found else None
+
+
+def wiki_sentence(c):
+    """A PickiPedia change in words, without its links: the reply quote's and the narrator's."""
+    user = c.get('user', 'someone')
+    page = user_page_of(c.get('title'))
+    if page is None:
+        return f"✎ {user} {'started' if c.get('kind') == 'new' else 'edited'} {c.get('title', '')} on PickiPedia"
+    owner, talk = page
+    if owner.lower() == user.lower():
+        return f"✎ {user} edited their own talk page" if talk else f"✎ {user} made a user page edit"
+    return f"✎ {user} edited {owner}'s {'talk' if talk else 'user'} page"
 
 
 def replied(message_id):

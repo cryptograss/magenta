@@ -2101,6 +2101,20 @@
     el.dataset.id = e.id;
     if (viewer) el.insertAdjacentHTML('beforeend', `<button type="button" class="replybtn event-reply" data-reply="${esc(e.id)}" title="Reply to this" aria-label="Reply to this">↩</button>`);
   }
+  // Someone's user page or talk page, said as that (mood_view.wiki_sentence):
+  // "Sky edited Justin's user page", "Sky made a user page edit" when it's their own.
+  function wikiLine(e, one) {
+    const who = `<b>${esc(e.user || 'someone')}</b>`;
+    const page = (e.title || '').replace(/_/g, ' ').match(/^User( talk)?:([^/#]+)/i);
+    if (!page) return `✎ ${who} ${e.kind === 'new' ? 'started' : 'edited'} ${one}`;
+    const owner = page[2].trim(), talk = !!page[1];
+    const rest = one.slice(one.indexOf('</a>') + 4);  // the change's size and comment, after the page's link
+    const link = `<a href="${esc(`${WIKI}/wiki/${encodeURIComponent((e.title || '').replace(/ /g, '_'))}`)}" target="_blank" rel="noopener">`;
+    const said = owner.toLowerCase() === (e.user || '').toLowerCase()
+      ? (talk ? `edited their own ${link}talk page</a>` : `made a ${link}user page</a> edit`)
+      : `edited <b>${esc(owner)}</b>'s ${link}${talk ? 'talk' : 'user'} page</a>`;
+    return `${talk ? '💬' : '✎'} ${who} ${said}${rest}`;
+  }
   function drawEvent(e, container) {
     const el = document.createElement('div');
     if (e.type === 'wiki') {  // a change on PickiPedia (services/wiki_feed.py), at the wiki's own time
@@ -2121,7 +2135,7 @@
       }
       el.className = 'event wiki';
       el.dataset.user = e.user || ''; el.dataset.n = 1; el.dataset.first = `<div>${one}</div>`;
-      el.innerHTML = `✎ <b>${esc(e.user || 'someone')}</b> ${e.kind === 'new' ? 'started' : 'edited'} ${one} · ${esc(stamp(e.at || e.created_at))}`;
+      el.innerHTML = wikiLine(e, one) + ` · ${esc(stamp(e.at || e.created_at))}`;
       container.appendChild(el);
       prev = null;
       return;
@@ -2797,7 +2811,8 @@
   async function notify(n) {
     if (!notifying()) return;
     const mood = moods.find(m => m.slug === n.mood);
-    const title = n.kind === 'answer' ? `${n.turn.sender} answered you` : n.kind === 'mention' ? `${n.turn.sender} mentioned you`
+    const title = n.kind === 'answer' ? `${n.turn.sender} answered you` : n.kind === 'talk' ? `${n.turn.sender} edited your talk page`
+      : n.kind === 'mention' ? `${n.turn.sender} mentioned you`
       : `${n.turn.sender} in ${mood ? mood.title || mood.slug : n.mood}`;
     const options = { body: (mood && n.kind !== 'said' ? mood.title + ': ' : '') + n.turn.text.slice(0, 160), tag: n.turn.id,
                       icon: '/moods/icon-192.png', data: { slug: n.mood, id: n.turn.id } };

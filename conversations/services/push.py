@@ -162,7 +162,8 @@ def notification(notice):
     from conversations.models import Mood
     turn = notice['turn']
     mood = Mood.objects.filter(slug=notice['mood']).first()
-    title = {'answer': f"{turn['sender']} answered you", 'mention': f"{turn['sender']} mentioned you"}.get(
+    title = {'answer': f"{turn['sender']} answered you", 'mention': f"{turn['sender']} mentioned you",
+             'talk': f"{turn['sender']} edited your talk page"}.get(
         notice['kind'], f"{turn['sender']} in {(mood.title or mood.slug) if mood else 'a Mood'}")
     where = f"{(mood.title or mood.slug)}: " if mood and notice['kind'] != 'said' else ''
     return {'title': title, 'body': (where + (turn.get('text') or ''))[:200], 'tag': turn['id'],
