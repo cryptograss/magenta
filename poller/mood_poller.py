@@ -612,9 +612,16 @@ GREETING = ("Greeting anyone is never needed. If you do, make it theirs: the las
 # the block in its reply; it leaves a line in both Moods, and the context in its next wake there.
 HANDOFF_HOW = ('Asked to take this to another Mood, put in your reply a block: ```handoff, then "to: <mood>", '
                '"about: <a few words>", a line "---", the context someone there needs (what was settled, '
-               "what's open, #m- links to what matters), and ``` to close. Asked to look in another Mood for "
+               "what's open, #m- links to what matters), and ``` to close. Above the "
+               '"---", a line \"for: <agent>\" wakes that agent there; \"wake: yes\" wakes you there to take it up. Asked to look in another Mood for '
                'what bears on this one, read it (read_mood, from a time) and write the same block with '
                '"from: <mood>" instead of "to:", what you found as its context.')
+
+
+# Mentions with no live session behind them: typed into the web composer, or
+# brought in by another agent's handoff. None is owed a wait, and only a wake
+# that carried one answers it.
+UNLISTENED = ('web', 'handoff')
 
 
 def signed_in_with_key(turn):
@@ -1077,7 +1084,10 @@ class MoodPoller:
         pending = {}
         for m in sorted(mentions, key=lambda m: m['turn']['created_at']):
             turn = m['turn']
-            if turn['sender'] == self.agent or turn['id'] in handled:
+            # Its own words never wake it, but a handoff it sent itself from
+            # another Mood does (the server lets those through only with
+            # `wake: yes`, a few an hour).
+            if (turn['sender'] == self.agent and turn.get('via') != 'handoff') or turn['id'] in handled:
                 continue
             pending.setdefault(m['mood'], []).append(turn)
 
@@ -1127,7 +1137,7 @@ class MoodPoller:
         # session -- a reply that happens to come later (from a terminal, or
         # from a woken turn about something else) never read it -- so it is
         # owed until a wake that carried it has run.
-        answered = [t for t in mentioned if t.get('via') != 'web'
+        answered = [t for t in mentioned if t.get('via') not in UNLISTENED
                     and any(a > parse_time(t['created_at']) for a in agent_turns)]
         owed = [t for t in mentioned if t not in answered]
         settled = [t['id'] for t in answered]
@@ -1135,7 +1145,7 @@ class MoodPoller:
             return settled, 'answered'
         # A mention typed into a session gives that session time to answer;
         # one posted from the web has no session behind it, so none is owed.
-        grace = self.grace if any(t.get('via') != 'web' for t in owed) else timedelta(0)
+        grace = self.grace if any(t.get('via') not in UNLISTENED for t in owed) else timedelta(0)
         if self.now() - parse_time(owed[0]['created_at']) < grace:
             return settled, None
         recent = self.recent_wakes()
@@ -1327,6 +1337,10 @@ class MoodPoller:
     def prompt(self, slug, owed, full=False):
         if all(t.get('via') == 'web' for t in owed):
             why = 'this was posted from the web, where no session is listening.'
+        elif all(t.get('via') in UNLISTENED and t.get('sender') == self.agent for t in owed):
+            why = 'you handed this over to yourself here, from another Mood.'
+        elif all(t.get('via') in UNLISTENED for t in owed):
+            why = 'another agent handed this over to you here.'
         else:
             why = f'nobody answered this in {int(self.grace.total_seconds() // 60)} minutes.'
         lines = mention_opening(slug, why)

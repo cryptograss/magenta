@@ -96,10 +96,35 @@ class StreamTest(TestCase):
         self.assertEqual(found[0]['mood'], 'docs-tests-qa')
         turn = found[0]['turn']
         self.assertEqual((turn['sender'], turn['is_human'], turn['full_tools']), ('magent', False, True))
+        self.assertEqual(turn['via'], 'handoff')  # no live session behind it: woken at once
         self.assertIn('your first wake', turn['text'])
         self.assertIn('Read your letter first.', turn['text'])
         # Not for magent: a handoff wakes whom it's for, never its writer.
         self.assertEqual(self.client.get('/api/mentions/magent/').json()['mentions'], [])
+
+    def test_a_handoff_to_itself_wakes_the_writer_only_when_asked_and_a_few_times_an_hour(self):
+        Mood.objects.create(slug='docs-tests-qa')
+        block = lambda about, wake: ('```handoff\nto: docs-tests-qa\nabout: ' + about
+                                     + ('\nwake: yes' if wake else '') + '\n---\nPick this up.\n```')
+        self.post([event('assistant', [{'type': 'text', 'text': block('a note for later', False)}],
+                         session_id=self.session)], full_tools=True)
+        self.assertEqual(self.client.get('/api/mentions/magent/').json()['mentions'], [])  # a note: rides along
+
+        self.post([event('assistant', [{'type': 'text', 'text': block('go do it', True)}], session_id=self.session)])
+        found = self.client.get('/api/mentions/magent/').json()['mentions']
+        self.assertEqual(len(found), 1)
+        turn = found[0]['turn']
+        self.assertEqual((found[0]['mood'], turn['sender'], turn['via'], turn['full_tools']),
+                         ('docs-tests-qa', 'magent', 'handoff', True))
+        self.assertIn('you handed this over from #m26: go do it', turn['text'])
+
+        from conversations.views_moods import SELF_WAKES_PER_HOUR
+        for i in range(SELF_WAKES_PER_HOUR):
+            self.post([event('assistant', [{'type': 'text', 'text': block(f'again {i}', True)}],
+                             session_id=self.session)])
+        found = self.client.get('/api/mentions/magent/?limit=50').json()['mentions']
+        self.assertEqual(len(found), SELF_WAKES_PER_HOUR)  # the seventh in the hour wakes nothing
+        self.assertNotIn('again 5', ' '.join(m['turn']['text'] for m in found))
 
     def test_a_runner_that_doesnt_say_leaves_it_unsaid(self):
         self.post([event('assistant', [{'type': 'text', 'text': 'hi'}], session_id=self.session)])
