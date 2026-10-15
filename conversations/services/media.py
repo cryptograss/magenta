@@ -20,7 +20,8 @@ without its metadata, so a phone photo's GPS position isn't published. A
 JPEG or PNG loses its metadata the same way (without_metadata): EXIF, XMP
 and text chunks are cut out of the file, the picture itself untouched --
 unless its sharer unticks "remove location" as they attach it (strip=False;
-Justin and Sky, 15 Oct: tour photos want it gone, the odd one may not). Audio -- voice memos, messages read aloud --
+Justin and Sky, 15 Oct: tour photos want it gone, the odd one may not).
+Unticked, a HEIC photo's EXIF and XMP are carried into its JPEG. Audio -- voice memos, messages read aloud --
 only where it's asked for (store(..., audio=True)), never lifted from a
 transcript.
 """
@@ -87,11 +88,13 @@ def is_heif(data):
     return data[4:8] == b'ftyp' and data[8:12] in HEIF_BRANDS
 
 
-def jpeg_from_heif(data):
+def jpeg_from_heif(data, keep=False):
     """JPEG bytes for a HEIC/HEIF photo, or None if it can't be read.
 
     Upright (libheif applies the photo's rotation; exif_transpose catches an
-    EXIF one), no larger than MAX_EDGE, and with no metadata carried over.
+    EXIF one), no larger than MAX_EDGE, and with no metadata carried over --
+    unless keep: then its EXIF (location, camera, time) and XMP go into the
+    JPEG, less the rotation tag, which the turned picture no longer needs.
     Encoding is deterministic, so the same photo sent twice is stored once.
     """
     try:
@@ -102,9 +105,17 @@ def jpeg_from_heif(data):
             picture = ImageOps.exif_transpose(opened)
             if picture.mode not in ('RGB', 'L'):
                 picture = picture.convert('RGB')
+            kept = {}
+            if keep:
+                exif = picture.getexif()  # exif_transpose has dropped the rotation tag
+                exif.pop(0x0112, None)
+                if len(exif) or exif.get_ifd(0x8825):
+                    kept['exif'] = exif.tobytes()
+                if opened.info.get('xmp'):
+                    kept['xmp'] = opened.info['xmp']
             picture.thumbnail((MAX_EDGE, MAX_EDGE))
             out = io.BytesIO()
-            picture.save(out, 'JPEG', quality=88, optimize=True)
+            picture.save(out, 'JPEG', quality=88, optimize=True, **kept)
             return out.getvalue()
     except Exception:
         return None
@@ -184,13 +195,14 @@ def without_metadata(data, mime):
 def store(data, added_by=None, audio=False, strip=True):
     """The Media for these bytes, stored if new; None if not an image (or,
     with audio=True, a sound) we take. A HEIC photo is stored as a JPEG.
-    A JPEG or PNG is stored without its metadata unless strip=False."""
+    A JPEG or PNG is stored without its metadata unless strip=False;
+    a HEIC photo's then comes with it into the JPEG."""
     from conversations.models import Media
 
     if not data or len(data) > (MAX_AUDIO_BYTES if audio else MAX_BYTES):
         return None
     if not audio and is_heif(data):
-        data = jpeg_from_heif(data)
+        data = jpeg_from_heif(data, keep=not strip)
         if data is None:
             return None
     mime = sniff_audio(data) if audio else sniff(data)

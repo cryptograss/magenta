@@ -87,3 +87,12 @@ class HeicTest(TestCase):
         refused = client.post('/api/moods/uploads-and-embeds/media/', b'not a picture at all',
                               content_type='application/octet-stream')
         self.assertIn('HEIC', json.loads(refused.content)['error'])
+
+    def test_unticked_its_exif_comes_into_the_jpeg(self):
+        stored = media.store(heic(exif=gps_exif()), strip=False)
+        self.assertEqual(stored.mime, 'image/jpeg')
+        with Image.open(io.BytesIO(bytes(stored.data))) as back:
+            exif = back.getexif()
+            self.assertEqual(exif.get(0x010F), 'Apple')
+            self.assertEqual(exif.get_ifd(0x8825).get(1), 'N')  # where it was taken
+            self.assertNotIn(0x0112, exif)  # stored upright: no rotation to apply twice
