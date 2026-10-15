@@ -16,7 +16,9 @@ Only PNG, JPEG, GIF and WebP, decided by their first bytes. SVG is never
 accepted: it can carry script. A HEIC/HEIF photo -- what an iPhone's camera
 takes -- is turned into a JPEG on the way in (jpeg_from_heif), since most
 browsers can't show HEIC: upright, at most MAX_EDGE on its long side, and
-without its metadata, so a phone photo's GPS position isn't published. Audio -- voice memos, messages read aloud --
+without its metadata, so a phone photo's GPS position isn't published. A
+JPEG or PNG loses its metadata the same way (without_metadata): EXIF, XMP
+and text chunks are cut out of the file, the picture itself untouched. Audio -- voice memos, messages read aloud --
 only where it's asked for (store(..., audio=True)), never lifted from a
 transcript.
 """
@@ -106,6 +108,77 @@ def jpeg_from_heif(data):
         return None
 
 
+def _jpeg_orientation(data):
+    """The EXIF orientation of a JPEG (1 is upright), or 1 if unreadable."""
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as opened:
+            return opened.getexif().get(0x0112, 1) or 1
+    except Exception:
+        return 1
+
+
+def _jpeg_without_metadata(data):
+    """The JPEG with its APP1-APP15 and comment segments cut out: EXIF (GPS,
+    camera, time), XMP, Photoshop/IPTC. APP0 (JFIF) stays; the image data is
+    copied byte for byte. None if the segments don't parse."""
+    out, i = bytearray(data[:2]), 2
+    while i + 4 <= len(data):
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if marker == 0xFF:  # fill byte
+            i += 1
+            continue
+        if marker == 0xDA:  # start of scan: the rest is the picture
+            return bytes(out + data[i:])
+        length = int.from_bytes(data[i + 2:i + 4], 'big')
+        if length < 2:
+            return None
+        if not (0xE1 <= marker <= 0xEF or marker == 0xFE):
+            out += data[i:i + 2 + length]
+        i += 2 + length
+    return None
+
+
+# PNG chunks that carry metadata, never the picture: EXIF, text (where XMP lives too), time.
+_PNG_METADATA = {b'eXIf', b'tEXt', b'iTXt', b'zTXt', b'tIME'}
+
+
+def _png_without_metadata(data):
+    """The PNG with its metadata chunks dropped, the rest copied as is; None if it doesn't parse."""
+    out, i = bytearray(data[:8]), 8
+    while i + 12 <= len(data):
+        length = int.from_bytes(data[i:i + 4], 'big')
+        kind = data[i + 4:i + 8]
+        end = i + 12 + length
+        if end > len(data):
+            return None
+        if kind not in _PNG_METADATA:
+            out += data[i:end]
+        i = end
+        if kind == b'IEND':
+            return bytes(out)
+    return None
+
+
+def without_metadata(data, mime):
+    """The picture as stored: a JPEG or PNG without where and when it was
+    taken, or by what. A JPEG turned by its EXIF is re-encoded upright first
+    (jpeg_from_heif does that, and any format Pillow reads), since cutting the
+    EXIF would otherwise leave it on its side. Anything else, or anything that
+    doesn't parse, as it came."""
+    if mime == 'image/jpeg':
+        if _jpeg_orientation(data) != 1:
+            upright = jpeg_from_heif(data)
+            if upright:
+                return upright
+        return _jpeg_without_metadata(data) or data
+    if mime == 'image/png':
+        return _png_without_metadata(data) or data
+    return data
+
+
 def store(data, added_by=None, audio=False):
     """The Media for these bytes, stored if new; None if not an image (or,
     with audio=True, a sound) we take. A HEIC photo is stored as a JPEG."""
@@ -120,6 +193,8 @@ def store(data, added_by=None, audio=False):
     mime = sniff_audio(data) if audio else sniff(data)
     if mime is None:
         return None
+    if not audio:
+        data = without_metadata(data, mime)
     sha = hashlib.sha256(data).hexdigest()
     media, _ = Media.objects.get_or_create(
         sha256=sha, defaults={'mime': mime, 'data': data, 'size': len(data), 'added_by': added_by})
