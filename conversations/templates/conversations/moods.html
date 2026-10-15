@@ -455,6 +455,7 @@
                      background: var(--rule, #ddd); border-radius: 2px; overflow: hidden; }
   #videoBar .fill { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
   #videoBar button { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
+  .event .vprogress progress { width: 6em; height: 0.8em; vertical-align: middle; }
   #videoCards { max-width: 760px; margin: 0 auto; padding: 0 16px; }
   #videoCards .vcard { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; padding: 8px 10px;
                        border: 1px solid var(--rule, #ddd); border-radius: 8px; font-size: 13px; }
@@ -2222,8 +2223,10 @@
       if (e.draft && videoWaiting) videoWaiting.drop(e.draft);  // its page is made: no more card
       el.innerHTML = `🎬 <b>${esc(shown(e.by || 'someone'))}</b> sent a video to delivery-kid: `
         + `<a href="${esc(e.page || '#')}" target="_blank" rel="noopener">${esc(e.title || 'its ReleaseDraft')}</a>`
-        + ` · title it, review it and finalize it there · ${esc(stamp(e.created_at))}`;
+        + ` · title it, review it and finalize it there · ${esc(stamp(e.created_at))}`
+        + `<span class="vprogress"></span>`;
       container.appendChild(el);
+      if (e.draft) videoProgress.watch(e.draft, el.querySelector('.vprogress'));
       prev = null;
       return;
     }
@@ -4196,6 +4199,50 @@
       showError('video: ' + e.message);
     }
   }
+  // How each 🎬 line's video is coming along on delivery-kid (services/delivery_kid.progress): viewing
+  // only, finalizing stays on its ReleaseDraft page. Asked often while it encodes, now and then while
+  // it waits to be finalized, never again once it's pinned or gone.
+  var videoProgress = {  // var: the thread renders 🎬 lines before this line has run
+    spans: new Map(),  // draft -> its line's span, the one on the page now
+    timers: new Map(),
+    watch(draft, span) {
+      if (!span) return;
+      this.spans.set(draft, span);
+      const known = this.shown?.get(draft);
+      if (known) span.innerHTML = known;
+      if (!this.timers.has(draft)) this.ask(draft);
+    },
+    async ask(draft) {
+      this.timers.set(draft, true);
+      const span = this.spans.get(draft);
+      if (!span || !span.isConnected || !current) { this.timers.delete(draft); return; }
+      let next = null;
+      try {
+        const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/video/' + encodeURIComponent(draft) + '/progress/');
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) { span.innerHTML = ''; this.timers.delete(draft); return; }
+        span.innerHTML = this.say(p);
+        (this.shown ||= new Map()).set(draft, span.innerHTML);
+        if (p.status === 'finalizing') next = 5000;
+        else if (!['finalized', 'gone', 'finalize_failed', 'upload_failed'].includes(p.status)) next = 60000;
+      } catch (e) { next = 60000; }
+      if (next) this.timers.set(draft, setTimeout(() => this.ask(draft), next));
+      else this.timers.delete(draft);
+    },
+    say(p) {
+      const msg = p.message ? `: ${esc(p.message)}` : '';
+      if (p.status === 'finalized') return ` · <b>pinned</b>` + (p.release ? ` — <a href="${esc(p.release)}" target="_blank" rel="noopener">its Release page</a>` : '');
+      if (p.status === 'finalizing') {
+        if (p.queue_ahead) return ` · <b>queued</b>, ${Number(p.queue_ahead)} ahead of it`;
+        const pct = typeof p.progress === 'number' ? ` <progress max="100" value="${p.progress}"></progress> ${p.progress}%` : '';
+        return ` · <b>encoding</b>${msg}${pct}`;
+      }
+      if (p.status === 'finalize_failed') return ` · <b>finalize failed</b>${msg}`;
+      if (p.status === 'gone') return ` · its files are deleted (abandoned)`;
+      if (p.status === 'uploaded') return ` · waiting to be finalized`;
+      return ` · ${esc(p.status || '')}`;
+    },
+  };
   // Videos on delivery-kid still waiting for their ReleaseDraft page: a card each, for this Mood.
   var videoWaiting = {  // var: the thread may render a 🎬 line, or switch Moods, before this line has run
     KEY: 'dk-waiting',
