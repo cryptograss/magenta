@@ -4179,7 +4179,7 @@
       const card = document.createElement('div');
       card.className = 'vcard';
       card.innerHTML = `🎬 <span class="name"></span> is on delivery-kid. Its title: <input type="text" maxlength="200">`
-        + `<button type="button" class="make">Make its draft page on PickiPedia</button>`
+        + `<button type="button" class="make" title="Or press Send">Make its draft page on PickiPedia</button>`
         + `<button type="button" class="later" title="Forget this card. The video stays on delivery-kid, without a draft page.">✕</button>`;
       card.querySelector('.name').textContent = v.name;
       const title = card.querySelector('input');
@@ -5008,6 +5008,10 @@
       return;
     }
     const text = sayBox.value.trim();
+    // A video waiting as a card: Send makes its draft page too, as its button does (Sky, 15 Oct),
+    // after what's typed is sent, since making the page goes to PickiPedia and back.
+    const makeDraft = document.querySelector('#videoCards .vcard .make:not(:disabled)');
+    if (!text && makeDraft) { makeDraft.click(); return; }
     if (!text || !current) return;
     if (viewerTier === 'wiki') {
       const addressed = agentsAddressed(text);
@@ -5044,6 +5048,7 @@
         setTimeout(() => note && note.remove(), 8000);
       }
       await poll(false);
+      if (makeDraft && makeDraft.isConnected) makeDraft.click();
     } catch (e) {
       if (pending) pending.remove();
       if (!sayBox.value.trim()) { sayBox.value = text; fitSay(); }  // not sent: the words back where they were
