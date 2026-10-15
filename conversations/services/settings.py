@@ -36,7 +36,8 @@ KNOBS = {
     'considers_per_hour': (6, 'At most this many full considerations an hour, here.'),
     'mention_effort': ('high', 'How hard it thinks when someone @mentions it.'),
     'consider_effort': ('medium', 'How hard it thinks when it decides whether to speak up.'),
-    'model': ('', "Which model it runs on here: 'opus', 'sonnet', 'fable', 'haiku', or a full name. "
+    'model': ('', "Which model it runs on here: 'opus', 'sonnet', 'fable', 'haiku', or a full name; on Pi, "
+                  "vendor/model (anthropic/claude-sonnet-5-5, openrouter/moonshotai/kimi-k3). "
                   "Empty: its harness's default."),
     'catch_up_tokens': (10_000, "How much of what was said here since it last spoke a wake reads word for word, "
                                 "in tokens (about 4 characters each); what's older is summarized. A post that links "
@@ -119,8 +120,10 @@ def clean(key, value):
         return value
     if key == 'model':
         value = str(value or '').strip()
-        if not re.fullmatch(r'[a-z0-9.\-]{0,60}', value):
-            raise Invalid('model: letters, digits, dots and dashes')
+        # Pi names a model by vendor, and some vendors' ids carry slashes,
+        # colons or a leading ~ of their own (openrouter/~anthropic/claude-fable-latest).
+        if not re.fullmatch(r'[A-Za-z0-9._:~/\-]{0,160}', value) or value.startswith('-'):
+            raise Invalid('model: letters, digits, and . _ : ~ / -')
         return value
     if key == 'ultracode':
         if value in (True, False):

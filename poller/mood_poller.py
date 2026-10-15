@@ -126,6 +126,14 @@ class MoodAPI:
                                   headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
         return response.status_code == 201
 
+    def report_models(self, agent, catalog):
+        """Tell memory-lane what the agent's harness can run, for the Mood's model menu."""
+        if not self.key:
+            return False
+        response = self.http.post(f'{self.base}/api/agents/{agent}/models/', json=catalog,
+                                  headers={'Authorization': f'Bearer {self.key}'}, timeout=60)
+        return response.status_code == 200
+
     def interrupt(self, slug, agent):
         """{'scram', 'interrupt'}: whether an AZ5 is in force, and the newest
         time someone stopped `agent` in `slug` ({'by', 'at', ...} or None)."""
@@ -1827,7 +1835,19 @@ def main(argv=None):
                           full_tools_for=[n.strip() for n in args.full_tools_for.split(',') if n.strip()],
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
                           letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour)
+    reported = 0.0
     while True:
+        # What the harness can run, for the model menu: at start, and again a day on
+        # (new keys arrive with a redeploy, which restarts this anyway).
+        if hasattr(waker, 'catalog') and key and not args.dry_run and time.time() - reported > 24 * 3600:
+            reported = time.time()
+            try:
+                catalog = waker.catalog()
+                if catalog and poller.api.report_models(args.agent, catalog):
+                    logger.info(f"reported {sum(len(v['models']) for v in catalog['vendors'])} models, "
+                                f"{sum(v['usable'] for v in catalog['vendors'])} vendors usable")
+            except Exception as e:  # the menu can wait; the poller can't
+                logger.warning(f'could not report models: {e}')
         try:
             poller.cycle()
         except Exception as e:  # keep looking; one bad pass is not a reason to stop

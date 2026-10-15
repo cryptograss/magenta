@@ -1546,6 +1546,29 @@ class Setting(models.Model):
         return f"{self.key}={self.value!r} ({self.mood_id or '*'}/{self.agent_id or '*'})"
 
 
+
+class HarnessModels(models.Model):
+    """
+    What an agent's harness can run: every model it knows, by vendor, and
+    whether the keys on the agent's machine reach each vendor. Reported by
+    the agent's runner (poller/pi_harness.py `PiWaker.catalog`) when it
+    starts, and replaced whole each time; the Mood's model menu is drawn
+    from it. A report of the machine, not a setting anyone chose, so it is
+    kept apart from Setting and its history.
+    """
+
+    agent = models.OneToOneField(ThinkingEntity, models.CASCADE, primary_key=True, related_name='harness_models')
+    harness = models.CharField(max_length=60, blank=True, default='')
+    # [{'name': 'anthropic', 'usable': True, 'models': [['claude-opus-5-5', 1000000], ...]}, ...]
+    vendors = models.JSONField(default=list)
+    reported_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'harness_models'
+
+    def __str__(self):
+        return f"{self.agent_id}: {self.harness}, {len(self.vendors)} vendors"
+
 # ============================================================================
 # Import Tracking Constants
 # ============================================================================

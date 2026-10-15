@@ -255,6 +255,9 @@ def agents_in(mood):
     agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
     shown = ('listening', 'model', 'mention_effort', 'ultracode', 'catch_up_tokens', 'discretion', 'verbosity')
     rows = list(Setting.objects.filter(key__in=shown))
+    # Which harness reported what it can run (the menu fetches the list itself, from api_agent_models).
+    from .models import HarnessModels
+    catalogs = dict(HarnessModels.objects.values_list('agent_id', 'harness'))
     out = {}
     for name in agents:
         resolved = knobs.resolve(mood.slug, name)
@@ -264,7 +267,8 @@ def agents_in(mood):
                      'discretion': resolved['discretion'], 'verbosity': resolved['verbosity'],
                      # Who set each as it stands, and when: the page says so, and flashes one that just changed.
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
-                     'context': context_in(mood, name)}
+                     'context': context_in(mood, name),
+                     'catalog': catalogs.get(name)}
     return out
 
 

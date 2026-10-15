@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import queue
+import shutil
 import signal
 import subprocess
 import threading
@@ -39,6 +40,18 @@ STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use
                 'aborted': 'aborted'}
 LOOK_ONLY_TOOLS = 'read,grep,find,ls'
 EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
+# The names the model menu has always offered, as Pi should read them. Left
+# to Pi, a bare 'opus' is fuzzy-matched across every vendor it knows, and
+# Pi 1.1.0 picked Amazon Bedrock's.
+ALIASES = {'opus': 'anthropic/claude-opus-5-5', 'sonnet': 'anthropic/claude-sonnet-5-5',
+           'fable': 'anthropic/claude-fable-5-1', 'haiku': 'anthropic/claude-haiku-5-5'}
+# Every model Pi's own library knows, by vendor (its public `compat` entry).
+CATALOG_JS = """
+import { getProviders, getModels } from '@earendil-works/pi-ai/compat';
+const out = {};
+for (const p of getProviders()) out[p] = getModels(p).map(m => [m.id, m.contextWindow || null]);
+console.log(JSON.stringify(out));
+"""
 
 
 def iso(millis):
@@ -231,6 +244,55 @@ class PiWaker:
                 self.version = ''
         return f'pi {self.version}'.strip()
 
+    def package(self):
+        """Pi's own package directory (where its libraries resolve from), or None."""
+        found = shutil.which(self.pi) or self.pi
+        for parent in Path(found).resolve().parents:
+            manifest = parent / 'package.json'
+            if manifest.is_file():
+                try:
+                    if json.loads(manifest.read_text()).get('name') == '@earendil-works/pi-coding-agent':
+                        return parent
+                except ValueError:
+                    pass
+        return None
+
+    def run_quietly(self, cmd, cwd=None):
+        try:
+            return subprocess.run(cmd, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                  timeout=120).stdout
+        except (OSError, subprocess.SubprocessError):
+            return ''
+
+    def catalog(self):
+        """{'harness', 'vendors': [{'name', 'usable', 'models': [[id, context], ...]}]}: every model this
+        Pi knows, and whether the keys here reach each vendor (what `pi --list-models` lists is what
+        it can run). Never the keys themselves. None if Pi says nothing."""
+        known = {}
+        package = self.package()
+        if package is not None:
+            try:
+                known = json.loads(self.run_quietly(['node', '--input-type=module', '-e', CATALOG_JS], cwd=package)
+                                   or '{}')
+            except ValueError:
+                known = {}
+        usable = {}
+        lines = self.run_quietly([self.pi, '--list-models']).splitlines()
+        if lines and lines[0].split()[:2] == ['provider', 'model']:
+            for line in lines[1:]:
+                parts = line.split()
+                if len(parts) >= 2:
+                    usable.setdefault(parts[0], []).append(parts[1])
+        if not known and not usable:
+            return None
+        vendors = []
+        for name in sorted(set(known) | set(usable)):
+            models = [list(m)[:2] for m in known.get(name, [])]
+            ids = {m[0] for m in models}
+            models += [[m, None] for m in usable.get(name, []) if m not in ids]  # a vendor of its own (models.json)
+            vendors.append({'name': name, 'usable': name in usable, 'models': models})
+        return {'harness': self.harness(), 'vendors': vendors}
+
     def find(self, session_id):
         matches = sorted(self.session_dir.glob(f'*_{session_id}.jsonl'))
         return matches[0] if matches else None
@@ -253,7 +315,7 @@ class PiWaker:
             cmd += ['--fork', session_id]
         model = model or self.model
         if model:
-            cmd += ['--model', model]
+            cmd += ['--model', ALIASES.get(model, model)]
         if effort:
             cmd += ['--thinking', EFFORTS.get(effort, effort)]
         if not full:

@@ -737,6 +737,8 @@
                  max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .hush .agent select, .hush .agent label { flex: none; }
   .hush .ultra input { vertical-align: -2px; margin: 0 2px 0 0; }
+  /* A harness's whole catalog (Pi): the closed menu shows the choice, not the widest of 1,500 names. */
+  .hush select.catalog { max-width: 15em; text-overflow: ellipsis; }
   /* How full an agent's context is: a little pie, its details on hover. */
   /* Its colour says how close to compacting: green to 70%, yellow to 80, orange to 90, red above. */
   /* flex: none -- in an agent's one-line row of settings, too long for the bar, it would shrink to nothing. */
@@ -3330,6 +3332,32 @@
   const REPLY_LENGTHS = { brief: 'short replies', normal: 'mid replies', thorough: 'long replies' };  // beside discretion's "normal"
   const READS = [2500, 5000, 10000, 20000];  // tokens a wake reads word for word (catch_up_tokens)
   let agentsNow = {}, agentsShown = '';
+  // For an agent whose harness reports what it can run (Pi: api_agent_models), the
+  // model menu is that whole list, vendor/model as Pi names them, by vendor; a
+  // vendor with no key on the agent's machine is greyed out. Fetched once a page.
+  const catalogs = {};  // agent -> {harness, vendors}, or 'loading', or null
+  function catalogFor(agent, a) {
+    if (a.catalog == null) return null;
+    if (catalogs[agent] === undefined) {
+      catalogs[agent] = 'loading';
+      fetch(`/api/agents/${encodeURIComponent(agent)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
+        .then(c => { catalogs[agent] = c; if (c) { agentsShown = ''; poll(false); } });
+    }
+    return catalogs[agent] === 'loading' ? null : catalogs[agent];
+  }
+  function catalogMenu(c, chosen, fallback) {
+    const vendors = [...c.vendors].sort((x, y) => (y.usable - x.usable) || x.name.localeCompare(y.name));
+    let found = !chosen;
+    const groups = vendors.map(v => `<optgroup label="${esc(v.name + (v.usable ? '' : ' · no key'))}">`
+      + v.models.map(([id, ctx]) => {
+        const full = `${v.name}/${id}`, on = full === chosen;
+        found = found || on;
+        return `<option value="${esc(full)}"${on ? ' selected' : ''}${v.usable ? '' : ' disabled'}>`
+          + `${esc(full)}${ctx ? ' · ' + esc(kTokens(ctx)) : ''}</option>`;
+      }).join('') + '</optgroup>').join('');
+    return `<option value=""${chosen ? '' : ' selected'}>${esc(fallback)}</option>`
+      + (found ? '' : `<option value="${esc(chosen)}" selected>${esc(chosen)}</option>`) + groups;
+  }
   function describeListening(l) {
     const until = l.until ? ' till ' + new Date(l.until).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
     return l.mode === 'on' ? 'listen' : (l.mode === 'mentions' ? 'mention' : 'hush') + until;
@@ -3416,9 +3444,11 @@
       const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="listen: answers mentions and may speak up unasked · mention: answers mentions only · hush: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening(l))}</option>`
         + HUSH.map(([mode, minutes, label], i) => `<option value="${i}">${esc(label)}</option>`).join('') + '</select>';
       const models = MODELS.some(([v]) => v === a.model) ? MODELS : [...MODELS, [a.model, a.model]];
-      const model = `<select data-agent="${esc(agent)}" data-knob="model" title="model for its wakes here">`
-        + models.map(([v, label]) => `<option value="${esc(v)}"${v === a.model ? ' selected' : ''}>`
-          + `${esc(v ? label : (ctx.model ? `default (${shortModel(ctx.model)})` : label))}</option>`).join('') + '</select>';
+      const catalog = catalogFor(agent, a);
+      const model = `<select data-agent="${esc(agent)}" data-knob="model" title="model for its wakes here"${catalog ? ' class="catalog"' : ''}>`
+        + (catalog ? catalogMenu(catalog, a.model, ctx.model ? `default (${ctx.model})` : 'default')
+          : models.map(([v, label]) => `<option value="${esc(v)}"${v === a.model ? ' selected' : ''}>`
+            + `${esc(v ? label : (ctx.model ? `default (${shortModel(ctx.model)})` : label))}</option>`).join('')) + '</select>';
       const effort = `<select data-agent="${esc(agent)}" data-knob="mention_effort" title="how hard it thinks when @mentioned here">`
         + EFFORTS.map(v => `<option value="${v}"${v === a.effort ? ' selected' : ''}>${EFFORT_LABELS[v] || v}</option>`).join('') + '</select>';
       // How much of what was said since its last word a wake reads word for word.
