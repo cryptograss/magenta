@@ -1086,7 +1086,9 @@ def api_push(request):
 @require_POST
 def api_push_subscribe(request):
     """This device's push subscription, from the browser's PushManager:
-    {"endpoint", "keys": {"p256dh", "auth"}}. Its bell, turned on."""
+    {"endpoint", "keys": {"p256dh", "auth"}}, and optionally "people"/"agents":
+    true to be told of every message from them too. Its bell, turned on (or
+    those two changed: the page sends it again)."""
     from .models import PushSubscription
     from .services import push
     device = mood_auth.device_for(request)
@@ -1102,7 +1104,9 @@ def api_push_subscribe(request):
         return JsonResponse({'error': 'expected {"endpoint": ..., "keys": {"p256dh": ..., "auth": ...}}'}, status=400)
     if not endpoint.startswith('https://') or len(endpoint) > 2000 or len(p256dh) > 200 or len(auth) > 100:
         return JsonResponse({'error': 'not a push subscription'}, status=400)
-    PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={'device': device, 'p256dh': p256dh, 'auth': auth})
+    PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={
+        'device': device, 'p256dh': p256dh, 'auth': auth,
+        'from_people': body.get('people') is True, 'from_agents': body.get('agents') is True})
     return JsonResponse({'subscribed': True}, status=201)
 
 

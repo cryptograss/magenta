@@ -152,6 +152,38 @@ class PushTest(TestCase):
             push.sweep()
         self.assertEqual(self.phone.read(service.sent[-1][1]['data'])['title'], 'magent answered you')
 
+    def test_every_message_from_people_or_agents_reaches_only_the_browsers_that_asked(self):
+        laptop = Browser()
+        body = dict(self.phone.subscription(), people=True)  # the phone: every message from people
+        self.client_for(self.justin).post('/api/push/subscribe/', json.dumps(body), content_type='application/json')
+        self.subscribe(self.justin, laptop)                   # the laptop: mentions and answers only
+        self.said(self.skyler, 'the bus leaves at nine')
+        self.said(self.magent, 'working on it', stop_reason='tool_use')        # progress: never
+        self.said(self.magent, 'Deployed.', stop_reason='end_turn')            # an agent's: the phone didn't ask
+        self.said(self.magent, '<silent>nothing to add</silent>', stop_reason='end_turn')
+        service = PushService()
+        with mock.patch('requests.post', service.post):
+            push.sweep()
+        self.assertEqual([url for url, _ in service.sent], [self.phone.endpoint])
+        told = self.phone.read(service.sent[0][1]['data'])
+        self.assertEqual((told['title'], told['body']), ('skyler in general', 'the bus leaves at nine'))
+        # Asking for agents too, by sending the subscription again with both.
+        body['agents'] = True
+        self.client_for(self.justin).post('/api/push/subscribe/', json.dumps(body), content_type='application/json')
+        self.said(self.magent, 'Merged and deployed.', stop_reason='end_turn')
+        with mock.patch('requests.post', service.post):
+            push.sweep()
+        self.assertEqual(self.phone.read(service.sent[-1][1]['data'])['title'], 'magent in general')
+
+    def test_notices_say_who_theyre_from_and_everything_only_when_asked(self):
+        self.said(self.skyler, 'the bus leaves at nine')
+        self.said(self.magent, '@justin it is deployed', stop_reason='end_turn')
+        client = Client()
+        plain = client.get('/api/notices/justin/?since=2000-01-01T00:00:00Z').json()['notices']
+        self.assertEqual([(n['kind'], n['from']) for n in plain], [('mention', 'agent')])
+        every = client.get('/api/notices/justin/?since=2000-01-01T00:00:00Z&all=1').json()['notices']
+        self.assertEqual([(n['kind'], n['from']) for n in every], [('mention', 'agent'), ('said', 'person')])
+
     def test_not_what_theyve_read_nor_to_anyone_else_nor_to_a_signed_out_device(self):
         self.subscribe(self.justin, self.phone)
         laptop = Browser()
