@@ -38,6 +38,18 @@ def signed_in(device):
     return announce('signed-in', device.entity_id, tier=device.tier, label=device.label)
 
 
+def came_in_by_ssh(who, server, into='', how='', account='', key=''):
+    """Someone opened an SSH session on a server: a line in #general, every
+    time -- a second terminal or a reattach is someone at the keyboard too.
+    Deploys don't come through here: a box's login hook leaves out sessions
+    running deploy logic, which says itself. `account` is the one they came
+    in as when it isn't their own (root, most of all); `key` the fingerprint
+    of a key nobody here is known by."""
+    into = '' if into == who else into
+    return announce('ssh', who, server=server, label=how, **({'for': into} if into else {}),
+                    **({'as': account} if account else {}), **({'key': key} if key else {}))
+
+
 ARRIVALS_FOR = 30  # minutes a sign-in stays in the pulse, for a runner that was busy or restarting
 
 
