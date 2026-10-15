@@ -16,7 +16,12 @@ Only PNG, JPEG, GIF and WebP, decided by their first bytes. SVG is never
 accepted: it can carry script. A HEIC/HEIF photo -- what an iPhone's camera
 takes -- is turned into a JPEG on the way in (jpeg_from_heif), since most
 browsers can't show HEIC: upright, at most MAX_EDGE on its long side, and
-without its metadata, so a phone photo's GPS position isn't published. Audio -- voice memos, messages read aloud --
+without its metadata, so a phone photo's GPS position isn't published. A
+JPEG or PNG loses its metadata the same way (without_metadata): EXIF, XMP
+and text chunks are cut out of the file, the picture itself untouched --
+unless its sharer unticks "remove location" as they attach it (strip=False;
+Justin and Sky, 15 Oct: tour photos want it gone, the odd one may not).
+Unticked, a HEIC photo's EXIF and XMP are carried into its JPEG. Audio -- voice memos, messages read aloud --
 only where it's asked for (store(..., audio=True)), never lifted from a
 transcript.
 """
@@ -83,11 +88,13 @@ def is_heif(data):
     return data[4:8] == b'ftyp' and data[8:12] in HEIF_BRANDS
 
 
-def jpeg_from_heif(data):
+def jpeg_from_heif(data, keep=False):
     """JPEG bytes for a HEIC/HEIF photo, or None if it can't be read.
 
     Upright (libheif applies the photo's rotation; exif_transpose catches an
-    EXIF one), no larger than MAX_EDGE, and with no metadata carried over.
+    EXIF one), no larger than MAX_EDGE, and with no metadata carried over --
+    unless keep: then its EXIF (location, camera, time) and XMP go into the
+    JPEG, less the rotation tag, which the turned picture no longer needs.
     Encoding is deterministic, so the same photo sent twice is stored once.
     """
     try:
@@ -98,32 +105,192 @@ def jpeg_from_heif(data):
             picture = ImageOps.exif_transpose(opened)
             if picture.mode not in ('RGB', 'L'):
                 picture = picture.convert('RGB')
+            kept = {}
+            if keep:
+                exif = picture.getexif()  # exif_transpose has dropped the rotation tag
+                exif.pop(0x0112, None)
+                if len(exif) or exif.get_ifd(0x8825):
+                    kept['exif'] = exif.tobytes()
+                if opened.info.get('xmp'):
+                    kept['xmp'] = opened.info['xmp']
             picture.thumbnail((MAX_EDGE, MAX_EDGE))
             out = io.BytesIO()
-            picture.save(out, 'JPEG', quality=88, optimize=True)
+            picture.save(out, 'JPEG', quality=88, optimize=True, **kept)
             return out.getvalue()
     except Exception:
         return None
 
 
-def store(data, added_by=None, audio=False):
+def _jpeg_orientation(data):
+    """The EXIF orientation of a JPEG (1 is upright), or 1 if unreadable."""
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as opened:
+            return opened.getexif().get(0x0112, 1) or 1
+    except Exception:
+        return 1
+
+
+def _jpeg_without_metadata(data):
+    """The JPEG with its APP1-APP15 and comment segments cut out: EXIF (GPS,
+    camera, time), XMP, Photoshop/IPTC. APP0 (JFIF) stays; the image data is
+    copied byte for byte. None if the segments don't parse."""
+    out, i = bytearray(data[:2]), 2
+    while i + 4 <= len(data):
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if marker == 0xFF:  # fill byte
+            i += 1
+            continue
+        if marker == 0xDA:  # start of scan: the rest is the picture
+            return bytes(out + data[i:])
+        length = int.from_bytes(data[i + 2:i + 4], 'big')
+        if length < 2:
+            return None
+        if not (0xE1 <= marker <= 0xEF or marker == 0xFE):
+            out += data[i:i + 2 + length]
+        i += 2 + length
+    return None
+
+
+# PNG chunks that carry metadata, never the picture: EXIF, text (where XMP lives too), time.
+_PNG_METADATA = {b'eXIf', b'tEXt', b'iTXt', b'zTXt', b'tIME'}
+
+
+def _png_without_metadata(data):
+    """The PNG with its metadata chunks dropped, the rest copied as is; None if it doesn't parse."""
+    out, i = bytearray(data[:8]), 8
+    while i + 12 <= len(data):
+        length = int.from_bytes(data[i:i + 4], 'big')
+        kind = data[i + 4:i + 8]
+        end = i + 12 + length
+        if end > len(data):
+            return None
+        if kind not in _PNG_METADATA:
+            out += data[i:end]
+        i = end
+        if kind == b'IEND':
+            return bytes(out)
+    return None
+
+
+def without_metadata(data, mime):
+    """The picture as stored: a JPEG or PNG without where and when it was
+    taken, or by what. A JPEG turned by its EXIF is re-encoded upright first
+    (jpeg_from_heif does that, and any format Pillow reads), since cutting the
+    EXIF would otherwise leave it on its side. Anything else, or anything that
+    doesn't parse, as it came."""
+    if mime == 'image/jpeg':
+        if _jpeg_orientation(data) != 1:
+            upright = jpeg_from_heif(data)
+            if upright:
+                return upright
+        return _jpeg_without_metadata(data) or data
+    if mime == 'image/png':
+        return _png_without_metadata(data) or data
+    return data
+
+
+_TIFF_TYPE_SIZES = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8}
+_XMP_GPS = re.compile(rb'(exif:GPS\w+)(="[^"]*"|>[^<]*<)')
+
+
+def heic_without_location(data):
+    """The HEIC with its GPS blanked in place, every other byte as it came; None if it can't be done.
+
+    Re-encoding a HEIC would cost the very fidelity the original is kept for,
+    so the EXIF GPS directory is emptied where it lies: its values zeroed,
+    its entry count set to none. XMP GPS fields are blanked to spaces. The
+    file keeps its length, so nothing that points into it moves.
+    """
+    try:
+        import pillow_heif
+        exif = pillow_heif.open_heif(data).info.get('exif')
+    except Exception:
+        return None
+    out = bytearray(data)
+    tiff = -1
+    if exif:  # libheif's copy of the EXIF item: where it lies in the file is where to blank it
+        body = exif[6:] if exif.startswith(b'Exif\x00\x00') else exif
+        tiff = out.find(body)
+        if tiff < 0:
+            return None
+    order = {b'II': 'little', b'MM': 'big'}.get(bytes(out[tiff:tiff + 2])) if tiff >= 0 else None
+    if tiff >= 0 and order is None:
+        return None
+
+    def num(offset, size):
+        if offset < 0 or offset + size > len(out):
+            raise ValueError
+        return int.from_bytes(out[offset:offset + size], order)
+
+    try:
+        ifd0 = tiff + num(tiff + 4, 4) if order else None
+        gps = None
+        for i in range(num(ifd0, 2) if order else 0):
+            entry = ifd0 + 2 + 12 * i
+            if num(entry, 2) == 0x8825:
+                gps = tiff + num(entry + 8, 4)
+        if gps is not None:
+            count = num(gps, 2)
+            for i in range(count):
+                entry = gps + 2 + 12 * i
+                size = _TIFF_TYPE_SIZES.get(num(entry + 2, 2), 1) * num(entry + 4, 4)
+                if size > 4:
+                    where = tiff + num(entry + 8, 4)
+                    num(where, size)  # in bounds
+                    out[where:where + size] = bytes(size)
+                out[entry:entry + 12] = bytes(12)
+            out[gps:gps + 2] = bytes(2)
+    except ValueError:
+        return None
+    out = bytearray(_XMP_GPS.sub(lambda m: m.group(1) + m.group(2)[:2] + b' ' * (len(m.group(2)) - 3)
+                                 + m.group(2)[-1:], bytes(out)))
+    return bytes(out)
+
+
+def store(data, added_by=None, audio=False, strip=True):
     """The Media for these bytes, stored if new; None if not an image (or,
-    with audio=True, a sound) we take. A HEIC photo is stored as a JPEG."""
+    with audio=True, a sound) we take. A HEIC photo is stored as a JPEG.
+    A JPEG or PNG is stored without its metadata unless strip=False;
+    a HEIC photo's then comes with it into the JPEG."""
     from conversations.models import Media
 
     if not data or len(data) > (MAX_AUDIO_BYTES if audio else MAX_BYTES):
         return None
+    original = None
     if not audio and is_heif(data):
-        data = jpeg_from_heif(data)
+        sent = data
+        data = jpeg_from_heif(data, keep=not strip)
         if data is None:
             return None
+        original = _keep_original(sent if not strip else heic_without_location(sent), added_by)
     mime = sniff_audio(data) if audio else sniff(data)
     if mime is None:
         return None
+    if not audio and strip:
+        data = without_metadata(data, mime)
     sha = hashlib.sha256(data).hexdigest()
     media, _ = Media.objects.get_or_create(
-        sha256=sha, defaults={'mime': mime, 'data': data, 'size': len(data), 'added_by': added_by})
+        sha256=sha, defaults={'mime': mime, 'data': data, 'size': len(data), 'added_by': added_by,
+                              'original': original})
+    if original is not None and media.original_id is None:
+        media.original = original
+        media.save(update_fields=['original'])
     return media
+
+
+def _keep_original(data, added_by):
+    """The HEIC as sent (its location blanked if asked), stored beside its JPEG; None if it can't be.
+    Not shown in a Mood (browsers can't), but there to download whole."""
+    from conversations.models import Media
+    if not data:
+        return None  # couldn't blank its location without re-encoding: only the JPEG is kept
+    kept, _ = Media.objects.get_or_create(
+        sha256=hashlib.sha256(data).hexdigest(),
+        defaults={'mime': 'image/heic', 'data': data, 'size': len(data), 'added_by': added_by})
+    return kept
 
 
 def relicense(media, license, by):
@@ -133,6 +300,8 @@ def relicense(media, license, by):
     if media.license != license:
         type(media).objects.filter(pk=media.pk).update(license=license)
         media.license = license
+    if media.original_id:  # the photo as sent goes out under the same terms as what it's shown as
+        type(media).objects.filter(pk=media.original_id, added_by_id=media.added_by_id).update(license=license)
     return True
 
 
@@ -145,7 +314,10 @@ def store_base64(text, added_by=None):
 
 
 def markdown(media, alt='image'):
-    return f'![{alt}]({media.url})'
+    """The picture, and a link to the photo as sent where one was kept (a HEIC's original)."""
+    shown = f'![{alt}]({media.url})'
+    original = getattr(media, 'original', None)
+    return f'{shown} [original HEIC]({original.url})' if original else shown
 
 
 def _image_bytes(block):

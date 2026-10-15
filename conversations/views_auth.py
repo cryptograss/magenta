@@ -122,7 +122,9 @@ def api_media(request, slug):
     """Store an image this device's person is putting into a Mood.
 
     The body is the image itself; what it is comes from its bytes, not the
-    Content-Type. Answers with the markdown to put in a message.
+    Content-Type. Answers with the markdown to put in a message. ?keep=location
+    stores a JPEG or PNG with its metadata, where it was taken included; by
+    default that's cut out (media.without_metadata).
     """
     from .services import media
     from .views_admin import locked_response
@@ -137,7 +139,7 @@ def api_media(request, slug):
         return JsonResponse({'error': f'larger than {media.MAX_BYTES // (1024 * 1024)} MB'}, status=413)
     if not _under_limit(f'media:{device.pk}', MEDIA_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
-    stored = media.store(request.body, added_by=device.entity)
+    stored = media.store(request.body, added_by=device.entity, strip=request.GET.get('keep') != 'location')
     if stored is None:
         return JsonResponse({'error': 'not a PNG, JPEG, GIF, WebP or HEIC image'}, status=400)
     # Their own: told it's CC BY-SA 4.0, with CC0 a press away (api_media_license).
