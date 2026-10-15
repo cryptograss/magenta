@@ -66,3 +66,21 @@ class PhotoMetadataTest(TestCase):
 
     def test_a_broken_jpeg_is_still_refused_or_kept_as_it_came(self):
         self.assertEqual(media.without_metadata(b'\xff\xd8\xff\xe1\x00', 'image/jpeg'), b'\xff\xd8\xff\xe1\x00')
+
+    def test_unticked_in_the_composer_it_keeps_its_location(self):
+        from django.test import Client
+        from conversations.models import Mood, ThinkingEntity
+        from conversations.services import mood_auth
+        sky = ThinkingEntity.objects.create(name='skyler', is_biological_human=True)
+        Mood.objects.create(slug='uploads-and-embeds', title='uploads-and-embeds')
+        _, token = mood_auth.enrol_device(sky, 'phone')
+        client = Client()
+        client.cookies[mood_auth.COOKIE] = token
+        sent = jpeg(exif=gps_exif())
+        url = '/api/moods/uploads-and-embeds/media/'
+        kept = client.post(url + '?keep=location', sent, content_type='application/octet-stream').json()
+        cut = client.post(url, sent, content_type='application/octet-stream').json()
+        self.assertNotEqual(kept['sha'], cut['sha'])
+        from conversations.models import Media
+        self.assertEqual(bytes(Media.objects.get(sha256=kept['sha']).data), sent)
+        self.assertNotIn(b'Exif', bytes(Media.objects.get(sha256=cut['sha']).data))

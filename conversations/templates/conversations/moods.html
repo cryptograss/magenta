@@ -462,6 +462,7 @@
   #videoCards .vcard input { flex: 1 1 14em; min-width: 0; font: inherit; padding: 3px 6px; }
   #videoCards .vcard .make { font: inherit; cursor: pointer; }
   #videoCards .vcard .later { font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; }
+  #licenseBar label { margin-left: 10px; white-space: nowrap; cursor: pointer; }
   #licenseBar button { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
   a.permalink:hover time { text-decoration: underline; }
   a.permalink[data-copied]::after { content: ' link copied'; color: var(--accent); font-size: 11px; }
@@ -960,7 +961,8 @@
     <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button></div>
     <div id="activity"><span class="dot"></span><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
-    <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button></div>
+    <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button>
+      <label id="stripLocation" title="Phone photos carry where they were taken (GPS), the camera and the time. Ticked, that's removed before anyone sees it. HEIC photos always lose it."><input type="checkbox" checked> Remove location (GPS)</label></div>
     <div id="videoCards"></div>
     <div id="videoBar" hidden><span class="what"></span><span class="track"><span class="fill"></span></span><span class="pct"></span> <button type="button" id="videoCancel">cancel</button></div>
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
@@ -4041,13 +4043,9 @@
     const marker = `![uploading ${file.name || 'image'}…]()`;
     insertAtCaret(marker + '\n');
     try {
-      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/media/', {
-        method: 'POST', headers: { 'X-CSRFToken': csrf(), 'Content-Type': 'application/octet-stream' }, body: file,
-      });
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(body.error || r.status);
+      const body = await sendPicture(file);
       sayBox.value = sayBox.value.replace(marker, body.markdown);
-      if (body.mine) { sharing.add(body.sha); licenseNow = body.license; showLicense(); }
+      if (body.mine) { sharing.add(body.sha); attachedFiles.set(body.sha, { file, markdown: body.markdown }); licenseNow = body.license; showLicense(); }
       sayBox.dispatchEvent(new Event('input'));
     } catch (e) {
       sayBox.value = sayBox.value.replace(marker + '\n', '');
@@ -4056,6 +4054,41 @@
       showError('image: ' + e.message);
     }
   }
+  async function sendPicture(file) {
+    const keep = stripBox.checked ? '' : '?keep=location';
+    const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/media/' + keep, {
+      method: 'POST', headers: { 'X-CSRFToken': csrf(), 'Content-Type': 'application/octet-stream' }, body: file,
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || r.status);
+    return body;
+  }
+  // Where a photo was taken goes unless they untick "Remove location" (media.without_metadata;
+  // Justin and Sky, 15 Oct). Unticked or ticked again, the pictures in the box are sent again
+  // the new way and their links swapped, so what's sent is what the box says. Remembered here.
+  const stripBox = document.querySelector('#stripLocation input');
+  const attachedFiles = new Map();  // sha -> {file, markdown}: what was picked, to send again
+  try { stripBox.checked = localStorage.getItem('keep-location') !== '1'; } catch (e) {}
+  stripBox.addEventListener('change', async () => {
+    try { localStorage.setItem('keep-location', stripBox.checked ? '0' : '1'); } catch (e) {}
+    for (const sha of [...sharing]) {
+      const was = attachedFiles.get(sha);
+      if (!was) continue;
+      try {
+        const body = await sendPicture(was.file);
+        sayBox.value = sayBox.value.split(was.markdown).join(body.markdown);
+        attachedFiles.delete(sha);
+        sharing.delete(sha);
+        sharing.add(body.sha);
+        attachedFiles.set(body.sha, { file: was.file, markdown: body.markdown });
+        if (licenseNow !== body.license) {  // the new copy goes out under the license already chosen
+          await fetch(`/api/media/${body.sha}/license/`, { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify({ license: licenseNow }) });
+        }
+      } catch (e) { showError('image: ' + e.message); }
+    }
+    sayBox.dispatchEvent(new Event('input'));
+  });
   // Pictures of yours in the box go out CC BY-SA 4.0 unless you make them CC0:
   // said here as they're attached, and changeable until sent (api_media_license).
   const licenseBar = document.getElementById('licenseBar');

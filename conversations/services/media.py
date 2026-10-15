@@ -18,7 +18,9 @@ takes -- is turned into a JPEG on the way in (jpeg_from_heif), since most
 browsers can't show HEIC: upright, at most MAX_EDGE on its long side, and
 without its metadata, so a phone photo's GPS position isn't published. A
 JPEG or PNG loses its metadata the same way (without_metadata): EXIF, XMP
-and text chunks are cut out of the file, the picture itself untouched. Audio -- voice memos, messages read aloud --
+and text chunks are cut out of the file, the picture itself untouched --
+unless its sharer unticks "remove location" as they attach it (strip=False;
+Justin and Sky, 15 Oct: tour photos want it gone, the odd one may not). Audio -- voice memos, messages read aloud --
 only where it's asked for (store(..., audio=True)), never lifted from a
 transcript.
 """
@@ -179,9 +181,10 @@ def without_metadata(data, mime):
     return data
 
 
-def store(data, added_by=None, audio=False):
+def store(data, added_by=None, audio=False, strip=True):
     """The Media for these bytes, stored if new; None if not an image (or,
-    with audio=True, a sound) we take. A HEIC photo is stored as a JPEG."""
+    with audio=True, a sound) we take. A HEIC photo is stored as a JPEG.
+    A JPEG or PNG is stored without its metadata unless strip=False."""
     from conversations.models import Media
 
     if not data or len(data) > (MAX_AUDIO_BYTES if audio else MAX_BYTES):
@@ -193,7 +196,7 @@ def store(data, added_by=None, audio=False):
     mime = sniff_audio(data) if audio else sniff(data)
     if mime is None:
         return None
-    if not audio:
+    if not audio and strip:
         data = without_metadata(data, mime)
     sha = hashlib.sha256(data).hexdigest()
     media, _ = Media.objects.get_or_create(
