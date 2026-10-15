@@ -226,6 +226,7 @@ class StreamPoster:
     def __init__(self, base, key, slug, session_id, http=requests, retries=3, pause=1.0, effort=None):
         self.url = f"{base.rstrip('/')}/api/moods/{slug}/stream/"
         self.effort = effort  # what the turn was launched at: stream events don't say
+        self.full_tools = None  # whether it was woken with full tools (an agent it mentions may be too)
         self.headers = {'Authorization': f'Bearer {key}'}
         self.slug, self.session_id = slug, session_id
         self.http, self.retries, self.pause = http, retries, pause
@@ -261,7 +262,8 @@ class StreamPoster:
 
     def send(self, events):
         body = {'harness': 'claude-code', 'session_id': self.session_id, 'events': events,
-                **({'effort': self.effort} if self.effort else {})}
+                **({'effort': self.effort} if self.effort else {}),
+                **({'full_tools': self.full_tools} if self.full_tools is not None else {})}
         for attempt in range(self.retries):
             try:
                 response = self.http.post(self.url, json=body, headers=self.headers, timeout=30)
@@ -877,7 +879,7 @@ class MoodPoller:
                  screen=None, consider=True, considers_per_hour=6, consider_usd_per_day=10.0,
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
-                 letter=None, agent_wakes_per_hour=4):
+                 letter=None, agent_wakes_per_hour=10):
         self.api = api
         self.waker = waker
         self.agent = agent.lower()
@@ -1054,9 +1056,19 @@ class MoodPoller:
         """Whether this turn may wake the agent with its full tools: typed into
         magenta by a person signed in with an SSH key (justin, 2026-10-09:
         "anybody who is signed in via SSH"), or by someone named in
-        full_tools_for. A PickiPedia sign-in, an agent, or a session's turn
-        wakes it look-only."""
-        return turn['sender'] in self.full_tools_for or signed_in_with_key(turn)
+        full_tools_for; or written by an agent that was itself woken with full
+        tools (justin, 2026-10-15: "you can wake an agent with tools, but only
+        if you yourself have tools"), so a chain started by a trusted person
+        keeps its tools. A PickiPedia sign-in, an agent woken look-only, or a
+        terminal session's turn wakes it look-only."""
+        if turn['sender'] in self.full_tools_for or signed_in_with_key(turn):
+            return True
+        return not turn.get('is_human', True) and turn.get('full_tools') is True
+
+    def commands_from(self, turn):
+        """Whether this turn may run a command in the agent's harness: a
+        trusted person's only, never another agent's."""
+        return bool(turn.get('is_human', True)) and self.trusted(turn)
 
     def poll_once(self):
         """Look once; at most one wake per Mood. Returns the Moods woken."""
@@ -1147,7 +1159,7 @@ class MoodPoller:
         # "@magent /compact" (or another of COMMANDS) from someone trusted with
         # real work: run it instead of a turn. Anything else owed here waits
         # for the next look, and is answered from the session it leaves.
-        commands = [t for t in owed if self.trusted(t) and command_request(t['text'], self.agent) is not None]
+        commands = [t for t in owed if self.commands_from(t) and command_request(t['text'], self.agent) is not None]
         if commands:
             owed = commands[:1]
         sessions = self.api.sessions(slug, self.agent)
@@ -1285,6 +1297,8 @@ class MoodPoller:
                       else self.streamer(slug, new_session))
         if poster is not None and options.get('effort'):
             poster.effort = options['effort']
+        if poster is not None:
+            poster.full_tools = bool(options.get('full'))
         stop = self.stop_check(slug, options.pop('since', None))
         try:
             new_session, reply = self.waker.wake(session_id, prompt, new_session_id=new_session,
@@ -1793,7 +1807,7 @@ def main(argv=None):
                         help="Start a session in a Mood that has none (a new Mood's first mention). "
                              "auto: only when answering every Mood (no --moods)")
     parser.add_argument('--new-cwd', default='~/workspace', help='Where a new Mood\'s first session starts')
-    parser.add_argument('--agent-wakes-per-hour', type=int, default=4,
+    parser.add_argument('--agent-wakes-per-hour', type=int, default=10,
                         help="Wakes per Mood per hour owed only to other agents' mentions")
     parser.add_argument('--letter', default=None,
                         help="The letter a new Mood's first session reads (default: poller/letter.md, for magent only)")

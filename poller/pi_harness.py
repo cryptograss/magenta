@@ -160,6 +160,7 @@ class EventsPoster:
         self.url = f"{base.rstrip('/')}/api/moods/{slug}/stream/"
         self.headers = {'Authorization': f'Bearer {key}'}
         self.slug, self.session_id, self.harness, self.forked_from = slug, session_id, harness, forked_from
+        self.full_tools = None  # set by the runner: whether this wake has the agent's full tools
         self.http, self.retries, self.pause = http, retries, pause
         self.queue = queue.Queue()
         self.sent = self.failed = 0
@@ -197,6 +198,8 @@ class EventsPoster:
         body = {'format': 'events/1', 'harness': self.harness, 'session_id': self.session_id, 'events': events}
         if self.forked_from:
             body['forked_from'] = self.forked_from
+        if self.full_tools is not None:
+            body['full_tools'] = self.full_tools
         for attempt in range(self.retries):
             try:
                 response = self.http.post(self.url, json=body, headers=self.headers, timeout=30)

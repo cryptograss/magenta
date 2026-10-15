@@ -18,7 +18,7 @@ from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import Message, Mood, ThinkingEntity, mood_slug
+from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, push, servers, wiki_auth, wiki_feed, wiki_upload
 from .services import mood_auth
 from .services.mood_view import (
@@ -782,11 +782,16 @@ def api_mentions(request, name):
     except ValueError:
         limit = 50
 
+    from django.db.models import Q
+    from .services import handoff
+
     names = known_names()
     is_agent = not ThinkingEntity.objects.get(name=name).is_biological_human
     messages = (
         Message.objects.filter(mood__isnull=False, is_sidechain=False)
-        .exclude(sender_id__in=MACHINERY_SENDERS)
+        # A handoff into a Mood "for" an agent is the system's line, but it
+        # addresses that agent: it wakes it there (handoff_mention).
+        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file=handoff.SOURCE))
         .select_related('sender')
         .order_by('-created_at')
     )
@@ -795,6 +800,13 @@ def api_mentions(request, name):
 
     found = []
     for msg in messages.iterator():
+        if msg.source_file == handoff.SOURCE:
+            turn = handoff_mention(msg, name, names) if is_agent else None
+            if turn:
+                found.append({'mood': msg.mood_slug, 'turn': turn})
+                if len(found) >= limit:
+                    break
+            continue
         if msg.sender_id not in names:
             continue
         if is_agent and from_wiki_tier(msg):
@@ -803,11 +815,37 @@ def api_mentions(request, name):
         if not text or is_wrapper(text) or is_summary(msg):
             continue
         if name in addressed_in(text, names, by=msg.sender_id):
-            found.append({'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
+            turn = turn_payload(msg, text, names)
+            if not turn['is_human']:
+                # Whether the agent that wrote it was itself woken with full
+                # tools: if so, it may wake this one with them (mood_poller.trusted).
+                turn['full_tools'] = wake_tools(msg.session_id)
+            found.append({'mood': msg.mood_slug, 'turn': turn})
             if len(found) >= limit:
                 break
 
     return JsonResponse({'name': name, 'mentions': found})
+
+
+def wake_tools(session_id):
+    """Whether the runner woke this session with the agent's full tools."""
+    return bool(session_id and MoodSession.objects.filter(session_id=session_id, full_tools=True).exists())
+
+
+def handoff_mention(msg, name, names):
+    """A handoff another agent brought into this Mood for `name`, as the
+    mention that wakes it here, or None. Its writer is the sender, and it
+    carries full tools only if the writer's own wake had them."""
+    c = msg.content if isinstance(msg.content, dict) else {}
+    by = c.get('by')
+    if c.get('type') != 'handoff' or c.get('for') != name or c.get('pulled') or by == name or by not in names:
+        return None
+    origin = Message.objects.filter(id=c.get('message')).values_list('session_id', flat=True).first()
+    text = (f"@{name}: {by} handed this over from #{c.get('from_mood', '')}: {c.get('about', '')}\n\n"
+            f"{c.get('context', '')}").strip()
+    return {'id': str(msg.id), 'sender': by, 'is_human': False, 'created_at': msg.created_at.isoformat(),
+            'via': 'session', 'tier': None, 'text': text, 'mentions': [name], 'reply': None,
+            'full_tools': wake_tools(origin)}
 
 
 # --- installing it as an app (a web app manifest, an icon, a service worker) --
