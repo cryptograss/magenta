@@ -85,6 +85,22 @@ class StreamTest(TestCase):
         newest = self.client.get('/api/mentions/re/').json()['mentions'][0]['turn']
         self.assertEqual((newest['text'], newest['full_tools']), ('@re and this one', False))
 
+    def test_a_handoff_for_an_agent_wakes_it_there_with_the_writers_tools(self):
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        Mood.objects.create(slug='docs-tests-qa')
+        text = ('Introducing you there.\n\n```handoff\nto: docs-tests-qa\nabout: your first wake\nfor: re\n---\n'
+                'Read your letter first.\n```')
+        self.post([event('assistant', [{'type': 'text', 'text': text}], session_id=self.session)], full_tools=True)
+        found = self.client.get('/api/mentions/re/').json()['mentions']
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]['mood'], 'docs-tests-qa')
+        turn = found[0]['turn']
+        self.assertEqual((turn['sender'], turn['is_human'], turn['full_tools']), ('magent', False, True))
+        self.assertIn('your first wake', turn['text'])
+        self.assertIn('Read your letter first.', turn['text'])
+        # Not for magent: a handoff wakes whom it's for, never its writer.
+        self.assertEqual(self.client.get('/api/mentions/magent/').json()['mentions'], [])
+
     def test_a_runner_that_doesnt_say_leaves_it_unsaid(self):
         self.post([event('assistant', [{'type': 'text', 'text': 'hi'}], session_id=self.session)])
         self.assertIsNone(MoodSession.objects.get(session_id=self.session).full_tools)
