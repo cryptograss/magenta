@@ -296,7 +296,7 @@ def api_ssh(request):
     "into": "<whose container, if not their own>", "how": "a shell" |
     "tmux magenta" | "a command", "as": "<the account, e.g. root>", "key":
     "<SHA256:... of a key nobody is known by>"}. Said in #general
-    (services/access.py), once a visit.
+    (services/access.py), every time.
     """
     from .services import access, servers
 
