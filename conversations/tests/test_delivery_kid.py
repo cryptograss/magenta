@@ -224,3 +224,28 @@ class DeliveryKidTest(TestCase):
         self.assertIn('const dkUpload = true;', client.get(f'/moods/{self.mood.slug}/').content.decode())
         with override_settings(DELIVERY_KID_UPLOAD_KEY=''):
             self.assertIn('const dkUpload = false;', client.get(f'/moods/{self.mood.slug}/').content.decode())
+
+
+@override_settings(**SETUP)
+class SendLandsOnTheDraftTest(TestCase):
+    """Send (then: 'page') lands on the written draft page; the card's button comes back to the Mood."""
+
+    setUp = DeliveryKidTest.setUp
+    client_for = DeliveryKidTest.client_for
+
+    def go(self, then):
+        fakes = Fakes()
+        client = self.client_for(self.justin)
+        with mock.patch('requests.Session', lambda: fakes), mock.patch('requests.post', fakes.post), \
+                mock.patch('requests.get', fakes.get):
+            body = {'draft': DRAFT, 'title': 'jam', **({'then': then} if then else {})}
+            asked = client.post(f'/api/moods/{self.mood.slug}/video/draft/', json.dumps(body),
+                                content_type='application/json')
+            state = parse_qs(urlparse(asked.json()['go']).query)['state'][0]
+            return client.get(f'/moods/auth/wiki/upload?code=c&state={state}')['Location']
+
+    def test_send_lands_on_the_draft_page(self):
+        self.assertTrue(self.go('page').endswith(f'/wiki/ReleaseDraft:{DRAFT}'))
+
+    def test_the_button_comes_back_here(self):
+        self.assertEqual(self.go(None), f'/moods/{self.mood.slug}/')

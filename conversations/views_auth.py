@@ -1204,7 +1204,8 @@ def api_video_draft(request, slug):
     except ValueError:
         return JsonResponse({'error': 'expected JSON'}, status=400)
     try:
-        done = delivery_kid.begin(body.get('draft'), body.get('title'), device, mood, _wiki_upload_return(request))
+        done = delivery_kid.begin(body.get('draft'), body.get('title'), device, mood, _wiki_upload_return(request),
+                                  then_page=body.get('then') == 'page')
     except delivery_kid.UploadError as e:
         return JsonResponse({'error': str(e)}, status=e.status)
     from .services import wiki_upload
