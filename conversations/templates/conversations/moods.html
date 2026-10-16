@@ -751,6 +751,10 @@
   .hush .agent { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap;
                  max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .hush .agent select, .hush .agent label { flex: none; }
+  /* Folded, an agent is one short line: its pie, its name and the gist; ▸ opens its menus. */
+  .hush .fold { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 2px; }
+  .hush .fold:hover { color: var(--accent); }
+  .hush .gist { color: var(--muted); cursor: pointer; }
   .hush .ultra input { vertical-align: -2px; margin: 0 2px 0 0; }
   /* A harness's whole catalog (Pi): the closed menu shows the choice, not the widest of 1,500 names. */
   .hush select.catalog { max-width: 15em; text-overflow: ellipsis; }
@@ -3571,15 +3575,37 @@
     }
     refreshPies();
   }
+  // Which agents' rows are open, in this browser: folded by default, so a Mood
+  // with several agents doesn't spend a third of the screen on their menus.
+  let agentOpen = store.get('agentOpen', {});
+  function agentGist(a) {
+    const ctx = a.context || {};
+    const model = a.model ? shortModel(a.model.split('/').pop()) : ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
+    return `${describeListening(a.listening)} · ${model} · ${EFFORT_LABELS[a.effort] || a.effort || 'default'}`;
+  }
+  document.addEventListener('click', e => {
+    const fold = e.target.closest('#hush .fold, #hush .gist');
+    if (!fold) return;
+    const name = fold.closest('.agent').dataset.who;
+    agentOpen[name] = !agentOpen[name];
+    store.set('agentOpen', agentOpen);
+    agentsShown = '';
+    renderAgents(agentsNow);
+  });
   function agentRows(agents) {
     return Object.entries(agents).map(([agent, a]) => {
       const l = a.listening, ctx = a.context || {};
       const row = `<span class="agent${l.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}">${icon(agent, false)}${esc(agent)}: `;
+      if (!agentOpen[agent]) {
+        return row + `<span class="gist" title="Open ${esc(agent)}'s settings here">${esc(agentGist(a))}</span>`
+          + `<button type="button" class="fold" aria-expanded="false" aria-label="Open ${esc(agent)}'s settings">▸</button></span>`;
+      }
+      const shut = `<button type="button" class="fold" aria-expanded="true" aria-label="Fold ${esc(agent)}'s settings">◂</button>`;
       if (!keyHolder) {
         return row
           + `${esc(describeListening(l))} · ${esc(a.discretion || 'normal')} · ${esc(REPLY_LENGTHS[a.verbosity || 'normal'])}`
           + ` · ${esc(a.model || 'default')} · effort ${esc(EFFORT_LABELS[a.effort] || a.effort)} · reads ${esc(kTokens(a.reads || 10000))}`
-          + (a.ultracode ? ' · ultracode' : '') + '</span>';
+          + (a.ultracode ? ' · ultracode' : '') + shut + '</span>';
       }
       const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="listen: answers mentions and may speak up unasked · mention: answers mentions only · hush: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening(l))}</option>`
         + HUSH.map(([mode, minutes, label], i) => `<option value="${i}">${esc(label)}</option>`).join('') + '</select>';
@@ -3602,7 +3628,7 @@
         + VERBOSITIES.map(v => `<option value="${v}"${v === (a.verbosity || 'normal') ? ' selected' : ''}>${REPLY_LENGTHS[v]}</option>`).join('') + '</select>';
       const ultra = `<label class="ultra" title="Claude Code's standing multi-agent workflows, on wakes with full tools: thorough, and costly">`
         + `<input type="checkbox" data-agent="${esc(agent)}" data-knob="ultracode"${a.ultracode ? ' checked' : ''}> ultra</label>`;
-      return `${row}${listen} ${discretion} ${verbosity} ${model} ${effort} ${reads} ${ultra}</span>`;
+      return `${row}${listen} ${discretion} ${verbosity} ${model} ${effort} ${reads} ${ultra}${shut}</span>`;
     }).join('');
   }
   document.addEventListener('change', async e => {
