@@ -582,21 +582,42 @@ class ClaudeCodeWaker:
 LETTER = Path(__file__).with_name('letter.md')  # magent's; another agent brings its own (--letter)
 
 
-def new_mood_opening(slug, letter_path=LETTER, agent='magent'):
-    """What a new Mood's first session is told before the mention: where it
-    is, and the letter it left itself for coming to a Mood fresh."""
+def letter_text(letter_path=LETTER, agent='magent'):
+    """The letter the agent left itself for starting with none of its history."""
     try:
         letter = Path(letter_path).read_text().strip() if letter_path else ''
     except OSError:
         letter = ''
-    if not letter:
-        letter = (f'(The letter is missing. You are {agent}; your memory tools -- list_moods, read_mood, '
-                  'search_messages -- bring you up to speed.)')
+    return letter or (f'(The letter is missing. You are {agent}; your memory tools -- list_moods, read_mood, '
+                      'search_messages -- bring you up to speed.)')
+
+
+def new_mood_opening(slug, letter_path=LETTER, agent='magent'):
+    """What a new Mood's first session is told before the mention: where it
+    is, and the letter it left itself for coming to a Mood fresh."""
+    letter = letter_text(letter_path, agent)
     return [f'<new-mood mood="{slug}">',
             'This Mood is new: no session of yours has been here, so this one has just started, '
             'with none of your history in it. Before you answer, read the letter you left yourself '
             'for exactly this, below. Then answer what was asked.', '',
             letter, '</new-mood>', '']
+
+
+def lost_session_opening(slug, session_id, letter_path=LETTER, agent='magent'):
+    """What a session started over is told, when the agent's own session in
+    a Mood is gone from the only machine it could have been on (its home was
+    lost with its container): that it has been here, and where to find what
+    it knew -- the letter, and this Mood in the record."""
+    letter = letter_text(letter_path, agent)
+    return [f'<session-lost mood="{slug}">',
+            f'You have been in this Mood before, but your session here ({session_id[:8]}) is gone from the '
+            'machine it lived on (most likely its container was rebuilt without its home). This session has just '
+            'started, with none of that history in it. The record kept everything: what you said here, what '
+            'was asked, what was settled. Before you answer, read the letter you left yourself, below; then '
+            f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest '
+            'summary, and get_message_context for anything it points to) until you know what is settled and '
+            'what is open. Then answer what was asked.', '',
+            letter, '</session-lost>', '']
 
 
 # Greeting someone (Justin, 2026-10-06: the greetings sounded generic). In every
@@ -886,7 +907,7 @@ class MoodPoller:
                  screen=None, consider=True, considers_per_hour=6, consider_usd_per_day=10.0,
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
-                 letter=None, agent_wakes_per_hour=10):
+                 letter=None, agent_wakes_per_hour=10, only_poller=False):
         self.api = api
         self.waker = waker
         self.agent = agent.lower()
@@ -922,6 +943,11 @@ class MoodPoller:
         # Start a session in a Mood that has none (a new one): by default only
         # a runner answering every Mood, never a Mood's own container's.
         self.start_new = (self.moods is None) if start_new is None else start_new
+        # This is the agent's only poller (re's, say): a session of its that
+        # isn't on this disk is lost, not another machine's, so a mention
+        # there starts it over from the record instead of being left.
+        # magent has a poller in more than one container, so never by default.
+        self.only_poller = only_poller
         self.resumable = {}  # slug -> (whether its newest session is ours to wake, when we asked)
         # The consider loop (see the comment above consider_once).
         self.screen = screen
@@ -1175,11 +1201,15 @@ class MoodPoller:
         sessions = self.api.sessions(slug, self.agent)
         settled += [t['id'] for t in owed]
         fresh = not sessions and self.start_new and not commands  # a new Mood: start its first session
-        if not fresh and (not sessions or not self.waker.can_wake(sessions[0])):
+        here = bool(sessions) and self.waker.can_wake(sessions[0])
+        lost = bool(sessions) and not here and self.only_poller and not commands
+        if not fresh and not here and not lost:
             # The newest session is another machine's (its poller answers),
             # or gone from disk. Either way, not this poller's to wake.
             logger.info(f'{slug}: owed a turn; the latest session is not resumable here')
             return settled, 'elsewhere'
+        if lost:
+            logger.warning(f'{slug}: session {sessions[0]} is gone from this disk; starting over from the record')
 
         full = all(self.trusted(t) for t in owed)
         if commands:
@@ -1189,7 +1219,9 @@ class MoodPoller:
             prompt = self.prompt(slug, owed, full=full)
         if fresh:
             prompt = '\n'.join(new_mood_opening(slug, self.letter, self.agent)) + prompt
-        session = None if fresh else sessions[0]
+        elif lost:
+            prompt = '\n'.join(lost_session_opening(slug, sessions[0], self.letter, self.agent)) + prompt
+        session = None if fresh or lost else sessions[0]
         if self.dry_run:
             logger.info(f'{slug}: would wake {session or "a new session"} {"with full tools " if full else ""}with:\n{prompt}')
             return settled, 'woken'
@@ -1823,6 +1855,9 @@ def main(argv=None):
     parser.add_argument('--new-cwd', default='~/workspace', help='Where a new Mood\'s first session starts')
     parser.add_argument('--agent-wakes-per-hour', type=int, default=10,
                         help="Wakes per Mood per hour owed only to other agents' mentions")
+    parser.add_argument('--only-poller', choices=('yes', 'no'), default='no',
+                        help="This is the agent's only poller: a session of its not on this disk was lost "
+                             "(its home went with its container), so a mention starts it over from the record")
     parser.add_argument('--letter', default=None,
                         help="The letter a new Mood's first session reads (default: poller/letter.md, for magent only)")
     parser.add_argument('--once', action='store_true')
@@ -1864,7 +1899,8 @@ def main(argv=None):
                           consider_effort=args.consider_effort, debounce=args.debounce, idle_first=args.idle_first,
                           full_tools_for=[n.strip() for n in args.full_tools_for.split(',') if n.strip()],
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
-                          letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour)
+                          letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour,
+                          only_poller=args.only_poller == 'yes')
     report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on
