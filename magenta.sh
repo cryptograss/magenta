@@ -83,9 +83,9 @@ SUBCOMMANDS:
   recovery [--fresh] [--openrouter | --subscription]
                         For when you can't reach magent at all: no Mood
                         answers, your container won't let you in, Docker
-                        itself is down. Opens Claude Code -- magent, with its
-                        memory -- on hunter's host, outside every container, in
-                        a tmux session that outlives the connection. It can
+                        itself is down. Opens magent, with its memory, on
+                        hunter's host, outside every container, in a tmux
+                        session that outlives the connection. It can
                         read the journal, start containers and restart dockerd;
                         it looks first and asks before it touches.
                         Two ways in, each its own session, sharing nothing but
@@ -93,8 +93,9 @@ SUBCOMMANDS:
                         --openrouter (the default): Pi, on OpenRouter's
                         credits, Anthropic's models or any vendor's by /model;
                         --subscription: Claude Code, on the Claude
-                        subscription. Opening one never closes the other. --fresh starts the
-                        chosen one over. Only Justin's key opens it
+                        subscription. Opening one never closes the other.
+                        --fresh starts the chosen one over. Only Justin's key
+                        opens it
                         (maybelle-config hunter/ansible/roles/recovery). Plain
                         ssh, not mosh; MAGENTA_RECOVERY_HOST overrides the host
                         (say, 5.78.83.4 when DNS is the trouble).
