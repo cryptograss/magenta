@@ -635,12 +635,13 @@
   body.only-mine .work { display: none; }
   /* An agent's choices not to speak: small dots, side by side. */
   .quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 4px -10px; padding: 4px 13px; }
-  .quiet .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); border: 1px solid var(--dot-edge);
-                cursor: pointer; padding: 0; }
-  .quiet .dot:hover, .quiet .dot.on { background: var(--agent); border-color: var(--agent); }
+  /* Each in its agent's colour (--who, agentColor): pale, full when hovered or opened. */
+  .quiet .dot { --who: var(--agent); width: 9px; height: 9px; border-radius: 50%; padding: 0; cursor: pointer;
+                background: color-mix(in srgb, var(--who) 30%, var(--panel)); border: 1px solid var(--who); }
+  .quiet .dot:hover, .quiet .dot.on { background: var(--who); }
   /* The runner's quick screen let this pass; the agent itself never looked. */
   .quiet .dot.screened { background: transparent; border-style: dashed; }
-  .quiet .dot.screened:hover, .quiet .dot.screened.on { background: transparent; border-color: var(--agent); }
+  .quiet .dot.screened:hover, .quiet .dot.screened.on { background: transparent; border-color: var(--who); }
   .quiet .why { flex-basis: 100%; font-size: 13px; color: var(--muted); font-style: italic; }
   body.only-mine .quiet { display: none; }
   /* Thinking the harness kept: dim, as a terminal shows it between tool calls. */
@@ -751,6 +752,10 @@
   .hush .agent { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap;
                  max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .hush .agent select, .hush .agent label { flex: none; }
+  /* Folded, an agent is one short line: its pie, its name and the gist; ▸ opens its menus. */
+  .hush .fold { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 2px; }
+  .hush .fold:hover { color: var(--accent); }
+  .hush .gist { color: var(--muted); cursor: pointer; }
   .hush .ultra input { vertical-align: -2px; margin: 0 2px 0 0; }
   /* A harness's whole catalog (Pi): the closed menu shows the choice, not the widest of 1,500 names. */
   .hush select.catalog { max-width: 15em; text-overflow: ellipsis; }
@@ -2474,6 +2479,16 @@
     loadMoods();
   });
 
+  // Each agent's own colour, wherever its agents are told apart: magent the
+  // page's magenta, re red (the red agent), anyone after from a palette by name.
+  const AGENT_COLORS = { magent: 'var(--agent)', re: '#d32f2f' };
+  const AGENT_PALETTE = ['#1f8a70', '#c77c02', '#5b5bd6', '#0b7fab', '#8e5a2b', '#6b8e23'];
+  function agentColor(name) {
+    if (AGENT_COLORS[name]) return AGENT_COLORS[name];
+    let h = 0;
+    for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return AGENT_PALETTE[h % AGENT_PALETTE.length];
+  }
   function addQuiet(q, container) {
     let row = container.lastElementChild;
     if (!row || !row.classList.contains('quiet')) {
@@ -2482,6 +2497,7 @@
     }
     const dot = document.createElement('button');
     dot.type = 'button'; dot.className = 'dot' + (q.by === 'screen' ? ' screened' : '');
+    dot.style.setProperty('--who', agentColor(q.sender));
     dot.title = q.by === 'screen'
       ? `screened for ${q.sender}: let pass without waking it · ${stamp(q.created_at)}`
       : `${q.sender} chose not to speak · ${stamp(q.created_at)}`
@@ -3447,7 +3463,9 @@
   const EFFORT_LABELS = { xhigh: 'extra' };  // as the terminal names them
   const DISCRETIONS = ['reserved', 'normal', 'chatty'];
   const VERBOSITIES = ['brief', 'normal', 'thorough'];
-  const REPLY_LENGTHS = { brief: 'short replies', normal: 'mid replies', thorough: 'long replies' };  // beside discretion's "normal"
+  const REPLY_LENGTHS = { brief: 'short replies', normal: 'mid replies', thorough: 'long replies' };
+  // Discretion, said as what it does: a bare "normal" beside five other menus said nothing.
+  const SPEAKING_UP = { reserved: 'rarely speaks up', normal: 'speaks up when useful', chatty: 'chatty' };
   const READS = [2500, 5000, 10000, 20000];  // tokens a wake reads word for word (catch_up_tokens)
   let agentsNow = {}, agentsShown = '';
   // For an agent whose harness reports what it can run (Pi: api_agent_models),
@@ -3571,15 +3589,37 @@
     }
     refreshPies();
   }
+  // Which agents' rows are open, in this browser: folded by default, so a Mood
+  // with several agents doesn't spend a third of the screen on their menus.
+  let agentOpen = store.get('agentOpen', {});
+  function agentGist(a) {
+    const ctx = a.context || {};
+    const model = a.model ? shortModel(a.model.split('/').pop()) : ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
+    return `${describeListening(a.listening)} · ${model} · ${EFFORT_LABELS[a.effort] || a.effort || 'default'}`;
+  }
+  document.addEventListener('click', e => {
+    const fold = e.target.closest('#hush .fold, #hush .gist');
+    if (!fold) return;
+    const name = fold.closest('.agent').dataset.who;
+    agentOpen[name] = !agentOpen[name];
+    store.set('agentOpen', agentOpen);
+    agentsShown = '';
+    renderAgents(agentsNow);
+  });
   function agentRows(agents) {
     return Object.entries(agents).map(([agent, a]) => {
       const l = a.listening, ctx = a.context || {};
       const row = `<span class="agent${l.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}">${icon(agent, false)}${esc(agent)}: `;
+      if (!agentOpen[agent]) {
+        return row + `<span class="gist" title="Open ${esc(agent)}'s settings here">${esc(agentGist(a))}</span>`
+          + `<button type="button" class="fold" aria-expanded="false" aria-label="Open ${esc(agent)}'s settings">▸</button></span>`;
+      }
+      const shut = `<button type="button" class="fold" aria-expanded="true" aria-label="Fold ${esc(agent)}'s settings">◂</button>`;
       if (!keyHolder) {
         return row
-          + `${esc(describeListening(l))} · ${esc(a.discretion || 'normal')} · ${esc(REPLY_LENGTHS[a.verbosity || 'normal'])}`
+          + `${esc(describeListening(l))} · ${esc(SPEAKING_UP[a.discretion || 'normal'] || a.discretion)} · ${esc(REPLY_LENGTHS[a.verbosity || 'normal'])}`
           + ` · ${esc(a.model || 'default')} · effort ${esc(EFFORT_LABELS[a.effort] || a.effort)} · reads ${esc(kTokens(a.reads || 10000))}`
-          + (a.ultracode ? ' · ultracode' : '') + '</span>';
+          + (a.ultracode ? ' · ultracode' : '') + shut + '</span>';
       }
       const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="listen: answers mentions and may speak up unasked · mention: answers mentions only · hush: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening(l))}</option>`
         + HUSH.map(([mode, minutes, label], i) => `<option value="${i}">${esc(label)}</option>`).join('') + '</select>';
@@ -3597,12 +3637,13 @@
         + (READS.includes(a.reads) ? '' : `<option value="${a.reads}" selected>reads ${kTokens(a.reads)}</option>`) + '</select>';
       // How readily it speaks up unasked here, and how long its replies run.
       const discretion = `<select data-agent="${esc(agent)}" data-knob="discretion" title="How readily it speaks up unasked here: reserved, normal, or chatty (joins in, small talk included)">`
-        + DISCRETIONS.map(v => `<option value="${v}"${v === (a.discretion || 'normal') ? ' selected' : ''}>${v}</option>`).join('') + '</select>';
+        + DISCRETIONS.map(v => `<option value="${v}"${v === (a.discretion || 'normal') ? ' selected' : ''}>${SPEAKING_UP[v]}</option>`).join('') + '</select>';
       const verbosity = `<select data-agent="${esc(agent)}" data-knob="verbosity" title="How long its replies run here">`
         + VERBOSITIES.map(v => `<option value="${v}"${v === (a.verbosity || 'normal') ? ' selected' : ''}>${REPLY_LENGTHS[v]}</option>`).join('') + '</select>';
-      const ultra = `<label class="ultra" title="Claude Code's standing multi-agent workflows, on wakes with full tools: thorough, and costly">`
+      // Ultracode is Claude Code's: an agent on another harness (Pi: a.catalog names it) has none to turn on.
+      const ultra = a.catalog != null ? '' : `<label class="ultra" title="Claude Code's standing multi-agent workflows, on wakes with full tools: thorough, and costly">`
         + `<input type="checkbox" data-agent="${esc(agent)}" data-knob="ultracode"${a.ultracode ? ' checked' : ''}> ultra</label>`;
-      return `${row}${listen} ${discretion} ${verbosity} ${model} ${effort} ${reads} ${ultra}</span>`;
+      return `${row}${listen} ${discretion} ${verbosity} ${model} ${effort} ${reads} ${ultra}${shut}</span>`;
     }).join('');
   }
   document.addEventListener('change', async e => {
