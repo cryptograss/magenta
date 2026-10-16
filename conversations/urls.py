@@ -13,6 +13,7 @@ urlpatterns = [
     path('moods/manifest.webmanifest', views_moods.app_manifest, name='mood_app_manifest'),
     path('moods/sw.js', views_moods.app_service_worker, name='mood_app_sw'),
     path('moods/icon-<int:size>.png', views_moods.app_icon, name='mood_app_icon'),
+    path('moods/mark-<int:size>.png', views_moods.app_icon, {'kind': 'mark'}, name='mood_app_mark'),
     path('moods/<slug:slug>/', views_moods.moods_page, name='mood'),
     path('moods/auth/wiki/', views_auth.wiki_signin, name='mood_wiki_signin'),
     path('moods/auth/wiki/callback', views_auth.wiki_signin_return, name='mood_wiki_return'),
