@@ -894,12 +894,15 @@ def app_manifest(request):
 
 
 @require_GET
-def app_icon(request, size):
+def app_icon(request, size, kind='icon'):
+    """magenta's icon (services/app_icon.py): the app's, or the bare mark."""
     from django.http import HttpResponse
     from .services import app_icon as icon
-    if size not in (180, 192, 512):
-        raise Http404('no icon that size')
-    response = HttpResponse(icon.png(size), content_type='image/png')
+    try:
+        body = icon.png(size, kind)
+    except KeyError:
+        raise Http404(f'no {kind} that size')
+    response = HttpResponse(body, content_type='image/png')
     response['Cache-Control'] = 'public, max-age=86400'
     return response
 
@@ -919,8 +922,9 @@ self.addEventListener('push', e => {
   if (!n || !n.title) return;
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     if (list.some(c => c.visibilityState === 'visible' && new URL(c.url).pathname.startsWith('/moods/'))) return;
+    // The badge: the mark alone, which Android shows in the status bar (it reads only its alpha).
     return self.registration.showNotification(n.title, { body: n.body || '', tag: n.tag, icon: '/moods/icon-192.png',
-                                                         data: n.data || {} });
+                                                         badge: '/moods/mark-96.png', data: n.data || {} });
   }));
 });
 // A notification (a mention, an answer) opens its Mood at that message: in a

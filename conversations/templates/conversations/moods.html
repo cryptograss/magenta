@@ -8,7 +8,8 @@
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#b8106b" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1f1c20" media="(prefers-color-scheme: dark)">
-<link rel="icon" type="image/png" sizes="192x192" href="/moods/icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/moods/mark-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/moods/mark-192.png">
 <link rel="apple-touch-icon" href="/moods/icon-180.png">
 <style>
   :root {
@@ -38,7 +39,11 @@
     display: flex; align-items: center; gap: 10px; padding: 5px 14px; min-height: 38px;
     border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: nowrap; position: relative;
   }
-  header .brand { font-weight: 700; color: var(--accent); letter-spacing: .02em; text-decoration: none; white-space: nowrap; }
+  header .brand { font-weight: 700; color: var(--accent); letter-spacing: .02em; text-decoration: none; white-space: nowrap;
+                  display: inline-flex; align-items: center; gap: 6px; }
+  /* The mark (services/app_icon.py) as a mask: it takes the theme's magenta, light or dark. */
+  header .brand .logo { width: 22px; height: 22px; flex: none; background: var(--accent);
+                        -webkit-mask: url(/moods/mark-96.png) center / contain no-repeat; mask: url(/moods/mark-96.png) center / contain no-repeat; }
   header .crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   header .crumb::before { content: '› '; color: var(--muted); font-weight: 400; }
   header .crumb:empty { display: none; }
@@ -862,7 +867,7 @@
 <body>
 <header>
   <button id="menu" type="button" aria-label="Moods" aria-expanded="false">☰</button>
-  <a class="brand" href="/moods/">magenta</a>
+  <a class="brand" href="/moods/"><span class="logo" aria-hidden="true"></span>magenta</a>
   <span class="crumb" id="crumb"></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
@@ -2836,7 +2841,7 @@
       : n.kind === 'mention' ? `${n.turn.sender} mentioned you`
       : `${n.turn.sender} in ${mood ? mood.title || mood.slug : n.mood}`;
     const options = { body: (mood && n.kind !== 'said' ? mood.title + ': ' : '') + n.turn.text.slice(0, 160), tag: n.turn.id,
-                      icon: '/moods/icon-192.png', data: { slug: n.mood, id: n.turn.id } };
+                      icon: '/moods/icon-192.png', badge: '/moods/mark-96.png', data: { slug: n.mood, id: n.turn.id } };
     try {
       // Through the service worker: Android allows no other way.
       const reg = await navigator.serviceWorker.getRegistration('/moods/');

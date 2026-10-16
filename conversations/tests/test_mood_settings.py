@@ -163,6 +163,12 @@ class SettingsAPITest(TestCase):
         self.assertEqual(icon.content[:8], b'\x89PNG\r\n\x1a\n')
         self.assertEqual(int.from_bytes(icon.content[16:20], 'big'), 192)  # IHDR width
         self.assertEqual(self.client.get('/moods/icon-7.png').status_code, 404)
+        # The mark alone: the tab, the top bar, a notification's badge -- transparent (RGBA, colour type 6).
+        mark = self.client.get('/moods/mark-96.png')
+        self.assertEqual((mark['Content-Type'], int.from_bytes(mark.content[16:20], 'big'), mark.content[25]),
+                         ('image/png', 96, 6))
+        self.assertEqual(self.client.get('/moods/mark-180.png').status_code, 404)
+        self.assertIn("badge: '/moods/mark-96.png'", self.client.get('/moods/sw.js').content.decode())
         self.assertEqual(self.client.get('/moods/sw.js')['Service-Worker-Allowed'], '/moods/')
 
     def test_a_context_window_by_model(self):
