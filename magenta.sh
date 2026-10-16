@@ -88,11 +88,12 @@ SUBCOMMANDS:
                         a tmux session that outlives the connection. It can
                         read the journal, start containers and restart dockerd;
                         it looks first and asks before it touches.
-                        Two ways to the model, each its own session, in case
-                        one of them is part of the trouble: --openrouter
-                        (Anthropic's models on OpenRouter's credits; the
-                        default) or --subscription (the Claude subscription).
-                        Opening one never closes the other. --fresh starts the
+                        Two ways in, each its own session, sharing nothing but
+                        hunter, in case one is part of the trouble:
+                        --openrouter (the default): Pi, on OpenRouter's
+                        credits, Anthropic's models or any vendor's by /model;
+                        --subscription: Claude Code, on the Claude
+                        subscription. Opening one never closes the other. --fresh starts the
                         chosen one over. Only Justin's key opens it
                         (maybelle-config hunter/ansible/roles/recovery). Plain
                         ssh, not mosh; MAGENTA_RECOVERY_HOST overrides the host
@@ -131,7 +132,7 @@ EXAMPLES:
   magenta.sh AZ5                              # everyone out, everything still, then the picker
   magenta.sh AZ5 --lift                       # back to normal
   magenta.sh recovery                         # nothing answers: magent on hunter's host
-  magenta.sh recovery --subscription          # ...on the subscription, not OpenRouter
+  magenta.sh recovery --subscription          # ...in Claude Code on the subscription, not Pi on OpenRouter
 
 MENTAL MODEL:
   * tmux session name = what shows in `tmux list-sessions`
