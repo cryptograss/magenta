@@ -890,7 +890,42 @@ def app_manifest(request):
         'theme_color': '#b8106b',
         'icons': [{'src': f'/moods/icon-{size}.png', 'sizes': f'{size}x{size}', 'type': 'image/png',
                    'purpose': 'any maskable'} for size in (192, 512)],
+        # In Android's share sheet: a link, words, pictures, a video or a recording from
+        # another app. The service worker takes it (SERVICE_WORKER); app_share if it can't.
+        'share_target': {
+            'action': SHARE_ACTION, 'method': 'POST', 'enctype': 'multipart/form-data',
+            'params': {'title': 'title', 'text': 'text', 'url': 'url',
+                       'files': [{'name': 'files', 'accept': ['image/*', 'video/*', 'audio/*']}]},
+        },
     }, content_type='application/manifest+json')
+
+
+SHARE_ACTION = '/moods/share/'
+SHARE_MAX_CHARS = 4000  # of each of title, text and url, passed on in the address
+
+
+@csrf_exempt  # Android's POST, from the share sheet: no page, so no token. It only fills the box; nothing is sent.
+def app_share(request):
+    """A share that reached the server: the service worker, which keeps a share's
+    files for the page, wasn't there to take it (not yet installed, or cleared).
+    Its words go on in the address, for the page to offer; its files can't, and
+    the page says how many didn't come."""
+    from urllib.parse import urlencode
+    from django.shortcuts import redirect
+    if request.method != 'POST':
+        return redirect('/moods/')
+    said = {k: request.POST.get(k, '')[:SHARE_MAX_CHARS] for k in ('title', 'text', 'url')}
+    lost = len(request.FILES.getlist('files'))
+    query = {'shared': 'here', **{k: v for k, v in said.items() if v}, **({'lost': lost} if lost else {})}
+    return _see_other('/moods/?' + urlencode(query))
+
+
+def _see_other(url):
+    """A 303: the browser follows a POST's answer with a GET."""
+    from django.http import HttpResponseRedirect
+    response = HttpResponseRedirect(url)
+    response.status_code = 303
+    return response
 
 
 @require_GET
@@ -907,13 +942,46 @@ def app_icon(request, size, kind='icon'):
     return response
 
 
-SERVICE_WORKER = """// magenta: here so the page can be installed as an app. It keeps
-// nothing: every request goes to the network, as if it weren't here.
+SERVICE_WORKER = """// magenta: here so the page can be installed as an app. It caches
+// nothing: every request goes to the network, as if it weren't here --
+// but for a share from another app, kept for the page to offer.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {
+  if (e.request.method === 'POST' && new URL(e.request.url).pathname === '/moods/share/') {
+    e.respondWith(takeShare(e.request));
+    return;
+  }
   if (e.request.mode === 'navigate') e.respondWith(fetch(e.request));
 });
+// A share (the manifest's share_target): its words and files kept in IndexedDB,
+// where the page finds them and asks which Mood they go to; then the page.
+// One share at a time is kept: the newest.
+function shareDb() {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open('magenta-share', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('shared');
+    open.onsuccess = () => resolve(open.result);
+    open.onerror = () => reject(open.error);
+  });
+}
+async function takeShare(request) {
+  try {
+    const form = await request.formData();
+    const words = k => String(form.get(k) || '').slice(0, 4000);
+    const files = form.getAll('files').filter(f => typeof f === 'object' && f.size);
+    const db = await shareDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('shared', 'readwrite');
+      tx.objectStore('shared').put({ title: words('title'), text: words('text'), url: words('url'), files, at: Date.now() }, 'latest');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    return Response.redirect('/moods/?shared=failed', 303);
+  }
+  return Response.redirect('/moods/?shared=kept', 303);
+}
 // A push (services/push.py): a mention or an answer, while magenta is closed.
 // A magenta page in front of its person tells them itself, so then: nothing.
 self.addEventListener('push', e => {

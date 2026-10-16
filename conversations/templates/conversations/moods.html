@@ -451,6 +451,16 @@
   #replying[hidden] { display: none; }
   #replying .what { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #replying button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+  /* Something shared from another app (Android's share sheet), waiting to be put in a Mood. */
+  #shareCard { max-width: 760px; margin: 6px auto 0; padding: 8px 12px; font-size: 13px; display: flex; gap: 10px; align-items: center;
+               border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-soft); }
+  #shareCard[hidden] { display: none; }
+  #shareCard .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+                     -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #shareHere { flex: none; font: inherit; font-size: 13px; padding: 4px 12px; border: 0; border-radius: 6px;
+               background: var(--accent); color: #fff; cursor: pointer; white-space: nowrap; }
+  #shareHere:disabled { opacity: .5; cursor: default; }
+  #shareDrop { flex: none; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; }
   /* The license a picture of yours goes out under, said as it's attached (services/media.LICENSES). */
   #licenseBar { max-width: 760px; margin: 0 auto; padding: 6px 16px 0; font-size: 12.5px; color: var(--muted); }
   #licenseBar[hidden] { display: none; }
@@ -976,6 +986,7 @@
       <label id="stripLocation" title="Phone photos carry where they were taken (GPS), the camera and the time. Ticked, that's removed before anyone sees it; unticked, it stays (a HEIC photo's carried into its JPEG)."><input type="checkbox" checked> Remove location (GPS)</label></div>
     <div id="videoCards"></div>
     <div id="videoBar" hidden><span class="what"></span><span class="track"><span class="fill"></span></span><span class="pct"></span> <button type="button" id="videoCancel">cancel</button></div>
+    <div id="shareCard" hidden><span class="what"></span><button type="button" id="shareHere"></button><button type="button" id="shareDrop" title="Don't share it" aria-label="Don't share it">✕</button></div>
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
     <form id="composer" autocomplete="off">
       <div id="suggest"></div>
@@ -3124,6 +3135,7 @@
     gen++;
     current = slug;
     renderVideoCards();  // the videos waiting for a draft page are per Mood
+    renderShare();  // a share waiting says which Mood it would go to
     restoreDraft();
     showLicense();  // pictures in the draft left behind aren't in this one
     if (push) history.pushState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/');
@@ -4429,6 +4441,101 @@
     }, 500);
   });
 
+  // --- a share from another app (the manifest's share_target) ------------------
+  // The service worker keeps what was shared (IndexedDB, 'magenta-share') and opens
+  // /moods/?shared=kept; with no service worker, the server passes the words on in
+  // the address (?shared=here&text=...; views_moods.app_share). Either way it's shown
+  // on a card above the box until put in a Mood -- the one open, Add pressed; another
+  // Mood first, to put it there -- or let go. Nothing is uploaded until then, so a
+  // picture or a memo goes to the Mood it was meant for. Signed out, it waits.
+  const sharedAs = new URLSearchParams(location.search);
+  const sharing_ = sharedAs.get('shared');
+  let shared = null;  // {title, text, url, files, lost}
+  const shareCard = document.getElementById('shareCard'), shareHere = document.getElementById('shareHere');
+  function shareDb() {
+    return new Promise((resolve, reject) => {
+      const open = indexedDB.open('magenta-share', 1);
+      open.onupgradeneeded = () => open.result.createObjectStore('shared');
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => reject(open.error);
+    });
+  }
+  async function sharedKept(drop) {
+    try {
+      const db = await shareDb();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction('shared', drop ? 'readwrite' : 'readonly');
+        const ask = drop ? tx.objectStore('shared').delete('latest') : tx.objectStore('shared').get('latest');
+        ask.onsuccess = () => resolve(drop ? null : ask.result || null);
+        ask.onerror = () => reject(ask.error);
+      });
+    } catch (e) { return null; }
+  }
+  async function offerShare() {
+    if (sharing_ === 'failed') { showError("share: it didn't come through; share it again"); return; }
+    shared = sharing_ === 'here'
+      ? { title: sharedAs.get('title') || '', text: sharedAs.get('text') || '', url: sharedAs.get('url') || '', files: [],
+          lost: Number(sharedAs.get('lost') || 0) }
+      : await sharedKept(false);
+    renderShare();
+  }
+  // Its words for the box: the text, and the link if the text hasn't it; the title only if there's nothing else.
+  function sharedWords(sh) {
+    const text = (sh.text || '').trim(), url = (sh.url || '').trim();
+    const parts = [text, url && !text.includes(url) ? url : ''].filter(Boolean);
+    return parts.length ? parts.join('\n') : (sh.title || '').trim();
+  }
+  function renderShare() {
+    shareCard.hidden = !shared;
+    if (!shared) return;
+    const files = shared.files || [];
+    const count = (n, one, many) => n ? `${n} ${n > 1 ? many : one}` : '';
+    const what = [sharedWords(shared) && `“${sharedWords(shared).replace(/\s+/g, ' ').slice(0, 140)}”`,
+                  count(files.filter(f => /^image\//.test(f.type)).length, 'picture', 'pictures'),
+                  count(files.filter(f => /^video\//.test(f.type)).length, 'video', 'videos'),
+                  count(files.filter(f => /^audio\//.test(f.type)).length, 'recording', 'recordings')].filter(Boolean);
+    shareCard.querySelector('.what').textContent = 'Shared: ' + (what.join(' · ') || 'nothing')
+      + (shared.lost ? ` · ${count(shared.lost, 'file', 'files')} didn't come through: share again` : '');
+    shareHere.disabled = !viewer;
+    shareHere.textContent = viewer ? `Add to #${current}` : 'Sign in to add it';
+    shareHere.title = viewer ? 'Into the box here, to send; or open another Mood first to put it there' : 'It waits here until you do';
+  }
+  shareHere.addEventListener('click', async () => {
+    if (!shared || !viewer) return;
+    const sh = shared;
+    shared = null; renderShare();
+    await sharedKept(true);
+    const words = sharedWords(sh), files = sh.files || [];
+    if (words) {  // on a line of its own, and the pictures each on theirs below
+      insertAtCaret((sayBox.value && !/\s$/.test(sayBox.value) ? '\n' : '') + words + (files.length ? '\n' : ''));
+      sayBox.dispatchEvent(new Event('input'));
+    }
+    imagesIn(files).forEach(upload);
+    videosIn(files).forEach(sendVideo);
+    files.filter(f => /^audio\//.test(f.type)).forEach(shareRecording);
+    const left = files.length - imagesIn(files).length - videosIn(files).length - files.filter(f => /^audio\//.test(f.type)).length;
+    if (left) showError(`share: ${left} file${left > 1 ? 's' : ''} left out (only pictures${dkUpload ? ', videos' : ''} and recordings)`);
+    sayBox.focus();
+  });
+  document.getElementById('shareDrop').addEventListener('click', async () => { shared = null; renderShare(); await sharedKept(true); });
+  // A recording shared in goes as a voice memo does: its words written in once it's sent.
+  async function shareRecording(file) {
+    try {
+      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/memo/', {
+        method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: file });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || r.status);
+      const seconds = await new Promise(resolve => {
+        const a = new Audio(); a.preload = 'metadata';
+        a.onloadedmetadata = () => resolve(isFinite(a.duration) ? a.duration : null);
+        a.onerror = () => resolve(null);
+        a.src = body.url;
+      });
+      insertAtCaret(`🎙 [voice memo${seconds ? ' · ' + clock(seconds) : ''}](${body.url})`);
+      sayBox.dispatchEvent(new Event('input'));
+    } catch (e) { showError('recording: ' + e.message); }
+  }
+
   // A sent memo whose words aren't in yet: said under the box until it's in the thread.
   function memoOnItsWay(sha) {
     composer.insertAdjacentHTML('beforeend', `<span class="note memo-pending" data-sha="${esc(sha)}">🎙 Sent: it shows here once its words are written in…</span>`);
@@ -5223,9 +5330,12 @@
     try { await loadMoods(); } catch (e) { setStatus('cannot reach memory-lane', 'stale'); return; }
     loadTokens();  // not awaited: badges fill in when they come
     await pullSeen();  // where you've read up to, on every device, before anything is counted
-    const slug = initialSlug || (moods[0] && moods[0].slug);
+    // A share opens where you last were (the Mood opened last in this browser), not at the top of the list.
+    const lastOpened = sharing_ && store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived));
+    const slug = initialSlug || lastOpened || (moods[0] && moods[0].slug);
     if (!slug) { inner.innerHTML = '<div class="empty">No Moods yet.</div>'; setStatus('live', 'live'); return; }
     await open(slug, false);
+    if (sharing_) { history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/'); offerShare(); }
     const linked = location.hash.match(/^#m-([0-9a-f-]{36})$/);  // from a notification
     if (linked) await reveal(linked[1]);
     setInterval(() => poll(false), POLL_MS);
