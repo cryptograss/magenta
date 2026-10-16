@@ -19,6 +19,7 @@ Usage: magenta.sh [TARGET] [OPTIONS]
        magenta.sh login [--key <path>] [--base <url>]
        magenta.sh kick <name> --all [--ban] | --device <id>   |   magenta.sh unban <name>
        magenta.sh AZ5 [TARGET]          |   magenta.sh AZ5 --lift
+       magenta.sh recovery [--fresh] [--openrouter | --subscription]
 
 Connect to a container and drop into a tmux + Claude Code session.
 
@@ -79,6 +80,25 @@ SUBCOMMANDS:
                         runner -- then drops you into the session picker on
                         TARGET (default: hunter), as `magenta.sh hunter` does.
                         Undo with `magenta.sh AZ5 --lift`.
+  recovery [--fresh] [--openrouter | --subscription]
+                        For when you can't reach magent at all: no Mood
+                        answers, your container won't let you in, Docker
+                        itself is down. Opens magent, with its memory, on
+                        hunter's host, outside every container, in a tmux
+                        session that outlives the connection. It can
+                        read the journal, start containers and restart dockerd;
+                        it looks first and asks before it touches.
+                        Two ways in, each its own session, sharing nothing but
+                        hunter, in case one is part of the trouble:
+                        --openrouter (the default): Pi, on OpenRouter's
+                        credits, Anthropic's models or any vendor's by /model;
+                        --subscription: Claude Code, on the Claude
+                        subscription. Opening one never closes the other.
+                        --fresh starts the chosen one over. Only Justin's key
+                        opens it
+                        (maybelle-config hunter/ansible/roles/recovery). Plain
+                        ssh, not mosh; MAGENTA_RECOVERY_HOST overrides the host
+                        (say, 5.78.83.4 when DNS is the trouble).
 
 OTHER OPTIONS:
   --dangerously-skip-permissions
@@ -112,6 +132,8 @@ EXAMPLES:
   magenta.sh kick skyler --device 21c74117    # sign out just that one device of theirs
   magenta.sh AZ5                              # everyone out, everything still, then the picker
   magenta.sh AZ5 --lift                       # back to normal
+  magenta.sh recovery                         # nothing answers: magent on hunter's host
+  magenta.sh recovery --subscription          # ...in Claude Code on the subscription, not Pi on OpenRouter
 
 MENTAL MODEL:
   * tmux session name = what shows in `tmux list-sessions`
@@ -197,6 +219,28 @@ case "${1:-}" in
         shift
         run_mood_tool mood_admin.py MOOD_ADMIN_SCRIPT unban "$@"
         exit $?
+        ;;
+    recovery)
+        shift
+        # Straight to hunter's host as `recovery`, whose key only opens the
+        # recovery session. It takes plain words: "fresh" starts the session
+        # over; "openrouter" or "subscription" picks the way to the model, each
+        # its own session. Needs nothing else of this script.
+        RECOVERY_WORDS=()
+        RECOVERY_ROUTE=""
+        for arg in "$@"; do
+            case "$arg" in
+                --fresh) RECOVERY_WORDS+=(fresh) ;;
+                --openrouter|--subscription)
+                    if [ -n "$RECOVERY_ROUTE" ] && [ "$RECOVERY_ROUTE" != "${arg#--}" ]; then
+                        echo "Usage: magenta.sh recovery [--fresh] [--openrouter | --subscription]"; exit 1
+                    fi
+                    RECOVERY_ROUTE="${arg#--}" ;;
+                *) echo "Usage: magenta.sh recovery [--fresh] [--openrouter | --subscription]"; exit 1 ;;
+            esac
+        done
+        [ -n "$RECOVERY_ROUTE" ] && RECOVERY_WORDS+=("$RECOVERY_ROUTE")
+        exec ssh -t "recovery@${MAGENTA_RECOVERY_HOST:-hunter.cryptograss.live}" "${RECOVERY_WORDS[@]}"
         ;;
     AZ5|az5)
         shift
