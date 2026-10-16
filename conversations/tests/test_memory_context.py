@@ -1,8 +1,10 @@
 """Finding a message and what was said around it: prefixes, context, exact search."""
 
 import asyncio
+import unittest
 import uuid
 
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
 
 from conversations.mcp import tools
@@ -131,6 +133,8 @@ class MemoryToolsTest(Fixture, TransactionTestCase):
         self.assertIn('>>>', text)
         self.assertIn('Mood: porch', text)
 
+    # A word search is Postgres full-text search: on SQLite (a quick local run) there's none to test.
+    @unittest.skipUnless(connection.vendor == 'postgresql', 'full-text search is Postgres only')
     def test_word_search_names_the_mood_and_suggests_exact_when_empty(self):
         text = call('search_messages', query='zzzzunfindable')
         self.assertIn('exact: true', text)
