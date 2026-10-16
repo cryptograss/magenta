@@ -1044,8 +1044,9 @@ def api_unfurl(request, slug, message_id):
 @require_GET
 def api_moods_live(request):
     """Each Mood's people of the moment: who has spoken in the last 100 blocks
-    (about 20 minutes), who's typing, which agent is working. Cached for
-    3 s: every open page asks every few seconds."""
+    (about 20 minutes), who's typing, which agent is working; and when anything
+    was last added there (a page brings the Moods it holds up to date by it,
+    before they're opened). Cached for 3 s: every open page asks every few seconds."""
     from datetime import timedelta
     from django.core.cache import cache
     from django.utils import timezone
@@ -1066,6 +1067,8 @@ def api_moods_live(request):
     for mood in Mood.objects.all():
         entry = live.setdefault(mood.slug, {'speakers': [], 'typing': [], 'busy': None})
         entry['typing'] = typing_in(mood.slug)
+        last = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at) index
+        entry['last'] = last.isoformat() if last else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way
             act = activity(mood)
             if act and act.get('doing') != 'held':
