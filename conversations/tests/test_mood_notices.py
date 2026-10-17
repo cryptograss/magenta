@@ -171,6 +171,17 @@ class AroundTest(TestCase):
         self.assertEqual(live['m26']['speakers'], ['justin'])
         self.assertEqual(live['delivery-kid']['speakers'], [])  # an hour is more than 100 blocks
 
+    def test_each_moods_latest_is_told_for_a_page_to_preload_by(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        old = Message.objects.create(id=uuid.uuid4(), sender=self.skyler, mood=self.dk, content='an hour ago')
+        an_hour_ago = timezone.now() - timedelta(hours=1)
+        Message.objects.filter(pk=old.pk).update(created_at=an_hour_ago)
+        Mood.objects.create(slug='quiet-one')
+        live = self.client.get('/api/moods/live/').json()['moods']
+        self.assertEqual(live['delivery-kid']['last'], an_hour_ago.isoformat())  # long since spoken in, still told
+        self.assertIsNone(live['quiet-one']['last'])
+
     def test_the_block_height_comes_from_the_explorer_or_not_at_all(self):
         from unittest import mock
         from django.core.cache import cache

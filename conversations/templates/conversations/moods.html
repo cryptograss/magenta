@@ -291,12 +291,13 @@
   /* The same sender again within minutes: one heading for the run. */
   .turn.cont { border-top: 0; padding-top: 0; }
   .turn.cont .who { display: none; }
-  .turn.mentions-me { border-left-color: var(--accent); }
+  /* An agent's words for you carry its own colour down the margin (--who); a person's, the page's. */
+  .turn.mentions-me { border-left-color: var(--who, var(--accent)); }
   body.only-mine .turn:not(.mentions-me) { display: none; }
   .turn .who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
   .turn .who .name { font-weight: 700; }
   .turn.human .who .name { color: var(--human); }
-  .turn.agent .who .name { color: var(--agent); }
+  .turn.agent .who .name { color: var(--who, var(--agent)); }
   .turn .who time { font-size: 12px; color: var(--muted); }
   .turn .who .from-phone { font-size: 11px; margin-left: -4px; opacity: .75; }
   .turn .who .name a { color: inherit; text-decoration: none; }
@@ -363,7 +364,7 @@
               padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
   #toBottom.on { display: block; }
   #toBottom:hover { color: var(--accent); border-color: var(--accent); }
-  .turn.for-me { border-left-color: var(--accent); }
+  .turn.for-me { border-left-color: var(--who, var(--accent)); }
   .turn.flash { animation: flash 2.4s ease-out; }
   @keyframes flash { from { background: var(--mention); } to { background: transparent; } }
   /* Search: a panel over the thread, at the right. */
@@ -487,7 +488,7 @@
   .aturn:hover { border-left-color: var(--line); }
   .ahead { display: flex; gap: 6px; align-items: baseline; width: 100%; text-align: left; border: 0; background: none;
            padding: 6px 10px 2px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
-  .ahead b { color: var(--agent); font-weight: 600; }
+  .ahead b { color: var(--who, var(--agent)); font-weight: 600; }
   .ahead .caret { width: 10px; flex: none; }
   .ahead .preview { display: none; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                     color: var(--ink); font-size: 13.5px; }
@@ -572,8 +573,8 @@
   #composer .note { color: var(--muted); font-size: 12px; }
   #activity { display: none; align-items: center; gap: 8px; padding: 8px 16px; font-size: 13px; color: var(--muted); }
   #activity.on { display: flex; }
-  #activity .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--agent); animation: pulse 1.2s ease-in-out infinite; }
-  #activity b { color: var(--agent); }
+  #activity .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); animation: pulse 1.2s ease-in-out infinite; }
+  #activity b { color: var(--who, var(--agent)); }
   /* Held: owed a turn the runner isn't starting yet -- a still dot, not a pulse. */
   #activity.held .dot { animation: none; opacity: .35; }
   #activity #stopBtn { margin-left: auto; font: inherit; font-size: 12px; padding: 2px 9px; border: 1px solid var(--line);
@@ -591,7 +592,7 @@
   .event.access .as-root { color: var(--err, #c0392b); font-weight: 700; }
   .token.blue-railroad { color: #2563b8; font-size: 11px; font-weight: 600; text-decoration: none; margin-left: 5px; white-space: nowrap; }
   .token.blue-railroad .ico { width: 14px; height: 12px; margin-right: 2px; vertical-align: -1px; }
-  .people .who.agent { color: var(--agent); }
+  .people .who.agent { color: var(--who, var(--agent)); }
   .people .who.busy::after { content: ' ●'; animation: pulse 1.2s ease-in-out infinite; }
   /* Who is a person and who is an agent, wherever a name appears. */
   .ico { width: 13px; height: 13px; fill: currentColor; vertical-align: -1px; margin-right: 4px; flex: none; }
@@ -620,7 +621,7 @@
   /* An agent's tool calls between its words: one line, opened on demand. */
   .work { margin: 2px 0 6px -10px; padding-left: 13px; }
   .work .who { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 4px; }
-  .work .who .name { font-weight: 700; color: var(--agent); }
+  .work .who .name { font-weight: 700; color: var(--who, var(--agent)); }
   .work .who time { font-size: 12px; color: var(--muted); }
   .work.cont .who { display: none; }
   .work-head { font: inherit; font-size: 13px; color: var(--muted); background: none; border: 0; padding: 2px 0;
@@ -767,10 +768,15 @@
   .hush .agent { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap;
                  max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .hush .agent select, .hush .agent label { flex: none; }
-  /* Folded, an agent is one short line: its pie, its name and the gist; ▸ opens its menus. */
+  /* Folded, all the agents are one line: each one's pie, model and effort in its colour; ▸ opens their menus. */
   .hush .fold { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 2px; }
   .hush .fold:hover { color: var(--accent); }
-  .hush .gist { color: var(--muted); cursor: pointer; }
+  .hush .agent.gist { color: var(--who); cursor: pointer; margin-right: 6px; }
+  /* No pie yet (it hasn't spoken here): a dot of its colour leads instead. */
+  .hush .agent.gist:not(:has(.pie))::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%;
+                                              background: var(--who); margin-right: 4px; }
+  .hush .agent.gist.off { font-style: italic; }
+  .hush .agent .name { color: var(--who); font-weight: 600; }
   .hush .ultra input { vertical-align: -2px; margin: 0 2px 0 0; }
   /* A harness's whole catalog (Pi): the closed menu shows the choice, not the widest of 1,500 names. */
   .hush select.catalog { max-width: 15em; text-overflow: ellipsis; }
@@ -1054,6 +1060,23 @@
     set(k, v) { try { localStorage.setItem('moods.' + k, JSON.stringify(v)); } catch (e) {} },
   };
 
+  // Each agent's own colour, wherever its agents are told apart: magent the
+  // page's magenta, re red (the red agent), anyone after from a palette by name.
+  const AGENT_COLORS = { magent: 'var(--agent)', re: '#d32f2f' };
+  const AGENT_PALETTE = ['#1f8a70', '#c77c02', '#5b5bd6', '#0b7fab', '#8e5a2b', '#6b8e23'];
+  function agentColor(name) {
+    if (AGENT_COLORS[name]) return AGENT_COLORS[name];
+    let h = 0;
+    for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return AGENT_PALETTE[h % AGENT_PALETTE.length];
+  }
+  // The same, as an attribute for drawn HTML: --who, which the stylesheet's agent names and margins take.
+  const whoStyle = name => ` style="--who: ${agentColor(name)}"`;
+
+  // How long an ask of the server may take before it's given up (and asked again
+  // at the next tick), and when a poll still out counts as hung (poll).
+  const POLL_WAIT_MS = 20000, POLL_STALE_MS = 30000;
+
   let moods = [];
   let names = new Set();
   let current = null;       // slug
@@ -1183,12 +1206,13 @@
   }
   async function refreshLive() {
     try {
-      const r = await fetch('/api/moods/live/');
+      const r = await fetch('/api/moods/live/', { signal: AbortSignal.timeout(POLL_WAIT_MS) });
       if (r.ok) {
         const before = liveData;
         liveData = (await r.json()).moods || {};
         markLive();
         noticeThinking(before);
+        preload();
       }
     } catch (e) {}
   }
@@ -1381,7 +1405,7 @@
       <div class="meta">${block ? block + ' · ' : ''}${m.message_count} messages in the record ·
         <a href="/moods/${encodeURIComponent(m.slug)}/rules/" title="What magent is told here: this Mood's rules, its settings, what each wake says">rules</a></div>
       <div class="people" id="people">${m.participants.map(n =>
-        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}">${icon(n)}${esc(shown(n))}${tokenBadges(n)}</span>`).join('')}</div>
+        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${esc(shown(n))}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
   }
 
@@ -1871,6 +1895,7 @@
     el.dataset.id = t.id;
     el.id = 'm-' + t.id;
     if (forMe.has(t.id)) el.classList.add('for-me');
+    if (!t.is_human) el.style.setProperty('--who', agentColor(t.sender));
     const signed = t.attested ? `<button type="button" class="signed" title="Signed with ${esc(t.sender)}'s SSH key: click for the proof">✓ signed</button>` : '';
     const phone = t.mobile ? '<span class="from-phone" title="sent from a phone" aria-label="sent from a phone">📱</span>' : '';
     const page = userPage(t.sender);
@@ -2018,6 +2043,7 @@
     const el = document.createElement('div');
     el.className = 'work' + (cont ? ' cont' : '');
     el.dataset.sender = s.sender;
+    el.style.setProperty('--who', agentColor(s.sender));
     el.innerHTML = `<div class="who"><span class="name">${icon(s.sender, false)}${esc(s.sender)}</span><time datetime="${esc(s.created_at)}">${stamp(s.created_at)}</time>${how(s)}</div>`
       + `<button class="work-head" type="button"><span class="caret">▸</span><span class="what"></span></button><div class="steps"></div>`;
     container.appendChild(el);
@@ -2495,16 +2521,6 @@
     loadMoods();
   });
 
-  // Each agent's own colour, wherever its agents are told apart: magent the
-  // page's magenta, re red (the red agent), anyone after from a palette by name.
-  const AGENT_COLORS = { magent: 'var(--agent)', re: '#d32f2f' };
-  const AGENT_PALETTE = ['#1f8a70', '#c77c02', '#5b5bd6', '#0b7fab', '#8e5a2b', '#6b8e23'];
-  function agentColor(name) {
-    if (AGENT_COLORS[name]) return AGENT_COLORS[name];
-    let h = 0;
-    for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return AGENT_PALETTE[h % AGENT_PALETTE.length];
-  }
   function addQuiet(q, container) {
     let row = container.lastElementChild;
     if (!row || !row.classList.contains('quiet')) {
@@ -2597,6 +2613,7 @@
     closeBlock(container);  // another agent's turn begins
     const b = document.createElement('section');
     b.className = 'aturn';
+    b.style.setProperty('--who', agentColor(agent));
     const at = new Date(v.created_at).getTime() / 1000;
     // From the words that set it going, when they're just before it.
     const asked = container._askedAt && container._askedAt <= at && at - container._askedAt < 6 * 3600 ? container._askedAt : at;
@@ -3112,7 +3129,7 @@
 
   // What's been drawn for each Mood this visit: switching back puts it back at
   // once and asks only for what's new. The last few Moods are kept.
-  const drawn = new Map();  // slug -> {nodes, lastId, firstId, headMood, prev, scrollTop}
+  const drawn = new Map();  // slug -> {nodes, lastId, firstId, headMood, prev, scrollTop, now}
   const KEEP_DRAWN = 8;
   const FIRST_PAGE = 150;   // items on a first load; "Load earlier" for more
   let gen = 0;              // bumped at every switch: answers for a Mood since left are dropped
@@ -3122,7 +3139,7 @@
     const nodes = document.createDocumentFragment();
     while (inner.firstChild) nodes.appendChild(inner.firstChild);
     drawn.delete(current);
-    drawn.set(current, { nodes, lastId, firstId, headMood, prev, scrollTop: main.scrollTop });
+    drawn.set(current, { nodes, lastId, firstId, headMood, prev, scrollTop: main.scrollTop, now: changesAt[current] });
     while (drawn.size > KEEP_DRAWN) drawn.delete(drawn.keys().next().value);
   }
 
@@ -3176,6 +3193,52 @@
     if (touchedAt < opening) toNewest();
     renderToBottom();
   }
+  // The Moods this page holds -- drawn this visit, or kept in this browser -- are
+  // brought up to date in the background as things are added to them (/api/moods/live/
+  // tells each one's latest), so switching to one shows it as it is, at its newest,
+  // without a moment's catching up below. One Mood at a time, each only when its
+  // latest has moved past what was last asked; not while the page is hidden. Only
+  // what's new: what changed (an edit, a deletion) is still asked for on opening it.
+  const preloadedTo = {};  // slug -> the server's time when last brought up to date
+  let preloading = false;
+  async function preload() {
+    if (preloading || document.hidden) return;
+    const heldTo = slug => preloadedTo[slug] || (drawn.get(slug) || {}).now || (keptOf(slug) || {}).now || '';
+    const due = Object.entries(liveData).filter(([slug, d]) => slug !== current && d.last && d.last > heldTo(slug)
+                                                         && (drawn.has(slug) || keptOf(slug)));
+    if (!due.length) return;
+    preloading = true;
+    try { for (const [slug] of due) await preloadOne(slug); } finally { preloading = false; }
+  }
+  async function preloadOne(slug) {
+    const held = drawn.get(slug), kept = keptOf(slug);
+    const keptItems = !held && kept ? itemsOf(kept) : [];
+    const after = held ? held.lastId : keptItems.length ? keptItems[keptItems.length - 1].v.id : null;
+    if (!after) return;
+    let data;
+    try {
+      const r = await fetch('/api/moods/' + encodeURIComponent(slug) + '/turns/?after=' + after, { signal: AbortSignal.timeout(POLL_WAIT_MS) });
+      if (!r.ok) return;
+      data = await r.json();
+    } catch (e) { return; }
+    if (slug === current) return;  // opened meanwhile: its own poll asks
+    preloadedTo[slug] = data.now;
+    // Kept without the server's time: what changed since was not asked, and opening it still asks.
+    keep(slug, { ...data, now: undefined }, false, false);
+    const items = itemsOf(data);
+    if (!items.length || drawn.get(slug) !== held || !held) return;
+    const turnsEl = held.nodes.getElementById('turns');
+    if (!turnsEl) return;
+    const empty = turnsEl.querySelector(':scope > .empty'); if (empty) empty.remove();
+    // Drawn as if it were open (all at once, nothing else runs between): its last
+    // sender for a follow-on, its slug for what links here.
+    const was = { current, prev };
+    current = slug; prev = held.prev;
+    try { renderItems(items, turnsEl, true); held.prev = prev; }
+    finally { ({ current, prev } = was); }
+    held.lastId = items[items.length - 1].v.id;
+  }
+
   // To the newest, and stay there while what's above it settles -- pictures
   // loading, link cards arriving, a poll's new turns -- for SETTLE_MS, or until
   // they scroll themselves (wheel, touch, a key that scrolls).
@@ -3230,11 +3293,19 @@
   async function poll(full) {
     if (!current) return;
     const mine = gen;
-    if (!full && pollingGen === mine) return;  // one poll at a time per Mood: two could draw the same items twice
-    pollingGen = mine;
-    try { await pollOnce(full, mine); } finally { if (pollingGen === mine) pollingGen = null; }
+    // One poll at a time per Mood: two could draw the same items twice. But one out
+    // longer than POLL_STALE_MS has hung (a connection that died while the laptop
+    // slept): it no longer counts, or the page would freeze as it last was -- an
+    // agent "compacting" for hours. (Its ask for turns gave up at POLL_WAIT_MS, so
+    // it can't draw anything now; it's waiting on the rest.)
+    if (!full && polling && polling.gen === mine && Date.now() - polling.at < POLL_STALE_MS) return;
+    const ticket = polling = { gen: mine, at: Date.now() };
+    try { await pollOnce(full, mine); } finally { if (polling === ticket) polling = null; }
   }
-  let pollingGen = null;
+  let polling = null;
+  // Looked at again, or back online: ask now, not at the next tick.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(false); });
+  addEventListener('online', () => poll(false));
   // --- kept in this browser: each Mood's latest, drawn at once on a reload ----------
   // The newest KEPT_ITEMS of the last KEPT_MOODS Moods opened, as the server
   // sent them; a reload draws them before asking for anything, then asks only
@@ -3248,7 +3319,7 @@
     const kept = store.get('kept.' + slug, null);
     return kept && kept.version === KEPT_VERSION ? kept : null;
   }
-  function keep(slug, data, full) {
+  function keep(slug, data, full, opened = true) {
     let kept = full ? null : keptOf(slug);
     if (!full && !kept) return;  // grown only from a whole first page
     kept = kept || { has_earlier: !!data.has_earlier, version: KEPT_VERSION };
@@ -3266,7 +3337,9 @@
       kept.has_earlier = true;
     }
     kept.now = data.now || kept.now;
-    const order = [slug, ...store.get('kept', []).filter(s => s !== slug)];
+    // Opened goes first in the queue to be kept; brought up to date unopened (preload) keeps its place.
+    const order = opened || !store.get('kept', []).includes(slug) ? [slug, ...store.get('kept', []).filter(s => s !== slug)]
+      : store.get('kept', []);
     for (const gone of order.slice(KEPT_MOODS)) { try { localStorage.removeItem('moods.kept.' + gone); } catch (e) {} }
     store.set('kept', order.slice(0, KEPT_MOODS));
     store.set('kept.' + slug, kept);
@@ -3297,7 +3370,7 @@
       + (since && !full ? '&changes_since=' + encodeURIComponent(since) : '');
     let data;
     try {
-      const r = await fetch(url);
+      const r = await fetch(url, { signal: AbortSignal.timeout(POLL_WAIT_MS) });
       if (!r.ok) throw new Error(r.status);
       data = await r.json();
       setStatus('live', 'live');
@@ -3584,7 +3657,7 @@
     const box = document.getElementById('hush');
     // Redraw the menus only when a setting changed: never under someone's open menu.
     const key = JSON.stringify(Object.entries(agents).map(([n, a]) => [n, a.listening, a.model, a.effort, a.ultracode, a.reads,
-                                                                       a.discretion, a.verbosity, viewer]));
+                                                                       a.discretion, a.verbosity, viewer]).concat(agentsWhole()));
     if (box && (key !== agentsShown || !box.childElementCount)) {
       agentsShown = key;
       box.innerHTML = agentRows(agents);
@@ -3606,37 +3679,46 @@
     }
     refreshPies();
   }
-  // Which agents' rows are open, in this browser: folded by default, so a Mood
-  // with several agents doesn't spend a third of the screen on their menus.
-  let agentOpen = store.get('agentOpen', {});
+  // The agents' settings, in this browser: folded by default to one line -- each
+  // agent's model and effort in its own colour, its name on hover -- so a Mood with
+  // several agents doesn't spend a third of the screen on their menus; ▸ opens them
+  // all, an agent to a row. A phone shows them only when ⚙ is pressed, and whole.
+  let agentsOpen = store.get('agentsOpen', false);
+  const agentsWhole = () => agentsOpen || matchMedia(PHONE).matches;
   function agentGist(a) {
     const ctx = a.context || {};
     const model = a.model ? shortModel(a.model.split('/').pop()) : ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
-    return `${describeListening(a.listening)} · ${model} · ${EFFORT_LABELS[a.effort] || a.effort || 'default'}`;
+    // Listening is the usual; hushed or mentions-only is worth the room.
+    return (a.listening.mode === 'on' ? '' : describeListening(a.listening) + ' · ')
+      + `${model} · ${EFFORT_LABELS[a.effort] || a.effort || 'default'}`;
   }
   document.addEventListener('click', e => {
-    const fold = e.target.closest('#hush .fold, #hush .gist');
-    if (!fold) return;
-    const name = fold.closest('.agent').dataset.who;
-    agentOpen[name] = !agentOpen[name];
-    store.set('agentOpen', agentOpen);
+    if (!e.target.closest('#hush .fold, #hush .gist')) return;
+    agentsOpen = !agentsOpen;
+    store.set('agentsOpen', agentsOpen);
     agentsShown = '';
     renderAgents(agentsNow);
   });
   function agentRows(agents) {
-    return Object.entries(agents).map(([agent, a]) => {
+    if (!Object.keys(agents).length) return '';
+    const whole = agentsWhole();
+    const fold = matchMedia(PHONE).matches ? ''
+      : `<button type="button" class="fold" aria-expanded="${whole}" aria-label="${whole ? 'Fold the agents\' settings to one line' : 'Open the agents\' settings'}"`
+        + ` title="${whole ? 'Fold to one line' : 'Open the agents\' settings'}">${whole ? '▾' : '▸'}</button>`;
+    if (!whole) {
+      return fold + Object.entries(agents).map(([agent, a]) =>
+        `<span class="agent gist${a.listening.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}`
+        + ` title="${esc(agent)}: ${esc(describeListening(a.listening))}; click for its settings">${esc(agentGist(a))}</span>`).join('');
+    }
+    return fold + Object.entries(agents).map(([agent, a]) => {
       const l = a.listening, ctx = a.context || {};
-      const row = `<span class="agent${l.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}">${icon(agent, false)}${esc(agent)}: `;
-      if (!agentOpen[agent]) {
-        return row + `<span class="gist" title="Open ${esc(agent)}'s settings here">${esc(agentGist(a))}</span>`
-          + `<button type="button" class="fold" aria-expanded="false" aria-label="Open ${esc(agent)}'s settings">▸</button></span>`;
-      }
-      const shut = `<button type="button" class="fold" aria-expanded="true" aria-label="Fold ${esc(agent)}'s settings">◂</button>`;
+      const row = `<span class="agent${l.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}>`
+        + `${icon(agent, false)}<span class="name">${esc(agent)}</span>: `;
       if (!keyHolder) {
         return row
           + `${esc(describeListening(l))} · ${esc(SPEAKING_UP[a.discretion || 'normal'] || a.discretion)} · ${esc(REPLY_LENGTHS[a.verbosity || 'normal'])}`
           + ` · ${esc(a.model || 'default')} · effort ${esc(EFFORT_LABELS[a.effort] || a.effort)} · reads ${esc(kTokens(a.reads || 10000))}`
-          + (a.ultracode ? ' · ultracode' : '') + shut + '</span>';
+          + (a.ultracode ? ' · ultracode' : '') + '</span>';
       }
       const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="listen: answers mentions and may speak up unasked · mention: answers mentions only · hush: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening(l))}</option>`
         + HUSH.map(([mode, minutes, label], i) => `<option value="${i}">${esc(label)}</option>`).join('') + '</select>';
@@ -3660,7 +3742,7 @@
       // Ultracode is Claude Code's: an agent on another harness (Pi: a.catalog names it) has none to turn on.
       const ultra = a.catalog != null ? '' : `<label class="ultra" title="Claude Code's standing multi-agent workflows, on wakes with full tools: thorough, and costly">`
         + `<input type="checkbox" data-agent="${esc(agent)}" data-knob="ultracode"${a.ultracode ? ' checked' : ''}> ultra</label>`;
-      return `${row}${listen} ${discretion} ${verbosity} ${model} ${effort} ${reads} ${ultra}${shut}</span>`;
+      return `${row}${listen} ${discretion} ${verbosity} ${model} ${effort} ${reads} ${ultra}</span>`;
     }).join('');
   }
   document.addEventListener('change', async e => {
@@ -3797,6 +3879,7 @@
     markLive();
     stopBtn.hidden = !(keyHolder && act && act.doing !== 'held');
     if (!act) return;
+    activityEl.style.setProperty('--who', agentColor(act.agent));
     const hhmm = iso => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     activityText.innerHTML = act.doing === 'waking'
       ? `waking ${icon(act.agent, false)}<b>${esc(act.agent)}</b> · ${elapsed(act.since)}`
