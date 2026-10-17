@@ -163,6 +163,10 @@ def api_logout(request):
     return response
 
 
+# The placeholder upload() puts in the box until a picture is stored: ![uploading name…]()
+UPLOADING = re.compile(r'!\[uploading [^\]\n]*…\]\(\)\n?')
+
+
 @require_POST
 def api_say(request, slug):
     """Post a turn into a Mood as the device's person."""
@@ -181,8 +185,13 @@ def api_say(request, slug):
     if not isinstance(text, str):
         return JsonResponse({'error': 'expected {"text": ...}'}, status=400)
     text = text.replace('\x00', '').strip()  # Postgres text can't hold NUL
+    # A picture's placeholder while it uploads (the page's upload()) is never a message:
+    # sent before the picture was up, it's dropped, and alone it's refused.
+    unsent = UPLOADING.search(text)
+    text = UPLOADING.sub('', text).strip()
     if not text:
-        return JsonResponse({'error': 'nothing to say'}, status=400)
+        return JsonResponse({'error': "the picture hadn't finished uploading: send it again once it's in the box"
+                             if unsent else 'nothing to say'}, status=400)
     if len(text) > MAX_CHARS:
         return JsonResponse({'error': f'longer than {MAX_CHARS} characters'}, status=400)
 
