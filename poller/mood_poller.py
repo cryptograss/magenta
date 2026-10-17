@@ -52,6 +52,7 @@ import logging
 import os
 import queue
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -59,6 +60,7 @@ import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import requests
@@ -193,6 +195,40 @@ def mcp_config_for_wakes(claude_json='~/.claude.json', out='~/.local/state/magen
     with os.fdopen(fd, 'w') as f:
         json.dump({'mcpServers': chosen}, f)
     return str(path)
+
+
+def end_orphans(session_id, proc_dir='/proc'):
+    """End any process still running the turn `session_id` with nobody
+    listening: its harness, started in its own process group by a poller
+    that has since died. True if there was one. (Linux; elsewhere, none.)"""
+    if not session_id:
+        return False
+    found, me = False, os.getpid()
+    for proc in Path(proc_dir).glob('[0-9]*'):
+        try:
+            pid = int(proc.name)
+            if pid == me or session_id.encode() not in (proc / 'cmdline').read_bytes():
+                continue
+            group = os.getpgid(pid)
+            if group == os.getpgid(0):
+                os.kill(pid, signal.SIGTERM)  # never this poller's own group
+            else:
+                os.killpg(group, signal.SIGTERM)
+            found = True
+        except (OSError, ValueError):
+            continue
+    return found
+
+
+def poller_alive(pid, proc_dir='/proc'):
+    """Whether `pid` is another poller, running now. (After a container is
+    recreated, a new poller may have its old pid: that's this one.)"""
+    if not isinstance(pid, int) or pid == os.getpid():
+        return False
+    try:
+        return b'mood_poller' in (Path(proc_dir) / str(pid) / 'cmdline').read_bytes()
+    except OSError:
+        return False
 
 
 def end_process_group(proc):
@@ -455,6 +491,14 @@ class ClaudeCodeWaker:
     def cold_read_usd(self, session_id):
         """What reading `session_id` into a cold cache costs, at most."""
         return self.context_tokens(session_id) / 1e6 * self.COLD_USD_PER_MTOK
+
+    def last_touched(self, session_id):
+        """When `session_id` last ran (its transcript's last write), or None."""
+        path = self.find(session_id)
+        try:
+            return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc) if path else None
+        except OSError:
+            return None
 
     def command(self, session_id, new_session_id, prompt, grant=(), budget=None, effort=None, model=None,
                 full=False, ultracode=False):
@@ -727,6 +771,14 @@ def mention_opening(slug, why):
     return [f'<mood-wake mood="{slug}">', f'You were woken by the Mood poller: {why}', '']
 
 
+def cut_off_note(started):
+    """For a turn tried again because a restart cut it off (MoodPoller.recover_cut_off)."""
+    return (f'<cut-off>Your turn for this, started at {started[11:16]}Z, was cut off before it finished: '
+            'your poller restarted (most likely a deploy recreating its container). What it did before then '
+            'stands -- anything it posted is in the Mood, anything it changed is on disk -- so look before you '
+            'redo anything, then finish what was asked.</cut-off>\n')
+
+
 def consider_opening(slug):
     return [f'<mood-wake mood="{slug}" reason="consider">',
             'Nobody asked you anything. This is the Mood lately, newest last; ► marks what was '
@@ -907,7 +959,8 @@ class MoodPoller:
                  screen=None, consider=True, considers_per_hour=6, consider_usd_per_day=10.0,
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
-                 letter=None, agent_wakes_per_hour=10, only_poller=False):
+                 letter=None, agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
+                 end_orphans=end_orphans):
         self.api = api
         self.waker = waker
         self.agent = agent.lower()
@@ -958,6 +1011,11 @@ class MoodPoller:
         self.consider_effort = consider_effort
         self.debounce = timedelta(seconds=debounce)
         self.idle_first = idle_first
+        # A look nobody asked for (a long quiet, a greeting) that would read
+        # the agent's session cold for more than this is skipped: on
+        # 2026-10-16 three quiet looks read a 510k-token session for $4.10
+        # each, all to say nothing. A mention is never skipped for its cost.
+        self.quiet_look_max_usd = quiet_look_max_usd
         self.last_reply = None
         # Turns at once, at most one per Mood: each Mood is its own context
         # and usually its own person, so one long turn mustn't hold up the
@@ -980,6 +1038,8 @@ class MoodPoller:
         self.state.setdefault('consider', {})
         self.state.setdefault('spend', {'day': '', 'usd': 0.0})
         self.state.setdefault('agent_wakes', {})
+        self.end_orphans = end_orphans
+        self.recover_cut_off()
 
     # --- state ---------------------------------------------------------------
 
@@ -1013,6 +1073,88 @@ class MoodPoller:
     def recent_wakes(self):
         cutoff = self.now() - timedelta(hours=1)
         return [w for w in self.state['wakes'] if parse_time(w) > cutoff]
+
+    # --- turns cut off by a restart ---------------------------------------------
+    # A mention is marked handled before its turn runs, so a restart can't
+    # answer it twice. But a restart *during* the turn -- a deploy recreating
+    # the container -- then lost it without a trace: Justin's /compact on
+    # 2026-10-16 at 06:51:55, sixteen seconds before the deploy. So each turn
+    # a mention owes is also kept in the state while it runs ("in_flight"),
+    # and taken off when it ends, however it ends. One still there when the
+    # poller starts was cut off: what woke it is owed again, once, and the
+    # turn is told so. Cut off a second time, it's let go, with a dot saying why.
+
+    CUT_OFF_TRIES = 2
+
+    def recover_cut_off(self):
+        self.state.setdefault('cut_off', [])
+        flying = self.state.get('in_flight') or {}
+        # A dry run beside the real poller, or a second one started by
+        # mistake: those turns are some live poller's, not cut off.
+        if self.dry_run or any(poller_alive(f.get('poller')) for f in flying.values()):
+            self.state.setdefault('in_flight', {})
+            return
+        self.state['in_flight'] = {}
+        for flight in flying.values():
+            if self.end_orphans(flight.get('session')):
+                # Its harness outlived the poller, running with nobody to hear it.
+                logger.warning(f"{flight['mood']}: ended a turn still running from before the restart")
+            logger.warning(f"{flight['mood']}: a turn started at {flight['started']} was cut off by a restart; "
+                           f"owed again")
+            self.state['cut_off'].append(flight)
+        if flying:
+            self.save()
+
+    def take_off(self, slug, owed, session, command):
+        """Record a mention's turn as running; returns what `land` takes."""
+        ids = {t['id'] for t in owed}
+        again = [f for f in self.state['cut_off'] if ids & {t['id'] for t in f['turns']}]
+        tries = 1 + max((f.get('tries', 1) for f in again), default=0)
+        # This turn is their try again: they're in flight now, not cut off.
+        self.state['cut_off'] = [f for f in self.state['cut_off'] if f not in again]
+        self.state['in_flight'][session] = {'mood': slug, 'turns': owed, 'session': session,
+                                            'started': self.now().isoformat(), 'command': command,
+                                            'tries': tries, 'poller': os.getpid()}
+        return session
+
+    def land(self, session):
+        """The turn has ended (spoken, silent or failed): no longer in flight."""
+        if self.state['in_flight'].pop(session, None) is not None:
+            self.save()
+
+    def cut_off_owed(self, pending):
+        """Add to `pending` (slug -> turns) what turns cut off by a restart owe;
+        let go of those cut off twice already."""
+        for flight in list(self.state['cut_off']):
+            slug = flight['mood']
+            if flight.get('tries', 1) >= self.CUT_OFF_TRIES:
+                self.state['cut_off'].remove(flight)
+                self.save()
+                reason = (f"cut off by restarts twice (first at {flight['started'][11:16]}Z); not trying again: "
+                          f"say it again if it still matters")
+                logger.warning(f'{slug}: {reason}')
+                self.dot(slug, reason)
+                continue
+            there = pending.setdefault(slug, [])
+            there += [t for t in flight['turns'] if t['id'] not in {s['id'] for s in there}]
+            there.sort(key=lambda t: t['created_at'])
+
+    def settle_cut_off(self, settled):
+        """Forget the cut-off turns whose mentions are now settled (woken again, answered, let go)."""
+        settled = set(settled)
+        left = [f for f in self.state['cut_off'] if not {t['id'] for t in f['turns']} <= settled]
+        if len(left) != len(self.state['cut_off']):
+            self.state['cut_off'] = left
+            self.save()
+
+    def dot(self, slug, reason):
+        """A dot in the Mood, marked as the runner's doing, not the agent's choice."""
+        if self.dry_run:
+            return
+        try:
+            self.api.quiet(slug, reason, by='screen')
+        except Exception as e:
+            logger.warning(f'{slug}: could not leave a dot: {e}')
 
     # --- holds: a mention owed a turn that isn't starting yet -----------------
     # Without a word from the runner, the Mood can only show "waking" for as
@@ -1116,6 +1258,7 @@ class MoodPoller:
             if (turn['sender'] == self.agent and turn.get('via') != 'handoff') or turn['id'] in handled:
                 continue
             pending.setdefault(m['mood'], []).append(turn)
+        self.cut_off_owed(pending)
 
         woken = []
         for slug, mentioned in pending.items():
@@ -1142,6 +1285,7 @@ class MoodPoller:
                 continue
             handled.update(done)
             self.state['handled'] = sorted(handled)
+            self.settle_cut_off(done)
             if outcome in ('woken', 'started'):
                 woken.append(slug)
                 if only_agents:
@@ -1217,6 +1361,9 @@ class MoodPoller:
             prompt = command_request(commands[0]['text'], self.agent)
         else:
             prompt = self.prompt(slug, owed, full=full)
+            cut_off = [f for f in self.state['cut_off'] if {t['id'] for t in owed} & {t['id'] for t in f['turns']}]
+            if cut_off:
+                prompt = cut_off_note(cut_off[0]['started']) + prompt
         if fresh:
             prompt = '\n'.join(new_mood_opening(slug, self.letter, self.agent)) + prompt
         elif lost:
@@ -1226,9 +1373,11 @@ class MoodPoller:
             logger.info(f'{slug}: would wake {session or "a new session"} {"with full tools " if full else ""}with:\n{prompt}')
             return settled, 'woken'
 
-        # Recorded before the turn runs: a restart mid-turn must not wake again.
+        # Recorded before the turn runs: a restart mid-turn must not wake
+        # again as if nothing had happened, nor lose the turn (take_off).
         self.state['wakes'].append(self.now().isoformat())
         self.state['handled'] = sorted(set(self.state['handled']) | set(settled))
+        flight = self.take_off(slug, owed, str(uuid.uuid4()), command=bool(commands))
         self.save()
         options = dict(effort=self.knob(slug, 'mention_effort', self.mention_effort), model=self.knob(slug, 'model'),
                        full=full)
@@ -1238,7 +1387,11 @@ class MoodPoller:
         options['since'] = owed[-1]['created_at']
         if full and self.knob(slug, 'ultracode'):
             options['ultracode'] = True
-        outcome = self.launch(slug, lambda: self.run_turn(slug, session, prompt, **options))
+        options['new_session'] = flight
+        outcome = self.launch(slug, lambda: self.run_turn(slug, session, prompt, **options),
+                              after=lambda _: self.land(flight))
+        if not self.parallel:
+            self.land(flight)
         return settled, outcome
 
     # --- turns side by side ----------------------------------------------------
@@ -1329,7 +1482,7 @@ class MoodPoller:
 
     def run_turn_for(self, slug, session_id, prompt, **options):
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
-        new_session = str(uuid.uuid4())
+        new_session = options.pop('new_session', None) or str(uuid.uuid4())
         poster = None
         if self.streamer:
             # A fork goes on from the session it copied; a poster that can say
@@ -1590,7 +1743,7 @@ class MoodPoller:
             st['quiet_since'] = self.now().isoformat()  # the next long quiet counts from here
             self.save()
 
-        outcome = self.consider_quiet(slug, quiet_for, after=settle)
+        outcome = self.consider_quiet(slug, quiet_for, after=settle, first=st.get('idle_after') is None)
         if outcome != 'started':
             settle(outcome)
         return outcome
@@ -1610,7 +1763,7 @@ class MoodPoller:
         return self.fit(lead + said, self.catch_up_chars(slug), new_ids)
 
     def consider_posts(self, slug, recent, posts):
-        if not self.within_budget(slug):
+        if not self.within_budget(slug, self.look_usd(slug)):
             return 'over budget'
         lines, cost = self.catch_up(slug, recent, posts)
         self.spend(cost)
@@ -1637,8 +1790,11 @@ class MoodPoller:
                         + ['', consider_ask(discretion)])
         return self.consider_wake(slug, '\n'.join(prompt_lines + self.rules_lines(slug) + wake_footer()))
 
-    def consider_quiet(self, slug, quiet_for, after=None):
-        if not self.within_budget(slug):
+    def consider_quiet(self, slug, quiet_for, after=None, first=True):
+        cost = self.look_usd(slug)
+        if self.too_costly(slug, cost, say=first):  # said once a quiet stretch
+            return 'too costly'
+        if not self.within_budget(slug, cost):
             return 'over budget'
         recent = self.api.recent(slug, limit=12)
         minutes = int(quiet_for.total_seconds() // 60)
@@ -1695,7 +1851,10 @@ class MoodPoller:
         if greeted and self.now() - parse_time(greeted) < GREET_GAP:
             return 'greeted'  # a second device, say
         self.state['consider'].setdefault(slug, {})
-        if not self.within_budget(slug):
+        cost = self.look_usd(slug)
+        if self.too_costly(slug, cost, say=False):  # a dot is no greeting
+            return 'too costly'
+        if not self.within_budget(slug, cost):
             return 'over budget'
         self.state['arrivals']['greeted'][who] = self.now().isoformat()
         self.save()
@@ -1751,7 +1910,43 @@ class MoodPoller:
         self.state['agent_wakes'][slug] = recent
         return len(recent) < self.agent_wake_limit(slug)
 
-    def within_budget(self, slug):
+    # A session's context read into a cold prompt cache costs about 12x what
+    # it costs read from a warm one (writes at 1.25x the input price, reads
+    # at 0.1x); the cache lives an hour at most.
+    CACHE_LIFE = timedelta(hours=1)
+    WARM_SHARE = 0.08
+
+    def look_usd(self, slug):
+        """About what waking the agent in `slug` costs just to read its session
+        there: a cold read, unless it ran within the cache's life. 0 if the
+        harness can't say (Pi's sessions, for now)."""
+        try:
+            sessions = self.api.sessions(slug, self.agent)
+        except Exception:
+            return 0.0
+        if not sessions:
+            return 0.0
+        cold = getattr(self.waker, 'cold_read_usd', lambda s: 0.0)(sessions[0])
+        touched = getattr(self.waker, 'last_touched', lambda s: None)(sessions[0])
+        if touched and self.now() - touched < self.CACHE_LIFE:
+            return cold * self.WARM_SHARE
+        return cold
+
+    def too_costly(self, slug, cost, say=True):
+        """Whether a look nobody asked for would cost too much just to read
+        the session; if so, and `say`, a dot in the Mood says why."""
+        if cost <= self.quiet_look_max_usd:
+            return False
+        reason = (f'a look would cost about ${cost:.2f} just to read my session here, cold: '
+                  f'not worth it unasked (after a /compact it costs cents)')
+        logger.info(f'{slug}: not looking: {reason}')
+        if say:
+            self.dot(slug, reason)
+        return True
+
+    def within_budget(self, slug, projected=0.0):
+        """Whether a consideration may run: under the Mood's hourly count, and
+        today's spend plus what this one is `projected` to cost under the day's dollars."""
         hour_ago = self.now() - timedelta(hours=1)
         per_hour = self.knob(slug, 'considers_per_hour', self.considers_per_hour)
         wakes = [w for w in self.state['consider'].get(slug, {}).get('wakes', []) if parse_time(w) > hour_ago]
@@ -1761,6 +1956,10 @@ class MoodPoller:
         per_day = self.budget.get('consider_usd_per_day', self.consider_usd_per_day)
         if self.spent_today() >= per_day:
             logger.warning(f"{slug}: would consider, but today's ${per_day:.2f} is spent")
+            return False
+        if projected and self.spent_today() + projected > per_day:
+            # 2026-10-16: the third $4 look started at $8.19 and ended at $12.32.
+            logger.warning(f"{slug}: would consider, but ${projected:.2f} more would pass today's ${per_day:.2f}")
             return False
         return True
 
@@ -1816,6 +2015,9 @@ def main(argv=None):
     parser.add_argument('--agent', default='magent')
     parser.add_argument('--base', default=os.environ.get('MEMORY_LANE_URL', DEFAULT_BASE))
     parser.add_argument('--state', default='~/.local/state/magenta/mood_poller.json')
+    parser.add_argument('--log', default='~/.local/state/magenta/mood_poller.log',
+                        help="Also log here, beside the state, in the agent's home: a log in the container's "
+                             "/tmp goes with it when a deploy recreates it ('' for none)")
     parser.add_argument('--interval', type=float, default=1.0, help='Seconds between looks (two cheap GETs)')
     parser.add_argument('--grace', type=int, default=600, help='Seconds to leave for a live session to answer')
     parser.add_argument('--max-wakes-per-hour', type=int, default=30)
@@ -1845,6 +2047,9 @@ def main(argv=None):
     parser.add_argument('--consider-budget', type=float, default=3.0,
                         help='Dollar cap on one consideration: enough to read a big session cold (~$1.25)')
     parser.add_argument('--consider-effort', default='medium')
+    parser.add_argument('--quiet-look-max-usd', type=float, default=0.75,
+                        help='Skip a look nobody asked for (a long quiet, a greeting) that would cost more than '
+                             'this just to read the session cold; mentions are never skipped')
     parser.add_argument('--screen-model', default='haiku', help="The screen's model; 'none' skips the screen")
     parser.add_argument('--debounce', type=int, default=10, help='Seconds of quiet before considering new posts')
     parser.add_argument('--idle-first', type=int, default=3000,
@@ -1864,7 +2069,15 @@ def main(argv=None):
     parser.add_argument('--dry-run', action='store_true', help='Log what would be woken; change nothing')
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+    handlers = [logging.StreamHandler()]
+    if args.log:
+        log = Path(args.log).expanduser()
+        try:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            handlers.append(RotatingFileHandler(log, maxBytes=5_000_000, backupCount=3))
+        except OSError as e:
+            print(f'not logging to {log}: {e}', file=sys.stderr)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s', handlers=handlers)
     # The runner's key, from the vault via the hunter deploy. Without it,
     # woken turns still reach their Mood through the transcript watcher.
     key = runner_key()
@@ -1900,7 +2113,7 @@ def main(argv=None):
                           full_tools_for=[n.strip() for n in args.full_tools_for.split(',') if n.strip()],
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
                           letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour,
-                          only_poller=args.only_poller == 'yes')
+                          only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd)
     report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on
