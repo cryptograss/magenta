@@ -192,6 +192,14 @@ class MoodAuthTest(TestCase):
             self.say('one'); self.say('two')
             self.assertEqual(self.say('three').status_code, 429)
 
+    def test_a_pictures_upload_placeholder_is_never_posted(self):  # Justin's share from a Pixel, 17 Oct
+        self.sign_in()
+        alone = self.say('![uploading PXL_20261011_235645989.jpg…]()')
+        self.assertEqual(alone.status_code, 400)
+        self.assertIn("hadn't finished uploading", alone.json()['error'])
+        self.assertEqual(self.say('look at this\n![uploading PXL_1.jpg…]()\n').status_code, 201)
+        self.assertEqual(self.client.get('/api/moods/m26/turns/').json()['turns'][-1]['text'].strip(), 'look at this')
+
     def test_odd_bodies_are_refused_not_crashed_on(self):
         self.sign_in()
         token = self.client.cookies['csrftoken'].value

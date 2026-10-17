@@ -4183,9 +4183,14 @@
     setTimeout(() => note && note.remove(), ms || 8000);
   }
   const fileInput = document.getElementById('file');
+  // Pictures still on their way up, and whether Send was pressed meanwhile: it waits for
+  // them (say()), and sends once the last is in the box -- not the placeholder. One that
+  // fails leaves the box to its person, the error in view, and sends nothing.
+  let picturesUp = 0, picturesThenSend = false, pictureFailed = false;
   async function upload(file) {
     const marker = `![uploading ${file.name || 'image'}…]()`;
     insertAtCaret(marker + '\n');
+    picturesUp++;
     try {
       const body = await sendPicture(file);
       sayBox.value = sayBox.value.replace(marker, body.markdown);
@@ -4196,6 +4201,15 @@
       // The input event first: its listener clears errors, and would take this one with it.
       sayBox.dispatchEvent(new Event('input'));
       showError('image: ' + e.message);
+      pictureFailed = true;
+    } finally {
+      picturesUp--;
+      if (!picturesUp && picturesThenSend) {
+        picturesThenSend = false;
+        if (pictureFailed) composer.querySelectorAll('.note.picture-note').forEach(el => el.remove());
+        else say();
+      }
+      if (!picturesUp) pictureFailed = false;
     }
   }
   async function sendPicture(file) {
@@ -5321,6 +5335,13 @@
       if (recorder) recorder.stop();
       composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
       composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Sending as soon as it\'s saved…</span>');
+      return;
+    }
+    // A picture still uploading: sent once it's in the box (upload()), never its placeholder.
+    if (picturesUp) {
+      picturesThenSend = true;
+      composer.querySelectorAll('.note.picture-note').forEach(el => el.remove());
+      composer.insertAdjacentHTML('beforeend', `<span class="note picture-note">🖼 Sending as soon as ${picturesUp > 1 ? 'the pictures are' : 'the picture is'} up…</span>`);
       return;
     }
     const text = sayBox.value.trim();
