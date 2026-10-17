@@ -171,6 +171,26 @@ class SettingsAPITest(TestCase):
         self.assertIn("badge: '/moods/mark-96.png'", self.client.get('/moods/sw.js').content.decode())
         self.assertEqual(self.client.get('/moods/sw.js')['Service-Worker-Allowed'], '/moods/')
 
+    def test_in_the_share_sheet(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import Client
+        target = self.client.get('/moods/manifest.webmanifest').json()['share_target']
+        self.assertEqual((target['action'], target['method'], target['enctype']), ('/moods/share/', 'POST', 'multipart/form-data'))
+        self.assertEqual(target['params']['files'][0]['name'], 'files')
+        self.assertIn("pathname === '/moods/share/'", self.client.get('/moods/sw.js').content.decode())  # the worker takes it
+        # With no service worker to take it, the server passes the words on and counts the files it can't.
+        # Android sends no CSRF token: refused, a share would never arrive.
+        shared = Client(enforce_csrf_checks=True).post('/moods/share/', {
+            'title': 'Water Tower', 'text': 'Have a listen', 'url': '', 'files': SimpleUploadedFile('a.png', b'\x89PNG')})
+        self.assertEqual(shared.status_code, 303)
+        self.assertEqual(shared['Location'], '/moods/?shared=here&title=Water+Tower&text=Have+a+listen&lost=1')
+        self.assertEqual(self.client.get('/moods/share/')['Location'], '/moods/')
+
+    def test_a_mood_never_takes_a_pages_address(self):
+        self.assertEqual(Mood.free_slug('Share'), 'share-2')
+        self.assertEqual(Mood.free_slug('Settings'), 'settings-2')
+        self.assertEqual(Mood.free_slug('Sharing'), 'sharing')
+
     def test_a_context_window_by_model(self):
         from conversations.services.mood_view import context_window
         self.assertEqual(context_window('claude-opus-5-5'), 1_000_000)

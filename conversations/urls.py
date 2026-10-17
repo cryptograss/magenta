@@ -12,6 +12,7 @@ urlpatterns = [
     path('moods/<slug:slug>/rules/', views_settings.rules_page, name='mood_rules'),
     path('moods/manifest.webmanifest', views_moods.app_manifest, name='mood_app_manifest'),
     path('moods/sw.js', views_moods.app_service_worker, name='mood_app_sw'),
+    path('moods/share/', views_moods.app_share, name='mood_app_share'),  # before <slug>: a share, not a Mood
     path('moods/icon-<int:size>.png', views_moods.app_icon, name='mood_app_icon'),
     path('moods/mark-<int:size>.png', views_moods.app_icon, {'kind': 'mark'}, name='mood_app_mark'),
     path('moods/<slug:slug>/', views_moods.moods_page, name='mood'),

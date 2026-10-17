@@ -346,7 +346,7 @@ class Mood(models.Model):
         from django.utils.text import slugify
         base = slugify(title)[:60].strip('-') or 'mood'
         slug, n = base, 2
-        while (cls.objects.filter(slug=slug).exclude(pk=getattr(mood, 'pk', None)).exists()
+        while (slug in PAGE_SLUGS or cls.objects.filter(slug=slug).exclude(pk=getattr(mood, 'pk', None)).exists()
                or MoodAlias.objects.filter(slug=slug).exclude(mood=mood).exists()):
             slug, n = f'{base}-{n}', n + 1
         return slug
@@ -368,6 +368,10 @@ class Mood(models.Model):
 
 
 _slugs = {'at': 0.0, 'by_id': {}}
+
+
+# Addresses under /moods/ that are pages of their own (urls.py), not a Mood: a Mood titled so is slugged -2.
+PAGE_SLUGS = {'settings', 'share'}
 
 
 def mood_slug(mood_id):
