@@ -1019,7 +1019,7 @@
     <div id="activity"><span class="dot"></span><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button>
-      <label id="stripLocation" title="Phone photos carry where they were taken (GPS), the camera and the time. Ticked, that's removed before anyone sees it; unticked, it stays (a HEIC photo's carried into its JPEG)."><input type="checkbox" checked> Remove location (GPS)</label></div>
+      <label id="stripLocation" title="Phone photos carry where and when they were taken (GPS), and the camera. They go with the picture unless this is ticked; ticked, all of it is removed before anyone sees it (a HEIC photo's carried into its JPEG)."><input type="checkbox"> Remove photo details (place, time, camera)</label></div>
     <div id="videoCards"></div>
     <div id="videoBar" hidden><span class="what"></span><span class="track"><span class="fill"></span></span><span class="pct"></span> <button type="button" id="videoCancel">cancel</button></div>
     <div id="shareCard" hidden><span class="what"></span><label class="into">into <select id="shareMood" aria-label="Which Mood it goes to"></select></label><button type="button" id="shareHere"></button><button type="button" id="shareDrop" title="Don't share it" aria-label="Don't share it">✕</button></div>
@@ -4330,11 +4330,13 @@
       xhr.send(file);
     });
   }
-  // Where a photo was taken goes unless they untick "Remove location" (media.without_metadata;
-  // Justin and Sky, 15 Oct). Unticked or ticked again, the pictures in the tray are sent again
-  // the new way, so what's sent is what was chosen. Remembered here.
+  // A photo keeps its details -- where and when, the camera -- unless they tick "Remove photo
+  // details" (media.without_metadata, which takes all of them). Justin and Sky, 17 Oct: keep
+  // everything by default, so a show photo can find its show. Ticked or unticked again, the
+  // pictures in the tray are sent again the new way, so what's sent is what was chosen.
+  // Remembered here: '0' is someone who chose to remove them, and stays so.
   const stripBox = document.querySelector('#stripLocation input');
-  try { stripBox.checked = localStorage.getItem('keep-location') !== '1'; } catch (e) {}
+  try { stripBox.checked = localStorage.getItem('keep-location') === '0'; } catch (e) {}
   stripBox.addEventListener('change', async () => {
     try { localStorage.setItem('keep-location', stripBox.checked ? '0' : '1'); } catch (e) {}
     for (const a of tray.filter(x => x.mine && x.file && x.markdown)) {
