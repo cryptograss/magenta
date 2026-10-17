@@ -147,7 +147,7 @@ class ActivityTest(TestCase):
 
     def test_a_compaction_once_done_is_not_thinking(self):
         self.add(self.magent, 900, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn')
-        self.add(self.justin, 70, '/compact great run @magent', source_file='mood-web')
+        self.add(self.justin, 70, '/compact magent great run', source_file='mood-web')
         self.assertEqual(self.now()['doing'], 'compacting')  # while it compacts, not "waking"
         self.compacted(5)
         self.assertIsNone(self.now())
@@ -165,7 +165,7 @@ class ActivityTest(TestCase):
 
     def test_a_runners_compaction_once_done_is_not_thinking(self):
         # Run with -p, /compact streams the summary and no "Compacted" after it.
-        self.add(self.justin, 70, '/compact great run @magent', source_file='mood-web')
+        self.add(self.justin, 70, '/compact magent great run', source_file='mood-web')
         self.add(self.magent, 10, 'This session is being continued from a previous conversation that ran '
                                   'out of context. The summary below covers the earlier portion.')
         self.assertEqual(self.now()['doing'], 'thinking')  # while the run is still going
@@ -176,7 +176,7 @@ class ActivityTest(TestCase):
         # 2026-10-15: the watcher brought the /compact's command line from the
         # transcript 36 ms after the runner's end. Newest to arrive, it read as
         # thinking; it happened before the end, so it isn't.
-        self.add(self.justin, 70, '@magent /compact keep the list', source_file='mood-web')
+        self.add(self.justin, 70, '/compact magent keep the list', source_file='mood-web')
         self.add(self.magent, 10, 'This session is being continued from a previous conversation.')
         self.ran(9)
         self.add(self.justin, 60, {'type': 'slash_command', 'command_name': '/compact',

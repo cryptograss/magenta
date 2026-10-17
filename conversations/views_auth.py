@@ -206,6 +206,22 @@ def api_say(request, slug):
                                           f"(@{', @'.join(addressed)}): take the mention out, or sign in with "
                                           f"your SSH key (magenta.sh login)", 'agents': addressed}, status=403)
 
+    # /compact, /context, /usage, /cost for agents (services/agent_commands): in its one
+    # form, or refused here with the form it should take -- never posted as if it ran.
+    from .services import agent_commands
+    from .services.mood_view import agent_names, reply_to as _reply_to
+    try:
+        command = agent_commands.parse(_reply_to(text)[1], agent_names())
+    except agent_commands.Invalid as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    if command:
+        # They're Claude Code's: an agent on another harness (Pi) has none of them yet.
+        from .models import HarnessModels
+        elsewhere = dict(HarnessModels.objects.filter(agent_id__in=command[1]).values_list('agent_id', 'harness'))
+        if elsewhere:
+            who = ', '.join(f'{a} ({h})' for a, h in sorted(elsewhere.items()))
+            return JsonResponse({'error': f'/{command[0]} is Claude Code\'s; not for {who}'}, status=400)
+
     # /clips: the team's saved clips (services/clips.py). A command either
     # becomes what's posted, or -- listing them -- posts nothing at all. Sent
     # as a reply, it's the words after the reply's '↩ #m-…' that are the command.

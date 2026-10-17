@@ -6,6 +6,7 @@ the conversation.
 """
 
 import functools
+import json
 import hashlib
 import re
 
@@ -20,7 +21,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, push, servers, wiki_auth, wiki_feed, wiki_upload
-from .services import mood_auth
+from .services import agent_commands, mood_auth
 from .services.mood_view import (
     from_wiki_tier,
     MACHINERY_SENDERS, how_payload, activity, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
@@ -61,6 +62,8 @@ def moods_page(request, slug=None):
         # Notifications with magenta closed (services/push.py): what browsers subscribe with. '' if off.
         'push_key': push_key(),
         'page_version': page_version(),
+        # The slash commands, for the composer to offer as one is typed (services/agent_commands).
+        'slash_commands': json.dumps(agent_commands.suggestions()),
     })
 
 

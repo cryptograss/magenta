@@ -1333,7 +1333,8 @@ class GlovesOffTest(TestCase):
 
 
 class CompactTest(TestCase):
-    """"@magent /compact" from someone trusted compacts the session instead of taking a turn."""
+    """"/compact magent <what to keep>" from someone trusted compacts the session instead of
+    taking a turn -- in that form only (memory-lane services/agent_commands; Justin, 17 Oct)."""
 
     def run_for(self, *posts):
         api = FakeAPI([mention('m26', dict(turn(f'm{i}', who, i, text), via='web'))
@@ -1345,39 +1346,46 @@ class CompactTest(TestCase):
         self.poller.poll_once()
         return [prompt for _, prompt in self.waker.woken]
 
-    def test_the_command_alone_is_what_runs(self):
-        self.assertEqual(self.run_for(('justin', '@magent /compact')), ['/compact'])
+    def test_the_command_and_what_to_keep_is_what_runs(self):
+        self.assertEqual(self.run_for(('justin', '/compact magent keep the setlist and the open PRs')),
+                         ['/compact keep the setlist and the open PRs'])
         self.assertNotIn('effort', self.waker.options)
         # With the tools a turn of theirs would have, so /context counts what a real turn carries.
         self.assertTrue(self.waker.options['full'])
 
-    def test_the_other_commands_and_what_they_take(self):
-        self.assertEqual(self.run_for(('justin', '@magent /context')), ['/context'])
-        self.assertEqual(self.run_for(('justin', '@magent /usage')), ['/usage'])
-        self.assertEqual(self.run_for(('justin', '@magent /cost')), ['/cost'])
-        # Words after a command that takes none: a question, not the command.
-        self.assertTrue(self.run_for(('justin', '@magent /usage of the word banjo?'))[0].startswith('<mood-wake'))
-        # Not one of ours (unavailable here, a knob already, or throws the session away): an ordinary mention.
-        for line in ('@magent /clear', '@magent /model sonnet', '@magent /rewind'):
+    def test_several_agents_at_once(self):
+        self.assertEqual(self.run_for(('justin', '/compact re, magent keep the list')), ['/compact keep the list'])
+        # Not this agent's: an ordinary turn for whoever it is for, not a command here.
+        self.assertTrue(self.run_for(('justin', '/compact re keep the list'))[0].startswith('<mood-wake'))
+
+    def test_the_other_commands_take_nothing_after_their_agents(self):
+        self.assertEqual(self.run_for(('justin', '/context magent')), ['/context'])
+        self.assertEqual(self.run_for(('justin', '/usage magent')), ['/usage'])
+        self.assertEqual(self.run_for(('justin', '/cost magent')), ['/cost'])
+        self.assertTrue(self.run_for(('justin', '/usage magent of the word banjo?'))[0].startswith('<mood-wake'))
+
+    def test_the_old_ways_are_not_the_command(self):
+        # The server refuses these before they're posted; were one to arrive, it's a mention, not the command.
+        for line in ('@magent /compact', '@magent /compact keep the list', 'hey @magent /compact - keep it',
+                     '/compact magent', '@magent should we /compact soon?', '@magent /clear'):
             with self.subTest(line=line):
                 self.assertTrue(self.run_for(('justin', line))[0].startswith('<mood-wake'))
 
-    def test_what_to_keep_goes_with_it(self):
-        self.assertEqual(self.run_for(('justin', '@magent /compact keep the setlist and the open PRs')),
-                         ['/compact keep the setlist and the open PRs'])
-        self.assertEqual(self.run_for(('justin', '/compact @magent')), ['/compact'])
+    def test_sent_as_a_reply(self):
+        said = '↩ #m-0b9c2a51-1111-4c3e-9d2f-6a7b8c9d0e1f\n/compact magent keep what this answers'
+        self.assertEqual(self.run_for(('justin', said)), ['/compact keep what this answers'])
 
     def test_anything_else_owed_waits_for_the_compacted_session(self):
-        prompts = self.run_for(('justin', '@magent what time is soundcheck?'), ('justin', '@magent /compact'))
-        self.assertEqual(prompts, ['/compact'])
+        prompts = self.run_for(('justin', '@magent what time is soundcheck?'), ('justin', '/compact magent keep it'))
+        self.assertEqual(prompts, ['/compact keep it'])
         self.assertEqual(set(self.poller.state['handled']), {'m1'})  # the question is still owed
 
     def test_only_from_someone_trusted_with_real_work(self):
-        prompts = self.run_for(('skyler', '@magent /compact'))
+        prompts = self.run_for(('skyler', '/compact magent keep it'))
         self.assertTrue(prompts[0].startswith('<mood-wake'))  # just a mention: it can say why not
 
     def test_an_agent_with_full_tools_can_ask_but_not_command(self):
-        api = FakeAPI([mention('m26', dict(turn('m0', 're', 0, '@magent /compact'), via='session',
+        api = FakeAPI([mention('m26', dict(turn('m0', 're', 0, '/compact magent keep it'), via='session',
                                            is_human=False, full_tools=True))], sessions={'m26': ['s-local']})
         waker = FakeWaker(reply='')
         state = Path(tempfile.mkdtemp()) / 'state.json'
@@ -1385,10 +1393,6 @@ class CompactTest(TestCase):
         MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=30)).poll_once()
         self.assertTrue(waker.woken[0][1].startswith('<mood-wake'))  # a mention, not the command
         self.assertTrue(waker.options['full'])
-
-    def test_a_mention_of_compacting_is_not_the_command(self):
-        prompts = self.run_for(('justin', '@magent should we /compact soon?'))
-        self.assertTrue(prompts[0].startswith('<mood-wake'))
 
 
 class StopAPI(FakeAPI):
@@ -1537,7 +1541,7 @@ class NewMoodTest(TestCase):
         self.assertNotIn('<session-lost', prompt)
 
     def test_a_command_never_starts_a_lost_session_over(self):
-        api = FakeAPI([mention('fresh', dict(turn('a', 'justin', 10, '@magent /compact'), via='web'))],
+        api = FakeAPI([mention('fresh', dict(turn('a', 'justin', 10, '/compact magent keep it'), via='web'))],
                       sessions={'fresh': ['s-gone']})
         waker = FakeWaker()
         state = Path(tempfile.mkdtemp()) / 'state.json'
