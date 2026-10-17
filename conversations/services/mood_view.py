@@ -283,6 +283,12 @@ def known_names():
     return set(ThinkingEntity.objects.values_list('name', flat=True))
 
 
+def agent_names():
+    """The agents' names: who a command (services/agent_commands) can be for."""
+    from conversations.models import ThinkingEntity
+    return set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
+
+
 def wiki_title(target):
     """A link target as MediaWiki names the page: no fragment, spaces, first letter capital."""
     title = target.split('#', 1)[0].replace('_', ' ').strip().lstrip(':').strip()
@@ -445,7 +451,11 @@ def addressed_in(text, mentionable, answered=None, by=None):
     notifications, wakes and the PickiPedia-tier check all go by, so they can't
     disagree. `answered`: replied(), if already looked up."""
     out = mentions_in(text, mentionable)
-    target, _ = reply_to(text)
+    target, said = reply_to(text)
+    # "/compact magent,re ...": a command addresses the agents it names (services/agent_commands).
+    if said.lstrip().startswith('/'):
+        from .agent_commands import commanded
+        out += [a for a in commanded(said, agent_names()) if a not in out]
     if target:
         answered = answered or replied(target)
         sender = (answered or {}).get('sender') if (answered or {}).get('is_human') else None
@@ -998,10 +1008,10 @@ COMMAND_DOING = {'compact': 'compacting', 'context': 'measuring its context', 'u
 
 
 def command_doing(text, agent):
-    """'compacting' for a post like "@magent /compact ..."; None for anything else."""
-    rest = re.sub(rf'@{re.escape(agent)}\b', '', text or '').strip()
-    match = re.match(r'/([a-z]+)\b', rest, re.I)
-    return COMMAND_DOING.get(match.group(1).lower()) if match else None
+    """'compacting' for a post like "/compact magent what to keep"; None for anything else."""
+    from .agent_commands import doing
+    name = doing(text, agent, agent_names())
+    return COMMAND_DOING.get(name) if name else None
 
 
 def _doing(msg):

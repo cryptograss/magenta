@@ -4055,8 +4055,17 @@
       return clips;
     } catch (e) { return []; }
   }
+  // Slash commands (services/agent_commands, and /clips): offered as soon as / starts the box,
+  // with the form each takes; then, for an agent's command, the agents. Formal on purpose
+  // (Justin, 17 Oct): "/compact magent what to keep", and the server refuses anything else.
+  const SLASH_COMMANDS = JSON.parse("{{ slash_commands|escapejs }}" || '[]');
+  const AGENT_COMMAND = /^\/(compact|context|usage|cost)\s+(?:@?[\w.-]+\s*,\s*)*@?([\w.-]*)$/i;
   function wordAtCaret() {
     const upto = sayBox.value.slice(0, sayBox.selectionStart);
+    const slash = upto.match(/^\/([a-z]*)$/i);
+    if (slash) return { kind: 'command', start: 1, prefix: slash[1].toLowerCase() };
+    const forAgent = upto.match(AGENT_COMMAND);
+    if (forAgent) return { kind: 'command-agent', start: upto.length - forAgent[2].length, prefix: forAgent[2].toLowerCase() };
     const y = upto.match(/^\/(?:clips|yarn)(?:\s+forget)?\s+([a-z0-9_-]*)$/i);
     if (y) return { kind: 'clips', start: upto.length - y[1].length, prefix: y[1].toLowerCase() };
     const w = upto.match(/\[\[([^\[\]|\n]{1,100})$/);
@@ -4104,7 +4113,14 @@
       });
       return;
     }
-    if (at.kind === 'mood') {
+    if (at.kind === 'command') {
+      choices = SLASH_COMMANDS.filter(([name]) => name.startsWith(at.prefix))
+        .map(([name, form, what]) => ({ insert: name + ' ', html: `<span class="emo">${name === 'clips' ? '🎬' : '⚙️'}</span><b>${esc(form)}</b><small>${esc(what)}</small>` }));
+    } else if (at.kind === 'command-agent') {
+      // Which agents it's for: one, or several with commas; then (for /compact) what to keep.
+      choices = people.filter(p => !p.is_human && p.name.startsWith(at.prefix)).map(p => p.name).sort()
+        .map(n => ({ insert: n + ' ', html: `${icon(n)}${esc(n)}<small>agent · more with a comma: ${esc(n)},…</small>` }));
+    } else if (at.kind === 'mood') {
       // By its name (the slug a link takes) or the words of its title; the most lately active first, as the list has them.
       const p = at.prefix;
       const byTitle = m => (m.title || '').toLowerCase().split(/[^a-z0-9]+/).some(w => w && w.startsWith(p));
@@ -4139,6 +4155,7 @@
     const caret = (before + choices[i].insert).length;
     sayBox.setSelectionRange(caret, caret);
     closeSuggest(); sayBox.focus();
+    showSuggest();  // what comes next, if anything does: a command's agents
   }
   sayBox.addEventListener('input', () => { chosen = 0; showSuggest(); });
   sayBox.addEventListener('keydown', e => {

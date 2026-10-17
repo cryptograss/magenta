@@ -862,7 +862,7 @@ def linked_message(posts):
 # wakes run in (/status, /rewind, /btw, /memory, /help), are knobs already
 # (/model, /effort), or would throw the session away (/clear).
 COMMANDS = {
-    'compact': True,   # what to keep, optionally
+    'compact': True,   # what to keep (required)
     'context': False,  # what fills the context, by kind
     'usage': False,    # the subscription's limits, used so far
     'cost': False,     # the same as /usage
@@ -870,16 +870,20 @@ COMMANDS = {
 
 
 def command_request(text, agent):
-    """For a post like "@magent /compact [what to keep]": the command line
-    to run ('/compact what to keep'). None if the post asks something else."""
-    rest = re.sub(rf'@{re.escape(agent)}\b', '', text or '').strip()
-    match = re.match(r'/([a-z]+)(?:\s+(.*))?\Z', rest, re.S | re.I)
+    """For a post like "/compact magent what to keep" -- the one form a command
+    takes (memory-lane services/agent_commands, which the server holds posts
+    to) -- the command line to run for `agent`: '/compact what to keep'. None
+    if the post isn't a command, or isn't for this agent."""
+    text = re.sub(r'\A\s*↩ #m-[0-9a-f-]+\n', '', text or '')  # sent as a reply: the command is what follows
+    match = re.match(r'/([a-z]+)\s+(@?[\w.-]+(?:\s*,\s*@?[\w.-]+)*)(?:\s+(.*))?\Z', (text or '').strip(), re.S | re.I)
     if not match or match.group(1).lower() not in COMMANDS:
         return None
-    name, args = match.group(1).lower(), (match.group(2) or '').strip()
-    if args and not COMMANDS[name]:
-        return None  # "/usage of the word banjo" is a question, not the command
-    return f'/{name} {args}'.strip()
+    name, words = match.group(1).lower(), (match.group(3) or '').strip()
+    if agent.lower() not in [n.strip().lstrip('@').lower() for n in match.group(2).split(',')]:
+        return None
+    if bool(words) != COMMANDS[name]:
+        return None  # /compact without what to keep, or words after /usage: not the form (the server refuses both)
+    return f'/{name} {words}'.strip()
 
 
 def since_last_word(turns, agent, before_id=None, silences=()):
@@ -1192,7 +1196,7 @@ class MoodPoller:
                 owed = [t for t in owed if t not in let_go]
                 if not owed:
                     return settled, 'stopped'
-        # "@magent /compact" (or another of COMMANDS) from someone trusted with
+        # "/compact magent ..." (or another of COMMANDS) from someone trusted with
         # real work: run it instead of a turn. Anything else owed here waits
         # for the next look, and is answered from the session it leaves.
         commands = [t for t in owed if self.commands_from(t) and command_request(t['text'], self.agent) is not None]
