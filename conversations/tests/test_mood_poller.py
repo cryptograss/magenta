@@ -1775,11 +1775,11 @@ class CutOffTest(TestCase):
         self.assertEqual(len(again.waker.woken), 1)  # and is not owed a third time
 
     def test_a_command_cut_off_runs_again_as_itself(self):
-        api = FakeAPI([mention('m26', dict(turn('a', 'justin', 0, '@magent /compact'), via='web'))],
+        api = FakeAPI([mention('m26', dict(turn('a', 'justin', 0, '/compact magent keep the list'), via='web'))],
                       sessions={'m26': ['s-local']})
         self.cut_off_during(api)
         self.restarted.poll_once()
-        self.assertEqual(self.restarted.waker.woken[0][1], '/compact')
+        self.assertEqual(self.restarted.waker.woken[0][1], '/compact keep the list')
 
     def test_cut_off_twice_it_is_let_go_with_a_dot(self):
         class API(FakeAPI):
