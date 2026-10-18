@@ -608,7 +608,9 @@
   #activity .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); animation: pulse 1.2s ease-in-out infinite; }
   #activity b { color: var(--who, var(--agent)); }
   /* Held: owed a turn the runner isn't starting yet -- a still dot, not a pulse. */
-  #activity.held .dot { animation: none; opacity: .35; }
+  #activity .one.held .dot { animation: none; opacity: .35; }
+  #activityText { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+  #activity .one { display: inline-flex; align-items: center; gap: 8px; }
   #activity #stopBtn { margin-left: auto; font: inherit; font-size: 12px; padding: 2px 9px; border: 1px solid var(--line);
                        border-radius: 10px; background: var(--panel); color: var(--muted); cursor: pointer; white-space: nowrap; }
   #activity #stopBtn:hover { color: var(--err); border-color: var(--err); }
@@ -1020,7 +1022,7 @@
     <div id="typing"></div>
     <div id="tasks"></div>
     <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button></div>
-    <div id="activity"><span class="dot"></span><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
+    <div id="activity"><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button>
       <label id="stripLocation" title="Phone photos carry where and when they were taken (GPS), and the camera. They go with the picture unless this is ticked; ticked, all of it is removed before anyone sees it (a HEIC photo's carried into its JPEG)."><input type="checkbox"> Remove photo details (place, time, camera)</label></div>
@@ -1125,7 +1127,8 @@
   let baseTitle = 'magenta';
   let people = [];          // everyone who can be named, for @-completion
   let human = {};           // name -> is a person
-  let act = null;           // what an agent is doing now, from /turns/
+  let act = null;           // what an agent is doing now, from /turns/: the one stop and Esc stop
+  let acts = [];            // every agent at work here, longest at it first (mood_view.activities)
   let typingNow = [];       // who else is typing here, from /turns/
 
   const ICONS = {
@@ -1213,9 +1216,9 @@
   function aroundIn(slug) {
     const d = liveData[slug] || { speakers: [], typing: [], busy: null };
     const typing = new Set(slug === current ? [...d.typing, ...typingNow] : d.typing);
-    const busy = slug === current && act && act.doing !== 'held' ? act.agent : d.busy;
-    const names = [...new Set([...(busy ? [busy] : []), ...typing, ...d.speakers])];
-    return { names, active: new Set([...typing, ...(busy ? [busy] : [])]) };
+    const busy = slug === current ? acts.filter(a => a.doing !== 'held').map(a => a.agent) : (d.busy ? [d.busy] : []);
+    const names = [...new Set([...busy, ...typing, ...d.speakers])];
+    return { names, active: new Set([...typing, ...busy]) };
   }
   function peopleLine(slug) {
     const { names, active } = aroundIn(slug);
@@ -2728,7 +2731,7 @@
   }
   // Working only if it's the newest thing here and the agent is at work now.
   function isWorking(b) {
-    return b.parentNode && b.parentNode.lastElementChild === b && act && act.agent === b._agent && act.doing !== 'held';
+    return b.parentNode && b.parentNode.lastElementChild === b && acts.some(a => a.agent === b._agent && a.doing !== 'held');
   }
   // A turn that a person spoke after is over, whether or not its end was marked.
   function closeBlock(container) {
@@ -3213,7 +3216,7 @@
     renderNav();
     // Nothing of the Mood just left may linger: not its agent's work, its
     // tasks, who was typing there, or its agents' settings.
-    act = null; renderActivity();
+    act = null; acts = []; renderActivity();
     tasks = []; renderTasks();
     typingNow = []; renderTyping();
     renderAgents({});
@@ -3441,7 +3444,9 @@
       showMoodName(data.mood);
       loadMoods();
     }
-    act = data.activity || null;
+    acts = data.activities || (data.activity ? [data.activity] : []);
+    // Stop and Esc stop the one at work that started last (several: the button says whom).
+    act = [...acts].reverse().find(a => a.doing !== 'held') || acts[0] || null;
     renderActivity();
     tasks = data.tasks || [];
     renderTasks();
@@ -3913,7 +3918,7 @@
         body: JSON.stringify({ agent: act.agent }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
-      act = null; renderActivity();
+      act = null; acts = []; renderActivity();
       await poll(false);
     } catch (e) { showError('stop: ' + e.message); }
     finally { stopBtn.disabled = false; }
@@ -3925,21 +3930,25 @@
     const turnsEl = document.getElementById('turns');
     const newest = turnsEl && turnsEl.lastElementChild;
     if (newest && newest.classList.contains('aturn')) drawBlockHead(newest);
-    document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('busy', !!act && act.doing !== 'held' && el.dataset.who === act.agent));
-    activityEl.classList.toggle('on', !!act);
-    activityEl.classList.toggle('held', !!act && act.doing === 'held');
+    const working = acts.filter(a => a.doing !== 'held');
+    document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('busy', working.some(a => el.dataset.who === a.agent)));
+    activityEl.classList.toggle('on', acts.length > 0);
     markLive();
     stopBtn.hidden = !(keyHolder && act && act.doing !== 'held');
-    if (!act) return;
-    activityEl.style.setProperty('--who', agentColor(act.agent));
+    // Several at work: the button says whom it stops (the one that started last).
+    stopBtn.textContent = working.length > 1 && act ? `■ stop ${act.agent}` : '■ stop';
+    if (!acts.length) return;
     const hhmm = iso => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    activityText.innerHTML = act.doing === 'waking'
-      ? `waking ${icon(act.agent, false)}<b>${esc(act.agent)}</b> · ${elapsed(act.since)}`
-      : act.doing === 'held'
-      ? `${icon(act.agent, false)}<b>${esc(act.agent)}</b> · held: ${esc(act.why || 'not yet')}`
-        + (act.until ? ` · answers about ${esc(hhmm(act.until))}` : '') + ` · asked ${elapsed(act.since)} ago`
-      : `${icon(act.agent, false)}<b>${esc(act.agent)}</b> · ${esc(act.doing)} · ${elapsed(act.since)}`
-        + ([act.model, act.effort].filter(Boolean).length ? ` · ${esc([act.model, act.effort].filter(Boolean).join(' · '))}` : '');
+    // A line for each, in its colour: two woken by one post, or one asked and one looking in.
+    activityText.innerHTML = acts.map(a => `<span class="one${a.doing === 'held' ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
+      + (a.doing === 'waking'
+        ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${elapsed(a.since)}`
+        : a.doing === 'held'
+        ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
+          + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
+        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${esc(a.doing)} · ${elapsed(a.since)}`
+          + ([a.model, a.effort].filter(Boolean).length ? ` · ${esc([a.model, a.effort].filter(Boolean).join(' · '))}` : ''))
+      + '</span>').join('');
   }
   setInterval(renderActivity, 1000);
 

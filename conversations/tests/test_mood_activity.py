@@ -244,3 +244,55 @@ class ActivityTest(TestCase):
         self.assertEqual(body['activity']['doing'], 'waking')
         self.assertEqual({p['name'] for p in self.client.get('/api/moods/').json()['people']},
                          {'justin', 'magent', 're'})  # re: made by migration 0023, before its first turn
+
+
+class SeveralAtOnceTest(TestCase):
+    """Two agents at work in one Mood both show (Justin, 18 Oct: re was woken and the page said
+    magent was thinking -- magent's own look was running too, and only the newest line counted)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        cls.magent = ThinkingEntity.objects.create(name='magent', is_biological_human=False)
+        cls.re, _ = ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        cls.system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        cls.mood = Mood.objects.create(slug='m26')
+
+    def setUp(self):
+        cache.delete('held:m26')
+
+    add = ActivityTest.add
+
+    def now(self):
+        from conversations.services.mood_view import activities
+        return [(a['agent'], a['doing']) for a in activities(self.mood, now=NOW)]
+
+    def ended(self, agent, seconds_ago):
+        self.add(self.system, seconds_ago, {'type': 'turn-result', 'agent': agent}, session_id=uuid.uuid4())
+
+    def test_one_post_wakes_both_and_both_show(self):
+        self.add(self.justin, 3, '@magent and @re: both of you', source_file='mood-web')
+        self.assertEqual(self.now(), [('magent', 'waking'), ('re', 'waking')])
+
+    def test_one_asked_and_one_looking_in_both_show_and_each_ends_on_its_own(self):
+        self.add(self.justin, 40, '@re, are you up in this mood?', source_file='mood-web')
+        self.assertEqual(self.now(), [('re', 'waking')])  # the post names re only
+        self.add(self.re, 30, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use')
+        self.add(self.magent, 25, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use')  # an unasked look
+        self.assertEqual(self.now(), [('re', 'thinking'), ('magent', 'thinking')])
+        self.add(self.re, 20, [{'type': 'text', 'text': "I'm here"}], stop_reason='end_turn')
+        self.assertEqual(self.now(), [('magent', 'thinking')])  # re done; magent still at it
+        self.ended('magent', 10)
+        self.assertEqual(self.now(), [])
+
+    def test_a_post_for_one_agent_doesnt_hide_the_other_at_work(self):
+        self.add(self.justin, 60, '@magent build it', source_file='mood-web')
+        self.add(self.magent, 50, {}, model=ToolUse, tool_name='Bash', tool_id='t1', stop_reason='tool_use')
+        self.add(self.justin, 5, '@re what do you think?', source_file='mood-web')
+        self.assertEqual(self.now(), [('magent', 'running a command'), ('re', 'waking')])
+
+    def test_the_turns_endpoint_carries_them(self):
+        self.add(self.justin, NOW - time.time() + 1, '@magent @re now', source_file='mood-web')
+        body = self.client.get('/api/moods/m26/turns/').json()
+        self.assertEqual([(a['agent'], a['doing']) for a in body['activities']], [('magent', 'waking'), ('re', 'waking')])
+        self.assertEqual(body['activity']['agent'], 'magent')  # as before, for whatever reads the one

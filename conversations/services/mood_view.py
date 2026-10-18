@@ -1127,16 +1127,28 @@ def set_held(slug, agent, reason, until=None, now=None):
     return holds
 
 
-def activity(mood, now=None):
+def activity(mood, now=None, only=None):
     """What an agent in this Mood is doing now, or None: see _activity.
     Someone stopping the agent since that began ends it at once, without
     waiting for its runner to notice."""
-    doing = _activity(mood, now)
+    doing = _activity(mood, now, only)
     if doing and doing['doing'] != 'held':
         stopped = latest_interrupt(mood, doing['agent'])
         if stopped and stopped['at_ts'] >= doing['since']:
             return None
     return doing
+
+
+def activities(mood, now=None):
+    """What each agent in this Mood is doing now, longest at it first: [] if nothing is
+    underway. Two agents woken by one post, or one asked and another looking in of its
+    own accord, both show (Justin, 18 Oct: re was woken and the page said magent was
+    thinking, as activity() says only whose line is newest). Each is read from its own
+    lines and the posts that name it, as activity() reads them all."""
+    from conversations.models import ThinkingEntity
+    agents = sorted(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
+    found = [a for a in (activity(mood, now, only=agent) for agent in agents) if a]
+    return sorted(found, key=lambda a: a['since'])
 
 
 def latest_interrupt(mood, agent=None):
@@ -1162,7 +1174,7 @@ def _command_output(msg):
     return isinstance(msg.content, dict) and msg.content.get('type') == 'command_output'
 
 
-def _activity(mood, now=None):
+def _activity(mood, now=None, only=None):
     """What an agent in this Mood is doing now, or None if nothing is underway.
 
     Read straight from the record, so no process has to report in: every
@@ -1172,6 +1184,9 @@ def _activity(mood, now=None):
     the next one, and the newest line says what it's doing. A web post that
     names an agent and has nothing after it means the agent is being woken,
     unless its runner has said it is holding that turn, and why.
+
+    `only`: that agent alone, as if no other were here -- its own lines, people's,
+    and only the posts that name it (activities()).
     """
     from conversations.models import ThinkingEntity
     import time
@@ -1182,16 +1197,23 @@ def _activity(mood, now=None):
     # they neither describe nor end its turn. System lines are the harness's
     # bookkeeping -- Claude Code writes one just after a turn ends -- and
     # say nothing about whether anyone is working.
-    recent = list(mood.messages.filter(is_sidechain=False).exclude(sender_id='system')
-                  .select_related('sender', 'tooluse', 'thought', 'toolresult')
-                  .order_by('-created_at')[:RECENT])
+    rows = mood.messages.filter(is_sidechain=False).exclude(sender_id='system')
+    if only:
+        rows = rows.exclude(sender_id__in=agents - {only})
+    recent = list(rows.select_related('sender', 'tooluse', 'thought', 'toolresult')
+                  .order_by('-created_at')[:RECENT * (2 if only else 1)])
+
+    def named_in(msg):
+        # A wiki-tier post's @agent is just text: no agent is waking for it.
+        return [] if from_wiki_tier(msg) else [n for n in addressed_in(prose(msg.content), agents, by=msg.sender_id)]
+    if only:  # a post for someone else neither wakes this agent nor ends its turn
+        recent = [m for m in recent if m.source_file not in POSTED or only in named_in(m)][:RECENT]
     if not recent:
         return None
     newest = recent[0]
 
     if newest.source_file in POSTED:
-        # A wiki-tier post's @agent is just text: no agent is waking for it.
-        named = [] if from_wiki_tier(newest) else [n for n in addressed_in(prose(newest.content), agents, by=newest.sender_id)]
+        named = [only] if only else named_in(newest)
         if not named:
             return None
         # Held only if the runner said so after this post: a newer post is
@@ -1218,8 +1240,10 @@ def _activity(mood, now=None):
     # watcher brings the run's own lines from its transcript a moment after the
     # runner's end -- a /compact's command line, a background task's notice --
     # and newest-arrived, they read as the agent at work again.
-    ended = (mood.messages.filter(sender_id='system', content__type='turn-result')
-             .order_by('-created_at').first())
+    ended = mood.messages.filter(sender_id='system', content__type='turn-result')
+    if only:
+        ended = ended.filter(content__agent=only)
+    ended = ended.order_by('-created_at').first()
     ended = _when(ended) if ended is not None else None
     if ended is not None and ended >= _when(newest):
         return None
@@ -1240,13 +1264,22 @@ def _activity(mood, now=None):
         if msg.source_file in POSTED or _command_output(msg) or (ended is not None and _when(msg) <= ended):
             break
         streak.append(msg)
-    agent = next((m.sender_id for m in streak if m.sender_id in agents), None) or sorted(agents or {'magent'})[0]
+    agent = next((m.sender_id for m in streak if m.sender_id in agents), None)
+    if agent is None:
+        # Only a person's lines (typed into a terminal session): whose session it is.
+        owner = (mood.messages.filter(session_id=newest.session_id, sender_id__in=agents)
+                 .values_list('sender_id', flat=True).first()) if newest.session_id else None
+        agent = owner or sorted(agents or {'magent'})[0]
+    if only and agent != only:
+        return None
     how = next((how_payload(m) for m in streak if m.sender_id in agents and m.model_backend), {'model': '', 'effort': ''})
     start = streak[-1]
     if len(streak) == len(recent) == RECENT:
         # A long turn runs past the rows read above: find where it began.
         from django.db.models import Q
         mine = mood.messages.filter(is_sidechain=False)
+        if only:
+            mine = mine.exclude(sender_id__in=agents - {only})
         boundary = (mine.filter(created_at__lt=start.created_at)
                     .filter(Q(sender_id__in=agents, stop_reason__in=TURN_ENDS) | Q(source_file__in=POSTED)
                             | Q(content__type='command_output'))

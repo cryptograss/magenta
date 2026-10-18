@@ -24,7 +24,7 @@ from .services import delivery_kid, push, servers, wiki_auth, wiki_feed, wiki_up
 from .services import agent_commands, mood_auth
 from .services.mood_view import (
     from_wiki_tier,
-    MACHINERY_SENDERS, how_payload, activity, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
+    MACHINERY_SENDERS, how_payload, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
     prose, render_html, step_detail, step_images, step_payload, timeline, turn_payload, turns, wiki_title, wikilinks_in,
 )
 
@@ -229,6 +229,8 @@ def api_mood_turns(request, slug):
         'has_earlier': bool(limit) and first is not None and mood.messages.filter(
             is_sidechain=False, created_at__lt=first).exists(),
         'activity': activity(mood),
+        # Every agent at work here, each with its own line on the page.
+        'activities': activities(mood),
         # Who reads without signing in: how many, to everyone; their addresses, to an SSH-key sign-in.
         **_watchers(request, mood),
         # What an agent started in the background here and is still running.
