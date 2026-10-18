@@ -8,6 +8,7 @@ so the page also shows who changed what, when, and why.
 import json
 
 from django.http import JsonResponse
+from django.conf import settings
 from django.shortcuts import render
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
@@ -104,6 +105,18 @@ def standing_instructions():
     return text
 
 
+_texts = None
+
+
+def _wiki_texts():
+    """One reader for the server's life, so the rules page asks the wiki at most every few minutes."""
+    global _texts
+    if _texts is None:
+        from poller.wiki_rules import EDITORS, WikiTexts
+        _texts = WikiTexts(editors=getattr(settings, 'MOOD_WIKI_RULES_EDITORS', None) or EDITORS)
+    return _texts
+
+
 @require_GET
 def rules_page(request, slug):
     """What an agent is told in this Mood, as it reaches it: the Mood's own
@@ -118,7 +131,9 @@ def rules_page(request, slug):
     resolved = knobs.resolve(slug, agent)
     frames = wake_frames(slug, rules=resolved.get('rules') or '', agent=agent,
                          discretion=resolved.get('discretion') or 'normal', verbosity=resolved.get('verbosity') or 'normal',
-                         trusted="anyone signed into magenta with an SSH key")
+                         trusted="anyone signed into magenta with an SSH key",
+                         # As the runner sends them: PickiPedia's texts, else the code's.
+                         texts=_wiki_texts() if getattr(settings, 'MOOD_WIKI_RULES', True) else None)
     def plain(key, value):
         if key == 'listening':
             return value.get('mode', 'on') + (f" until {value['until']}" if value.get('until') else '')

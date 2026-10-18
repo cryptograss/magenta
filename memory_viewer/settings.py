@@ -255,6 +255,11 @@ DELIVERY_KID_URL = os.getenv('DELIVERY_KID_URL', '')
 # (memory-lane faces/), and its key, faces_api_key in the vault. Unset: no "Who's in it?".
 FACES_URL = os.getenv('FACES_URL', '')
 FACES_KEY = os.getenv('FACES_KEY', '')
+# The rules page shows what agents are told as PickiPedia has it (poller/wiki_rules.py), as the
+# runner sends it; 0: the code's own texts only (and no call to the wiki).
+MOOD_WIKI_RULES = os.getenv('MOOD_WIKI_RULES', '1') != '0'
+# Whose revisions of those pages count (PickiPedia names, comma-separated); unset: poller/wiki_rules.EDITORS.
+MOOD_WIKI_RULES_EDITORS = [n for n in os.getenv('MOOD_WIKI_RULES_EDITORS', '').split(',') if n.strip()]
 # Each person's PickiPedia name, from hunter's inventory: "<name> <WikiName>" lines.
 MOOD_WIKI_NAMES = os.getenv('MOOD_WIKI_NAMES', '')
 # Editing and deleting (conversations/services/retract.py): what's taken back is sealed to this

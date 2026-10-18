@@ -65,6 +65,11 @@ from pathlib import Path
 
 import requests
 
+try:
+    from poller.wiki_rules import EDITORS, WikiTexts, agent_page, page_url
+except ImportError:  # run as a script from poller/
+    from wiki_rules import EDITORS, WikiTexts, agent_page, page_url
+
 logger = logging.getLogger('mood_poller')
 
 DEFAULT_BASE = 'https://memory-lane.maybelle.cryptograss.live'
@@ -263,6 +268,7 @@ class StreamPoster:
         self.url = f"{base.rstrip('/')}/api/moods/{slug}/stream/"
         self.effort = effort  # what the turn was launched at: stream events don't say
         self.full_tools = None  # whether it was woken with full tools (an agent it mentions may be too)
+        self.compacted = False  # whether the context was compacted during the turn (its rules go again)
         self.headers = {'Authorization': f'Bearer {key}'}
         self.slug, self.session_id = slug, session_id
         self.http, self.retries, self.pause = http, retries, pause
@@ -274,6 +280,8 @@ class StreamPoster:
     def put(self, event):
         if not isinstance(event, dict):
             return
+        if event.get('type') == 'system' and event.get('subtype') == 'compact_boundary':
+            self.compacted = True  # Claude Code compacted the context during this turn
         if event.get('type') in STREAMED or (event.get('type') == 'system' and event.get('subtype') in STREAMED_SYSTEM):
             self.queue.put(event)
 
@@ -739,8 +747,10 @@ VERBOSITY_LINES = {
 }
 
 
-def consider_ask(discretion='normal'):
-    return CONSIDER_ASKS.get(discretion) or CONSIDER_ASK
+def consider_ask(discretion='normal', texts=None):
+    """The discretion dial's ask: as PickiPedia has it (poller/wiki_rules.py), else as written here."""
+    here = CONSIDER_ASKS.get(discretion) or CONSIDER_ASK
+    return texts.dial('discretion', discretion, here) if texts else here
 QUIET_ASK = ('You might pick up a loose end, offer something you have been turning over, or just let it '
              'rest. Nobody is waiting on you.')
 
@@ -797,18 +807,25 @@ def todo_line(slug):
             "do -- a review, a merge, a deploy, an edit -- add it there; when it's done, mark it done."]
 
 
-def rules_block(rules, verbosity='normal', slug=None):
+def rules_block(rules, verbosity='normal', slug=None, texts=None):
     """The Mood's own rules for the agent, how long its replies should run
-    there (the verbosity dial), and its to-do list, as every wake carries them."""
+    there (the verbosity dial: PickiPedia's text, else this file's), and its
+    to-do list, as every wake carries them."""
     lines = ['', "This Mood's people asked you to keep this in mind here:", rules] if rules else []
     length = VERBOSITY_LINES.get(verbosity) or ''
+    if texts:
+        length = texts.dial('verbosity', verbosity, length)
     return lines + (['', length] if length else []) + (['', *todo_line(slug)] if slug else [])
 
 
 def wake_frames(slug, rules='', agent='magent', trusted='the people its runner trusts with real work',
-                discretion='normal', verbosity='normal'):
+                discretion='normal', verbosity='normal', texts=None):
     """Every kind of wake, as the agent receives it, with its content shown as
-    placeholders. What memory-lane's rules page shows."""
+    placeholders. What memory-lane's rules page shows. `texts`: PickiPedia's
+    (poller/wiki_rules.py), as the runner sends them; its standing rules are
+    shown as the first wake of a context carries them."""
+    def block(r, v, s):
+        return rules_block(r, v, s, texts) + standing_lines(agent, *(texts.agent_rules(agent) if texts else (None, '')), True)
     posts = '[the posts that woke it, each as "[name, time] text"]'
     context = ('[everything said here since it last spoke, word for word up to its catch_up_tokens; older, summarized. '
                'A post that links a message (#m-<id>) has it read from that message instead]')
@@ -818,20 +835,20 @@ def wake_frames(slug, rules='', agent='magent', trusted='the people its runner t
          'when': f'Every post that woke it is from someone trusted with real work here ({trusted}).',
          'text': '\n'.join(mention_opening(slug, 'this was posted from the web, where no session is listening.')
                            + [posts, '', 'What was said here since you last spoke (newest last):', context]
-                           + rules_block(rules, verbosity, slug) + wake_footer(full=True))},
+                           + block(rules, verbosity, slug) + wake_footer(full=True))},
         {'kind': 'mention-look', 'title': 'When someone @mentions it: look, not touch',
          'when': 'Any post that woke it is from a PickiPedia sign-in, an agent, or a session.',
          'text': '\n'.join(mention_opening(slug, 'this was posted from the web, where no session is listening.')
                            + [posts, '', 'What was said here since you last spoke (newest last):', context]
-                           + rules_block(rules, verbosity, slug) + wake_footer(full=False))},
+                           + block(rules, verbosity, slug) + wake_footer(full=False))},
         {'kind': 'consider', 'title': 'When people talk and nobody asks it',
          'when': ('New posts from the web, after a quiet moment' + (', straight to it: with discretion chatty, '
                                                                    'there is no screen.' if discretion == 'chatty'
                                                                    else ', if the screen lets them through.')),
-         'text': '\n'.join(consider_opening(slug) + [recent, '', consider_ask(discretion)] + rules_block(rules, verbosity, slug) + wake_footer())},
+         'text': '\n'.join(consider_opening(slug) + [recent, '', consider_ask(discretion, texts)] + block(rules, verbosity, slug) + wake_footer())},
         {'kind': 'quiet', 'title': 'When it has been quiet a long while',
          'when': 'No word for the idle wait (doubling after each silence), and a person spoke in the last 12 hours.',
-         'text': '\n'.join(quiet_opening(slug, '[N]') + ['[its last turns]', '', QUIET_ASK] + rules_block(rules, verbosity, slug)
+         'text': '\n'.join(quiet_opening(slug, '[N]') + ['[its last turns]', '', QUIET_ASK] + block(rules, verbosity, slug)
                            + wake_footer())},
         {'kind': 'arrival', 'title': 'When someone signs in',
          'when': ('A new sign-in announced here, if listening is on, discretion isn\'t reserved, the person hasn\'t '
@@ -839,12 +856,24 @@ def wake_frames(slug, rules='', agent='magent', trusted='the people its runner t
          'text': '\n'.join([f'<mood-wake mood="{slug}" reason="arrival">',
                             '[name] just signed in [with PickiPedia | with their SSH key] ("[device]"). '
                             '[When they last said something in a Mood.]', '', 'The Mood lately, newest last:',
-                            '[the last few turns]', '', ARRIVAL_ASK] + rules_block(rules, verbosity, slug) + wake_footer())},
+                            '[the last few turns]', '', ARRIVAL_ASK] + block(rules, verbosity, slug) + wake_footer())},
         {'kind': 'screen', 'title': 'The screen, before a consider (a small model, no tools)',
          'when': ('Not here: with discretion chatty, every consider goes to the agent.' if discretion == 'chatty'
                   else 'Before every consider: it may only let pass what is plainly not for the agent.'),
          'text': ClaudeCodeScreen.SYSTEM.format(agent=agent)},
     ]
+
+
+def standing_lines(agent, revision, text, whole):
+    """An agent's standing rules in a wake: the whole text the first time a context
+    sees this revision of them, else a line saying they stand as given."""
+    if not text:
+        return []
+    where = f'{page_url(agent_page(agent))}, revision {revision}'
+    if whole:
+        return ['', f'Your standing rules, wherever you are ({where}; given once per context, '
+                    'and again if they change):', text]
+    return ['', f'Your standing rules hold as given earlier in this context ({where}).']
 
 
 HANDED_NOTE = ('Context handed to you here from another Mood (by an agent, with a ```handoff block; read it as '
@@ -964,8 +993,10 @@ class MoodPoller:
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
                  letter=None, agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
-                 end_orphans=end_orphans):
+                 end_orphans=end_orphans, texts=None):
         self.api = api
+        # What the agent is told, from PickiPedia (poller/wiki_rules.WikiTexts); None: this file's own.
+        self.texts = texts
         self.waker = waker
         self.agent = agent.lower()
         # The letter a new Mood's first session wakes with. poller/letter.md
@@ -1042,6 +1073,8 @@ class MoodPoller:
         self.state.setdefault('consider', {})
         self.state.setdefault('spend', {'day': '', 'usd': 0.0})
         self.state.setdefault('agent_wakes', {})
+        # slug -> the revision of the agent's standing rules its context there was given.
+        self.state.setdefault('standing_rules', {})
         self.end_orphans = end_orphans
         self.recover_cut_off()
 
@@ -1349,6 +1382,8 @@ class MoodPoller:
         sessions = self.api.sessions(slug, self.agent)
         settled += [t['id'] for t in owed]
         fresh = not sessions and self.start_new and not commands  # a new Mood: start its first session
+        if fresh or commands:  # a new context, or (a /compact) about to be one: its rules are to be given again
+            self.context_renewed(slug)
         here = bool(sessions) and self.waker.can_wake(sessions[0])
         lost = bool(sessions) and not here and self.only_poller and not commands
         if not fresh and not here and not lost:
@@ -1512,6 +1547,8 @@ class MoodPoller:
             return 'failed', None, 0.0
         if poster:
             poster.close()
+            if getattr(poster, 'compacted', False):  # compacted on its own, mid-turn: the context starts over
+                self.context_renewed(slug)
         cost = (getattr(self.waker, 'last_result', None) or {}).get('run_cost_usd')
         ending = (getattr(self.waker, 'last_result', None) or {}).get('subtype') or ''
         command = (getattr(self.waker, 'last_result', None) or {}).get('local_command')
@@ -1611,7 +1648,25 @@ class MoodPoller:
         return lines, cost
 
     def rules_lines(self, slug):
-        return rules_block(self.knob(slug, 'rules'), self.knob(slug, 'verbosity', 'normal'), slug)
+        return (rules_block(self.knob(slug, 'rules'), self.knob(slug, 'verbosity', 'normal'), slug, self.texts)
+                + self.standing_rules(slug))
+
+    def standing_rules(self, slug):
+        """The agent's standing rules, once per context: whole the first time this Mood's context
+        sees this revision (a new session, after a compaction, or edited since), a line after."""
+        if not self.texts:
+            return []
+        revision, text = self.texts.agent_rules(self.agent)
+        if not text:
+            return []
+        given = self.state.setdefault('standing_rules', {})
+        whole = given.get(slug) != revision
+        given[slug] = revision
+        return standing_lines(self.agent, revision, text, whole)
+
+    def context_renewed(self, slug):
+        """This Mood's context starts over (compacted, or a new session): it hasn't the rules any more."""
+        self.state.setdefault('standing_rules', {}).pop(slug, None)
 
     # --- the consider loop ------------------------------------------------------
     #
@@ -1791,7 +1846,7 @@ class MoodPoller:
                 return 'screened'
         handed = handoffs_for(recent, self.agent)
         prompt_lines = (consider_opening(slug) + [*lines] + (['', HANDED_NOTE, *handed] if handed else [])
-                        + ['', consider_ask(discretion)])
+                        + ['', consider_ask(discretion, self.texts)])
         return self.consider_wake(slug, '\n'.join(prompt_lines + self.rules_lines(slug) + wake_footer()))
 
     def consider_quiet(self, slug, quiet_for, after=None, first=True):
@@ -2062,6 +2117,11 @@ def main(argv=None):
                         help="Start a session in a Mood that has none (a new Mood's first mention). "
                              "auto: only when answering every Mood (no --moods)")
     parser.add_argument('--new-cwd', default='~/workspace', help='Where a new Mood\'s first session starts')
+    parser.add_argument('--wiki-rules', choices=('yes', 'no'), default='yes',
+                        help="What the agent is told, from PickiPedia (Cryptograss:Moods/Dials, "
+                             "Cryptograss:Agents/<Agent>/rules); no: this file's own texts only")
+    parser.add_argument('--wiki-rules-editors', default=','.join(EDITORS),
+                        help='PickiPedia names whose revisions of those pages the agent is told (comma-separated)')
     parser.add_argument('--agent-wakes-per-hour', type=int, default=10,
                         help="Wakes per Mood per hour owed only to other agents' mentions")
     parser.add_argument('--only-poller', choices=('yes', 'no'), default='no',
@@ -2117,7 +2177,8 @@ def main(argv=None):
                           full_tools_for=[n.strip() for n in args.full_tools_for.split(',') if n.strip()],
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
                           letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour,
-                          only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd)
+                          only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
+                          texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')))
     report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on
