@@ -291,8 +291,9 @@
   /* The same sender again within minutes: one heading for the run. */
   .turn.cont { border-top: 0; padding-top: 0; }
   .turn.cont .who { display: none; }
-  /* An agent's words for you carry its own colour down the margin (--who); a person's, the page's. */
-  .turn.mentions-me { border-left-color: var(--who, var(--accent)); }
+  /* Every message an agent says in the Mood carries its colour down the margin (--who), whoever it's
+     for (Justin, 18 Oct): not its thinking, steps, silences or compactions, which aren't .turn.agent. */
+  .turn.agent { border-left-color: var(--who, var(--agent)); }
   body.only-mine .turn:not(.mentions-me) { display: none; }
   .turn .who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
   .turn .who .name { font-weight: 700; }
@@ -364,7 +365,6 @@
               padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
   #toBottom.on { display: block; }
   #toBottom:hover { color: var(--accent); border-color: var(--accent); }
-  .turn.for-me { border-left-color: var(--who, var(--accent)); }
   .turn.flash { animation: flash 2.4s ease-out; }
   @keyframes flash { from { background: var(--mention); } to { background: transparent; } }
   /* Search: a panel over the thread, at the right. */
