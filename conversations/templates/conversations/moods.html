@@ -1216,7 +1216,7 @@
   function aroundIn(slug) {
     const d = liveData[slug] || { speakers: [], typing: [], busy: null };
     const typing = new Set(slug === current ? [...d.typing, ...typingNow] : d.typing);
-    const busy = slug === current ? acts.filter(a => a.doing !== 'held').map(a => a.agent) : (d.busy ? [d.busy] : []);
+    const busy = slug === current ? acts.filter(a => a.doing !== 'held').map(a => a.agent) : (d.busy_all || (d.busy ? [d.busy] : []));
     const names = [...new Set([...busy, ...typing, ...d.speakers])];
     return { names, active: new Set([...typing, ...busy]) };
   }

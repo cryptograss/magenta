@@ -1143,9 +1143,10 @@ def api_moods_live(request):
         last = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at) index
         entry['last'] = last.isoformat() if last else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way
-            act = activity(mood)
-            if act and act.get('doing') != 'held':
-                entry['busy'] = act['agent']
+            working = [a['agent'] for a in activities(mood) if a.get('doing') != 'held']
+            if working:
+                entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
+                entry['busy_all'] = working  # every agent at work there, each pulsing in the list
     from .services import watchers
     for slug, n in watchers.by_mood().items():  # who's reading without signing in: a count beside the Mood
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['watching'] = n

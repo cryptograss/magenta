@@ -296,3 +296,9 @@ class SeveralAtOnceTest(TestCase):
         body = self.client.get('/api/moods/m26/turns/').json()
         self.assertEqual([(a['agent'], a['doing']) for a in body['activities']], [('magent', 'waking'), ('re', 'waking')])
         self.assertEqual(body['activity']['agent'], 'magent')  # as before, for whatever reads the one
+
+    def test_the_mood_list_pulses_for_each(self):
+        cache.delete('moods-live')
+        self.add(self.justin, NOW - time.time() + 1, '@magent @re now', source_file='mood-web')
+        live = self.client.get('/api/moods/live/').json()['moods']['m26']
+        self.assertEqual(live['busy_all'], ['magent', 're'])
