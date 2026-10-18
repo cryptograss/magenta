@@ -110,6 +110,16 @@ class RenderHtmlTest(TestCase):
         self.assertIn('<em>soft</em>', out)
         self.assertIn('<code>code</code>', out)
 
+    def test_underscores_soften_and_tildes_strike_but_not_inside_words(self):
+        out = render_html("does markdown work _at all_? Even in _my_ message? ~~no~~ yes")
+        self.assertIn('<em>at all</em>', out)
+        self.assertIn('<em>my</em>', out)
+        self.assertIn('<del>no</del>', out)
+        for literal in ('snake_case_name', 'run __init__ first', 'mood_view.render_html', 'a _ b _ c'):
+            self.assertNotIn('<em>', render_html(literal), literal)
+        self.assertNotIn('<em>', render_html('see https://x.test/a_b_c/d_e'))
+        self.assertIn('<code>_x_</code>', render_html('`_x_`'))
+
     @override_settings(PICKIPEDIA_URL='https://pickipedia.xyz')
     def test_wikilinks_resolve_to_pickipedia(self):
         out = render_html('see [[Tony Rice]] and [[Kuba Hejhal|Kuba]]')

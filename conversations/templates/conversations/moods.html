@@ -5557,13 +5557,24 @@
       sayBox.focus();
     }
   }
+  // What was sent, drawn at once as the record will draw it (mood_view.render_html), roughly:
+  // **bold**, *soft* or _soft_, ~~struck~~, `code`. The record's own copy replaces it in a moment.
+  function roughly(text) {
+    const codes = [];
+    let h = esc(text).replace(/`([^`\n]+)`/g, (_, c) => `\x01${codes.push(c) - 1}\x01`);
+    h = h.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
+      .replace(/(^|[^\w])_(?=\S)([^_\n]+?)(?<=\S)_(?![\w])/g, '$1<em>$2</em>')
+      .replace(/~~(?=\S)([^~\n]+?)(?<=\S)~~/g, '<del>$1</del>');
+    return h.replace(/\x01(\d+)\x01/g, (_, i) => `<code>${codes[i]}</code>`).replace(/\n/g, '<br>');
+  }
   function showPending(text) {
     const turnsEl = document.getElementById('turns');
     if (!turnsEl || !viewer) return null;
     const el = document.createElement('article');
     el.className = 'turn human pending';
     el.innerHTML = `<div class="who"><span class="name">${icon(viewer, true)}${esc(shown(viewer))}</span>`
-      + `<span class="sending">sending…</span></div><div class="body"><p>${esc(text).replace(/\n/g, '<br>')}</p></div>`;
+      + `<span class="sending">sending…</span></div><div class="body"><p>${roughly(text)}</p></div>`;
     const empty = turnsEl.querySelector('.empty'); if (empty) empty.remove();
     turnsEl.appendChild(el);
     main.scrollTop = main.scrollHeight;

@@ -127,6 +127,9 @@ _FENCE = re.compile(r'```[^\n]*\n(.*?)```', re.S)
 _INLINE_CODE = re.compile(r'`([^`\n]+)`')
 _BOLD = re.compile(r'\*\*([^*\n]+)\*\*')
 _ITALIC = re.compile(r'(?<![*\w])\*([^*\n]+)\*(?!\*)')
+# _soft_ as well as *soft* (Justin writes it so), but never inside a word: snake_case stays as it is.
+_ITALIC_U = re.compile(r'(?<![\w])_(?=\S)([^_\n]+?)(?<=\S)_(?![\w])')
+_STRIKE = re.compile(r'~~(?=\S)([^~\n]+?)(?<=\S)~~')
 _WIKILINK = re.compile(r'\[\[([^\]|]+)(?:\|([^\]]+))?\]\]')
 # @name, but not inside an email, a URL path, or another handle.
 _MENTION = re.compile(r'(?<![\w@/.])@([A-Za-z][\w.-]*)')
@@ -640,6 +643,8 @@ def _inline(text, mentionable=()):
         text = _MENTION.sub(_mention(mentionable, stash), text)
     text = _BOLD.sub(r'<strong>\1</strong>', text)
     text = _ITALIC.sub(r'<em>\1</em>', text)
+    text = _ITALIC_U.sub(r'<em>\1</em>', text)
+    text = _STRIKE.sub(r'<del>\1</del>', text)
     text = re.sub(r'\x02(\d+)\x02', lambda m: made[int(m.group(1))], text)
     for i, code in enumerate(codes):
         text = text.replace(f'\x01{i}\x01', f'<code>{code}</code>')
