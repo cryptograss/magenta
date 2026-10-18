@@ -16,7 +16,7 @@ log = logging.getLogger('faces')
 
 API = 'https://pickipedia.xyz/api.php'
 CATEGORY = 'Category:Face reference'
-USER_AGENT = 'magenta-faces/1 (https://github.com/cryptograss/memory-lane; faces/)'
+USER_AGENT = 'magenta-faces/1 (https://github.com/cryptograss/magenta; memory-lane/faces/)'
 # {{Face reference|Justin Holmes}} or {{Face reference|person=Justin Holmes}}
 TEMPLATE = re.compile(r'\{\{\s*[Ff]ace[ _]reference\s*\|\s*(?:person\s*=\s*)?([^|}]+?)\s*(?:\|[^}]*)?\}\}')
 

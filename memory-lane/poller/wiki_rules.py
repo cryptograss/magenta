@@ -36,7 +36,7 @@ TEMPLATE = 'Sent to agents'
 TTL = 300  # seconds between looks at a page
 HISTORY = 20  # revisions looked back through for the newest trusted one
 EDITORS = ('JMyles', 'SkymanJenkins')  # PickiPedia names whose revisions the agents are told
-USER_AGENT = 'magenta-runner/1 (https://github.com/cryptograss/memory-lane; poller/wiki_rules.py)'
+USER_AGENT = 'magenta-runner/1 (https://github.com/cryptograss/magenta; memory-lane/poller/wiki_rules.py)'
 
 
 def page_url(title):
