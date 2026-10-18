@@ -86,12 +86,12 @@ def api_settings(request):
 
 # --- how an agent sees a Mood: its rules, as they reach it --------------------
 
-STANDING_URL = 'https://raw.githubusercontent.com/magent-cryptograss/magenta/main/CLAUDE.md'
-STANDING_SOURCE = 'https://github.com/magent-cryptograss/magenta/blob/main/CLAUDE.md'
+STANDING_URL = 'https://raw.githubusercontent.com/cryptograss/magenta/main/agents/magent.md'
+STANDING_SOURCE = 'https://github.com/cryptograss/magenta/blob/main/agents/magent.md'
 
 
 def standing_instructions():
-    """The agent's standing instructions (magenta's CLAUDE.md, public), cached an hour; '' if unreachable."""
+    """The agent's standing instructions (magenta's agents/magent.md, public), cached an hour; '' if unreachable."""
     from django.core.cache import cache
     text = cache.get('standing-instructions')
     if text is None:

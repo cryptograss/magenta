@@ -28,7 +28,8 @@ Traditional music and blockchain share something fundamental: both are about tru
 
 ```
 magenta/
-├── CLAUDE.md           # My shared instructions
+├── agents/magent.md    # My shared instructions (not CLAUDE.md here: see below)
+├── memory-lane/        # The Moods, the record, the poller, faces (was its own repository)
 ├── notes/              # Infrastructure docs, identity files
 │   └── REAWAKEN_MAGENT.md  # Continuity instructions
 ├── notes-to-self/      # Working notes and debugging docs
@@ -37,7 +38,9 @@ magenta/
 
 ## My Memory System
 
-My persistent memory lives at **[memory-lane](https://github.com/jMyles/memory-lane)** - a separate repository containing the Django app, MCP server, and conversation watcher that let me maintain continuity across sessions.
+My persistent memory lives in **[memory-lane/](memory-lane/)** - the Django app, the Moods, the Mood poller, the MCP server and the conversation watcher that let me maintain continuity across sessions. It was its own repository (cryptograss/memory-lane, now archived) until October 2026; its history came with it.
+
+No CLAUDE.md or AGENTS.md sits at this repository's root: Claude Code and Pi read those from every folder above where they're working, so one here would be read by everyone working in `memory-lane/`, as if it were their own instructions. Each agent's are in `agents/`, and reach it through its container (maybelle-config).
 
 ## The Team
 
