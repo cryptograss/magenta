@@ -1281,6 +1281,7 @@
         markLive();
         noticeThinking(before);
         preload();
+        warmAgents();
       }
     } catch (e) {}
   }
@@ -3356,7 +3357,8 @@
     act = null; acts = []; renderActivity();
     tasks = []; renderTasks();
     typingNow = []; renderTyping();
-    renderAgents({});
+    agentsNow = {};  // nothing to compare with: a first drawing never glows
+    renderAgents(agentsFor[slug] || {});
     loadTodo();
     const saved = drawn.get(slug);
     if (saved) {
@@ -3415,6 +3417,7 @@
     } catch (e) { return; }
     if (slug === current) return;  // opened meanwhile: its own poll asks
     preloadedTo[slug] = data.now;
+    noteAgents(slug, data.agents);
     // Kept without the server's time: what changed since was not asked, and opening it still asks.
     keep(slug, { ...data, now: undefined }, false, false);
     const items = itemsOf(data);
@@ -3539,6 +3542,8 @@
   function forgetKept() {
     for (const slug of store.get('kept', [])) { try { localStorage.removeItem('moods.kept.' + slug); } catch (e) {} }
     store.set('kept', []);
+    for (const slug of Object.keys(agentsFor)) delete agentsFor[slug];
+    store.set('agentsFor', {});
   }
   // A Mood drawn from what this browser kept, as a first load draws it.
   function drawKept(kept) {
@@ -3588,6 +3593,7 @@
     tasks = data.tasks || [];
     renderTasks();
     renderAgents(data.agents || {});
+    noteAgents(current, data.agents);
     renderLocked(data.scram || null);
     typingNow = (data.typing || []).filter(n => n !== viewer);
     renderTyping();
@@ -3753,6 +3759,29 @@
   const SPEAKING_UP = { reserved: 'rarely speaks up', normal: 'speaks up when useful', chatty: 'chatty' };
   const READS = [2500, 5000, 10000, 20000];  // tokens a wake reads word for word (catch_up_tokens)
   let agentsNow = {}, agentsShown = '';
+  // Each Mood's agents' settings as last seen, kept in this browser: a Mood opens with its row
+  // already drawn, not empty until its first poll answers (the jump at the bottom, Justin, 18 Oct).
+  const agentsFor = store.get('agentsFor', {});
+  function noteAgents(slug, agents) {
+    if (!agents) return;
+    agentsFor[slug] = agents;
+    store.set('agentsFor', agentsFor);
+  }
+  // Moods not seen yet on this browser: each one's row asked for once, quietly, one at a time.
+  let warming = false;
+  async function warmAgents() {
+    if (warming || document.hidden) return;
+    warming = true;
+    try {
+      for (const m of moods) {
+        if (agentsFor[m.slug] || m.slug === current) continue;
+        try {
+          const r = await fetch('/api/moods/' + encodeURIComponent(m.slug) + '/turns/?limit=1', { signal: AbortSignal.timeout(POLL_WAIT_MS) });
+          if (r.ok) noteAgents(m.slug, (await r.json()).agents);
+        } catch (e) {}
+      }
+    } finally { warming = false; }
+  }
   // For an agent whose harness reports what it can run (Pi: api_agent_models),
   // two menus: the vendor, greyed out without a key on the agent's machine,
   // then that vendor's models. The setting is the one vendor/model id Pi reads.
