@@ -716,6 +716,24 @@
                     background: rgba(255,255,255,.08); color: #ffb3d9; cursor: pointer; }
   #lightbox .lbup:hover { background: rgba(255,179,217,.18); }
   #lightbox .lbup[hidden] { display: none; }
+  /* Who's in it (services/faces.py): a box on each face faces found, and under it the name someone
+     here gave it, or whose it looks like, with a question mark, for a person to say yes to. */
+  #lightbox .lbpic { position: relative; display: inline-block; line-height: 0; }
+  #lightbox.whole .lbpic { margin: auto; }
+  #lightbox .lbfaces .face { position: absolute; border: 2px solid rgba(255,179,217,.85); border-radius: 4px; box-sizing: border-box; }
+  #lightbox .lbfaces .face.named { border-color: #8fe3a5; }
+  #lightbox .lbfaces .tag { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 4px; z-index: 1;
+                            white-space: nowrap; font-size: 13px; line-height: 1.4; color: #fff; background: rgba(0,0,0,.78);
+                            padding: 2px 8px; border-radius: 12px; display: flex; gap: 6px; align-items: center; }
+  #lightbox .lbfaces .tag a { color: #8fe3a5; text-decoration: none; }
+  #lightbox .lbfaces .tag button { font: inherit; font-size: 12px; color: #ffb3d9; background: none; border: 1px solid #ffb3d9;
+                                   border-radius: 10px; padding: 0 7px; cursor: pointer; }
+  #lightbox .lbfaces .tag input { font: inherit; font-size: 13px; width: 13em; padding: 1px 6px; border-radius: 8px; border: 0; }
+  #lightbox .lbfaces .tag .unsure { opacity: .85; font-style: italic; }
+  #lightbox .lbwho { margin-left: 12px; font: inherit; font-size: 13px; padding: 4px 12px; border: 1px solid #8fe3a5; border-radius: 14px;
+                     background: rgba(255,255,255,.08); color: #8fe3a5; cursor: pointer; }
+  #lightbox .lbwho[hidden] { display: none; }
+  #lightbox .lbwho:disabled { opacity: .7; cursor: default; }
   #lightbox .close { position: absolute; top: 10px; right: 14px; font-size: 26px; line-height: 1; color: #fff; background: none;
                      border: 0; cursor: pointer; padding: 6px; }
   .turn .body a.img, .work .thumbs a, .step-detail .shots a { cursor: zoom-in; }
@@ -955,7 +973,8 @@
   </span>
 </header>
 <div id="lightbox" hidden role="dialog" aria-label="Picture"><button type="button" class="close" aria-label="Close">✕</button>
-  <img alt=""><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
+  <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
+<datalist id="facePeople"></datalist>
 <div id="voicesBox" hidden role="dialog" aria-label="Voices">
   <div class="head"><b>Who is read in which voice</b> <button type="button" id="voicesClose">close</button></div>
   <div id="voicesList"></div>
@@ -1074,6 +1093,7 @@
   const keyHolder = !!viewer && viewerTier === 'key';
   const wikiSignin = {{ wiki_signin|yesno:"true,false" }};
   const wikiUpload = {{ wiki_upload|yesno:"true,false" }};  // "→ PickiPedia" on pictures (services/wiki_upload.py)
+  const facesOn = {{ faces_on|yesno:"true,false" }};  // "Who's in it?" on photos (services/faces.py)
   const dkUpload = {{ dk_upload|yesno:"true,false" }};  // videos to delivery-kid, then a ReleaseDraft (services/delivery_kid.py)
   const viewerAdmin = {{ viewer_admin|yesno:"true,false" }};  // may delete anyone's message (services/retract.py)
   // Our VAPID key's public half, for pushes with magenta closed (services/push.py); '' if push is off.
@@ -1552,6 +1572,8 @@
     lightbox.hidden = true;
     lightbox.classList.remove('whole');
     lightbox.querySelector('img').removeAttribute('src');
+    lightbox._faces = null;
+    lbFaces.textContent = '';
     if (!byBack && history.state && history.state.lightbox) history.back();  // its step in the history goes too
   }
   window.addEventListener('popstate', () => closeLightbox(true));
@@ -1578,6 +1600,7 @@
     lightbox._topp = next && next.classList.contains('topp') ? next : null;
     lightbox.querySelector('.lbup').hidden = !lightbox._topp;
     lightbox.classList.remove('whole');
+    whoIsIn(full);
     if (lightbox.hidden) history.pushState({ ...(history.state || {}), lightbox: true }, '', location.href);
     lightbox.hidden = false;
   });
@@ -1588,6 +1611,108 @@
     if (offer) offer.click();  // the same dialog as the button under the picture
   });
   lightbox.addEventListener('click', e => { if (e.target === lightbox || e.target.closest('.close')) closeLightbox(); });
+
+  // Who's in a picture sent here (services/faces.py). Opened, what's known is shown: the faces found and
+  // the names people gave them. "Who's in it?" asks the faces service (once per picture, for everyone);
+  // whose a face looks like is only an offer, "Name?", until someone signed in says ✓ -- or gives another.
+  const lbFaces = lightbox.querySelector('.lbfaces');
+  const lbWho = lightbox.querySelector('.lbwho');
+  const PEOPLE_PAGE = p => `${"{{ pickipedia_url|escapejs }}" || 'https://pickipedia.xyz'}/wiki/${encodeURIComponent(p.replace(/ /g, '_'))}`;
+  function whoIsIn(src) {
+    const sha = ((src || '').match(/^(?:https?:\/\/[^/]+)?\/(?:moods|motions)\/media\/([0-9a-f]{64})\.(?:jpg|png|webp)$/) || [])[1];
+    lightbox._faces = sha || null;
+    lbFaces.textContent = '';
+    lbWho.hidden = true;
+    if (!sha || !facesOn) return;
+    fetch(`/api/media/${sha}/faces/`).then(r => r.ok ? r.json() : null).then(d => d && drawFaces(sha, d)).catch(() => {});
+  }
+  function drawFaces(sha, d) {
+    if (lightbox._faces !== sha) return;  // another picture since
+    lbFaces.textContent = '';
+    lbWho.disabled = false;
+    lbWho.textContent = "👤 Who's in it?";
+    lbWho.hidden = d.looked || !d.can_look || !viewer;
+    if (!d.looked) return;
+    if (!d.faces.length) { lbWho.hidden = false; lbWho.disabled = true; lbWho.textContent = 'No faces found'; return; }
+    for (const f of d.faces) {
+      const [x, y, w, h] = f.box;
+      const box = document.createElement('div');
+      box.className = 'face' + (f.named ? ' named' : '');
+      Object.assign(box.style, { left: `${100 * x / d.width}%`, top: `${100 * y / d.height}%`,
+                                 width: `${100 * w / d.width}%`, height: `${100 * h / d.height}%` });
+      box._face = f;
+      const tag = document.createElement('div');
+      tag.className = 'tag';
+      if (f.named) {
+        tag.innerHTML = `<a href="${esc(PEOPLE_PAGE(f.named.person))}" target="_blank" rel="noopener" title="Named by ${esc(shown(f.named.by || ''))}">${esc(f.named.person)}</a>`
+          + (viewer ? '<button type="button" class="rename" title="Someone else? Say who">✎</button>' : '');
+      } else if (f.match) {
+        tag.innerHTML = `<span class="unsure" title="Looks like them (${Math.round(100 * f.match.similarity)}% alike): not named until someone says so">${esc(f.match.person)}?</span>`
+          + (viewer ? '<button type="button" class="yes" title="Yes, that\'s them">✓</button><button type="button" class="rename" title="Someone else? Say who">✎</button>' : '');
+      } else if (viewer) {
+        tag.innerHTML = '<button type="button" class="rename" title="Say whose face this is">Who?</button>';
+      }
+      if (tag.innerHTML) box.append(tag);
+      lbFaces.append(box);
+    }
+  }
+  async function nameFace(f, person) {
+    const sha = lightbox._faces;
+    const r = await fetch(`/api/media/${sha}/faces/name/`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify({ box: f.box, person }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.status);
+    drawFaces(sha, d);
+  }
+  let facePeople = null;  // PickiPedia's people pages, for the names offered while typing
+  function offerPeople(f) {
+    const list = document.getElementById('facePeople');
+    const fill = names => { list.textContent = ''; for (const n of names) list.append(new Option(n)); };
+    const first = [f.match, ...(f.candidates || [])].filter(Boolean).map(c => c.person);
+    fill([...new Set([...first, ...(facePeople || [])])]);
+    if (facePeople) return;
+    facePeople = [];
+    fetch(`${"{{ pickipedia_url|escapejs }}" || 'https://pickipedia.xyz'}/api.php?action=query&list=embeddedin&eititle=Template:PersonInfo&einamespace=0&eilimit=500&format=json&origin=*`)
+      .then(r => r.json()).then(d => { facePeople = (d.query?.embeddedin || []).map(p => p.title).sort(); fill([...new Set([...first, ...facePeople])]); })
+      .catch(() => {});
+  }
+  lbFaces.addEventListener('click', async e => {
+    e.stopPropagation();  // not the picture's own tap (its size)
+    const box = e.target.closest('.face');
+    if (!box || !viewer) return;
+    const f = box._face;
+    const tag = box.querySelector('.tag');
+    if (e.target.closest('.yes')) {
+      try { await nameFace(f, f.match.person); } catch (err) { tag.textContent = err.message; }
+    } else if (e.target.closest('.rename')) {
+      offerPeople(f);
+      tag.innerHTML = '<input list="facePeople" placeholder="Their PickiPedia page" aria-label="Whose face"><button type="button" class="ok">✓</button>';
+      const input = tag.querySelector('input');
+      input.value = f.named ? f.named.person : '';
+      input.focus();
+      const go = async () => {
+        try { await nameFace(f, input.value.trim()); } catch (err) { tag.textContent = err.message; }
+      };
+      input.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter') { ev.preventDefault(); go(); }
+        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); whoIsIn(lightbox.querySelector('img').src); }
+      });
+      tag.querySelector('.ok').addEventListener('click', ev => { ev.stopPropagation(); go(); });
+    }
+  });
+  lbWho.addEventListener('click', async e => {
+    e.stopPropagation();
+    const sha = lightbox._faces;
+    if (!sha) return;
+    lbWho.disabled = true;
+    lbWho.textContent = 'Looking…';
+    try {
+      const r = await fetch(`/api/media/${sha}/faces/`, { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || r.status);
+      drawFaces(sha, d);
+    } catch (err) { lbWho.textContent = err.message; }
+  });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !lightbox.hidden) { e.preventDefault(); e.stopImmediatePropagation(); closeLightbox(); }
   }, { capture: true });
@@ -1830,6 +1955,11 @@
       : 'It goes up as you, from your PickiPedia account: PickiPedia will ask you to allow it.';
     fetch(`/api/media/${uploading.sha}/license/`).then(r => r.json()).then(l => { if (l.license) rights.value = l.license; })
       .catch(() => {});  // as it was shared: CC BY-SA 4.0 unless they made it CC0
+    // Whom people here have named in it goes up with it, as {{Depicts}} (services/faces.py).
+    if (facesOn) fetch(`/api/media/${uploading.sha}/faces/`).then(r => r.json()).then(d => {
+      const named = [...new Set((d.faces || []).filter(f => f.named).sort((a, b) => a.box[0] - b.box[0]).map(f => f.named.person))];
+      if (named.length) document.getElementById('upHint').textContent += ` It will say who's in it: ${named.join(', ')}.`;
+    }).catch(() => {});
     uploadBox.hidden = false;
     document.getElementById('upName').focus();
   });

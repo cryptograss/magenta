@@ -1189,6 +1189,62 @@ def api_media_to_pickipedia(request, sha256):
     return response
 
 
+@require_http_methods(['GET', 'POST'])
+def api_media_faces(request, sha256):
+    """Whose faces are in a picture (services/faces.py). GET: what's known, for anyone, as the picture
+    is: {"looked": false, "can_look"} or {"looked": true, "width", "height", "faces": [{box, match,
+    candidates, named}]}. POST, signed in: ask the faces service now (once; after that, as kept)."""
+    from .models import Media
+    from .services import faces
+    media = Media.objects.filter(sha256=sha256).first()
+    if media is None:
+        return JsonResponse({'error': 'no such picture'}, status=404)
+    if request.method == 'GET':
+        return JsonResponse(faces.described(media))
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    if not _under_limit(f'faces:{device.pk}', 12):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        faces.look(media)
+    except faces.FacesError as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse(faces.described(media))
+
+
+@require_POST
+def api_media_face_name(request, sha256):
+    """{"box": [x, y, w, h], "person": "Their PickiPedia page"}: that face is theirs, says whoever's
+    signed in ("person": "" takes it back). Answers as GET /api/media/<sha256>/faces/ does."""
+    from .models import Media
+    from .services import faces
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    if not _under_limit(f'faces-name:{device.pk}', 60):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    media = Media.objects.filter(sha256=sha256).first()
+    if media is None:
+        return JsonResponse({'error': 'no such picture'}, status=404)
+    try:
+        body = json.loads(request.body)
+        faces.name(media, body.get('box'), body.get('person'), device.entity_id)
+    except ValueError:
+        return JsonResponse({'error': 'expected JSON'}, status=400)
+    except AttributeError:
+        return JsonResponse({'error': 'expected {"box", "person"}'}, status=400)
+    except faces.FacesError as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse(faces.described(media))
+
+
 VIDEOS_PER_MINUTE = 6
 
 
