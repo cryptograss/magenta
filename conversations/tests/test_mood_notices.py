@@ -3,12 +3,13 @@
 import time
 import uuid
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from conversations.models import ConversationParticipant, Message, Mood, ThinkingEntity, ToolUse
 from conversations.services import settings as knobs
 
 
+@override_settings(MOOD_WIKI_RULES=False)  # no call to the wiki from a test
 class NoticesTest(TestCase):
 
     @classmethod
