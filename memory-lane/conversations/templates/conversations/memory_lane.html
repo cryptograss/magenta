@@ -1,0 +1,2192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compact Memory Viewer</title>
+    <style>
+        body {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            margin: 0;
+            padding: 10px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            transition: background 0.3s, color 0.3s;
+        }
+        body.light-mode {
+            background: #ffffff;
+            color: #1a1a1a;
+        }
+        .header {
+            padding: 10px;
+            background: #252526;
+            border-bottom: 1px solid #3e3e42;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        body.light-mode .header {
+            background: #f5f5f5;
+            border-bottom: 1px solid #d0d0d0;
+        }
+        .stats {
+            color: #858585;
+            margin-bottom: 5px;
+            transition: color 0.3s;
+        }
+        body.light-mode .stats {
+            color: #666666;
+        }
+        .filters {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+            flex-wrap: wrap;
+        }
+        .filters input, .filters select, .filters button, .filters label {
+            padding: 4px 8px;
+            font-size: 11px;
+            background: #3c3c3c;
+            color: #d4d4d4;
+            border: 1px solid #555;
+            border-radius: 3px;
+            transition: background 0.3s, color 0.3s, border-color 0.3s;
+        }
+        body.light-mode .filters input,
+        body.light-mode .filters select,
+        body.light-mode .filters button,
+        body.light-mode .filters label {
+            background: #ffffff;
+            color: #1a1a1a;
+            border: 1px solid #c0c0c0;
+        }
+        .filters button {
+            cursor: pointer;
+        }
+        .filters button:hover {
+            background: #505050;
+        }
+        body.light-mode .filters button:hover {
+            background: #e8e8e8;
+        }
+        .theme-toggle {
+            background: #3c3c3c;
+            color: #d4d4d4;
+            border: 1px solid #555;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-family: inherit;
+        }
+        body.light-mode .theme-toggle {
+            background: #ffffff;
+            color: #1a1a1a;
+            border: 1px solid #c0c0c0;
+        }
+        .filters label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .filters input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        tr {
+            border-bottom: 1px solid #2d2d30;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        body.light-mode tr {
+            border-bottom: 1px solid #e0e0e0;
+        }
+        tr:hover {
+            background: #2a2d2e;
+        }
+        body.light-mode tr:hover {
+            background: #f0f0f0;
+        }
+        tr.justin {
+            background: #1e2731;
+        }
+        body.light-mode tr.justin {
+            background: #e8f4ff;
+        }
+        tr.magent {
+            background: #1e2e26;
+        }
+        body.light-mode tr.magent {
+            background: #e8ffe8;
+        }
+        tr.thinking {
+            background: #2e2626;
+            font-style: italic;
+        }
+        body.light-mode tr.thinking {
+            background: #fff4e8;
+            font-style: italic;
+        }
+        tr.tool {
+            background: #2a2531;
+        }
+        body.light-mode tr.tool {
+            background: #f5e8ff;
+        }
+        tr.system {
+            background: #252a2e;
+        }
+        body.light-mode tr.system {
+            background: #e8f0f8;
+        }
+        tr.child {
+            opacity: 0.85;
+        }
+        td {
+            padding: 4px 8px;
+            vertical-align: top;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .indent-1 { padding-left: 40px !important; }
+        .indent-2 { padding-left: 80px !important; }
+        .blockheight {
+            color: #569cd6;
+            width: 85px;
+            text-align: right;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        body.light-mode .blockheight {
+            color: #0066cc;
+        }
+        .num {
+            color: #858585;
+            width: 50px;
+            text-align: right;
+            font-size: 10px;
+        }
+        body.light-mode .num {
+            color: #666666;
+        }
+        .row-num {
+            color: #4ec9b0;
+            width: 40px;
+            max-width: 40px;
+            text-align: right;
+            font-size: 10px;
+            font-weight: bold;
+            display: none;
+            padding: 2px 0 !important;
+        }
+        body.light-mode .row-num {
+            color: #0a7c6a;
+        }
+        .missing-marker {
+            color: #ff0000;
+            width: 30px;
+            max-width: 30px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 2px 0 !important;
+        }
+        .expand-icon {
+            color: #569cd6;
+            width: 20px;
+            max-width: 20px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 2px 0 !important;
+        }
+        body.light-mode .expand-icon {
+            color: #0066cc;
+        }
+        .expand-icon.loading {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .importance {
+            color: #dcdcaa;
+            width: 30px;
+            max-width: 30px;
+            text-align: center;
+            font-weight: bold;
+            display: none;
+            padding: 2px 0 !important;
+        }
+        body.light-mode .importance {
+            color: #7a6a00;
+        }
+        .from {
+            color: #4ec9b0;
+            width: 60px;
+            max-width: 60px;
+            font-weight: bold;
+            padding: 0 !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        body.light-mode .from {
+            color: #0a7c6a;
+        }
+        .arrow {
+            color: #666;
+            width: 20px;
+            max-width: 20px;
+            text-align: center;
+            padding: 0 !important;
+        }
+        body.light-mode .arrow {
+            color: #999999;
+        }
+        .to {
+            color: #4ec9b0;
+            width: 60px;
+            max-width: 60px;
+            padding: 0 !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        body.light-mode .to {
+            color: #0a7c6a;
+        }
+        .content {
+            color: #d4d4d4;
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 2px 4px !important;
+        }
+        body.light-mode .content {
+            color: #1a1a1a;
+        }
+        .timestamp {
+            color: #858585;
+            font-size: 10px;
+            width: 140px;
+            max-width: 140px;
+            padding: 2px 4px !important;
+        }
+        body.light-mode .timestamp {
+            color: #666666;
+        }
+        .uuid {
+            color: #666;
+            font-size: 9px;
+            width: 70px;
+            max-width: 70px;
+            font-family: monospace;
+            padding: 2px 4px !important;
+        }
+        body.light-mode .uuid {
+            color: #999999;
+        }
+        .source {
+            color: #858585;
+            font-size: 9px;
+            width: 120px;
+            max-width: 120px;
+            padding: 2px 4px !important;
+        }
+        body.light-mode .source {
+            color: #666666;
+        }
+        .expanded td {
+            white-space: pre-wrap;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #858585;
+        }
+        .thinking-marker {
+            color: #ce9178;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        body.light-mode .modal {
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #252526;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #3e3e42;
+            width: 70%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border-radius: 4px;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        body.light-mode .modal-content {
+            background-color: #ffffff;
+            border: 1px solid #c0c0c0;
+        }
+        .modal-header {
+            color: #cccccc;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #3e3e42;
+            transition: color 0.3s, border-color 0.3s;
+        }
+        body.light-mode .modal-header {
+            color: #1a1a1a;
+            border-bottom: 1px solid #d0d0d0;
+        }
+        .modal-close {
+            color: #858585;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .modal-close:hover {
+            color: #cccccc;
+        }
+        body.light-mode .modal-close {
+            color: #666666;
+        }
+        body.light-mode .modal-close:hover {
+            color: #1a1a1a;
+        }
+        .note-item {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: #2d2d30;
+            border-left: 3px solid #ce9178;
+            transition: background 0.3s;
+        }
+        body.light-mode .note-item {
+            background: #f8f8f8;
+            border-left: 3px solid #d17a4a;
+        }
+        .note-author {
+            color: #ce9178;
+            font-size: 11px;
+            margin-bottom: 6px;
+            transition: color 0.3s;
+        }
+        body.light-mode .note-author {
+            color: #d17a4a;
+        }
+        .note-content {
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .era-header {
+            background: #3e3e42;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        body.light-mode .era-header {
+            background: #d8d8d8;
+            color: #1a1a1a;
+        }
+        .era-header.current-era {
+            background: #2a4a6a;
+        }
+        body.light-mode .era-header.current-era {
+            background: #a8d4f0;
+        }
+        .era-uuid {
+            font-size: 9px;
+            color: #858585;
+            font-family: monospace;
+        }
+        body.light-mode .era-uuid {
+            color: #666666;
+        }
+        .window-header {
+            background: #2d2d30;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        body.light-mode .window-header {
+            background: #e8e8e8;
+            color: #1a1a1a;
+        }
+        .window-header.current-heap {
+            background: #2a4a6a;
+        }
+        body.light-mode .window-header.current-heap {
+            background: #a8d4f0;
+        }
+        .window-uuid {
+            font-size: 9px;
+            color: #858585;
+            font-family: monospace;
+        }
+        body.light-mode .window-uuid {
+            color: #666666;
+        }
+        .window-preview-text {
+            color: #999;
+            font-style: italic;
+        }
+        body.light-mode .window-preview-text {
+            color: #666;
+        }
+        .main-flow-header {
+            background: #252526;
+            font-style: italic;
+            cursor: pointer;
+        }
+        body.light-mode .main-flow-header {
+            background: #f0f0f0;
+            color: #1a1a1a;
+        }
+        .thinking-marker {
+            color: #ce9178;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+        body.light-mode .thinking-marker {
+            color: #d17a4a;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="stats">
+            <span id="messageCount">Loading...</span> | Database: <strong id="databaseName">{{ database }}</strong>
+        </div>
+        <div class="filters">
+            <button class="theme-toggle" onclick="toggleTheme()">☀️ Light Mode</button>
+            <button id="autoRefreshBtn" onclick="toggleAutoRefresh()" style="background: #2a5a2a;">🔄 Auto-Refresh: ON</button>
+            <span id="newMessageIndicator" style="display: none; color: #4CAF50; font-weight: bold;">● New messages!</span>
+            <input type="text" id="searchFilter" placeholder="Search content..." style="min-width: 200px;">
+            <input type="text" id="uuidFilter" placeholder="Search UUID..." style="min-width: 200px;">
+            <input type="number" id="minLengthFilter" placeholder="Min length" style="width: 100px;">
+            <select id="personFilter">
+                <option value="">All people</option>
+                <option value="justin">justin</option>
+                <option value="magent">magent</option>
+            </select>
+            <label>
+                <input type="checkbox" id="showChildrenFilter" checked>
+                Auto-expand children
+            </label>
+            <label>
+                <input type="checkbox" id="showThinkingFilter" checked>
+                Show thinking
+            </label>
+            <label>
+                <input type="checkbox" id="flatViewFilter">
+                Flat view (all messages)
+            </label>
+            <label>
+                <input type="checkbox" id="blockheightSpecifiedFilter">
+                Blockheight specified
+            </label>
+            <label>
+                <input type="checkbox" id="heapBoundariesOnlyFilter">
+                Show only heap boundaries
+            </label>
+            <button onclick="loadMessages()">Refresh</button>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">Loading messages...</div>
+
+    <table id="messagesTable" style="display: none;">
+        <tbody id="messagesBody"></tbody>
+    </table>
+
+    <!-- Modal for displaying notes -->
+    <div id="notesModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-close" onclick="closeNotesModal()">&times;</span>
+                <span id="modalTitle">Notes</span>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        let eraData = null;
+        let allMessages = [];
+        let expandedRows = new Set();
+        let collapsedEras = new Set();
+        let collapsedWindows = new Set();
+        let collapsedMainFlows = new Set();
+        let collapsedChains = new Set();
+        let commandChainsInitialized = false;  // Track if we've already auto-collapsed command chains
+        let loadedHeaps = new Set();  // Track which heaps have had their messages loaded
+        const database = '{{ database }}';
+
+        async function loadMessages() {
+            try {
+                const response = await fetch(`/api/heap_metadata/?db=${database}`);
+                eraData = await response.json();
+
+                // Flatten messages for searching and build parent-child relationships
+                allMessages = [];
+                eraData.eras.forEach(era => {
+                    // Collapse all eras by default
+                    collapsedEras.add(era.id);
+
+                    era.context_heaps.forEach(window => {
+                        // Collapse all windows by default
+                        collapsedWindows.add(window.id);
+
+                        // Collapse main flow for windows that have splits
+                        if (window.child_heaps && window.child_heaps.length > 0) {
+                            collapsedMainFlows.add(window.id);
+                        }
+
+                        // Initialize empty messages array
+                        window.messages = [];
+
+                        // Recursively collapse child windows
+                        function collapseChildWindows(win) {
+                            if (win.child_heaps) {
+                                win.child_heaps.forEach(child => {
+                                    collapsedWindows.add(child.id);
+                                    // Initialize empty messages array for child
+                                    child.messages = [];
+                                    collapseChildWindows(child);
+                                });
+                            }
+                        }
+                        collapseChildWindows(window);
+                    });
+                });
+
+                // Add orphaned compacting actions to allMessages so they can be expanded
+                if (eraData.orphaned_compacting_actions) {
+                    eraData.orphaned_compacting_actions.forEach(compact => {
+                        allMessages.push({
+                            id: compact.id,
+                            message_type: 'CompactingAction',
+                            // summary removed - see Summary model
+                            compact_trigger: compact.compact_trigger,
+                            ending_message_id: compact.ending_message_id,
+                            is_orphaned: true,
+                            raw_imported_content: compact.raw_imported_content,
+                            created_at: compact.created_at
+                        });
+                    });
+                }
+
+                allMessages.forEach(msg => {
+                    msg.children = allMessages.filter(m => m.parent_uuid === msg.id);
+                });
+
+                renderMessages();
+            } catch (error) {
+                document.getElementById('loading').textContent = 'Error loading messages: ' + error.message;
+            }
+        }
+
+        function renderMessages() {
+            const search = document.getElementById('searchFilter').value.toLowerCase();
+            const uuidSearch = document.getElementById('uuidFilter').value.toLowerCase();
+            const minLength = parseInt(document.getElementById('minLengthFilter').value) || 0;
+            const person = document.getElementById('personFilter').value;
+            const autoExpand = document.getElementById('showChildrenFilter').checked;
+            const showThinking = document.getElementById('showThinkingFilter').checked;
+            const flatView = document.getElementById('flatViewFilter').checked;
+            const blockheightSpecified = document.getElementById('blockheightSpecifiedFilter').checked;
+            const heapBoundariesOnly = document.getElementById('heapBoundariesOnlyFilter').checked;
+
+            const tbody = document.getElementById('messagesBody');
+            let html = '';
+            let rowNumber = 1;
+            let totalMessages = 0;
+
+            // Check if any filters are active (used throughout rendering logic)
+            const hasActiveFilters = search || uuidSearch || minLength > 0 || person || blockheightSpecified;
+
+            // Helper: get message count (use message_count if messages not loaded, otherwise actual length)
+            function getMessageCount(heap) {
+                return heap.message_count !== undefined ? heap.message_count : heap.messages.length;
+            }
+
+            // Find the current era (the one with the highest latest_blockheight, or if none have blockheights, the most recently created)
+            let currentEraId = null;
+            let maxBlockheight = -1;
+            let maxCreatedAt = '';
+            eraData.eras.forEach(era => {
+                if (era.latest_blockheight && era.latest_blockheight > maxBlockheight) {
+                    maxBlockheight = era.latest_blockheight;
+                    currentEraId = era.id;
+                }
+            });
+            // Fallback to created_at if no blockheights found
+            if (!currentEraId) {
+                eraData.eras.forEach(era => {
+                    if (era.created_at && era.created_at > maxCreatedAt) {
+                        maxCreatedAt = era.created_at;
+                        currentEraId = era.id;
+                    }
+                });
+            }
+
+            // Find the current heap (the one with the highest latest_blockheight or most recent timestamp)
+            let currentHeapId = null;
+            let maxHeapBlockheight = -1;
+            let maxHeapTimestamp = '';
+
+            // Helper to recursively check heaps including children
+            function findCurrentHeapInList(heaps) {
+                heaps.forEach(heap => {
+                    if (heap.latest_blockheight && heap.latest_blockheight > maxHeapBlockheight) {
+                        maxHeapBlockheight = heap.latest_blockheight;
+                        currentHeapId = heap.id;
+                    }
+                    if (heap.child_heaps) {
+                        findCurrentHeapInList(heap.child_heaps);
+                    }
+                });
+            }
+
+            eraData.eras.forEach(era => {
+                findCurrentHeapInList(era.context_heaps);
+            });
+
+            // Fallback to first_message_timestamp if no blockheights found
+            if (!currentHeapId) {
+                function findByTimestamp(heaps) {
+                    heaps.forEach(heap => {
+                        if (heap.first_message_timestamp && heap.first_message_timestamp > maxHeapTimestamp) {
+                            maxHeapTimestamp = heap.first_message_timestamp;
+                            currentHeapId = heap.id;
+                        }
+                        if (heap.child_heaps) {
+                            findByTimestamp(heap.child_heaps);
+                        }
+                    });
+                }
+                eraData.eras.forEach(era => {
+                    findByTimestamp(era.context_heaps);
+                });
+            }
+
+            // Render by Era > ContextWindow > Messages
+            eraData.eras.forEach(era => {
+                const eraCollapsed = collapsedEras.has(era.id);
+                const eraIcon = eraCollapsed ? '►' : '▼';
+
+                // Count messages in this era (recursively include child heaps)
+                function countHeapMessages(heap) {
+                    let count = getMessageCount(heap);
+                    if (heap.child_heaps) {
+                        heap.child_heaps.forEach(child => {
+                            count += countHeapMessages(child);
+                        });
+                    }
+                    return count;
+                }
+
+                let eraMessageCount = 0;
+                era.context_heaps.forEach(window => {
+                    eraMessageCount += countHeapMessages(window);
+                });
+
+                // Build era note icons
+                let eraNoteIcons = '';
+                if (era.notes && era.notes.length > 0) {
+                    const eraNotesId = `era-notes-${era.id}`;
+                    globalThis[eraNotesId] = era.notes;
+                    eraNoteIcons = ` <span class="note-icon" data-notes-id="${escapeHtml(eraNotesId)}" data-title="Era Notes" style="font-size: 0.9em; cursor: pointer; color: #ce9178;">📝 ${era.notes.length}</span>`;
+                }
+
+                const eraUuid = escapeHtml(era.id.substring(0, 8));
+                const eraBlockheightRange = (era.earliest_blockheight && era.latest_blockheight)
+                    ? ` [${era.earliest_blockheight.toLocaleString()}-${era.latest_blockheight.toLocaleString()}]`
+                    : '';
+
+                // Helper function to count visible messages in a window (without rendering)
+                function countVisibleInWindow(window) {
+                    let count = 0;
+
+                    // Count messages in this window
+                    const baseMessages = flatView ? window.messages : window.messages.filter(m => !m.parent_uuid);
+
+                    // Determine first and last message numbers
+                    const firstMsgNum = window.messages.length > 0 ? Math.min(...window.messages.map(m => m.message_number)) : -1;
+                    const lastMsgNum = window.messages.length > 0 ? Math.max(...window.messages.map(m => m.message_number)) : -1;
+
+                    const filtered = baseMessages.filter(m => {
+                        // Heap boundaries filter
+                        if (heapBoundariesOnly) {
+                            const isFirstMsg = m.message_number === firstMsgNum;
+                            const isLastMsg = m.message_number === lastMsgNum;
+                            const isContinuation = m.is_continuation_message;
+                            if (!isFirstMsg && !isLastMsg && !isContinuation) return false;
+                        }
+
+                        if (search) {
+                            const contentStr = typeof m.content === 'string' ? m.content : (m.content ? JSON.stringify(m.content) : '');
+                            if (!contentStr.toLowerCase().includes(search)) return false;
+                        }
+                        if (uuidSearch && !m.id.toLowerCase().includes(uuidSearch)) return false;
+                        if (minLength) {
+                            const contentLength = typeof m.content === 'string' ? m.content.length : (m.content ? JSON.stringify(m.content).length : 0);
+                            if (contentLength < minLength) return false;
+                        }
+                        if (person && m.sender !== person && !m.recipients.includes(person)) return false;
+                        if (!showThinking && (m.message_type === 'Thought' || m.message_type === 'ContextOpeningThought')) return false;
+                        if (blockheightSpecified && (!m.eth_blockheight || m.eth_block_offset !== 0)) return false;
+                        return true;
+                    });
+                    count += filtered.length;
+
+                    // Count messages in child windows recursively
+                    if (window.child_heaps) {
+                        window.child_heaps.forEach(childWindow => {
+                            count += countVisibleInWindow(childWindow);
+                        });
+                    }
+
+                    return count;
+                }
+
+                // Collect all windows HTML and count visible messages
+                let eraWindowsHtml = '';
+                let eraVisibleCount = 0;
+
+                if (!eraCollapsed) {
+                    // Recursive function to render a window and its child splits
+                    function renderWindow(window, depth = 0, parentIndent = 20, heapIndex = null) {
+                        const windowCollapsed = collapsedWindows.has(window.id);
+                        const windowIcon = windowCollapsed ? '►' : '▼';
+                        const childCount = window.child_heaps ? window.child_heaps.length : 0;
+                        const childSuffix = childCount > 0 ? ` · ${childCount} splits` : '';
+                        const heapNumber = heapIndex !== null ? `Heap ${heapIndex} · ` : '';
+
+                        // Build window note icons
+                        let windowNoteIcons = '';
+                        if (window.notes && window.notes.length > 0) {
+                            const windowNotesId = `window-notes-${window.id}`;
+                            globalThis[windowNotesId] = window.notes;
+                            windowNoteIcons += ` <span class="note-icon" data-notes-id="${escapeHtml(windowNotesId)}" data-title="Context Window Notes" style="font-size: 0.9em; cursor: pointer; color: #ce9178;">📝 ${window.notes.length}</span>`;
+                        }
+
+                        let windowHtml = '';
+                        let windowVisibleCount = 0;
+
+                        // Context window header row
+                        const windowUuid = escapeHtml(window.id.substring(0, 8));
+                        const windowBlockheightRange = (window.earliest_blockheight && window.latest_blockheight)
+                            ? `[${window.earliest_blockheight.toLocaleString()}-${window.latest_blockheight.toLocaleString()}]`
+                            : '';
+
+                        // Format first message timestamp
+                        const windowTimestamp = window.first_message_timestamp
+                            ? new Date(window.first_message_timestamp).toISOString().replace('T', ' ').substring(0, 19)
+                            : '';
+
+                        // Calculate split info
+                        let splitInfo = '';
+                        if (childCount > 0) {
+                            const splitCounts = window.child_heaps.map(c => c.messages.length).join(', ');
+                            splitInfo = ` | Splits: ${splitCounts}`;
+                        }
+
+                        // Shorten window type
+                        const shortType = escapeHtml(window.type_display.replace(' conversation', '').replace('After compacting', 'Post-compact'));
+
+                        // Get preview from first non-command messages (accumulate until ~80 chars)
+                        let messagePreview = '';
+                        const targetLength = 80;
+
+                        for (const msg of window.messages) {
+                            // Skip command pattern messages and synthetic errors
+                            if (typeof msg.content === 'object' && msg.content &&
+                                (msg.content.type === 'meta_caveat' ||
+                                 msg.content.type === 'slash_command' ||
+                                 msg.content.type === 'command_output')) {
+                                continue;
+                            }
+                            if (msg.is_synthetic_error) {
+                                continue;
+                            }
+
+                            // Parse and add this message's content
+                            const msgText = parseContentForDisplay(msg.content);
+
+                            if (msgText) {
+                                if (messagePreview) {
+                                    messagePreview += ' ... ' + msgText;
+                                } else {
+                                    messagePreview = msgText;
+                                }
+                            }
+
+                            // Stop if we have enough text
+                            if (messagePreview.length >= targetLength) {
+                                break;
+                            }
+                        }
+
+                        // Truncate and add ellipsis
+                        if (messagePreview.length > targetLength) {
+                            messagePreview = escapeHtml(messagePreview.substring(0, targetLength)) + '...';
+                        } else if (messagePreview) {
+                            messagePreview = escapeHtml(messagePreview) + '...';
+                        }
+
+                        // Check if this heap is active (has messages < 300 blocks old)
+                        const currentBlock = 23659305; // Updated periodically
+                        const activeThreshold = 300;
+                        let isActiveHeap = false;
+
+                        if (window.latest_blockheight) {
+                            const blockAge = currentBlock - window.latest_blockheight;
+                            isActiveHeap = blockAge < activeThreshold;
+                        }
+
+                        const activeStyle = isActiveHeap ? 'border-left: 3px solid #ff8800;' : '';
+
+                        // Check if this is THE current heap (most recent globally)
+                        const isCurrentHeap = window.id === currentHeapId;
+
+                        // Build compacting action display
+                        let compactingInfo = '';
+                        if (window.compacting_action) {
+                            const ca = window.compacting_action;
+                            const caId = escapeHtml(ca.id.substring(0, 8));
+                            const caSummary = ca.summary ? escapeHtml(ca.summary.substring(0, 80)) : '(no summary)';
+
+                            // Show continuation message link or red X
+                            let continuationLink = '';
+                            if (ca.continuation_message_id) {
+                                const contId = escapeHtml(ca.continuation_message_id.substring(0, 8));
+                                continuationLink = `<a href="#msg-${escapeHtml(ca.continuation_message_id)}" style="color: #4ec9b0; text-decoration: none;">→ ${contId}</a>`;
+                            } else {
+                                continuationLink = `<span style="color: #f44747;">❌ No Continuation Message</span>`;
+                            }
+
+                            compactingInfo = `
+                                <div style="font-size: 10px; color: #ce9178; margin-top: 2px;">
+                                    📋 Compacted: ${caSummary}... (${caId}) ${continuationLink}
+                                </div>
+                            `;
+                        } else if (window.type === 'post_compacting') {
+                            // Post-compacting window but CA not linked yet
+                            compactingInfo = `
+                                <div style="font-size: 10px; color: #858585; margin-top: 2px; font-style: italic;">
+                                    📋 Compacted (not yet linked)
+                                </div>
+                            `;
+                        } else {
+                            // No compacting action for this heap
+                            compactingInfo = `
+                                <div style="font-size: 10px; color: #ff8800; margin-top: 2px;">
+                                    ❓ No known CompactingAction
+                                </div>
+                            `;
+                        }
+
+                        const heapClasses = ['window-header', isActiveHeap ? 'active-heap' : '', isCurrentHeap ? 'current-heap' : ''].filter(c => c).join(' ');
+                        const headerRow = `
+                            <tr class="${heapClasses}" data-heap-id="${escapeHtml(window.id)}" onclick="event.stopPropagation(); toggleWindow('${escapeJsAttr(window.id)}')" style="${activeStyle}">
+                                <td class="expand-icon" rowspan="2">${windowIcon}</td>
+                                <td colspan="7" style="padding: 4px 6px; padding-left: ${parentIndent}px; border-bottom: none;">
+                                    <div style="font-weight: bold;">${heapNumber}${shortType} ${getMessageCount(window)}${splitInfo} ${windowBlockheightRange}</div>
+                                    ${windowTimestamp ? `<div style="font-size: 10px; color: #858585; font-weight: normal;">${windowTimestamp}</div>` : ''}
+                                    ${compactingInfo}
+                                </td>
+                                <td class="window-uuid" rowspan="2" style="padding: 6px; text-align: right; vertical-align: top;">${windowUuid}</td>
+                            </tr>
+                            <tr class="${heapClasses} window-preview" onclick="event.stopPropagation(); toggleWindow('${escapeJsAttr(window.id)}')" style="${activeStyle}">
+                                <td colspan="7" style="padding: 0 6px 4px 6px; padding-left: ${parentIndent}px; border-top: none; font-size: 10px;">
+                                    <span class="window-preview-text">"${messagePreview}"</span>${windowNoteIcons}
+                                </td>
+                            </tr>
+                        `;
+
+                        if (!windowCollapsed) {
+                            // If this window has child splits, wrap messages in "Main flow"
+                            if (childCount > 0) {
+                                const mainFlowCollapsed = collapsedMainFlows.has(window.id);
+                                const mainFlowIcon = mainFlowCollapsed ? '►' : '▼';
+                                const mainFlowIndent = parentIndent + 20;
+
+                                // Check if there are any matching messages to decide if header should show
+                                const baseMessages = flatView ? window.messages : window.messages.filter(m => !m.parent_uuid);
+
+                                // Determine first and last message numbers for boundary filtering
+                                const firstMsgNum = window.messages.length > 0 ? Math.min(...window.messages.map(m => m.message_number)) : -1;
+                                const lastMsgNum = window.messages.length > 0 ? Math.max(...window.messages.map(m => m.message_number)) : -1;
+
+                                const filtered = baseMessages.filter(m => {
+                                    // Heap boundaries filter: only show first message, last message, and continuation messages
+                                    if (heapBoundariesOnly) {
+                                        const isFirstMsg = m.message_number === firstMsgNum;
+                                        const isLastMsg = m.message_number === lastMsgNum;
+                                        const isContinuation = m.is_continuation_message;
+                                        if (!isFirstMsg && !isLastMsg && !isContinuation) return false;
+                                    }
+
+                                    if (search) {
+                                        const contentStr = typeof m.content === 'string' ? m.content : (m.content ? JSON.stringify(m.content) : '');
+                                        if (!contentStr.toLowerCase().includes(search)) return false;
+                                    }
+                                    if (uuidSearch && !m.id.toLowerCase().includes(uuidSearch)) return false;
+                                    if (minLength) {
+                                        const contentLength = typeof m.content === 'string' ? m.content.length : (m.content ? JSON.stringify(m.content).length : 0);
+                                        if (contentLength < minLength) return false;
+                                    }
+                                    if (person && m.sender !== person && !m.recipients.includes(person)) return false;
+                                    if (!showThinking && (m.message_type === 'Thought' || m.message_type === 'ContextOpeningThought')) return false;
+                                    if (blockheightSpecified && (!m.eth_blockheight || m.eth_block_offset !== 0)) return false;
+                                    return true;
+                                });
+
+                                // Only show main flow header if there are matching messages (or if boundaries mode is on)
+                                if (filtered.length > 0 || heapBoundariesOnly) {
+                                    const mainFlowHeader = `
+                                        <tr class="main-flow-header" onclick="event.stopPropagation(); toggleMainFlow('${escapeJsAttr(window.id)}')">
+                                            <td class="expand-icon">${mainFlowIcon}</td>
+                                            <td colspan="7" style="padding: 4px; padding-left: ${mainFlowIndent}px;">
+                                                Main flow (${getMessageCount(window)} messages)
+                                            </td>
+                                        </tr>
+                                    `;
+                                    windowHtml += mainFlowHeader;
+
+                                    if (!mainFlowCollapsed) {
+                                        // Group messages into chains
+                                        const grouped = groupMessagesIntoChains(filtered);
+
+                                        // Render messages and chains
+                                        grouped.forEach((item, idx) => {
+                                            if (item.isChain) {
+                                                const rendered = renderChain(item, rowNumber);
+                                                windowHtml += rendered.html;
+                                                rowNumber = rendered.nextRowNumber;
+                                                windowVisibleCount += item.messages.length;
+                                            } else {
+                                                if (flatView) {
+                                                    const rendered = renderMessage(item, 0, idx, false, showThinking, rowNumber);
+                                                    windowHtml += rendered.html;
+                                                    rowNumber++;
+                                                } else {
+                                                    const rendered = renderMessage(item, 0, idx, autoExpand, showThinking, rowNumber);
+                                                    windowHtml += rendered.html;
+                                                    rowNumber = rendered.nextRowNumber;
+                                                }
+                                                windowVisibleCount++;
+                                            }
+                                        });
+                                    }
+                                }
+
+                                // Render child split windows as siblings to main flow (same indent)
+                                // Child heaps don't get numbered - only top-level heaps
+                                if (window.child_heaps) {
+                                    window.child_heaps.forEach(childWindow => {
+                                        const childResult = renderWindow(childWindow, depth + 1, mainFlowIndent, null);
+                                        windowHtml += childResult.html;
+                                        windowVisibleCount += childResult.count;
+                                    });
+                                }
+                            } else {
+                                // No child splits, just render messages directly
+                                const baseMessages = flatView ? window.messages : window.messages.filter(m => !m.parent_uuid);
+
+                                // Determine first and last message numbers
+                                const firstMsgNum = window.messages.length > 0 ? Math.min(...window.messages.map(m => m.message_number)) : -1;
+                                const lastMsgNum = window.messages.length > 0 ? Math.max(...window.messages.map(m => m.message_number)) : -1;
+
+                                const filtered = baseMessages.filter(m => {
+                                    // Heap boundaries filter
+                                    if (heapBoundariesOnly) {
+                                        const isFirstMsg = m.message_number === firstMsgNum;
+                                        const isLastMsg = m.message_number === lastMsgNum;
+                                        const isContinuation = m.is_continuation_message;
+                                        if (!isFirstMsg && !isLastMsg && !isContinuation) return false;
+                                    }
+
+                                    if (search) {
+                                        const contentStr = typeof m.content === 'string' ? m.content : (m.content ? JSON.stringify(m.content) : '');
+                                        if (!contentStr.toLowerCase().includes(search)) return false;
+                                    }
+                                    if (uuidSearch && !m.id.toLowerCase().includes(uuidSearch)) return false;
+                                    if (minLength) {
+                                        const contentLength = typeof m.content === 'string' ? m.content.length : (m.content ? JSON.stringify(m.content).length : 0);
+                                        if (contentLength < minLength) return false;
+                                    }
+                                    if (person && m.sender !== person && !m.recipients.includes(person)) return false;
+                                    if (!showThinking && (m.message_type === 'Thought' || m.message_type === 'ContextOpeningThought')) return false;
+                                    if (blockheightSpecified && (!m.eth_blockheight || m.eth_block_offset !== 0)) return false;
+                                    return true;
+                                });
+
+                                // Group messages into chains
+                                const grouped = groupMessagesIntoChains(filtered);
+
+                                grouped.forEach((item, idx) => {
+                                    if (item.isChain) {
+                                        const rendered = renderChain(item, rowNumber);
+                                        windowHtml += rendered.html;
+                                        rowNumber = rendered.nextRowNumber;
+                                        windowVisibleCount += item.messages.length;
+                                    } else {
+                                        if (flatView) {
+                                            const rendered = renderMessage(item, 0, idx, false, showThinking, rowNumber);
+                                            windowHtml += rendered.html;
+                                            rowNumber++;
+                                        } else {
+                                            const rendered = renderMessage(item, 0, idx, autoExpand, showThinking, rowNumber);
+                                            windowHtml += rendered.html;
+                                            rowNumber = rendered.nextRowNumber;
+                                        }
+                                        windowVisibleCount++;
+                                    }
+                                });
+                            }
+                        }
+
+                        // Render window if it has content OR if no filters are active
+                        // With lazy-loading, show heaps even if messages aren't loaded yet
+                        const potentialMatches = countVisibleInWindow(window);
+                        const windowMessageCount = getMessageCount(window);
+                        const shouldRenderWindow = !hasActiveFilters || potentialMatches > 0 || windowMessageCount > 0;
+
+                        if (shouldRenderWindow) {
+                            // Return potentialMatches for count so collapsed windows still register as having content
+                            return { html: headerRow + windowHtml, count: Math.max(potentialMatches, windowMessageCount) };
+                        } else {
+                            return { html: '', count: 0 };
+                        }
+                    }
+
+                    era.context_heaps.forEach((window, heapIdx) => {
+                        const result = renderWindow(window, 0, 20, heapIdx);
+                        eraWindowsHtml += result.html;
+                        eraVisibleCount += result.count;
+                    });
+                } else {
+                    // Era is collapsed, but count potential matches for visibility check
+                    era.context_heaps.forEach(window => {
+                        eraVisibleCount += countVisibleInWindow(window);
+                    });
+                }
+
+                // Render era if it has content OR if no filters are active
+                // With lazy-loading, we want to show eras/heaps even if messages aren't loaded yet
+                const shouldRenderEra = !hasActiveFilters || eraVisibleCount > 0 || eraMessageCount > 0;
+
+                if (shouldRenderEra) {
+                    const heapCount = era.context_heaps.length;
+                    const isCurrentEra = era.id === currentEraId;
+                    const eraClass = isCurrentEra ? 'era-header current-era' : 'era-header';
+                    html += `
+                        <tr class="${eraClass}" data-era-id="${escapeHtml(era.id)}" onclick="toggleEra('${escapeJsAttr(era.id)}')">
+                            <td class="expand-icon">${eraIcon}</td>
+                            <td colspan="7" style="padding: 8px;">
+                                ${escapeHtml(era.name)} (${heapCount} heaps, ${eraMessageCount.toLocaleString()} messages)${eraBlockheightRange}${eraNoteIcons}
+                            </td>
+                            <td class="era-uuid" style="padding: 8px; text-align: right;">${eraUuid}</td>
+                        </tr>
+                    `;
+                    html += eraWindowsHtml;
+                    totalMessages += eraVisibleCount;
+                }
+            });
+
+            // Render orphaned compacting actions at the bottom
+            if (eraData.orphaned_compacting_actions && eraData.orphaned_compacting_actions.length > 0) {
+                const orphanedCollapsed = collapsedEras.has('orphaned-compacting');
+                const orphanedIcon = orphanedCollapsed ? '►' : '▼';
+
+                html += `
+                    <tr class="era-header" data-era-id="orphaned-compacting" onclick="toggleEra('orphaned-compacting')" style="cursor: pointer; background: #5a2a2a; border-top: 2px solid #8b4513;">
+                        <td class="expand-icon">${orphanedIcon}</td>
+                        <td colspan="7" style="padding: 8px;">
+                            ⚠️ ORPHANED COMPACTING ACTIONS (${eraData.orphaned_compacting_actions.length}) - Need manual linking
+                        </td>
+                        <td style="padding: 8px; text-align: right;"></td>
+                    </tr>
+                `;
+
+                if (!orphanedCollapsed) {
+                    eraData.orphaned_compacting_actions.forEach(compact => {
+                        const boundaryPreview = compact.ending_message_id
+                            ? escapeHtml(compact.ending_message_id.substring(0, 8))
+                            : 'unknown';
+                        const compactPseudoMsg = {
+                            id: compact.id,
+                            message_type: 'CompactingAction',
+                            // summary removed - see Summary model
+                            compact_trigger: compact.compact_trigger,
+                            ending_message_id: compact.ending_message_id,
+                            is_orphaned: true,
+                            raw_imported_content: compact.raw_imported_content,
+                            created_at: compact.created_at
+                        };
+                        const msgId = `msg-${compact.id}`;
+                        html += `
+                            <tr id="${escapeHtml(msgId)}" onclick="toggleRow('${escapeJsAttr(compact.id)}')" data-message-id="${escapeHtml(compact.id)}" style="cursor: pointer; background: #3a1a1a;">
+                                <td class="expand-icon">►</td>
+                                <td colspan="8" style="padding-left: 30px; color: #d4a574;">
+                                    📋 <strong>(compact action)</strong><br>
+                                    <span style="font-size: 10px; color: #858585;">
+                                        Boundary: ${boundaryPreview} ·
+                                        Trigger: ${escapeHtml(compact.compact_trigger || 'unknown')} ·
+                                        Created: ${compact.created_at ? new Date(compact.created_at).toLocaleString() : 'unknown'}
+                                    </span>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                }
+            }
+
+            const countText = `${totalMessages} messages shown (${allMessages.length} total)`;
+            document.getElementById('messageCount').textContent = countText;
+
+            tbody.innerHTML = html;
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('messagesTable').style.display = 'table';
+        }
+
+        function toggleEra(eraId) {
+            const isExpanding = collapsedEras.has(eraId);
+
+            // Show loading indicator while rendering (for large eras)
+            const eraRow = document.querySelector(`[data-era-id="${eraId}"]`);
+            const expandIcon = eraRow ? eraRow.querySelector('.expand-icon') : null;
+            if (expandIcon && isExpanding) {
+                expandIcon.textContent = '⟳';
+                expandIcon.classList.add('loading');
+            }
+
+            if (isExpanding) {
+                collapsedEras.delete(eraId);
+            } else {
+                collapsedEras.add(eraId);
+            }
+
+            // Use setTimeout to allow the loading indicator to render before the heavy work
+            setTimeout(() => {
+                renderMessages();
+            }, 10);
+        }
+
+        async function toggleWindow(windowId) {
+            const isCurrentlyCollapsed = collapsedWindows.has(windowId);
+
+            if (isCurrentlyCollapsed) {
+                // Expanding - check if we need to load messages first
+                if (!loadedHeaps.has(windowId)) {
+                    // Show loading indicator on the heap row
+                    const heapRow = document.querySelector(`[data-heap-id="${windowId}"]`);
+                    const expandIcon = heapRow ? heapRow.querySelector('.expand-icon') : null;
+                    if (expandIcon) {
+                        expandIcon.textContent = '⟳';
+                        expandIcon.classList.add('loading');
+                    }
+
+                    // Load messages for this heap
+                    try {
+                        const heapMessages = await fetchHeapMessages(windowId);
+
+                        // Find the heap and update its messages
+                        function findAndUpdateHeap(heaps) {
+                            for (const heap of heaps) {
+                                if (heap.id === windowId) {
+                                    heap.messages = heapMessages;
+                                    // Add messages to allMessages for searching
+                                    allMessages.push(...heapMessages);
+                                    loadedHeaps.add(windowId);
+                                    return true;
+                                }
+                                if (heap.child_heaps && findAndUpdateHeap(heap.child_heaps)) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }
+
+                        for (const era of eraData.eras) {
+                            if (findAndUpdateHeap(era.context_heaps)) {
+                                break;
+                            }
+                        }
+
+                        // Rebuild parent-child relationships for new messages
+                        allMessages.forEach(msg => {
+                            msg.children = allMessages.filter(m => m.parent_uuid === msg.id);
+                        });
+                    } catch (error) {
+                        console.error('Error loading heap messages:', error);
+                        // Restore icon on error
+                        if (expandIcon) {
+                            expandIcon.textContent = '►';
+                            expandIcon.classList.remove('loading');
+                        }
+                        alert('Failed to load messages for this heap');
+                        return;
+                    }
+                }
+
+                collapsedWindows.delete(windowId);
+            } else {
+                collapsedWindows.add(windowId);
+            }
+            renderMessages();
+        }
+
+        // /api/heap_messages/ serves a heap a page at a time (at most 1000
+        // messages); follow `next` until the heap is complete.
+        async function fetchHeapMessages(heapId) {
+            const messages = [];
+            let after = null;
+            do {
+                let url = `/api/heap_messages/${encodeURIComponent(heapId)}/`;
+                if (after) url += `?after=${encodeURIComponent(after)}`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`heap_messages returned ${response.status}`);
+                const data = await response.json();
+                messages.push(...data.messages);
+                after = data.has_more ? data.next : null;
+            } while (after);
+            return messages;
+        }
+
+        function toggleMainFlow(windowId) {
+            if (collapsedMainFlows.has(windowId)) {
+                collapsedMainFlows.delete(windowId);
+            } else {
+                collapsedMainFlows.add(windowId);
+            }
+            renderMessages();
+        }
+
+        function isInternalMessage(msg) {
+            return msg.message_type === 'Thought' || msg.message_type === 'ToolUse' || msg.message_type === 'ToolResult';
+        }
+
+        function isCommandMessage(msg) {
+            // Check if content is an object with type field indicating command pattern
+            if (typeof msg.content === 'object' && msg.content !== null) {
+                return msg.content.type === 'meta_caveat' ||
+                       msg.content.type === 'slash_command' ||
+                       msg.content.type === 'command_output';
+            }
+            return false;
+        }
+
+        function toggleChain(chainId) {
+            if (collapsedChains.has(chainId)) {
+                collapsedChains.delete(chainId);
+            } else {
+                collapsedChains.add(chainId);
+            }
+            renderMessages();
+        }
+
+        function groupMessagesIntoChains(messages) {
+            // Group consecutive internal messages and command patterns into chains
+            const result = [];
+            let currentChain = null;
+
+            messages.forEach((msg, idx) => {
+                if (isInternalMessage(msg)) {
+                    if (!currentChain) {
+                        currentChain = {
+                            isChain: true,
+                            id: `chain-${msg.id}`,
+                            messages: [],
+                            thoughtCount: 0,
+                            toolCount: 0,
+                            commandCount: 0
+                        };
+                    }
+                    currentChain.messages.push(msg);
+                    if (msg.message_type === 'Thought') {
+                        currentChain.thoughtCount++;
+                    } else {
+                        currentChain.toolCount++;
+                    }
+                } else if (isCommandMessage(msg)) {
+                    // Start or continue command pattern chain
+                    if (!currentChain) {
+                        currentChain = {
+                            isChain: true,
+                            id: `chain-${msg.id}`,
+                            messages: [],
+                            thoughtCount: 0,
+                            toolCount: 0,
+                            commandCount: 0,
+                            isCommandChain: true  // Mark as command chain for auto-collapse
+                        };
+                    }
+                    currentChain.messages.push(msg);
+                    currentChain.commandCount++;
+                } else {
+                    // Check if this is a synthetic error following a command pattern
+                    const isSyntheticError = typeof msg.content === 'string' && msg.is_synthetic_error;
+                    const previousWasCommand = currentChain && currentChain.commandCount > 0;
+
+                    if (isSyntheticError && previousWasCommand) {
+                        // Include synthetic error in command chain
+                        currentChain.messages.push(msg);
+                        return; // Skip to next message in forEach
+                    }
+
+                    // End current chain if exists
+                    if (currentChain && currentChain.messages.length > 1) {
+                        // Auto-collapse all chains (only on first run)
+                        if (!commandChainsInitialized) {
+                            collapsedChains.add(currentChain.id);
+                        }
+                        result.push(currentChain);
+                        currentChain = null;
+                    } else if (currentChain && currentChain.messages.length === 1) {
+                        // Single internal/command message, don't make it a chain
+                        result.push(currentChain.messages[0]);
+                        currentChain = null;
+                    }
+                    result.push(msg);
+                }
+            });
+
+            // Don't forget the last chain
+            if (currentChain && currentChain.messages.length > 1) {
+                // Auto-collapse all chains (only on first run)
+                if (!commandChainsInitialized) {
+                    collapsedChains.add(currentChain.id);
+                }
+                result.push(currentChain);
+            } else if (currentChain && currentChain.messages.length === 1) {
+                result.push(currentChain.messages[0]);
+            }
+
+            commandChainsInitialized = true;  // Mark as initialized after first grouping
+            return result;
+        }
+
+        function countDescendants(msg) {
+            if (!msg.children || msg.children.length === 0) return 0;
+            let count = msg.children.length;
+            msg.children.forEach(child => {
+                count += countDescendants(child);
+            });
+            return count;
+        }
+
+        function renderChain(chain, rowNumber) {
+            const isCollapsed = collapsedChains.has(chain.id);
+            const icon = isCollapsed ? '►' : '▼';
+            const thoughtText = chain.thoughtCount > 0 ? `💭 ${chain.thoughtCount} thought${chain.thoughtCount > 1 ? 's' : ''}` : '';
+            const toolText = chain.toolCount > 0 ? `🔧 ${chain.toolCount} tool${chain.toolCount > 1 ? 's' : ''}` : '';
+            const commandText = chain.commandCount > 0 ? `🔧 /${escapeHtml(chain.messages.find(m => m.content?.command_name)?.content.command_name || 'command')}` : '';
+
+            const parts = [thoughtText, toolText, commandText].filter(p => p);
+            const summary = parts.join(', ');
+
+            let html = `
+                <tr class="thinking" onclick="toggleChain('${escapeJsAttr(chain.id)}')" style="cursor: pointer;">
+                    <td class="expand-icon">${icon}</td>
+                    <td class="num">${chain.messages[0].message_number}</td>
+                    <td class="importance">Chain</td>
+                    <td colspan="4" style="font-style: italic; color: #858585;">${summary} (${chain.messages.length} messages)</td>
+                    <td class="timestamp"></td>
+                    <td class="source"></td>
+                    <td class="uuid"></td>
+                </tr>
+            `;
+
+            let nextRowNumber = rowNumber !== null ? rowNumber + 1 : null;
+
+            if (!isCollapsed) {
+                // Render all messages in the chain
+                chain.messages.forEach((msg, idx) => {
+                    const rendered = renderMessage(msg, 0, idx, false, true, nextRowNumber);
+                    html += rendered.html;
+                    nextRowNumber = rendered.nextRowNumber;
+                });
+            }
+
+            return { html, nextRowNumber };
+        }
+
+        function renderMessage(m, depth, idx, autoExpand, showThinking, rowNumber = null) {
+            // Special rendering for CompactingAction pseudo-messages
+            if (m.message_type === 'CompactingAction') {
+                const orphanedIndicator = m.is_orphaned ? ' (orphaned)' : '';
+                const preview = `📋 COMPACTING: (compact action)`;
+                const uuid = m.id ? escapeHtml(m.id.substring(0, 8)) : '';
+                const rowNumDisplay = rowNumber !== null ? rowNumber : '';
+
+                const html = `
+                    <tr class="thinking" style="background: #4a3a2a; font-style: italic;" onclick="toggleRow('${escapeJsAttr(m.id)}')" data-message-id="${escapeHtml(m.id)}">
+                        <td class="blockheight"></td>
+                        <td class="num"></td>
+                        <td class="importance">Compact</td>
+                        <td class="from" colspan="3" style="color: #dcdcaa; font-weight: bold;">${preview}${orphanedIndicator}</td>
+                        <td class="content"></td>
+                        <td class="timestamp"></td>
+                        <td class="source"></td>
+                        <td class="uuid">${uuid}</td>
+                    </tr>
+                `;
+                const nextRowNumber = rowNumber !== null ? rowNumber + 1 : null;
+                return { html, nextRowNumber };
+            }
+
+            const timestamp = m.timestamp
+                ? new Date(m.timestamp).toISOString().substring(0, 19).replace('T', ' ')
+                : '';
+
+            const hasChildren = m.children && m.children.length > 0;
+            const isExpanded = expandedRows.has(m.id) || (autoExpand && hasChildren);
+            const descendantCount = hasChildren ? countDescendants(m) : 0;
+            const expandIcon = hasChildren ? (isExpanded ? `▼ ${descendantCount}` : `► ${descendantCount}`) : ' ';
+
+            let rowClass = '';
+            if (m.message_type === 'Thought') {
+                rowClass = 'thinking';
+            } else if (m.sender === 'justin') {
+                rowClass = 'justin';
+            } else if (m.sender === 'magent') {
+                rowClass = 'magent';
+            } else if (m.sender_type === 'tool') {
+                rowClass = 'tool';
+            } else if (m.sender_type === 'system') {
+                rowClass = 'system';
+            }
+            if (depth > 0) rowClass += ' child';
+
+            // Participant type icons
+            const participantIcon = m.sender_type === 'tool' ? '<span title="Tool">🔧</span> ' :
+                                   m.sender_type === 'system' ? '<span title="System">📟</span> ' :
+                                   m.sender_type === 'oracle' ? '<span title="Oracle">🔮</span> ' : '';
+
+            const thinkingIcon = m.message_type === 'Thought' ? '<span title="Thought">💭</span> ' : '';
+            const typeMarker = m.message_type === 'ToolUse' ? '<span title="Tool use">🔧</span> ' :
+                             m.message_type === 'ToolResult' ? '<span title="Tool result">✓</span> ' : '';
+            const continuationIcon = m.is_continuation_message ? '<span title="Continuation after compact" style="color: #ff6b35; font-weight: bold;">🔄</span> ' : '';
+
+            // Parse content for display
+            const parsedContent = parseContentForDisplay(m.content);
+            const preview = parsedContent.length > 200 ? parsedContent.substring(0, 200) + '...' : parsedContent;
+
+            const indentClass = ''; // Removed indent since we removed hierarchy columns
+            const uuid = m.id ? escapeHtml(m.id.substring(0, 8)) : '';
+
+            // Display sender and recipients
+            let senderDisplay = m.sender;
+            let recipientsDisplay;
+
+            // DEBUG: Log what we're receiving
+            console.log(`Msg ${m.id ? m.id.substring(0,8) : 'no-id'}: recipients=`, m.recipients, 'type=', typeof m.recipients, 'length=', m.recipients?.length, 'isArray=', Array.isArray(m.recipients));
+
+            // Use actual recipients from database
+            if (m.recipients && m.recipients.length > 0) {
+                recipientsDisplay = Array.isArray(m.recipients) ? m.recipients.join(', ') : m.recipients;
+            } else {
+                // Fallback for messages without recipients
+                if (m.message_type === 'ToolUse') {
+                    recipientsDisplay = m.tool_name || '(tool)';
+                } else if (m.message_type === 'ToolResult') {
+                    recipientsDisplay = 'magent';
+                } else if (m.message_type === 'Thought') {
+                    recipientsDisplay = '(thinking)';
+                } else {
+                    recipientsDisplay = '';
+                }
+            }
+
+            console.log(`  → recipientsDisplay set to: "${recipientsDisplay}"`);
+
+            const sourceFile = m.source_file ? (m.source_file.length > 15 ? '...' + m.source_file.substring(m.source_file.length - 12) : m.source_file) : '';
+            const rowNumDisplay = rowNumber !== null ? rowNumber : '';
+            const missingMarker = m.missing_from_markdown ? '✗' : '';
+
+            // Build note icons with hover tooltips
+            let noteIcons = '';
+            if (m.notes && m.notes.length > 0) {
+                m.notes.forEach(note => {
+                    const truncated = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
+                    noteIcons += `<span style="font-size: 0.7em; cursor: help;" title="[${escapeHtml(note.from_entity)}] ${escapeHtml(truncated)}">📝</span> `;
+                });
+            }
+
+            const blockheight = m.eth_blockheight ? m.eth_blockheight.toLocaleString() : '';
+
+            let html = `
+                <tr class="${rowClass}" onclick="toggleRow('${escapeJsAttr(m.id)}')" data-message-id="${escapeHtml(m.id)}">
+                    <td class="blockheight">${blockheight}</td>
+                    <td class="num">${m.message_number || '?'}</td>
+                    <td class="importance">${continuationIcon}${escapeHtml(m.message_type)}</td>
+                    <td class="from ${indentClass}">${participantIcon}${thinkingIcon}${typeMarker}${escapeHtml(senderDisplay)}</td>
+                    <td class="arrow">→</td>
+                    <td class="to">${escapeHtml(recipientsDisplay)}</td>
+                    <td class="content">${noteIcons}${escapeHtml(preview)}</td>
+                    <td class="timestamp" style="font-size: 0.85em;">${timestamp}</td>
+                    <td class="source" style="font-size: 0.85em;">${escapeHtml(sourceFile)}</td>
+                    <td class="uuid">${uuid}</td>
+                </tr>
+            `;
+
+            let nextRowNumber = rowNumber !== null ? rowNumber + 1 : null;
+
+            // Add children if expanded
+            if (isExpanded && hasChildren) {
+                m.children.forEach((child, childIdx) => {
+                    if (!showThinking && (child.message_type === 'thought' || child.message_type === 'context_opening_thought')) return;
+                    const childRendered = renderMessage(child, depth + 1, childIdx, autoExpand, showThinking, nextRowNumber);
+                    html += childRendered.html;
+                    nextRowNumber = childRendered.nextRowNumber;
+                });
+            }
+
+            return { html, nextRowNumber };
+        }
+
+        function expandAllDescendants(msg) {
+            if (!msg.children || msg.children.length === 0) return;
+            msg.children.forEach(child => {
+                expandedRows.add(child.id);
+                expandAllDescendants(child);
+            });
+        }
+
+        function collapseAllDescendants(msg) {
+            if (!msg.children || msg.children.length === 0) return;
+            msg.children.forEach(child => {
+                expandedRows.delete(child.id);
+                collapseAllDescendants(child);
+            });
+        }
+
+        function toggleRow(messageId) {
+            event.stopPropagation();
+
+            // Don't toggle if user is selecting text
+            const selection = window.getSelection();
+            if (selection.toString().length > 0) {
+                return;
+            }
+
+            const message = allMessages.find(m => m.id === messageId);
+            const row = event.target.closest('tr');
+            const clickedElement = event.target;
+
+            // If clicked on expand icon and message has children, expand/collapse tree
+            if (clickedElement.classList.contains('expand-icon') && message.children && message.children.length > 0) {
+                if (expandedRows.has(messageId)) {
+                    expandedRows.delete(messageId);
+                    collapseAllDescendants(message);
+                } else {
+                    expandedRows.add(messageId);
+                    expandAllDescendants(message);
+                }
+                renderMessages();
+                return;
+            }
+
+            // If clicked on content, toggle text expansion and show notes
+            const isExpanded = row.classList.contains('expanded');
+            const expandedRowId = `expanded-${messageId}`;
+            let expandedRow = document.getElementById(expandedRowId);
+
+            if (isExpanded) {
+                // Collapse
+                row.classList.remove('expanded');
+                if (expandedRow) {
+                    expandedRow.remove();
+                }
+            } else {
+                // Expand
+                row.classList.add('expanded');
+
+                // Create expanded row with full content and notes
+                if (!expandedRow) {
+                    expandedRow = document.createElement('tr');
+                    expandedRow.id = expandedRowId;
+                    expandedRow.classList.add('expanded-details');
+                    // Copy the row class for proper light/dark mode styling
+                    expandedRow.className = row.className;
+
+                    const isLightMode = document.body.classList.contains('light-mode');
+                    const borderColor = isLightMode ? '#007acc' : '#007acc';
+                    const noteDividerColor = isLightMode ? '#d0d0d0' : '#3e3e42';
+                    const noteHeaderColor = isLightMode ? '#666666' : '#858585';
+                    const noteBackground = isLightMode ? '#f8f8f8' : '#2d2d30';
+                    const noteBorderColor = isLightMode ? '#d17a4a' : '#ce9178';
+                    const noteAuthorColor = isLightMode ? '#d17a4a' : '#ce9178';
+                    const buttonBackground = isLightMode ? '#007acc' : '#0e639c';
+                    const buttonText = isLightMode ? '#ffffff' : '#ffffff';
+                    const buttonBorder = isLightMode ? '#005a9e' : '#1177bb';
+
+                    let expandedContent = `<td colspan="9" style="padding: 10px 20px; border-left: 3px solid ${borderColor};">`;
+
+                    // Show UUID at top (always)
+                    expandedContent += `<div style="font-size: 11px; color: ${noteHeaderColor}; margin-bottom: 8px; user-select: text;">UUID: ${escapeHtml(message.id)}</div>`;
+
+                    // Show metadata for CompactingAction
+                    if (message.message_type === 'CompactingAction') {
+                        expandedContent += `<div style="font-size: 12px; color: ${noteHeaderColor}; margin-bottom: 8px;">`;
+                        expandedContent += `<strong>COMPACTING ACTION</strong><br>`;
+                        expandedContent += `Summary: (compact action)<br>`;
+                        expandedContent += `Trigger: ${escapeHtml(message.compact_trigger || 'unknown')}<br>`;
+                        if (message.pre_compact_tokens) {
+                            expandedContent += `Pre-compact tokens: ${message.pre_compact_tokens.toLocaleString()}<br>`;
+                        }
+                        expandedContent += `Leaf message (last before compact): ${escapeHtml(message.ending_message_id)}<br>`;
+                        if (message.is_orphaned) {
+                            expandedContent += `<span style="color: #ce9178;">Status: Orphaned (context heap not yet linked)</span><br>`;
+                        } else {
+                            expandedContent += `Linked to heap: ${escapeHtml(message.linked_heap_id)}<br>`;
+                        }
+                        expandedContent += `</div>`;
+
+                        // Show raw imported content button if available
+                        if (message.raw_imported_content) {
+                            const rawId = `raw-${message.id}`;
+                            expandedContent += `
+                                <div style="margin: 10px 0;">
+                                    <button
+                                        onclick="toggleRawContent('${escapeJsAttr(rawId)}')"
+                                        style="padding: 4px 8px; font-size: 11px; cursor: pointer; background: ${buttonBackground}; color: ${buttonText}; border: 1px solid ${buttonBorder}; border-radius: 3px;">
+                                        Show Raw JSONL
+                                    </button>
+                                    <div id="${escapeHtml(rawId)}" style="display: none; margin-top: 10px; padding: 10px; background: ${noteBackground}; border: 1px solid ${noteBorderColor}; border-radius: 3px;">
+                                        <pre style="margin: 0; white-space: pre-wrap; font-size: 10px; max-height: 400px; overflow-y: auto;">${escapeHtml(JSON.stringify(message.raw_imported_content, null, 2))}</pre>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    }
+
+                    // Show metadata for tool messages
+                    else if (message.message_type === 'ToolUse' || message.message_type === 'ToolResult' || message.message_type === 'Thought') {
+                        expandedContent += `<div style="font-size: 11px; color: ${noteHeaderColor}; margin-bottom: 8px;">`;
+                        if (message.message_type === 'ToolUse') {
+                            expandedContent += `Tool: ${escapeHtml(message.tool_name || '?')} · ID: ${escapeHtml(message.tool_id || '?')}`;
+                        } else if (message.message_type === 'ToolResult') {
+                            expandedContent += `Tool Result · Use ID: ${escapeHtml(message.tool_use_id || '?')}`;
+                            if (message.is_error) expandedContent += ` · ERROR`;
+                        } else if (message.message_type === 'Thought') {
+                            expandedContent += `Thinking`;
+                            if (message.signature) expandedContent += ` · Signature: ${escapeHtml(message.signature)}`;
+                        }
+                        if (message.parent_id) {
+                            expandedContent += ` · Parent: ${escapeHtml(message.parent_id.substring(0, 8))}`;
+                        }
+                        if (message.cwd) expandedContent += ` · CWD: ${escapeHtml(message.cwd)}`;
+                        if (message.git_branch) expandedContent += ` · Branch: ${escapeHtml(message.git_branch)}`;
+                        if (message.client_version) expandedContent += ` · Client: ${escapeHtml(message.client_version)}`;
+                        expandedContent += `</div>`;
+                    }
+
+                    // Show content (skip for CompactingAction which doesn't have content field)
+                    if (message.message_type !== 'CompactingAction' && message.content) {
+                        // Parse content - but for expanded view, show both parsed and raw if different
+                        const parsedContent = parseContentForDisplay(message.content);
+                        const rawContent = typeof message.content === 'string'
+                            ? message.content
+                            : JSON.stringify(message.content, null, 2);
+
+                        // If parsed is different from raw (meaning it's structured), show both
+                        if (parsedContent !== rawContent && typeof message.content === 'object') {
+                            expandedContent += `<div style="margin-bottom: 10px;">`;
+                            expandedContent += `<div style="color: ${noteHeaderColor}; font-size: 11px; margin-bottom: 4px;">Parsed content:</div>`;
+                            expandedContent += `<div style="white-space: pre-wrap; font-family: monospace; margin-bottom: 10px;">${escapeHtml(parsedContent)}</div>`;
+                            expandedContent += `<div style="color: ${noteHeaderColor}; font-size: 11px; margin-bottom: 4px;">Raw structure:</div>`;
+                            expandedContent += `<div style="white-space: pre-wrap; font-family: monospace; opacity: 0.7;">${escapeHtml(rawContent)}</div>`;
+                            expandedContent += `</div>`;
+                        } else {
+                            // Just show content as-is if it's simple
+                            expandedContent += `<div style="white-space: pre-wrap; font-family: monospace; margin-bottom: 10px;">${escapeHtml(parsedContent)}</div>`;
+                        }
+                    }
+
+                    // Show raw imported content button if available (skip for CompactingAction - already shown above)
+                    if (message.raw_imported_content && message.message_type !== 'CompactingAction') {
+                        const rawId = `raw-${message.id}`;
+                        expandedContent += `
+                            <div style="margin: 10px 0;">
+                                <button
+                                    onclick="toggleRawContent('${escapeJsAttr(rawId)}')"
+                                    style="padding: 4px 8px; font-size: 11px; cursor: pointer; background: ${buttonBackground}; color: ${buttonText}; border: 1px solid ${buttonBorder}; border-radius: 3px;">
+                                    Show Raw JSONL
+                                </button>
+                                <div id="${escapeHtml(rawId)}" style="display: none; margin-top: 10px; padding: 10px; background: ${noteBackground}; border: 1px solid ${noteBorderColor}; border-radius: 3px;">
+                                    <pre style="margin: 0; white-space: pre-wrap; font-size: 10px; max-height: 400px; overflow-y: auto;">${escapeHtml(JSON.stringify(message.raw_imported_content, null, 2))}</pre>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    // Add notes if present
+                    if (message.notes && message.notes.length > 0) {
+                        expandedContent += `<div style="border-top: 1px solid ${noteDividerColor}; padding-top: 10px; margin-top: 10px;">`;
+                        expandedContent += `<div style="color: ${noteHeaderColor}; font-size: 11px; margin-bottom: 5px;">NOTES:</div>`;
+                        message.notes.forEach(note => {
+                            const blockInfo = note.eth_blockheight ? ` · Block ${note.eth_blockheight.toLocaleString()}` : '';
+                            expandedContent += `<div style="margin-bottom: 8px; padding: 8px; background: ${noteBackground}; border-left: 2px solid ${noteBorderColor};">`;
+                            expandedContent += `<div style="color: ${noteAuthorColor}; font-size: 10px; margin-bottom: 4px;">[${escapeHtml(note.from_entity)}]${blockInfo}</div>`;
+                            expandedContent += `<div style="white-space: pre-wrap;">${escapeHtml(note.content)}</div>`;
+                            expandedContent += `</div>`;
+                        });
+                        expandedContent += `</div>`;
+                    }
+
+                    expandedContent += `</td>`;
+                    expandedRow.innerHTML = expandedContent;
+                    row.after(expandedRow);
+                }
+            }
+        }
+
+        function toggleRawContent(rawId) {
+            const div = document.getElementById(rawId);
+            const button = event.target;
+            if (div.style.display === 'none') {
+                div.style.display = 'block';
+                button.textContent = 'Hide Raw JSONL';
+            } else {
+                div.style.display = 'none';
+                button.textContent = 'Show Raw JSONL';
+            }
+        }
+
+        function parseContentForDisplay(content) {
+            // Parse message content intelligently for display
+            // Plain string - return as-is
+            if (typeof content === 'string') {
+                return content;
+            }
+
+            // Not an object - convert to string
+            if (typeof content !== 'object' || content === null) {
+                return String(content);
+            }
+
+            // Dict with 'text' key - extract the text
+            if ('text' in content) {
+                return content.text;
+            }
+
+            // Meta command pattern
+            if (content.is_meta) {
+                const metaType = content.type || 'unknown';
+                if (metaType === 'meta_caveat') {
+                    return `[Caveat: ${content.text || ''}]`;
+                } else if (metaType === 'slash_command') {
+                    const cmdName = content.command_name || '';
+                    const cmdArgs = content.command_args || '';
+                    return `[Command: ${cmdName} ${cmdArgs}]`.trim();
+                } else if (metaType === 'command_output') {
+                    const stdout = content.stdout || '';
+                    return `[Output: ${stdout.length > 100 ? stdout.substring(0, 100) + '...' : stdout}]`;
+                }
+            }
+
+            // Tool use pattern
+            if ('tool_name' in content) {
+                return `[Tool: ${content.tool_name}]`;
+            }
+
+            // Preamble pattern (tool use with preamble, thought-out response)
+            if ('preamble' in content && Array.isArray(content.preamble)) {
+                const preambleParts = [];
+                for (const item of content.preamble) {
+                    if (typeof item === 'object' && item !== null) {
+                        if (item.type === 'thinking') {
+                            const thinking = item.thinking || '';
+                            preambleParts.push(`[Thinking: ${thinking.substring(0, 50)}...]`);
+                        } else if (item.type === 'text') {
+                            preambleParts.push(item.text || '');
+                        }
+                    }
+                }
+
+                const mainText = content.text || '';
+                if (mainText) {
+                    preambleParts.push(mainText);
+                }
+
+                return preambleParts.join(' ');
+            }
+
+            // List/array - extract text from each item
+            if (Array.isArray(content)) {
+                const textParts = [];
+                for (const item of content) {
+                    if (typeof item === 'object' && item !== null) {
+                        if (item.type === 'text') {
+                            textParts.push(item.text || '');
+                        } else if (item.type === 'thinking') {
+                            const thinking = item.thinking || '';
+                            textParts.push(`[Thinking: ${thinking.substring(0, 50)}...]`);
+                        } else if (item.type === 'tool_use') {
+                            textParts.push(`[Tool: ${item.name || 'unknown'}]`);
+                        }
+                    } else if (typeof item === 'string') {
+                        textParts.push(item);
+                    }
+                }
+
+                return textParts.length > 0 ? textParts.join(' ') : JSON.stringify(content);
+            }
+
+            // Fall back to JSON representation for unrecognized dict structure
+            return JSON.stringify(content);
+        }
+
+        // Escapes for both element content and quoted attribute values.  The
+        // old textContent->innerHTML trick left " and ' alone, so a value
+        // placed inside title="..." could break out of the attribute.
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // For a value inside a single-quoted JS string inside an HTML
+        // attribute: onclick="f('${escapeJsAttr(x)}')".  The browser
+        // HTML-decodes the attribute before the JS parser sees it, so
+        // escapeHtml alone would hand the parser a bare ' -- escape for JS
+        // first, then for the attribute.
+        function escapeJsAttr(text) {
+            if (text === null || text === undefined) return '';
+            return escapeHtml(String(text)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r'));
+        }
+
+        // Handle note icon clicks with event delegation
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('note-icon')) {
+                e.stopPropagation();
+                e.preventDefault();
+                const notesId = e.target.dataset.notesId;
+                const title = e.target.dataset.title;
+                const notes = globalThis[notesId];
+                if (notes) {
+                    showNotesModal(title, notes);
+                }
+            }
+            // Allow UUID selection without triggering collapse/expand
+            if (e.target.classList.contains('era-uuid') || e.target.classList.contains('window-uuid')) {
+                e.stopPropagation();
+            }
+        }, true); // Use capture phase to intercept before bubbling
+
+        // Function to load all heap messages for searching
+        async function ensureAllHeapsLoaded() {
+            const heapsToLoad = [];
+
+            // Collect all heaps that haven't been loaded
+            function collectUnloadedHeaps(heaps) {
+                for (const heap of heaps) {
+                    if (!loadedHeaps.has(heap.id)) {
+                        heapsToLoad.push(heap);
+                    }
+                    if (heap.child_heaps) {
+                        collectUnloadedHeaps(heap.child_heaps);
+                    }
+                }
+            }
+
+            for (const era of eraData.eras) {
+                collectUnloadedHeaps(era.context_heaps);
+            }
+
+            if (heapsToLoad.length === 0) {
+                return; // All heaps already loaded
+            }
+
+            // Load all unloaded heaps in parallel
+            console.log(`Loading ${heapsToLoad.length} unloaded heaps for search...`);
+            const loadPromises = heapsToLoad.map(async heap => {
+                try {
+                    const heapMessages = await fetchHeapMessages(heap.id);
+                    heap.messages = heapMessages;
+                    allMessages.push(...heapMessages);
+                    loadedHeaps.add(heap.id);
+                } catch (error) {
+                    console.error(`Error loading heap ${heap.id}:`, error);
+                }
+            });
+
+            await Promise.all(loadPromises);
+
+            // Rebuild parent-child relationships
+            allMessages.forEach(msg => {
+                msg.children = allMessages.filter(m => m.parent_uuid === msg.id);
+            });
+
+            console.log(`Loaded ${heapsToLoad.length} heaps, total messages: ${allMessages.length}`);
+        }
+
+        // Debounce helper
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+
+        // Wrap renderMessages with heap loading for search fields
+        async function renderWithSearch() {
+            const search = document.getElementById('searchFilter').value;
+            const uuidSearch = document.getElementById('uuidFilter').value;
+            const minLength = parseInt(document.getElementById('minLengthFilter').value) || 0;
+            const person = document.getElementById('personFilter').value;
+
+            // If any search/filter is active, load all heaps first
+            if (search || uuidSearch || minLength > 0 || person) {
+                await ensureAllHeapsLoaded();
+            }
+
+            renderMessages();
+        }
+
+        // Set up filter listeners with debouncing for text inputs
+        const debouncedRenderWithSearch = debounce(renderWithSearch, 300);
+        document.getElementById('searchFilter').addEventListener('input', debouncedRenderWithSearch);
+        document.getElementById('uuidFilter').addEventListener('input', debouncedRenderWithSearch);
+        document.getElementById('minLengthFilter').addEventListener('input', debouncedRenderWithSearch);
+        document.getElementById('personFilter').addEventListener('change', renderWithSearch);
+        document.getElementById('showChildrenFilter').addEventListener('change', renderMessages);
+        document.getElementById('showThinkingFilter').addEventListener('change', renderMessages);
+        document.getElementById('flatViewFilter').addEventListener('change', renderMessages);
+        document.getElementById('blockheightSpecifiedFilter').addEventListener('change', renderMessages);
+        document.getElementById('heapBoundariesOnlyFilter').addEventListener('change', renderMessages);
+
+        function showNotesModal(title, notes) {
+            const modal = document.getElementById('notesModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalBody = document.getElementById('modalBody');
+
+            modalTitle.textContent = title;
+
+            let html = '';
+            notes.forEach(note => {
+                const blockInfo = note.eth_blockheight ? ` · Block ${note.eth_blockheight.toLocaleString()}` : '';
+                html += `
+                    <div class="note-item">
+                        <div class="note-author">[${escapeHtml(note.from_entity)}]${blockInfo}</div>
+                        <div class="note-content">${escapeHtml(note.content)}</div>
+                    </div>
+                `;
+            });
+
+            modalBody.innerHTML = html;
+            modal.style.display = 'block';
+        }
+
+        function closeNotesModal() {
+            document.getElementById('notesModal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('notesModal');
+            if (event.target === modal) {
+                closeNotesModal();
+            }
+        }
+
+        function toggleTheme() {
+            const body = document.body;
+            const button = document.querySelector('.theme-toggle');
+
+            if (body.classList.contains('light-mode')) {
+                body.classList.remove('light-mode');
+                button.textContent = '☀️ Light Mode';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                body.classList.add('light-mode');
+                button.textContent = '🌙 Dark Mode';
+                localStorage.setItem('theme', 'light');
+            }
+        }
+
+        // Auto-refresh functionality
+        let autoRefreshEnabled = true;
+        let lastMessageNumber = 0;
+        let refreshInterval = null;
+
+        function toggleAutoRefresh() {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            const button = document.getElementById('autoRefreshBtn');
+
+            if (autoRefreshEnabled) {
+                button.textContent = '🔄 Auto-Refresh: ON';
+                button.style.background = '#2a5a2a';
+                startAutoRefresh();
+            } else {
+                button.textContent = '⏸️ Auto-Refresh: OFF';
+                button.style.background = '#5a2a2a';
+                stopAutoRefresh();
+            }
+        }
+
+        function startAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(checkForNewMessages, 3000); // Check every 3 seconds
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+        }
+
+        // Find highest message_number currently in eraData
+        function getLastMessageNumber() {
+            // Guard against null eraData before initial load
+            if (!eraData || !eraData.eras) {
+                return 0;
+            }
+
+            let maxNum = 0;
+            eraData.eras.forEach(era => {
+                era.context_heaps.forEach(heap => {
+                    heap.messages.forEach(msg => {
+                        if (msg.message_number > maxNum) {
+                            maxNum = msg.message_number;
+                        }
+                    });
+                });
+            });
+            return maxNum;
+        }
+
+        async function checkForNewMessages() {
+            if (!autoRefreshEnabled) return;
+
+            try {
+                // Get the last message we know about
+                const currentLastNum = getLastMessageNumber();
+
+                if (currentLastNum === 0) {
+                    // No messages yet, can't poll
+                    return;
+                }
+
+                // Guard against race condition where data not loaded yet
+                if (!eraData || !eraData.eras) {
+                    return;
+                }
+
+                // Find the message with highest number to use as anchor
+                let lastMessageId = null;
+                eraData.eras.forEach(era => {
+                    era.context_heaps.forEach(heap => {
+                        heap.messages.forEach(msg => {
+                            if (msg.message_number === currentLastNum) {
+                                lastMessageId = msg.id;
+                            }
+                        });
+                    });
+                });
+
+                if (!lastMessageId) return;
+
+                const response = await fetch(`/api/messages_since/${lastMessageId}/`);
+                const data = await response.json();
+
+                if (data.messages && data.messages.length > 0) {
+                    // Show indicator
+                    document.getElementById('newMessageIndicator').style.display = 'inline';
+
+                    // Add new messages to eraData
+                    data.messages.forEach(msg => {
+                        // Find or create era
+                        let era = eraData.eras.find(e => e.id === msg.era_id);
+                        if (!era) {
+                            // Need to reload to get new era structure
+                            console.log('New era detected, reloading...');
+                            location.reload();
+                            return;
+                        }
+
+                        // Find or create heap
+                        let heap = era.context_heaps.find(h => h.id === msg.heap_id);
+                        if (!heap) {
+                            // Need to reload to get new heap structure
+                            console.log('New heap detected, reloading...');
+                            location.reload();
+                            return;
+                        }
+
+                        // Add message to heap's messages array
+                        heap.messages.push(msg);
+                    });
+
+                    // Re-render messages (this will append new rows)
+                    renderMessages();
+
+                    // Flash new messages
+                    data.messages.forEach(msg => {
+                        const row = document.querySelector(`tr[data-message-id="${msg.id}"]`);
+                        if (row) {
+                            row.style.background = '#2a5a2a';
+                            setTimeout(() => {
+                                row.style.background = '';
+                            }, 2000);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error checking for new messages:', error);
+            }
+        }
+
+        // Restore theme preference on load
+        function restoreTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const button = document.querySelector('.theme-toggle');
+
+            if (savedTheme === 'light') {
+                document.body.classList.add('light-mode');
+                button.textContent = '🌙 Dark Mode';
+            }
+        }
+
+        // Load on page load
+        restoreTheme();
+        loadMessages();
+        startAutoRefresh(); // Start checking for new messages
+    </script>
+</body>
+</html>

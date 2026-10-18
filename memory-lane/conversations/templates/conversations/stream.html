@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magenta Stream</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 13px;
+            margin: 0;
+            padding: 0;
+            background: #0d1117;
+            color: #c9d1d9;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .header {
+            padding: 12px 20px;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #58a6ff;
+        }
+        .status {
+            font-size: 11px;
+            color: #8b949e;
+        }
+        .status.live {
+            color: #3fb950;
+        }
+        .stream-container {
+            height: calc(100vh - 50px);
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        .conversation-pane {
+            flex: 1;
+            min-width: 300px;
+            max-width: 50%;
+            overflow-y: auto;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 10px;
+        }
+        .pane-header {
+            font-size: 12px;
+            font-weight: bold;
+            color: #58a6ff;
+            padding: 5px 0 10px 0;
+            border-bottom: 1px solid #30363d;
+            margin-bottom: 10px;
+        }
+        .message {
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            background: #161b22;
+            border-radius: 6px;
+            border-left: 3px solid #30363d;
+            animation: slideIn 0.3s ease-out;
+        }
+        .message.new {
+            animation: highlight 2s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        @keyframes highlight {
+            0% {
+                background: #1f3a2f;
+                border-left-color: #3fb950;
+            }
+            100% {
+                background: #161b22;
+                border-left-color: #30363d;
+            }
+        }
+        .message.from-justin {
+            border-left-color: #58a6ff;
+        }
+        .message.from-magent {
+            border-left-color: #a371f7;
+        }
+        .message.tool-use {
+            border-left-color: #f0883e;
+        }
+        .message.tool-result {
+            border-left-color: #8b949e;
+        }
+        .message.thought {
+            border-left-color: #db61a2;
+            font-style: italic;
+        }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+        .sender {
+            font-weight: bold;
+        }
+        .sender.justin {
+            color: #58a6ff;
+        }
+        .sender.magent {
+            color: #a371f7;
+        }
+        .timestamp {
+            color: #8b949e;
+        }
+        .message-id {
+            font-size: 9px;
+            color: #6e7681;
+            font-family: monospace;
+        }
+        .message-type {
+            font-size: 10px;
+            color: #8b949e;
+            margin-left: 8px;
+        }
+        .content {
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.4;
+            max-height: 200px;
+            overflow: hidden;
+            position: relative;
+        }
+        .content.expanded {
+            max-height: none;
+        }
+        .content.truncated::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: linear-gradient(transparent, #161b22);
+        }
+        .expand-btn {
+            font-size: 10px;
+            color: #58a6ff;
+            cursor: pointer;
+            margin-top: 4px;
+            display: none;
+        }
+        .content.truncated + .expand-btn {
+            display: block;
+        }
+        .tool-name {
+            color: #f0883e;
+            font-size: 11px;
+        }
+        .no-messages {
+            text-align: center;
+            color: #8b949e;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">🐇 Magenta Stream</div>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <label style="font-size: 11px; display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="showRich" onchange="toggleRichMessages()">
+                Show tool messages
+            </label>
+            <div class="status" id="status">Connecting...</div>
+        </div>
+    </div>
+    <div class="stream-container" id="stream">
+        <div class="no-messages">Loading messages...</div>
+    </div>
+
+    <script>
+        const streamContainer = document.getElementById('stream');
+        const statusEl = document.getElementById('status');
+        let lastMessageId = null;
+        let isFirstLoad = true;
+        const POLL_INTERVAL = 3000;
+        const MAX_MESSAGES = 100;
+        let allMessages = [];  // Store all messages for re-rendering
+
+        function toggleRichMessages() {
+            renderMessages();
+        }
+
+        function shouldShowMessage(msg) {
+            const showRich = document.getElementById('showRich').checked;
+            if (showRich) return true;
+            // Only show regular text messages when toggle is off
+            return msg.message_type === 'Message' && msg.message_type !== 'Thought';
+        }
+
+        function renderMessages() {
+            streamContainer.innerHTML = '';
+            const filtered = allMessages.filter(shouldShowMessage);
+            if (filtered.length === 0) {
+                streamContainer.innerHTML = '<div class="no-messages">No messages to display</div>';
+                return;
+            }
+
+            // Group messages by context_heap_id
+            const heaps = {};
+            filtered.forEach(msg => {
+                const heapId = msg.context_heap_id || 'unknown';
+                if (!heaps[heapId]) {
+                    heaps[heapId] = [];
+                }
+                heaps[heapId].push(msg);
+            });
+
+            // Get unique senders per heap to label the pane
+            Object.keys(heaps).forEach(heapId => {
+                const pane = document.createElement('div');
+                pane.className = 'conversation-pane';
+
+                const messages = heaps[heapId];
+                // Find the human sender (not magent or tool-result)
+                const humanSenders = [...new Set(messages.map(m => m.sender).filter(s => s !== 'magent' && s !== 'tool-result'))];
+                const label = humanSenders.length > 0 ? humanSenders.join(', ') : 'Session';
+
+                const header = document.createElement('div');
+                header.className = 'pane-header';
+                header.textContent = label + ' (' + heapId.substring(0, 8) + ')';
+                pane.appendChild(header);
+
+                messages.forEach(msg => {
+                    pane.appendChild(createMessageElement(msg, false));
+                });
+
+                streamContainer.appendChild(pane);
+            });
+        }
+
+        function formatTimestamp(ts) {
+            if (!ts) return '';
+            const date = new Date(typeof ts === 'number' ? ts : ts);
+            return date.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+        }
+
+        function getContentPreview(content) {
+            if (!content) return '';
+            if (typeof content === 'object') {
+                return JSON.stringify(content, null, 2);
+            }
+            return String(content);
+        }
+
+        function createMessageElement(msg, isNew = false) {
+            const div = document.createElement('div');
+
+            let typeClass = '';
+            let typeLabel = '';
+            if (msg.message_type === 'Thought') {
+                typeClass = 'thought';
+                typeLabel = '💭 thinking';
+            } else if (msg.message_type === 'ToolUse') {
+                typeClass = 'tool-use';
+                typeLabel = '🔧 ' + escapeHtml(msg.tool_name || 'tool');
+            } else if (msg.message_type === 'ToolResult') {
+                typeClass = 'tool-result';
+                typeLabel = '📋 result' + (msg.is_error ? ' ❌' : '');
+            }
+
+            const senderClass = msg.sender === 'justin' ? 'from-justin' : 'from-magent';
+            div.className = `message ${senderClass} ${typeClass}` + (isNew ? ' new' : '');
+
+            const content = getContentPreview(msg.content);
+            const isTruncated = content.length > 500;
+
+            // Only show text messages fully; collapse all tool uses/results
+            const isToolMessage = msg.message_type === 'ToolUse' || msg.message_type === 'ToolResult';
+
+            const shortId = escapeHtml(String(msg.id).substring(0, 8));
+            const sender = escapeHtml(msg.sender);
+
+            if (isToolMessage) {
+                div.innerHTML = `
+                    <div class="message-header">
+                        <span>
+                            <span class="sender ${sender}">${sender}</span>
+                            <span class="message-type">${typeLabel}</span>
+                            <span class="message-id">${shortId}</span>
+                        </span>
+                        <span class="timestamp">${formatTimestamp(msg.timestamp)}</span>
+                    </div>
+                    <div class="content collapsed" style="display: none;"></div>
+                    <div class="expand-btn" onclick="expandMessage(this)" style="display: block;">Show</div>
+                `;
+            } else {
+                div.innerHTML = `
+                    <div class="message-header">
+                        <span>
+                            <span class="sender ${sender}">${sender}</span>
+                            <span class="message-type">${typeLabel}</span>
+                            <span class="message-id">${shortId}</span>
+                        </span>
+                        <span class="timestamp">${formatTimestamp(msg.timestamp)}</span>
+                    </div>
+                    <div class="content ${isTruncated ? 'truncated' : ''}">${escapeHtml(content.substring(0, 500))}${isTruncated ? '...' : ''}</div>
+                    <div class="expand-btn" onclick="expandMessage(this)">Show more</div>
+                `;
+            }
+
+            div.dataset.fullContent = content;
+            return div;
+        }
+
+        // Escapes for both element content and quoted attribute values.  The
+        // old textContent->innerHTML trick left " and ' alone, so a value
+        // placed inside title="..." or class="..." could break out of it.
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function expandMessage(btn) {
+            const contentEl = btn.previousElementSibling;
+            const messageEl = btn.parentElement;
+            const fullContent = messageEl.dataset.fullContent;
+
+            // Handle collapsed Edit messages
+            if (contentEl.classList.contains('collapsed')) {
+                contentEl.classList.remove('collapsed');
+                contentEl.style.display = 'block';
+                contentEl.textContent = fullContent;
+                btn.textContent = 'Hide';
+                return;
+            }
+
+            if (contentEl.classList.contains('expanded')) {
+                contentEl.classList.remove('expanded');
+                contentEl.classList.add('truncated');
+                contentEl.textContent = fullContent.substring(0, 500) + '...';
+                btn.textContent = 'Show more';
+            } else if (contentEl.style.display === 'block' && btn.textContent === 'Hide') {
+                // Re-collapse tool message
+                contentEl.style.display = 'none';
+                contentEl.classList.add('collapsed');
+                btn.textContent = 'Show';
+            } else {
+                contentEl.classList.add('expanded');
+                contentEl.classList.remove('truncated');
+                contentEl.textContent = fullContent;
+                btn.textContent = 'Show less';
+            }
+        }
+
+        async function fetchMessages() {
+            try {
+                let url = '/api/recent_messages/?limit=100';
+
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to fetch');
+
+                const data = await response.json();
+                const messages = data.messages || [];
+
+                if (messages.length === 0) {
+                    allMessages = [];
+                    streamContainer.innerHTML = '<div class="no-messages">No messages yet</div>';
+                    return;
+                }
+
+                if (isFirstLoad) {
+                    allMessages = messages;
+                    renderMessages();
+                    isFirstLoad = false;
+                    if (messages.length > 0) {
+                        lastMessageId = messages[0].id;
+                    }
+                } else {
+                    // Check for new messages
+                    const newMessages = [];
+                    for (const msg of messages) {
+                        if (msg.id === lastMessageId) break;
+                        newMessages.push(msg);
+                    }
+
+                    if (newMessages.length > 0) {
+                        // Add new messages to front
+                        allMessages = [...newMessages, ...allMessages].slice(0, MAX_MESSAGES);
+                        lastMessageId = messages[0].id;
+                        renderMessages();
+                    }
+                }
+
+                statusEl.textContent = `Live • ${messages.length} messages`;
+                statusEl.className = 'status live';
+
+            } catch (error) {
+                console.error('Error fetching messages:', error);
+                statusEl.textContent = 'Connection error';
+                statusEl.className = 'status';
+            }
+        }
+
+        // Initial fetch
+        fetchMessages();
+
+        // Poll for updates
+        setInterval(fetchMessages, POLL_INTERVAL);
+    </script>
+</body>
+</html>
