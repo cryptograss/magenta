@@ -1,0 +1,38 @@
+# Ansible vault - contains secrets (unencrypted for laptop-only use)
+ansible/vault.yml
+
+# Database dumps and backups - may contain sensitive data
+scripts/database-dump.sql
+*.dump
+*.sql.gz
+backups/
+
+# Django
+django-venv/
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite3
+.Python
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# SSH keys
+*.pub
+*.pem
+id_*
+
+# Ansible retry files
+*.retry
+
+# Temporary deletion candidates
+deletion-candidate/
+
+# Environment
+.env
+.env.local
+vault-plaintext.yml
