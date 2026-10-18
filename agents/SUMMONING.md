@@ -114,10 +114,12 @@ catches up.
   (maybelle-config#194; `hunter/CONTAINERS.md`).
 - **unchecked:** a model unset in the inventory meant no model in Moods
   without a per-Mood setting (maybelle-config#201, open at this block).
-- An agent's clones are cloned once and then left. Its rules' repository is
-  pulled at startup; the rest only cloned if missing, each on whatever branch
-  `git clone` gave it. re checked step 5 of this file against its
-  maybelle-config clone: `main` as of 2026-10-15 20:18Z, where none of step 5
-  existed yet, while `production` had all of it. The checkout an agent reads
-  is not the deployed code. Until its clones follow the deployed branches,
-  an agent checks `origin/<deployed branch>` after a fetch, and says which.
+- An agent's working trees stay where `git clone` left them. At startup its
+  rules' repository is pulled; the others are only fetched, so
+  `origin/<branch>` is as new as the last deploy but the checked-out branch
+  never moves ("its branches are its own business": `container_startup.py`,
+  `clone_in_background`). re checked step 5 of this file against its
+  maybelle-config working tree: `main` as cloned on 2026-10-15 at 20:18Z,
+  where none of step 5 existed, while `origin/production` had all of it. The
+  checkout an agent reads is not the deployed code: check
+  `origin/<deployed branch>`, and say which.
