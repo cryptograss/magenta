@@ -27,7 +27,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Max, Q
+
 
 from conversations.models import Device, HarnessModels, Message, Mood, ReadMark, Setting, ThinkingEntity
 from conversations.services import servers
@@ -38,7 +38,7 @@ DEFAULT_BACKUP_DIR = '/mnt/persist/magenta/backups'
 _DUMP_BLOCK = re.compile(r'magenta_memory_(\d+)\.(?:dump|sql\.gz)$')
 FORK_REPO = 'cryptograss/pickipedia-mcp'
 UPSTREAM_REPO = 'ProfessionalWiki/MediaWiki-MCP-Server'
-MCP_CACHE_SECONDS = 600
+MCP_CACHE_SECONDS = 1800  # eight GitHub calls; unauthenticated, maybelle has 60 an hour
 
 
 def local_uptime_seconds(proc_path='/proc/uptime'):
@@ -155,17 +155,14 @@ def last_seen_humans(limit=10):
     if not humans:
         return []
 
-    # Latest Mood message per human
+    # Latest Mood message per human: each one's own newest, however long ago (one query a person;
+    # a cap on everyone's newest together would miss whoever spoke least lately).
     msg_by_person = {}
-    msg_dates = dict(
-        Message.objects.filter(sender_id__in=humans, mood__isnull=False, is_sidechain=False)
-        .values('sender_id').annotate(last=Max('created_at')).values_list('sender_id', 'last')
-    )
-    if msg_dates:
-        for row in (Message.objects.filter(sender_id__in=msg_dates.keys(), mood__isnull=False, is_sidechain=False)
-                    .select_related('mood').order_by('-created_at')[:200]):
-            if row.sender_id not in msg_by_person:
-                msg_by_person[row.sender_id] = (row.created_at, f"spoke in #{row.mood.slug}", row.mood.slug)
+    for name in humans:
+        row = (Message.objects.filter(sender_id=name, mood__isnull=False, is_sidechain=False)
+               .order_by('-created_at').values_list('created_at', 'mood__slug').first())
+        if row:
+            msg_by_person[name] = (row[0], f"spoke in #{row[1]}", row[1])
 
     # Latest ReadMark per human
     read_by_person = {}
@@ -173,11 +170,12 @@ def last_seen_humans(limit=10):
         if mark.entity_id not in read_by_person:
             read_by_person[mark.entity_id] = (mark.seen_at, f"read #{mark.mood.slug}", mark.mood.slug)
 
-    # Latest Device activity per human
+    # Latest Device activity per human, compared here: Postgres sorts a never-used device's
+    # NULL last_used_at first in a descending order, which would put it ahead of today's.
     dev_by_person = {}
-    for dev in Device.objects.filter(entity_id__in=humans).order_by('-last_used_at', '-created_at'):
+    for dev in Device.objects.filter(entity_id__in=humans):
         at = dev.last_used_at or dev.created_at
-        if at and dev.entity_id not in dev_by_person:
+        if at and (dev.entity_id not in dev_by_person or at > dev_by_person[dev.entity_id][0]):
             dev_by_person[dev.entity_id] = (at, f"device ({dev.label or dev.tier})", None)
 
     from conversations.services import wiki_auth
@@ -250,43 +248,45 @@ def magenta_version():
 
 
 def _fetch_pickipedia_mcp_forge():
-    """Query GitHub for cryptograss/pickipedia-mcp vs ProfessionalWiki/MediaWiki-MCP-Server."""
+    """Query GitHub for cryptograss/pickipedia-mcp vs ProfessionalWiki/MediaWiki-MCP-Server.
+
+    Ours isn't a GitHub fork of theirs (no shared network: no cross-repository compare) and
+    carries none of their tags, so it's compared with the commit their latest release names,
+    which is in ours too (we rebased onto it); and their own default branch with that same
+    commit says how far they've gone on since. Eight calls, kept MCP_CACHE_SECONDS."""
     import requests
-    headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'memory-lane'}
+    headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'magenta'}
     token = getattr(settings, 'GITHUB_TOKEN', '')
     if token:
         headers['Authorization'] = f'Bearer {token}'
 
-    head_r = requests.get(f'https://api.github.com/repos/{FORK_REPO}/commits/main', headers=headers, timeout=5)
-    head_r.raise_for_status()
-    head = head_r.json()
-    head_sha = (head.get('sha') or '')[:7]
-    head_at = ((head.get('commit') or {}).get('committer') or {}).get('date')
-    head_msg = (((head.get('commit') or {}).get('message') or '').splitlines() or [''])[0]
+    def get(path):
+        r = requests.get(f'https://api.github.com/{path}', headers=headers, timeout=5)
+        r.raise_for_status()
+        return r.json()
 
-    rel_r = requests.get(f'https://api.github.com/repos/{UPSTREAM_REPO}/releases/latest', headers=headers, timeout=5)
-    rel_tag = rel_r.json().get('tag_name', 'v0.19.0') if rel_r.ok else 'v0.19.0'
-
-    # Compare fork main against upstream release tag (or merge-base commit 0b5e84d for v0.19.0)
-    cmp_tag = requests.get(
-        f'https://api.github.com/repos/{FORK_REPO}/compare/{rel_tag}...main', headers=headers, timeout=5
-    )
-    if not cmp_tag.ok:
-        cmp_tag = requests.get(
-            f'https://api.github.com/repos/{FORK_REPO}/compare/0b5e84d...main', headers=headers, timeout=5
-        )
-    tag_data = cmp_tag.json() if cmp_tag.ok else {}
-
+    ours = get(f'repos/{FORK_REPO}')['default_branch']  # master
+    head = get(f'repos/{FORK_REPO}/commits/{ours}')
+    commit = head.get('commit') or {}
+    theirs = get(f'repos/{UPSTREAM_REPO}')['default_branch']
+    tag = get(f'repos/{UPSTREAM_REPO}/releases/latest')['tag_name']
+    ref = get(f'repos/{UPSTREAM_REPO}/git/ref/tags/{tag}')['object']
+    released = get(f"repos/{UPSTREAM_REPO}/git/tags/{ref['sha']}")['object']['sha'] if ref['type'] == 'tag' else ref['sha']
+    mine = get(f'repos/{FORK_REPO}/compare/{released}...{ours}')
+    since = get(f'repos/{UPSTREAM_REPO}/compare/{released}...{theirs}')
     return {
         'fork_repo': FORK_REPO,
         'upstream_repo': UPSTREAM_REPO,
-        'head_sha': head_sha,
-        'head_at': head_at,
-        'head_message': head_msg,
-        'upstream_tag': rel_tag,
-        'ahead_of_tag': tag_data.get('ahead_by'),
-        'behind_tag': tag_data.get('behind_by'),
-        'changed_files': len(tag_data.get('files') or []),
+        'head_sha': (head.get('sha') or '')[:7],
+        'head_at': (commit.get('committer') or {}).get('date'),
+        'head_message': ((commit.get('message') or '').splitlines() or [''])[0],
+        'upstream_tag': tag,
+        'upstream_tag_sha': released[:7],
+        'ahead_of_tag': mine.get('ahead_by'),
+        'behind_tag': mine.get('behind_by'),
+        'changed_files': len(mine.get('files') or []),
+        'upstream_branch': theirs,
+        'upstream_since_tag': since.get('ahead_by'),  # their commits since the release, not in ours
     }
 
 
@@ -309,7 +309,7 @@ def pickipedia_mcp_status():
                 'changed_files': None,
                 'error': f'could not query GitHub: {type(e).__name__}',
             }
-        cache.set('status:pickipedia-mcp', cached, MCP_CACHE_SECONDS if cached.get('head_sha') else 60)
+        cache.set('status:pickipedia-mcp', cached, MCP_CACHE_SECONDS if cached.get('head_sha') else 600)
     return cached
 
 
@@ -386,13 +386,16 @@ def agents_across_moods():
     }
 
 
-def full_status():
-    """The complete payload for /api/status/."""
+def full_status(private=False):
+    """The complete payload for /api/status/. `private`: also when people were last seen, and
+    where, and where the backups are -- for an SSH-key sign-in only, as readers' addresses are
+    (views_moods._watchers): not for anyone who opens the page."""
     return {
         **agents_across_moods(),
         'servers': servers_with_uptime(),
-        'backup': backup_status(),
-        'humans': last_seen_humans(limit=10),
+        'backup': backup_status() if private else None,
+        'humans': last_seen_humans(limit=10) if private else None,
+        'private': not private,
         'magenta': magenta_version(),
         'pickipedia_mcp': pickipedia_mcp_status(),
     }

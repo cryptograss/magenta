@@ -253,6 +253,7 @@
     const div = p.ahead_of_tag != null
       ? `<b>${p.ahead_of_tag}</b> commits ahead, <b>${p.behind_tag || 0}</b> behind upstream <code>${esc(p.upstream_tag)}</code>`
         + (p.changed_files != null ? ` (${p.changed_files} files changed)` : '')
+        + (p.upstream_since_tag != null ? `; upstream <code>${esc(p.upstream_branch)}</code> has <b>${p.upstream_since_tag}</b> commit${p.upstream_since_tag === 1 ? '' : 's'} since` : '')
       : `<span class="meta">divergence unavailable (${esc(p.error || 'offline')})</span>`;
     return `<div><b>Fork (<code>${esc(p.fork_repo)}</code>):</b> ${head}</div>`
       + `<div class="meta" style="margin-top:4px;"><b>Upstream (<code>${esc(p.upstream_repo)}</code>):</b> ${div}</div>`;
@@ -375,8 +376,10 @@
     document.getElementById('servers').innerHTML = renderServers(state.servers || []);
     document.getElementById('magentaVersion').innerHTML = renderMagenta(state.magenta);
     document.getElementById('pickipediaMcp').innerHTML = renderPickipediaMcp(state.pickipedia_mcp);
-    document.getElementById('backups').innerHTML = renderBackups(state.backup);
-    document.getElementById('humans').innerHTML = renderHumans(state.humans || []);
+    // Who was last seen where, and where the backups are: for an SSH-key sign-in only.
+    const hidden = '<div class="card meta">Shown to an SSH-key sign-in only (magenta.sh login).</div>';
+    document.getElementById('backups').innerHTML = state.private ? hidden : renderBackups(state.backup);
+    document.getElementById('humans').innerHTML = state.private ? hidden : renderHumans(state.humans || []);
 
     const activeMoods = (state.moods || []).filter(m => !m.archived);
     const archivedMoods = (state.moods || []).filter(m => m.archived);

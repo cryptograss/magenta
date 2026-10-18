@@ -161,3 +161,104 @@ class StatusPageTests(TestCase):
         self.assertEqual(v['commit'], '145ef6e')
         self.assertRegex(v['page_version'], r'^[0-9a-f]{12}$')
         self.assertEqual(v['maybelle_deploy']['by'], 'jmyles')
+
+
+class StatusPrivacyAndLastSeenTests(TestCase):
+    """Who was last seen where, and where the backups are, are for an SSH-key sign-in (as readers'
+    addresses are); and each person's own newest activity counts, however it's stored."""
+
+    def setUp(self):
+        cache.clear()
+        self.justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        self.skyler = ThinkingEntity.objects.create(name='skyler', is_biological_human=True)
+        self.mood = Mood.objects.create(slug='general', title='general')
+        for name in ('wiki_card', 'probe'):
+            patch = mock.patch(f'conversations.services.servers.{name}',
+                               **({'side_effect': lambda server: {'url': 'u', 'role': '', 'art': ''}}
+                                  if name == 'wiki_card' else {'return_value': (True, 4)}))
+            patch.start()
+            self.addCleanup(patch.stop)
+        forge = mock.patch('conversations.services.status._fetch_pickipedia_mcp_forge', return_value={'head_sha': 'x'})
+        forge.start()
+        self.addCleanup(forge.stop)
+
+    def get(self, tier=None):
+        client = Client()
+        if tier:
+            _, token = mood_auth.enrol_device(self.justin, 'laptop', tier=tier)
+            client.cookies[mood_auth.COOKIE] = token
+        return client.get('/api/status/').json()
+
+    def test_last_seen_and_backups_only_for_an_ssh_key_sign_in(self):
+        Message.objects.create(id=uuid.uuid4(), sender=self.skyler, mood=self.mood, content='hi', timestamp=1)
+        for tier in (None, 'wiki'):
+            shown = self.get(tier)
+            self.assertTrue(shown['private'])
+            self.assertIsNone(shown['humans'])
+            self.assertIsNone(shown['backup'])
+            self.assertIn('servers', shown)  # the rest, to anyone
+        shown = self.get('key')
+        self.assertFalse(shown['private'])
+        self.assertIn('skyler', [h['name'] for h in shown['humans']])
+        self.assertIn('mounted', shown['backup'])
+
+    def test_a_device_never_used_doesnt_hide_one_used_since(self):
+        now = timezone.now()
+        Device.objects.create(entity=self.justin, label='old phone', token_hash='a' * 64, last_used_at=None)
+        Device.objects.filter(label='old phone').update(created_at=now - timedelta(days=30))
+        Device.objects.create(entity=self.justin, label='laptop', token_hash='b' * 64,
+                              last_used_at=now - timedelta(minutes=1))
+        seen = {h['name']: h for h in status.last_seen_humans()}
+        self.assertEqual(seen['justin']['how'], 'device (laptop)')
+
+    def test_whoever_spoke_least_lately_still_counts_their_words(self):
+        now = timezone.now()
+        Message.objects.bulk_create([Message(id=uuid.uuid4(), sender=self.justin, mood=self.mood, content=str(i),
+                                             timestamp=i) for i in range(205)])
+        Message.objects.create(id=uuid.uuid4(), sender=self.skyler, mood=self.mood, content='long ago', timestamp=0)
+        Message.objects.filter(sender=self.skyler).update(created_at=now - timedelta(days=3))
+        seen = {h['name']: h for h in status.last_seen_humans()}
+        self.assertEqual(seen['skyler']['how'], 'spoke in #general')
+
+
+class PickipediaMcpForgeTest(TestCase):
+    """Ours isn't a GitHub fork of upstream and has none of its tags (both 404'd, 18 Oct): it's
+    compared with the commit upstream's release names, on our own default branch (master)."""
+
+    ANSWERS = {
+        'repos/cryptograss/pickipedia-mcp': {'default_branch': 'master'},
+        'repos/cryptograss/pickipedia-mcp/commits/master': {
+            'sha': 'ef685da0000', 'commit': {'committer': {'date': '2026-10-18T05:36:05Z'}, 'message': 'Merge #30\n\nmore'}},
+        'repos/ProfessionalWiki/MediaWiki-MCP-Server': {'default_branch': 'master'},
+        'repos/ProfessionalWiki/MediaWiki-MCP-Server/releases/latest': {'tag_name': 'v0.19.0'},
+        'repos/ProfessionalWiki/MediaWiki-MCP-Server/git/ref/tags/v0.19.0': {'object': {'type': 'tag', 'sha': 'tagobj'}},
+        'repos/ProfessionalWiki/MediaWiki-MCP-Server/git/tags/tagobj': {'object': {'sha': '0b5e84d0000'}},
+        'repos/cryptograss/pickipedia-mcp/compare/0b5e84d0000...master': {'ahead_by': 29, 'behind_by': 0, 'files': [{}] * 12},
+        'repos/ProfessionalWiki/MediaWiki-MCP-Server/compare/0b5e84d0000...master': {'ahead_by': 17},
+    }
+
+    def test_against_the_release_commit_and_how_far_upstream_has_gone_since(self):
+        class Answer:
+            def __init__(self, body):
+                self.body = body
+
+            def raise_for_status(self):
+                if self.body is None:
+                    raise OSError('404')
+
+            def json(self):
+                return self.body
+
+        asked = []
+
+        def fake_get(url, headers=None, timeout=None):
+            path = url.replace('https://api.github.com/', '')
+            asked.append(path)
+            return Answer(self.ANSWERS.get(path))
+
+        with mock.patch('requests.get', fake_get):
+            got = status._fetch_pickipedia_mcp_forge()
+        self.assertEqual((got['head_sha'], got['head_message']), ('ef685da', 'Merge #30'))
+        self.assertEqual((got['ahead_of_tag'], got['behind_tag'], got['changed_files']), (29, 0, 12))
+        self.assertEqual((got['upstream_tag'], got['upstream_tag_sha'], got['upstream_since_tag']), ('v0.19.0', '0b5e84d', 17))
+        self.assertEqual(len(asked), 8)

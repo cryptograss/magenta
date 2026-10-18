@@ -63,7 +63,8 @@ def status_page(request):
 @require_GET
 def api_status(request):
     from .services import status
-    return JsonResponse(status.full_status())
+    device = mood_auth.device_for(request)
+    return JsonResponse(status.full_status(private=bool(device and device.tier == 'key')))
 
 
 @require_http_methods(['GET', 'POST'])
