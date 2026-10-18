@@ -1,20 +1,23 @@
-"""What the agents are told, kept on PickiPedia where people can read, edit and link it.
+"""What a wake says for each setting of a Mood's dials, kept on PickiPedia where people
+can read, edit and link it (Cryptograss:Moods/Dials).
 
-Each text is a {{Sent to agents}} on a wiki page -- the rest of the page is free for
-explaining it -- and the runner sends what's inside, word for word:
+Each text is a {{Sent to agents}} on the page -- the rest of it is free for explaining --
+and the runner sends what's inside, word for word:
 
-    {{Sent to agents|dial=discretion|value=reserved|text=Speak only if ...}}   (DIALS)
-    {{Sent to agents|text=...}}                                                (an agent's own rules)
+    {{Sent to agents|dial=discretion|value=reserved|text=Speak only if ...}}
 
-Only a revision by a trusted editor counts (EDITORS, people who can vouch for what the
-agents are told): anyone with a wiki account could otherwise write an agent's
-instructions. A page last edited by anyone else -- an agent's edit still marked
-proposed, say -- is read as if unreadable until one of them edits or verifies it.
+Only a trusted editor's revision counts (EDITORS, people who can vouch for what the agents
+are told): anyone with a wiki account could otherwise write the agents' instructions. The
+newest revision by one of them is the one read; edits by anyone else after it -- an agent's
+own, still marked proposed, say -- wait for one of them to make or verify a revision.
 
-Read with plain HTTP, never by the agent: a page is fetched at most every TTL
-seconds and kept by its revision, so an agent never makes a round trip to remind
-itself of its rules. If the wiki can't be reached, the last copy read stands; if
-none was ever read, the caller's own text (the one in the code) does.
+Read with plain HTTP, never by the agent: the page is fetched at most every TTL seconds,
+so an agent never makes a round trip to remind itself what a setting means. If the wiki
+can't be reached, the last copy read stands; if none was ever read, or no trusted editor
+has made a revision, the caller's own text (the one in the code) does.
+
+An agent's own rules aren't here: they reach it through its harness's own file
+(cryptograss/magenta agents/README.md), not through a wake.
 """
 
 import json
@@ -31,13 +34,9 @@ WIKI = 'https://pickipedia.xyz/wiki/'
 DIALS = 'Cryptograss:Moods/Dials'
 TEMPLATE = 'Sent to agents'
 TTL = 300  # seconds between looks at a page
+HISTORY = 20  # revisions looked back through for the newest trusted one
 EDITORS = ('JMyles', 'SkymanJenkins')  # PickiPedia names whose revisions the agents are told
 USER_AGENT = 'magenta-runner/1 (https://github.com/cryptograss/memory-lane; poller/wiki_rules.py)'
-
-
-def agent_page(agent):
-    """An agent's standing rules, wherever it is."""
-    return f'Cryptograss:Agents/{agent[:1].upper()}{agent[1:]}/rules'
 
 
 def page_url(title):
@@ -111,15 +110,14 @@ class WikiTexts:
         self.pages = {}
 
     def _get(self, title):
+        """The page's newest revisions, newest first: [(revision, editor, wikitext)]; [] if there's no page."""
         url = self.api + '?' + urllib.parse.urlencode({
             'action': 'query', 'prop': 'revisions', 'titles': title, 'rvprop': 'content|ids|user', 'rvslots': 'main',
-            'format': 'json', 'formatversion': '2'})
+            'rvlimit': HISTORY, 'format': 'json', 'formatversion': '2'})
         with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': USER_AGENT}), timeout=10) as r:
             page = json.load(r)['query']['pages'][0]
-        if page.get('missing'):
-            return None, '', ''
-        rev = page['revisions'][0]
-        return rev['revid'], rev['slots']['main']['content'], rev.get('user', '')
+        return [(rev['revid'], rev.get('user', ''), rev['slots']['main']['content'])
+                for rev in page.get('revisions') or [] if not page.get('missing')]
 
     def page(self, title):
         """(revision, blocks) for a page: None, [] if it has never been read and can't be."""
@@ -127,9 +125,12 @@ class WikiTexts:
         if kept and self.clock() - kept[0] < self.ttl:
             return kept[1], kept[2]
         try:
-            revision, wikitext, editor = self.get(title)
-            if revision is not None and editor.lower().replace('_', ' ') not in self.editors:
-                raise PermissionError(f'revision {revision} is by {editor or "nobody known"}, not a trusted editor')
+            history = self.get(title)
+            trusted = next(((revision, wikitext) for revision, editor, wikitext in history
+                            if editor.lower().replace('_', ' ') in self.editors), None)
+            if trusted is None:
+                raise PermissionError(f'no revision by a trusted editor among the last {len(history)}')
+            revision, wikitext = trusted
         except Exception as e:  # the wiki down or slow: what was read last stands, for another while
             log.warning('wiki_rules: %s: %s', title, e)
             if kept:
@@ -143,9 +144,3 @@ class WikiTexts:
         """The text for one setting of a dial (discretion=reserved), else `fallback`."""
         _, found = self.page(DIALS)
         return next((b['text'] for b in found if b['dial'] == key and b['value'] == value), fallback)
-
-    def agent_rules(self, agent):
-        """(revision, text) of an agent's standing rules: (None, '') if it has none."""
-        revision, found = self.page(agent_page(agent))
-        text = '\n\n'.join(b['text'] for b in found if not b['dial'])
-        return (revision, text) if text else (None, '')
