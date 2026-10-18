@@ -251,6 +251,10 @@ PICKIPEDIA_UPLOAD_CLIENT_SECRET = os.getenv('PICKIPEDIA_UPLOAD_CLIENT_SECRET', '
 # ReleaseDraft page. Unset: the composer takes pictures only.
 DELIVERY_KID_UPLOAD_KEY = os.getenv('DELIVERY_KID_UPLOAD_KEY', '')
 DELIVERY_KID_URL = os.getenv('DELIVERY_KID_URL', '')
+# Whose faces are in a picture (conversations/services/faces.py): the faces service on hunter
+# (memory-lane faces/), and its key, faces_api_key in the vault. Unset: no "Who's in it?".
+FACES_URL = os.getenv('FACES_URL', '')
+FACES_KEY = os.getenv('FACES_KEY', '')
 # Each person's PickiPedia name, from hunter's inventory: "<name> <WikiName>" lines.
 MOOD_WIKI_NAMES = os.getenv('MOOD_WIKI_NAMES', '')
 # Editing and deleting (conversations/services/retract.py): what's taken back is sealed to this

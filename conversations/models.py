@@ -1482,6 +1482,37 @@ class Media(models.Model):
         return f'/moods/media/{self.sha256}.{self.EXTENSIONS[self.mime]}'
 
 
+class FaceLook(models.Model):
+    """The faces the faces service found in a picture, asked once (services/faces.py): each one's
+    box, in the picture's own pixels, and whose it looked like -- an offer, never a name."""
+
+    media = models.OneToOneField(Media, models.CASCADE, primary_key=True, related_name='face_look')
+    model = models.CharField(max_length=80)
+    width = models.IntegerField()
+    height = models.IntegerField()
+    # [{'box': [x, y, w, h], 'match': {'person', 'similarity'} | None, 'candidates': [...]}], largest first.
+    faces = models.JSONField(default=list)
+    looked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'face_looks'
+
+
+class FaceName(models.Model):
+    """Whose a face in a picture is, as someone here said (services/faces.py): the person, by
+    their PickiPedia page's title, and who said so."""
+
+    media = models.ForeignKey(Media, models.CASCADE, related_name='face_names')
+    box = models.JSONField()  # one of its FaceLook's boxes
+    person = models.CharField(max_length=120)
+    by = models.ForeignKey(ThinkingEntity, models.SET_NULL, null=True, blank=True, related_name='faces_named')
+    at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'face_names'
+        constraints = [models.UniqueConstraint(fields=['media', 'box'], name='one_name_per_face')]
+
+
 class YarnClip(models.Model):
     """A Yarn clip kept here: its id on Yarn, and the copy of its video stored as Media.
     Fetched once, by the server (services/yarn_kept.py), so pressing ▶ doesn't send a

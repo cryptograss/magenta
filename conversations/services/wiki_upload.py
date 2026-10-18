@@ -76,15 +76,17 @@ def already(sha):
     return {'file': row['file'], 'page': row['page']} if row else None
 
 
-def page_text(description, license, link, author=None):
-    """A file page: what it is, who made it (whoever shared it in magenta), where, and its license."""
+def page_text(description, license, link, author=None, depicts=()):
+    """A file page: what it is, who's in it (as named in magenta, services/faces.py), who made it
+    (whoever shared it in magenta), where, and its license."""
     from .wiki_auth import names
     credit = ''
     if author:
         wiki = names().get(author.lower())
         credit = f'Author: {"[[User:" + wiki + "|" + wiki + "]]" if wiki else author}, who shared it in magenta.\n\n'
+    shows = f'{{{{Depicts|{"|".join(depicts)}}}}}\n\n' if depicts else ''
     return (f'== Summary ==\n{description.strip() or "(no description)"}\n\n'
-            f'{credit}Shared in magenta: {link}\n\n'
+            f'{shows}{credit}Shared in magenta: {link}\n\n'
             f'== Licensing ==\n{LICENSE_TEXT.get(license, LICENSE_TEXT["cc-by-sa-4.0"])}\n\n'
             '[[Category:From magenta]]\n')
 
@@ -196,7 +198,7 @@ def finish(state, code, entity, redirect_uri, http=None):
     {'file', 'page', 'new', 'mood', 'message'}; UploadError if it can't be.
     """
     from conversations.models import Media, Mood
-    from . import wiki_auth
+    from . import faces, wiki_auth
     if not enabled():
         raise UploadError("putting pictures on PickiPedia isn't set up here", status=503)
     pending = cache.get(f'wiki-upload:{state}') if state else None
@@ -223,7 +225,8 @@ def finish(state, code, entity, redirect_uri, http=None):
     link = 'https://magenta.cryptograss.live' + place_of(mood.slug, pending['message'])
     wiki = Wiki(http, token=token)
     said = wiki.upload(pending['name'], bytes(media.data), media.mime,
-                       page_text(pending['description'], media.license, link, author=pending.get('author')),
+                       page_text(pending['description'], media.license, link, author=pending.get('author'),
+                                 depicts=faces.people_in(media)),
                        'From magenta')
     warnings = said.get('warnings') or {}
     name, new = pending['name'], True

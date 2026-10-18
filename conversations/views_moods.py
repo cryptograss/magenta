@@ -20,7 +20,7 @@ from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
-from .services import delivery_kid, push, servers, wiki_auth, wiki_feed, wiki_upload
+from .services import delivery_kid, faces, push, servers, wiki_auth, wiki_feed, wiki_upload
 from .services import agent_commands, mood_auth
 from .services.mood_view import (
     from_wiki_tier,
@@ -55,6 +55,8 @@ def moods_page(request, slug=None):
         'wiki_upload': wiki_upload.enabled(),
         # Videos to delivery-kid, then a ReleaseDraft page, from the composer (services/delivery_kid.py).
         'dk_upload': delivery_kid.enabled(),
+        # "Who's in it?" on a photo sent here, if the faces service is set up (services/faces.py).
+        'faces_on': faces.enabled(),
         # An admin signed in with their SSH key may delete anyone's message (services/retract.py).
         'viewer_admin': bool(device) and device.tier == 'key' and device.entity_id in getattr(settings, 'MOOD_ADMINS', ()),
         # PickiPedia names, shown for the names here (from hunter's inventory).

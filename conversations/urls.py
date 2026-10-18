@@ -73,6 +73,8 @@ urlpatterns = [
     path('api/moods/<slug:slug>/video/ticket/', views_auth.api_video_ticket, name='api_video_ticket'),
     path('api/moods/<slug:slug>/video/draft/', views_auth.api_video_draft, name='api_video_draft'),
     path('api/moods/<slug:slug>/video/<str:draft>/progress/', views_auth.api_video_progress, name='api_video_progress'),
+    path('api/media/<str:sha256>/faces/', views_auth.api_media_faces, name='api_media_faces'),
+    path('api/media/<str:sha256>/faces/name/', views_auth.api_media_face_name, name='api_media_face_name'),
     path('api/media/<str:sha256>/license/', views_auth.api_media_license, name='api_media_license'),
     # Where media lived before Moods were Moods: the record's text still links here.
     path('motions/media/<str:sha256>.<str:ext>', views_moods.media_file, name='mood_media_before'),
