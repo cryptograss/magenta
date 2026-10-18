@@ -16,6 +16,8 @@ class ModelLabelTest(SimpleTestCase):
         self.assertEqual(model_label('claude-opus-5-5'), 'Opus 5.5')
         self.assertEqual(model_label('claude-fable-5-1'), 'Fable 5.1')
         self.assertEqual(model_label('claude-opus-5'), 'Opus 5')
+        self.assertEqual(model_label('deepseek/deepseek-v4-pro-0813'), 'deepseek-v4-pro-0813')  # Pi's vendor/ dropped
+        self.assertEqual(model_label('anthropic/claude-opus-5-5'), 'Opus 5.5')
         self.assertEqual(model_label('claude-haiku-4-5-20251001'), 'Haiku 4.5')
         self.assertEqual(model_label('claude-3-5-sonnet-20241022'), 'Sonnet 3.5')
 
