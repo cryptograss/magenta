@@ -830,6 +830,8 @@
   .hush .agentgrid .agent { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
   .hush .agentgrid .agent > * { justify-self: start; }
   .hush .agentgrid .cell { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .hush .agentgrid .heads { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .hush .agentgrid .heads .cell[title] { cursor: help; }
   /* Folded, all the agents are one line: each one's pie, model and effort in its colour; ▸ opens their menus. */
   .hush .fold { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 2px; }
   .hush .fold:hover { color: var(--accent); }
@@ -3746,11 +3748,22 @@
   const MODELS = [['', 'default'], ['opus', 'opus'], ['sonnet', 'sonnet'], ['fable', 'fable'], ['haiku', 'haiku']];
   const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
   const EFFORT_LABELS = { xhigh: 'extra' };  // as the terminal names them
-  const DISCRETIONS = ['reserved', 'normal', 'chatty'];
+  const DISCRETIONS = ['chatty', 'normal', 'reserved'];
   const VERBOSITIES = ['brief', 'normal', 'thorough'];
-  const REPLY_LENGTHS = { brief: 'short replies', normal: 'mid replies', thorough: 'long replies' };
-  // Discretion, said as what it does: a bare "normal" beside five other menus said nothing.
-  const SPEAKING_UP = { reserved: 'rarely speaks up', normal: 'speaks up when useful', chatty: 'chatty' };
+  // Under the header row, which says what each is: a word apiece (Justin, 18 Oct).
+  const REPLY_LENGTHS = { brief: 'short', normal: 'mid', thorough: 'long' };
+  const SPEAKING_UP = { chatty: 'chatty', normal: 'moderate', reserved: 'reserved' };
+  // What each column is, and on hover what it does.
+  const AGENT_HEADS = [
+    ['', ''],
+    ['listening', 'listen: answers @mentions and may speak up unasked · @: answers @mentions only · hush: wakes for nothing'],
+    ['model', 'the model its wakes here run on'],
+    ['effort', 'how hard it thinks when @mentioned here'],
+    ['speaks up', 'how readily it speaks up unasked here'],
+    ['replies', 'how long its replies run here'],
+    ['reads back', "how much of what was said here since it last spoke a wake reads word for word, in tokens (10k ≈ 40,000 characters, about 7,500 words); anything older is summarized"],
+    ['', ''],
+  ];
   const READS = [2500, 5000, 10000, 20000];  // tokens a wake reads word for word (catch_up_tokens)
   let agentsNow = {}, agentsShown = '';
   // For an agent whose harness reports what it can run (Pi: api_agent_models),
@@ -3770,13 +3783,15 @@
   const vendorPicked = {};  // agent -> a vendor picked in the first menu, before one of its models is
   function vendorOf(model) { const i = (model || '').indexOf('/'); return i > 0 ? model.slice(0, i) : ''; }
   function catalogMenus(agent, c, chosen, fallback) {
-    const vendors = [...c.vendors].sort((x, y) => (y.usable - x.usable) || x.name.localeCompare(y.name));
     const vendor = vendorPicked[agent] || vendorOf(chosen);
+    // Only vendors it has a key for (Justin, 18 Oct: the rest made the menu as wide as the screen),
+    // and the one its model is set from, even if that key has gone, so the setting still shows.
+    const vendors = c.vendors.filter(x => x.usable || x.name === vendor).sort((x, y) => x.name.localeCompare(y.name));
     const v = vendors.find(x => x.name === vendor);
-    const first = `<select data-agent="${esc(agent)}" data-role="vendor" class="catalog" title="whose model: greyed out without a key">`
+    const first = `<select data-agent="${esc(agent)}" data-role="vendor" class="catalog" title="whose model: the vendors it has a key for">`
       + `<option value=""${v ? '' : ' selected'}>${esc(fallback)}</option>`
       + vendors.map(x => `<option value="${esc(x.name)}"${x === v ? ' selected' : ''}${x.usable ? '' : ' disabled'}>`
-        + `${esc(x.name)}${x.usable ? '' : ' · no key'} (${x.models.length})</option>`).join('') + '</select>';
+        + `${esc(x.name)}${x.usable ? '' : ' · no key'}</option>`).join('') + '</select>';
     if (!v) return first;
     // Ids with a maker of their own (OpenRouter's moonshotai/kimi-k3) are grouped by it.
     const groups = new Map();
@@ -3828,7 +3843,8 @@
       const a = pieAttrs(el.dataset.who);
       let p = el.querySelector('.pie');
       if (!a) { if (p) p.remove(); return; }
-      if (!p) { p = document.createElement('span'); el.prepend(p); }
+      // In the settings table, inside the name's cell: a cell of its own would push the row a column over.
+      if (!p) { p = document.createElement('span'); (el.closest('.agentgrid') ? el.querySelector('.cell') : el).prepend(p); }
       p.className = 'pie' + (a.pct >= 85 ? ' full' : a.pct >= 70 ? ' hot' : a.pct >= 50 ? ' warm' : '');
       p.style.setProperty('--p', a.pct + '%');
       p.title = a.title;
@@ -3905,15 +3921,17 @@
         `<span class="agent gist${a.listening.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}`
         + ` title="${esc(agent)}: ${esc(describeListening(a.listening))}; click for its settings">${esc(agentGist(a))}</span>`).join('');
     }
-    return fold + '<div class="agentgrid">' + Object.entries(agents).map(([agent, a]) => {
+    const head = '<span class="agent heads">' + AGENT_HEADS.map(([label, what]) =>
+      `<span class="cell"${what ? ` title="${esc(what)}"` : ''}>${esc(label)}</span>`).join('') + '</span>';
+    return fold + '<div class="agentgrid">' + head + Object.entries(agents).map(([agent, a]) => {
       const l = a.listening, ctx = a.context || {};
       const row = `<span class="agent${l.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}>`
         + `<span class="cell">${icon(agent, false)}<span class="name">${esc(agent)}</span></span>`;
       if (!keyHolder) {
         const runs = a.model ? shortModel(a.model.split('/').pop()) : ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
-        return [describeListening(l), runs, `effort ${EFFORT_LABELS[a.effort] || a.effort}`,
+        return [describeListening(l), runs, EFFORT_LABELS[a.effort] || a.effort,
                 SPEAKING_UP[a.discretion || 'normal'] || a.discretion, REPLY_LENGTHS[a.verbosity || 'normal'],
-                `reads ${kTokens(a.reads || 10000)}`, a.ultracode ? 'ultracode' : '']
+                kTokens(a.reads || 10000), a.ultracode ? 'ultracode' : '']
           .reduce((out, cell) => out + `<span class="cell">${esc(cell)}</span>`, row) + '</span>';
       }
       const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="listen: answers @mentions and may speak up unasked · @: answers @mentions only · hush: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening(l))}</option>`
@@ -3930,10 +3948,10 @@
         + EFFORTS.map(v => `<option value="${v}"${v === a.effort ? ' selected' : ''}>${EFFORT_LABELS[v] || v}</option>`).join('') + '</select>';
       // How much of what was said since its last word a wake reads word for word.
       const reads = `<select data-agent="${esc(agent)}" data-knob="catch_up_tokens" title="How much of what was said here since it last spoke a wake reads word for word; older is summarized">`
-        + READS.map(n => `<option value="${n}"${n === a.reads ? ' selected' : ''}>reads ${kTokens(n)}</option>`).join('')
-        + (READS.includes(a.reads) ? '' : `<option value="${a.reads}" selected>reads ${kTokens(a.reads)}</option>`) + '</select>';
+        + READS.map(n => `<option value="${n}"${n === a.reads ? ' selected' : ''}>${kTokens(n)}</option>`).join('')
+        + (READS.includes(a.reads) ? '' : `<option value="${a.reads}" selected>${kTokens(a.reads)}</option>`) + '</select>';
       // How readily it speaks up unasked here, and how long its replies run.
-      const discretion = `<select data-agent="${esc(agent)}" data-knob="discretion" title="How readily it speaks up unasked here: reserved, normal, or chatty (joins in, small talk included)">`
+      const discretion = `<select data-agent="${esc(agent)}" data-knob="discretion" title="How readily it speaks up unasked here: chatty (joins in, small talk included), moderate, or reserved">`
         + DISCRETIONS.map(v => `<option value="${v}"${v === (a.discretion || 'normal') ? ' selected' : ''}>${SPEAKING_UP[v]}</option>`).join('') + '</select>';
       const verbosity = `<select data-agent="${esc(agent)}" data-knob="verbosity" title="How long its replies run here">`
         + VERBOSITIES.map(v => `<option value="${v}"${v === (a.verbosity || 'normal') ? ' selected' : ''}>${REPLY_LENGTHS[v]}</option>`).join('') + '</select>';
