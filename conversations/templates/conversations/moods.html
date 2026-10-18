@@ -804,6 +804,12 @@
   .hush .agent { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap;
                  max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .hush .agent select, .hush .agent label { flex: none; }
+  /* Open: a table, a column per setting, so every agent's row lines up whatever its name's length
+     (Justin, 18 Oct). Each row is the grid's own (subgrid), so it still glows and greys as one. */
+  .hush .agentgrid { flex: 1 1 0; min-width: 0; display: grid; grid-template-columns: repeat(8, auto) 1fr; gap: 4px 6px; align-items: center; }
+  .hush .agentgrid .agent { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
+  .hush .agentgrid .agent > * { justify-self: start; }
+  .hush .agentgrid .cell { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
   /* Folded, all the agents are one line: each one's pie, model and effort in its colour; ▸ opens their menus. */
   .hush .fold { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 2px; }
   .hush .fold:hover { color: var(--accent); }
@@ -910,6 +916,7 @@
     #send .label { display: none; }
     #send svg { display: inline-block; }
     .hush:has(.fold[aria-expanded="true"]) { max-height: 40vh; overflow-y: auto; }
+    .hush .agentgrid { overflow-x: auto; }
   }
   /* Signed in, you are who you are: no need to choose whose view to see. */
 </style>
@@ -3596,7 +3603,8 @@
   }
   // --- listening: hush an agent here, for a while or until changed ----------
   // Short, so an agent's settings stay on one line: no time means until changed.
-  const HUSH = [['on', 0, 'listen'], ['mentions', 60, 'mention · 1hr'], ['mentions', 0, 'mention'],
+  // "@": answers @mentions only (Justin, 18 Oct: "mention" made the menu wide for nothing).
+  const HUSH = [['on', 0, 'listen'], ['mentions', 60, '@ · 1hr'], ['mentions', 0, '@'],
                 ['off', 60, 'hush · 1hr'], ['off', 120, 'hush · 2hr'], ['off', 0, 'hush']];
   // Model and effort for this agent's mention wakes here (settings: model,
   // mention_effort), so changing them needs no trip to the settings page.
@@ -3660,7 +3668,7 @@
 
   function describeListening(l) {
     const until = l.until ? ' till ' + new Date(l.until).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
-    return l.mode === 'on' ? 'listen' : (l.mode === 'mentions' ? 'mention' : 'hush') + until;
+    return l.mode === 'on' ? 'listen' : (l.mode === 'mentions' ? '@' : 'hush') + until;
   }
   function shortModel(m) { return (m || '').replace(/^claude-/, '').replace(/-(\d+)-(\d+)$/, ' $1.$2'); }
   // A pie for how full `name`'s context is here, or nothing if unknown.
@@ -3762,24 +3770,27 @@
         `<span class="agent gist${a.listening.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}`
         + ` title="${esc(agent)}: ${esc(describeListening(a.listening))}; click for its settings">${esc(agentGist(a))}</span>`).join('');
     }
-    return fold + Object.entries(agents).map(([agent, a]) => {
+    return fold + '<div class="agentgrid">' + Object.entries(agents).map(([agent, a]) => {
       const l = a.listening, ctx = a.context || {};
       const row = `<span class="agent${l.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}>`
-        + `${icon(agent, false)}<span class="name">${esc(agent)}</span>: `;
+        + `<span class="cell">${icon(agent, false)}<span class="name">${esc(agent)}</span></span>`;
       if (!keyHolder) {
-        return row
-          + `${esc(describeListening(l))} · ${esc(SPEAKING_UP[a.discretion || 'normal'] || a.discretion)} · ${esc(REPLY_LENGTHS[a.verbosity || 'normal'])}`
-          + ` · ${esc(a.model || 'default')} · effort ${esc(EFFORT_LABELS[a.effort] || a.effort)} · reads ${esc(kTokens(a.reads || 10000))}`
-          + (a.ultracode ? ' · ultracode' : '') + '</span>';
+        const runs = a.model ? shortModel(a.model.split('/').pop()) : ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
+        return [describeListening(l), runs, `effort ${EFFORT_LABELS[a.effort] || a.effort}`,
+                SPEAKING_UP[a.discretion || 'normal'] || a.discretion, REPLY_LENGTHS[a.verbosity || 'normal'],
+                `reads ${kTokens(a.reads || 10000)}`, a.ultracode ? 'ultracode' : '']
+          .reduce((out, cell) => out + `<span class="cell">${esc(cell)}</span>`, row) + '</span>';
       }
-      const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="listen: answers mentions and may speak up unasked · mention: answers mentions only · hush: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening(l))}</option>`
+      const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="listen: answers @mentions and may speak up unasked · @: answers @mentions only · hush: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening(l))}</option>`
         + HUSH.map(([mode, minutes, label], i) => `<option value="${i}">${esc(label)}</option>`).join('') + '</select>';
       const models = MODELS.some(([v]) => v === a.model) ? MODELS : [...MODELS, [a.model, a.model]];
       const catalog = catalogFor(agent, a);
-      const model = catalog ? catalogMenus(agent, catalog, a.model, ctx.model ? `default (${ctx.model})` : 'default')
+      // Its own default is the model it runs, so that's what's shown (Justin, 18 Oct: "default" says nothing).
+      const inUse = ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
+      const model = catalog ? catalogMenus(agent, catalog, a.model, inUse)
         : `<select data-agent="${esc(agent)}" data-knob="model" title="model for its wakes here">`
           + models.map(([v, label]) => `<option value="${esc(v)}"${v === a.model ? ' selected' : ''}>`
-            + `${esc(v ? label : (ctx.model ? `default (${shortModel(ctx.model)})` : label))}</option>`).join('') + '</select>';
+            + `${esc(v ? label : inUse)}</option>`).join('') + '</select>';
       const effort = `<select data-agent="${esc(agent)}" data-knob="mention_effort" title="how hard it thinks when @mentioned here">`
         + EFFORTS.map(v => `<option value="${v}"${v === a.effort ? ' selected' : ''}>${EFFORT_LABELS[v] || v}</option>`).join('') + '</select>';
       // How much of what was said since its last word a wake reads word for word.
@@ -3794,8 +3805,10 @@
       // Ultracode is Claude Code's: an agent on another harness (Pi: a.catalog names it) has none to turn on.
       const ultra = a.catalog != null ? '' : `<label class="ultra" title="Claude Code's standing multi-agent workflows, on wakes with full tools: thorough, and costly">`
         + `<input type="checkbox" data-agent="${esc(agent)}" data-knob="ultracode"${a.ultracode ? ' checked' : ''}> ultra</label>`;
-      return `${row}${listen} ${discretion} ${verbosity} ${model} ${effort} ${reads} ${ultra}</span>`;
-    }).join('');
+      // A cell each, in the grid every agent's row shares: listening, then model and effort, then the rest.
+      return [listen, `<span class="cell">${model}</span>`, effort, discretion, verbosity, reads, ultra || '<span></span>']
+        .reduce((out, cell) => out + cell, row) + '</span>';
+    }).join('') + '</div>';
   }
   document.addEventListener('change', async e => {
     const select = e.target.closest('#hush select, #hush input[type=checkbox]');
