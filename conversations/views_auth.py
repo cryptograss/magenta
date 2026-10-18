@@ -215,9 +215,12 @@ def api_say(request, slug):
     except agent_commands.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
     if command:
-        # They're Claude Code's: an agent on another harness (Pi) has none of them yet.
+        # They're Claude Code's; an agent on Pi has /compact too (its runner asks Pi's RPC
+        # mode, poller/pi_harness.py), and none of the others yet.
         from .models import HarnessModels
-        elsewhere = dict(HarnessModels.objects.filter(agent_id__in=command[1]).values_list('agent_id', 'harness'))
+        elsewhere = {a: h for a, h in HarnessModels.objects.filter(agent_id__in=command[1])
+                     .values_list('agent_id', 'harness')
+                     if not (command[0] == 'compact' and h.split()[:1] == ['pi'])}
         if elsewhere:
             who = ', '.join(f'{a} ({h})' for a, h in sorted(elsewhere.items()))
             return JsonResponse({'error': f'/{command[0]} is Claude Code\'s; not for {who}'}, status=400)

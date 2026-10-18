@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import queue
+import re
 import shutil
 import signal
 import subprocess
@@ -39,6 +40,7 @@ logger = logging.getLogger(__name__)
 STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use', 'error': 'error',
                 'aborted': 'aborted'}
 LOOK_ONLY_TOOLS = 'read,grep,find,ls'
+COMPACT = re.compile(r'/compact\s+(.+)\Z', re.S)  # what the runner sends for "/compact re <what to keep>"
 EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # The names the model menu has always offered, as Pi should read them. Left
 # to Pi, a bare 'opus' is fuzzy-matched across every vendor it knows, and
@@ -312,6 +314,93 @@ class PiWaker:
         cwd = header.get('cwd')
         return cwd if cwd and os.path.isdir(cwd) else None
 
+    def compact(self, session_id, keep, new_session_id=None, on_event=None, model=None, stop=None):
+        """Compact a session, keeping what `keep` asks: Pi's RPC mode, whose `compact` is what its own
+        /compact runs (its print mode takes '/compact' as words). Forked like a turn, so the session it
+        leaves is the next wake's. (new session id, ''): what it kept is the compaction event."""
+        cwd = self.cwd_for(session_id)
+        if cwd is None:
+            raise RuntimeError(f'pi session {session_id} cannot be resumed from here')
+        new_session_id = new_session_id or str(uuid.uuid4())
+        translator = PiTranslator(new_session_id)
+
+        def say(events):
+            for event in events:
+                if on_event:
+                    try:
+                        on_event(event)
+                    except Exception as e:  # never let reporting stop the turn
+                        logger.warning(f'on_event failed: {e}')
+
+        cmd = [self.pi, '--mode', 'rpc', '--session-dir', str(self.session_dir), '--session-id', new_session_id,
+               '--fork', session_id]
+        if model or self.model:
+            cmd += ['--model', ALIASES.get(model or self.model, model or self.model)]
+        say([translator.event('turn_started', iso(time.time() * 1000), cwd=cwd)])
+        proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, start_new_session=True)
+        done = self._watch(proc, stop)
+        answer = None
+        try:
+            proc.stdin.write(json.dumps({'id': 'compact', 'type': 'compact', 'customInstructions': keep}) + '\n')
+            proc.stdin.flush()
+            for line in proc.stdout:
+                done.heard = time.monotonic()
+                try:
+                    raw = json.loads(line)
+                except ValueError:
+                    continue
+                if raw.get('type') == 'response' and raw.get('id') == 'compact':
+                    answer = raw
+                    break
+                say(translator.feed(raw))
+        except BrokenPipeError:
+            pass
+        finally:
+            try:
+                proc.stdin.close()  # Pi's orderly exit
+            except BrokenPipeError:
+                pass
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGTERM)
+                proc.wait()
+            done.set()
+        if answer is None:
+            err = (proc.stderr.read() or '').strip()[:500]
+            self.last_result = {'subtype': 'error', 'run_cost_usd': 0.0, 'local_command': 'compact'}
+            raise RuntimeError(f'pi exited {proc.returncode} without compacting: {err}')
+        cost = float((((answer.get('data') or {}).get('usage') or {}).get('cost') or {}).get('total') or 0)
+        ok = bool(answer.get('success'))
+        say([translator.event('turn_ended', iso(time.time() * 1000), id=str(uuid.uuid4()),
+                              outcome='completed' if ok else 'failed', stop_reason='end_turn', cost_usd=round(cost, 6),
+                              duration_ms=int((time.monotonic() - translator.started) * 1000),
+                              **({} if ok else {'error': f"/compact: {answer.get('error') or 'failed'}"}))])
+        self.last_result = {'subtype': 'success' if ok else 'error', 'run_cost_usd': cost, 'local_command': 'compact'}
+        return new_session_id, ''
+
+    def _watch(self, proc, stop):
+        """Ends `proc` if the Mood stops it or it says nothing for quiet_limit seconds. The Event it
+        returns: set() it when the process is done; its `heard` is when it last said something."""
+        done = threading.Event()
+        done.heard = time.monotonic()
+
+        def watch():
+            while not done.wait(3):
+                why = ('stopped' if stop and stop() else
+                       'silent too long' if time.monotonic() - done.heard > self.quiet_limit else None)
+                if why:
+                    logger.warning(f'ending pi turn: {why}')
+                    try:
+                        os.killpg(proc.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    return
+
+        threading.Thread(target=watch, daemon=True).start()
+        return done
+
     def command(self, session_id, new_session_id, prompt, model=None, effort=None, full=False):
         cmd = [self.pi, '--mode', 'json', '--session-dir', str(self.session_dir), '--session-id', new_session_id]
         if session_id:
@@ -327,7 +416,11 @@ class PiWaker:
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, model=None, effort=None, full=False,
              stop=None, **ignored):
-        """Run one turn; (new session id, its reply)."""
+        """Run one turn; (new session id, its reply). '/compact <what to keep>' compacts instead."""
+        keep = COMPACT.match(prompt or '')
+        if keep and session_id:
+            return self.compact(session_id, keep.group(1).strip(), new_session_id=new_session_id, on_event=on_event,
+                                model=model, stop=stop)
         if session_id is None:
             cwd = str(Path(self.new_cwd).expanduser())
         else:
@@ -340,25 +433,10 @@ class PiWaker:
         cmd = self.command(session_id, new_session_id, prompt, model=model, effort=effort, full=full)
         proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, start_new_session=True)
-        heard = [time.monotonic()]
-        done = threading.Event()
-
-        def watch():
-            while not done.wait(3):
-                why = ('stopped' if stop and stop() else
-                       'silent too long' if time.monotonic() - heard[0] > self.quiet_limit else None)
-                if why:
-                    logger.warning(f'ending pi turn: {why}')
-                    try:
-                        os.killpg(proc.pid, signal.SIGTERM)
-                    except ProcessLookupError:
-                        pass
-                    return
-
-        threading.Thread(target=watch, daemon=True).start()
+        done = self._watch(proc, stop)
         try:
             for line in proc.stdout:  # Pi frames on LF only; one JSON object per line
-                heard[0] = time.monotonic()
+                done.heard = time.monotonic()
                 try:
                     raw = json.loads(line)
                 except ValueError:
