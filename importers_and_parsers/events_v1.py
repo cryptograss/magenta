@@ -51,7 +51,8 @@ def usage_fields(usage):
     usage = usage if isinstance(usage, dict) else {}
     return {'input_tokens': usage.get('input'), 'output_tokens': usage.get('output'),
             'cache_read_input_tokens': usage.get('cache_read'),
-            'cache_creation_input_tokens': usage.get('cache_write')}
+            'cache_creation_input_tokens': usage.get('cache_write'),
+            'cost_usd': usage.get('cost') if isinstance(usage.get('cost'), (int, float)) else None}
 
 
 def tool_output(output, images, keep):
@@ -158,7 +159,8 @@ class Turn:
     def reasoning(self, event):
         block = {'type': 'thinking', 'thinking': event.get('text', ''), 'signature': event.get('signature', '')}
         return self.row(Thought, event, self.agent, [block], recipient=self.agent,
-                        signature=event.get('signature', ''), model_backend=event.get('model'))
+                        signature=event.get('signature', ''), model_backend=event.get('model'),
+                        **usage_fields(event.get('usage')))
 
     def tool_call(self, event):
         if not event.get('call_id') or not event.get('name'):
@@ -166,7 +168,7 @@ class Turn:
         return self.row(ToolUse, event, self.agent, event.get('input') or {},
                         recipient=participant(event['name'], 'tool'),
                         tool_name=event['name'][:100], tool_id=str(event['call_id'])[:100],
-                        model_backend=event.get('model'))
+                        model_backend=event.get('model'), **usage_fields(event.get('usage')))
 
     def tool_result(self, event):
         if not event.get('call_id'):

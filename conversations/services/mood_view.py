@@ -937,6 +937,8 @@ def how_payload(msg):
         out['cached'] = msg.cache_read_input_tokens or 0  # of ctx, read back from the cache: the cheap part
         usd = call_usd(msg.model_backend, msg.input_tokens, msg.output_tokens, msg.cache_read_input_tokens,
                        msg.cache_creation_input_tokens)
+        if getattr(msg, 'cost_usd', None) is not None:  # what its harness says it cost (Pi): no guess needed
+            usd, out['paid'] = msg.cost_usd, True
         if usd is not None:
             out['usd'] = round(usd, 5)
     if msg.stop_reason:

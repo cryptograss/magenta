@@ -125,17 +125,19 @@ class PiTranslator:
         if role != 'assistant':
             return []  # the system prompt, and anything newer than this adapter
         usage = message.get('usage') or {}
-        self.cost += float((usage.get('cost') or {}).get('total') or 0)
+        cost = float((usage.get('cost') or {}).get('total') or 0)
+        self.cost += cost
         mine = {'input': usage.get('input'), 'output': usage.get('output'),
                 'cache_read': usage.get('cacheRead'), 'cache_write': usage.get('cacheWrite')}
         for k, v in mine.items():
             self.usage[k] += int(v or 0)
+        mine['cost'] = round(cost, 6)  # Pi's own price for the call: the vendor's, not a guess
         self.last_stop = message.get('stopReason')
         model = message.get('model')
         out = []
         blocks = [b for b in message.get('content') or () if isinstance(b, dict)]
         for i, block in enumerate(blocks):
-            # The message's usage goes on its last block, so it's counted once.
+            # The message's usage goes on its last block, whatever it is, so it's counted once.
             extra = {'usage': mine} if i == len(blocks) - 1 else {}
             if block.get('type') == 'text':
                 out.append(self.event('assistant_message', at, id=self.id(millis, 'assistant', i), text=block.get('text', ''),
@@ -144,10 +146,10 @@ class PiTranslator:
                     self.reply = block['text']
             elif block.get('type') == 'thinking':
                 out.append(self.event('reasoning', at, id=self.id(millis, 'assistant', i), text=block.get('thinking', ''),
-                                      signature=block.get('thinkingSignature', ''), model=model))
+                                      signature=block.get('thinkingSignature', ''), model=model, **extra))
             elif block.get('type') == 'toolCall':
                 out.append(self.event('tool_call', at, id=self.id(millis, 'assistant', i), call_id=block.get('id'),
-                                      name=block.get('name'), input=block.get('arguments') or {}, model=model))
+                                      name=block.get('name'), input=block.get('arguments') or {}, model=model, **extra))
         return out
 
 

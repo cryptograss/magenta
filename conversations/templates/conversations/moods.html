@@ -2823,7 +2823,7 @@
       // all of those reads, and all it wrote -- not just how full its context ended.
       if (!b._seen.has(usage)) {
         b._seen.add(usage); b._out += v.out; b._read += v.ctx || 0; b._cached += v.cached || 0; b._calls++;
-        if (v.usd != null) { b._usd += v.usd; b._priced = true; }
+        if (v.usd != null) { b._usd += v.usd; b._priced = true; if (v.paid) b._paid = true; }
         if (b._first === null && v.ctx) b._first = v.ctx;
         b._lastOut = v.out;
       }
@@ -2844,8 +2844,11 @@
     const added = b._first !== null ? Math.max(0, b._ctx - b._first + b._lastOut) : null;
     const addedTitle = added === null ? '' : `This turn added ${added.toLocaleString()} tokens to its context: what each step wrote `
       + `and what came back, and its answer. They stay in the context, read again on every later call, until it's compacted.`;
-    const costTitle = `At API list prices (${b._how.model || 'this model'}), for ${b._calls} call${b._calls === 1 ? '' : 's'} to the model: `
-      + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
+    const calls = `${b._calls} call${b._calls === 1 ? '' : 's'} to the model`;
+    const costTitle = b._paid  // its harness said what each call cost (Pi, at the vendor's prices)
+      ? `What ${calls} cost, as ${b._agent}'s harness reported it (${b._how.model || 'this model'}).`
+      : `At API list prices (${b._how.model || 'this model'}), for ${calls}: `
+        + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
     b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
       + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>`
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')

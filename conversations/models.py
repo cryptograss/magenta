@@ -521,6 +521,9 @@ class Message(models.Model):
     output_tokens = models.IntegerField(null=True, blank=True)
     cache_creation_input_tokens = models.IntegerField(null=True, blank=True)
     cache_read_input_tokens = models.IntegerField(null=True, blank=True)
+    # What the call cost in dollars, as its harness reported it (Pi does, at the vendor's
+    # prices; Claude Code doesn't, and the page prices its tokens instead).
+    cost_usd = models.FloatField(null=True, blank=True)
 
     # Flags
     is_sidechain = models.BooleanField(default=False)

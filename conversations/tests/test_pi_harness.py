@@ -13,6 +13,7 @@ from poller.pi_harness import EventsPoster, PiTranslator, PiWaker
 FIXTURE = Path(__file__).with_name('fixtures') / 'pi-1.1.0-turn.jsonl'  # Pi 1.1.0, local model, 2026-10-11
 KEY = 'k' * 64
 SESSION = '01a12c78-a26d-70bf-9a54-ad9e286ba1d3'
+COST_SESSION = 'c0575e55-0000-4000-8000-000000000001'
 
 
 def translated(session=SESSION):
@@ -109,6 +110,35 @@ class EndToEndTest(TestCase):
         turns = self.client.get('/api/moods/docs-tests-qa/turns/').json()
         self.assertEqual(len(turns['turns']), 1)
         self.assertEqual([s['tool'] for s in turns['steps']], ['read'])
+
+    def test_every_call_counts_with_what_pi_says_it_cost(self):
+        """A response that's only thinking and a tool call still carries its usage (on its last
+        block), and Pi's own price for it: the turn's head counts every call, and its cost."""
+        t = PiTranslator(SESSION, turn='t2')
+        usage = {'input': 900, 'output': 120, 'cacheRead': 40000, 'cacheWrite': 0, 'cost': {'total': 0.0123}}
+        events = t.feed({'type': 'message_end', 'message': {
+            'role': 'assistant', 'timestamp': 1760800000000, 'model': 'deepseek/deepseek-v4-pro', 'usage': usage,
+            'stopReason': 'toolUse', 'content': [{'type': 'thinking', 'thinking': 'Look first.'},
+                                                 {'type': 'toolCall', 'id': 'c1', 'name': 'grep', 'arguments': {}}]}})
+        self.assertNotIn('usage', events[0])
+        self.assertEqual(events[1]['usage']['cost'], 0.0123)
+        self.assertEqual(t.usage['output'], 120)  # the turn's sums stay token counts
+
+        client = self.client
+
+        class Through:
+            @staticmethod
+            def post(url, json=None, headers=None, timeout=None):
+                return client.post(url.replace('http://ml', ''), data=__import__('json').dumps(json),
+                                   content_type='application/json', HTTP_AUTHORIZATION=headers['Authorization'])
+
+        poster = EventsPoster('http://ml', KEY, 'docs-tests-qa', COST_SESSION, harness='pi 1.1.0', http=Through)
+        poster.send([t.event('turn_started', '2026-10-18T15:00:00+00:00'), *events])
+        poster.close()
+        step = ToolUse.objects.get(session_id=COST_SESSION)
+        self.assertEqual((step.output_tokens, step.cache_read_input_tokens, step.cost_usd), (120, 40000, 0.0123))
+        shown = self.client.get('/api/moods/docs-tests-qa/turns/').json()['steps'][0]
+        self.assertEqual((shown['out'], shown['ctx'], shown['usd'], shown['paid']), (120, 40900, 0.0123, True))
 
     def test_a_wake_that_failed_closes_its_turn(self):
         client, posted = self.client, []
