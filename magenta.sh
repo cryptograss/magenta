@@ -136,9 +136,9 @@ EOF
 
 # ─── Moods subcommands: login, kick, unban, AZ5 ──────────────────────
 # Handled before anything else: no TARGET, no SSH (until AZ5's picker). The
-# logic lives in one place, memory-lane's tools/; we fetch and run it rather
-# than vendoring a copy that would drift.
-MEMORY_LANE_TOOLS="https://raw.githubusercontent.com/jMyles/memory-lane/main/tools"
+# logic lives in one place, memory-lane's tools/ (in this repository since the
+# fold, 18 Oct 2026); we fetch and run it rather than vendoring a copy that would drift.
+MEMORY_LANE_TOOLS="https://raw.githubusercontent.com/cryptograss/magenta/main/memory-lane/tools"
 
 # run_mood_tool <tool.py> <env var naming a local copy> [args...]
 run_mood_tool() {
