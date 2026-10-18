@@ -115,6 +115,11 @@
   #wikiPreview img { width: 72px; height: 72px; object-fit: cover; border-radius: 4px; flex: none; }
   #wikiPreview pre.art { margin: 0; flex: none; font-size: 1.7px; line-height: 1.05; letter-spacing: 0; color: var(--ink);
                          font-family: ui-monospace, Menlo, Consolas, monospace; }
+  /* A portrait's art is dark marks on a light ground (where a photo is dark, the marks are dense): in
+     the dark, on a light tile of its own, or every face is a negative (Justin, 18 Oct). */
+  @media (prefers-color-scheme: dark) {
+    #serverPop pre.art, #wikiPreview pre.art { color: #161417; background: #d6cfc6; border-radius: 3px; padding: 2px; }
+  }
   #wikiPreview p { margin: 4px 0 0; }
   #wikiPreview dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; font-size: 11.5px; }
   #wikiPreview dt { color: var(--muted); }
