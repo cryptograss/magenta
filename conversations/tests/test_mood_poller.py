@@ -820,11 +820,64 @@ class ColdQuietTest(TestCase):
         clock = [T0 + timedelta(minutes=1)]
         waker = Costly(reply='<silent>resting</silent>')
         poller = MoodPoller(api, waker, state_path=Path(tempfile.mkdtemp()) / 's.json', now=lambda: clock[0],
-                              idle_first=3000, consider_budget=3.0)
+                              idle_first=3000, consider_budget=3.0, quiet_look_max_usd=5.0)
         poller.consider_once()
         clock[0] += timedelta(minutes=51)
         poller.consider_once()
         self.assertAlmostEqual(waker.options['budget'], 7.25)
+
+    def test_a_look_nobody_asked_for_is_skipped_when_reading_the_session_costs_too_much(self):
+        # 2026-10-16: three quiet looks at a 510k-token session, $4.10 each, all silent.
+        class Costly(FakeWaker):
+            def cold_read_usd(inner, session_id):
+                return 4.10
+        api = ConsiderAPI(turns=[post('a', 0, sender='justin')], human_at=(T0 + timedelta(minutes=1)).isoformat())
+        clock = [T0 + timedelta(minutes=1)]
+        waker = Costly(reply='<silent>resting</silent>')
+        screen = FakeScreen()
+        poller = MoodPoller(api, waker, state_path=Path(tempfile.mkdtemp()) / 's.json', now=lambda: clock[0],
+                            idle_first=3000, screen=screen)
+        poller.consider_once()
+        clock[0] += timedelta(minutes=51)
+        self.assertEqual(poller.consider_once(), [('m26', 'too costly')])
+        self.assertEqual(waker.woken, [])
+        self.assertFalse(getattr(screen, 'quiet_prompts', None))  # not even the screen's look
+        self.assertEqual(len(api.quiets), 1)
+        self.assertIn('$4.10', api.quiets[0][1])
+        self.assertEqual(api.quiets[0][2], 'screen')  # the runner's doing, not the agent's choice
+        self.assertEqual(poller.state['consider']['m26']['idle_after'], 6000)  # waits twice as long
+        clock[0] += timedelta(minutes=101)
+        self.assertEqual(poller.consider_once(), [('m26', 'too costly')])
+        self.assertEqual(len(api.quiets), 1)  # said once a quiet stretch
+
+    def test_a_warm_session_is_cheap_to_look_at(self):
+        class Warm(FakeWaker):
+            def cold_read_usd(inner, session_id):
+                return 4.10
+
+            def last_touched(inner, session_id):
+                return clock[0] - timedelta(minutes=30)
+        api = ConsiderAPI(turns=[post('a', 0, sender='justin')], human_at=(T0 + timedelta(minutes=1)).isoformat())
+        clock = [T0 + timedelta(minutes=1)]
+        poller = MoodPoller(api, Warm(reply='<silent>resting</silent>'), state_path=Path(tempfile.mkdtemp()) / 's.json',
+                            now=lambda: clock[0], idle_first=3000)
+        self.assertAlmostEqual(poller.look_usd('m26'), 0.328)
+        self.assertFalse(poller.too_costly('m26', poller.look_usd('m26')))
+
+    def test_the_days_budget_counts_what_a_look_would_cost(self):
+        class Costly(FakeWaker):
+            def cold_read_usd(inner, session_id):
+                return 0.70
+        api = ConsiderAPI(turns=[post('a', 0, sender='justin')], human_at=(T0 + timedelta(minutes=1)).isoformat())
+        clock = [T0 + timedelta(minutes=1)]
+        waker = Costly(reply='<silent>resting</silent>')
+        poller = MoodPoller(api, waker, state_path=Path(tempfile.mkdtemp()) / 's.json', now=lambda: clock[0],
+                            idle_first=3000, consider_usd_per_day=10.0)
+        poller.consider_once()
+        poller.spend(9.50)  # $0.50 left: a $0.70 look would pass it
+        clock[0] += timedelta(minutes=51)
+        self.assertEqual(poller.consider_once(), [('m26', 'over budget')])
+        self.assertEqual(waker.woken, [])
 
 
 class ConsiderAPI:
@@ -1674,3 +1727,156 @@ class GreetingTest(TestCase):
         self.at(1)
         poller.cycle()
         self.assertEqual(self.waker.woken, [])
+
+
+class CutOffTest(TestCase):
+    """A turn cut off by a restart (a deploy recreating the container) is owed
+    again, once, and told so: 2026-10-16's /compact was lost without a trace."""
+
+    def setUp(self):
+        self.state = Path(tempfile.mkdtemp()) / 'state.json'
+        self.state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        self.clock = [T0 + timedelta(minutes=30)]
+        self.ended = []
+
+    def poller(self, api, waker):
+        return MoodPoller(api, waker, state_path=self.state, now=lambda: self.clock[0],
+                          end_orphans=lambda s: self.ended.append(s) or False)
+
+    def cut_off_during(self, api):
+        """Run one poll whose turn is cut off: the restarted poller is made mid-turn."""
+        test = self
+
+        class Restarting(FakeWaker):
+            def wake(inner, session_id, prompt, new_session_id=None, **kwargs):
+                inner.woken.append((session_id, prompt))
+                inner.cut = new_session_id
+                test.restarted = test.poller(api, FakeWaker())  # reads the state as the turn left it
+                raise SystemExit  # the old poller dies here
+        first = Restarting()
+        with self.assertRaises(SystemExit):
+            self.poller(api, first).poll_once()
+        return first
+
+    def test_a_turn_cut_off_is_owed_again_and_told_so(self):
+        api = FakeAPI([mention('m26', dict(turn('a', 'justin', 0, '@magent what changed?'), via='web'))],
+                      sessions={'m26': ['s-local']})
+        first = self.cut_off_during(api)
+        self.assertEqual(self.ended, [first.cut])  # anything still running it is ended first
+
+        again = self.restarted
+        self.assertEqual(again.poll_once(), ['m26'])
+        prompt = again.waker.woken[0][1]
+        self.assertTrue(prompt.startswith('<cut-off>Your turn for this, started at 18:30Z, was cut off'))
+        self.assertIn('@magent what changed?', prompt)
+        self.assertEqual(again.state['cut_off'], [])
+        self.assertEqual(again.state['in_flight'], {})  # this one ran to its end
+        again.poll_once()
+        self.assertEqual(len(again.waker.woken), 1)  # and is not owed a third time
+
+    def test_a_command_cut_off_runs_again_as_itself(self):
+        api = FakeAPI([mention('m26', dict(turn('a', 'justin', 0, '@magent /compact'), via='web'))],
+                      sessions={'m26': ['s-local']})
+        self.cut_off_during(api)
+        self.restarted.poll_once()
+        self.assertEqual(self.restarted.waker.woken[0][1], '/compact')
+
+    def test_cut_off_twice_it_is_let_go_with_a_dot(self):
+        class API(FakeAPI):
+            quiets = []
+
+            def quiet(inner, slug, reason, by='screen'):
+                inner.quiets.append((slug, reason, by))
+                return True
+        api = API([mention('m26', dict(turn('a', 'justin', 0), via='web'))], sessions={'m26': ['s-local']})
+        self.cut_off_during(api)
+        second = self.restarted
+        test = self
+
+        class Restarting(FakeWaker):
+            def wake(inner, session_id, prompt, new_session_id=None, **kwargs):
+                test.restarted = test.poller(api, FakeWaker())
+                raise SystemExit
+        second.waker = Restarting()
+        with self.assertRaises(SystemExit):
+            second.poll_once()
+        third = self.restarted
+        self.assertEqual(third.poll_once(), [])
+        self.assertEqual(third.waker.woken, [])
+        self.assertIn('cut off by restarts twice', api.quiets[0][1])
+        self.assertEqual(third.state['cut_off'], [])
+
+    def test_a_turn_that_ends_is_not_in_flight(self):
+        api = FakeAPI([mention('m1', turn('a', 'skyler', 0)), mention('m2', turn('b', 'skyler', 0))],
+                      sessions={'m1': ['s-broken'], 'm2': ['s-local']})
+        poller = self.poller(api, FakeWaker(local=('s-broken', 's-local'), fail=('s-broken',)))
+        poller.poll_once()
+        self.assertEqual(poller.state['in_flight'], {})  # failed or not
+        self.assertEqual(self.poller(api, FakeWaker()).state['cut_off'], [])
+
+    def test_side_by_side_it_lands_when_settled(self):
+        api = FakeAPI([mention('m26', turn('a', 'skyler', 0))], sessions={'m26': ['s-local']})
+        poller = MoodPoller(api, FakeWaker(), state_path=self.state, now=lambda: self.clock[0], parallel=2,
+                            end_orphans=lambda s: False)
+        poller.poll_once()
+        self.assertEqual(len(poller.state['in_flight']), 1)
+        poller.running['m26'].join(5)
+        poller.reap()
+        self.assertEqual(poller.state['in_flight'], {})
+
+
+class EndOrphansTest(TestCase):
+
+    def test_a_harness_left_running_is_ended(self):
+        import subprocess
+        import sys
+        import uuid as uuidlib
+        from poller.mood_poller import end_orphans
+        session = str(uuidlib.uuid4())
+        proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', '--session-id', session],
+                                start_new_session=True)
+        try:
+            self.assertTrue(end_orphans(session))
+            self.assertIsNotNone(proc.wait(10))
+            self.assertFalse(end_orphans(session))
+            self.assertFalse(end_orphans(''))
+        finally:
+            proc.kill()
+
+
+class SecondPollerTest(TestCase):
+
+    def test_a_dry_run_beside_the_live_poller_leaves_its_turns_alone(self):
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        flight = {'mood': 'm26', 'turns': [turn('a', 'justin', 0)], 'session': 'fork-x',
+                  'started': T0.isoformat(), 'command': False, 'tries': 1, 'poller': 1}
+        state.write_text(json.dumps({'since': T0.isoformat(), 'handled': ['a'], 'wakes': [],
+                                     'in_flight': {'fork-x': flight}}))
+        ended = []
+        poller = MoodPoller(FakeAPI(), FakeWaker(), state_path=state, dry_run=True,
+                            end_orphans=lambda s: ended.append(s))
+        self.assertEqual((ended, poller.state['cut_off']), ([], []))
+
+    def test_nor_does_a_second_poller_while_the_first_still_runs(self):
+        import os
+        import subprocess
+        import sys
+        live = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)', 'mood_poller.py'])
+        try:
+            state = Path(tempfile.mkdtemp()) / 'state.json'
+            flight = {'mood': 'm26', 'turns': [turn('a', 'justin', 0)], 'session': 'fork-x',
+                      'started': T0.isoformat(), 'command': False, 'tries': 1, 'poller': live.pid}
+            state.write_text(json.dumps({'since': T0.isoformat(), 'handled': ['a'], 'wakes': [],
+                                         'in_flight': {'fork-x': flight}}))
+            ended = []
+            poller = MoodPoller(FakeAPI(), FakeWaker(), state_path=state, end_orphans=lambda s: ended.append(s))
+            self.assertEqual((ended, poller.state['cut_off']), ([], []))
+            self.assertIn('fork-x', poller.state['in_flight'])
+        finally:
+            live.kill()
+            live.wait()
+        flight['poller'] = os.getpid()  # a recreated container: the old poller's pid is now this one's
+        state.write_text(json.dumps({'since': T0.isoformat(), 'handled': ['a'], 'wakes': [],
+                                     'in_flight': {'fork-x': flight}}))
+        poller = MoodPoller(FakeAPI(), FakeWaker(), state_path=state, end_orphans=lambda s: False)
+        self.assertEqual(len(poller.state['cut_off']), 1)
