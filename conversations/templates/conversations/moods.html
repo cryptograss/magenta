@@ -699,6 +699,10 @@
              white-space: pre-wrap; }
   .thought::before { content: '∴ '; font-style: normal; }
   body.only-mine .thought { display: none; }
+  /* In an agent's turn its thinking and its steps are one folded line between its words:
+     the words are what it said, open; how it got there is a click away. */
+  .abody .work .who { display: none; }
+  .work .steps .thought { margin: 4px 0 8px; padding: 0; }
   /* Images: in turns, as thumbnails on a run of work, inside a step. */
   .turn .body a.img { display: inline-block; margin: 4px 0; }
   .turn .body img { display: block; max-width: 100%; max-height: 420px; border-radius: 6px; border: 1px solid var(--line); }
@@ -2246,7 +2250,10 @@
     el.querySelectorAll('.step').forEach(s => { counts[s.dataset.verb] = (counts[s.dataset.verb] || 0) + 1; });
     const n = el.querySelectorAll('.step').length;
     const parts = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([v, c]) => c > 1 ? `${v} ×${c}` : v);
-    el.querySelector('.what').textContent = `${n} step${n === 1 ? '' : 's'} · ${parts.join(', ')}`;
+    const words = [...el.querySelectorAll('.thought')].reduce((a, t) => a + t.textContent.split(/\s+/).filter(Boolean).length, 0);
+    const thought = el.querySelector('.thought') ? `∴ thinking${words ? ` (${words.toLocaleString()} word${words === 1 ? '' : 's'})` : ''}` : '';
+    el.querySelector('.what').textContent = [thought, n ? `${n} step${n === 1 ? '' : 's'} · ${parts.join(', ')}` : '']
+      .filter(Boolean).join(' · ');
   }
   function addStep(s, container) {
     const work = workEl(s, container);
@@ -2316,7 +2323,10 @@
     el.className = 'thought';
     el.title = `${t.sender} thinking · ${stamp(t.created_at)}`;
     el.textContent = t.text;
-    container.appendChild(el);
+    // In an agent's turn: folded in with its steps, in the order it thought and did.
+    const work = container.classList.contains('abody') ? workEl(t, container) : null;
+    (work ? work.querySelector('.steps') : container).appendChild(el);
+    if (work) describeWork(work);
     prev = { sender: t.sender, at: new Date(t.created_at).getTime() };
   }
 

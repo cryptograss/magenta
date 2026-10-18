@@ -881,9 +881,11 @@ def step_detail(msg):
 
 
 def model_label(model):
-    """'claude-opus-5-5' -> 'Opus 5.5'; anything not Claude's naming as it is."""
+    """'claude-opus-5-5' -> 'Opus 5.5'; anything not Claude's naming as it is, without the
+    vendor Pi names it under ('deepseek/deepseek-v4-pro' -> 'deepseek-v4-pro')."""
     if not model or model.startswith('<'):
         return ''
+    model = model.rsplit('/', 1)[-1]
     if not model.startswith('claude-'):
         return model
     parts = re.sub(r'-\d{8}$', '', model[len('claude-'):]).split('-')
