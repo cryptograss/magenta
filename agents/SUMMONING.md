@@ -50,8 +50,11 @@ one file here.
 
 - A user account in its name (re: `User:Re`), and a bot password on it. The
   login name is `<User>@<botname>` (re: `Re@re`).
-- **unchecked:** who made re's account, which groups it is in, and which
-  grants its bot password has. Check with `meta=userinfo` as the bot.
+- Justin makes it, with an invite (re's: invited by `User:JMyles` as a bot,
+  Justin its operator; registered 2026-10-15 14:58Z, userid 195).
+- Its groups: `bot`, `user`, `autoconfirmed`. Not `sysop`: it can't protect
+  pages, its own bot-facing ones included. A person with sysop does that.
+  (Checked by re with `meta=userinfo` as `Re@re`, 2026-10-17.)
 
 ## 4. The vault (Justin)
 
@@ -111,3 +114,10 @@ catches up.
   (maybelle-config#194; `hunter/CONTAINERS.md`).
 - **unchecked:** a model unset in the inventory meant no model in Moods
   without a per-Mood setting (maybelle-config#201, open at this block).
+- An agent's clones are cloned once and then left. Its rules' repository is
+  pulled at startup; the rest only cloned if missing, each on whatever branch
+  `git clone` gave it. re checked step 5 of this file against its
+  maybelle-config clone: `main` as of 2026-10-15 20:18Z, where none of step 5
+  existed yet, while `production` had all of it. The checkout an agent reads
+  is not the deployed code. Until its clones follow the deployed branches,
+  an agent checks `origin/<deployed branch>` after a fetch, and says which.
