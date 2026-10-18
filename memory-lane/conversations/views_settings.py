@@ -48,6 +48,24 @@ def settings_page(request):
     return render(request, 'conversations/mood_settings.html', {'viewer': device.entity_id if device else ''})
 
 
+@ensure_csrf_cookie
+@require_GET
+def status_page(request):
+    device = mood_auth.device_for(request)
+    viewer = device.entity_id if device else ''
+    viewer_tier = device.tier if device else ''
+    return render(request, 'conversations/mood_status.html', {
+        'viewer': viewer,
+        'viewer_tier': viewer_tier,
+    })
+
+
+@require_GET
+def api_status(request):
+    from .services import status
+    return JsonResponse(status.full_status())
+
+
 @require_http_methods(['GET', 'POST'])
 def api_settings(request):
     if request.method == 'GET':

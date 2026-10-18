@@ -48,8 +48,14 @@ class App:
 
     def health(self):
         refs = self.store.references()
+        uptime = None
+        try:
+            with open('/proc/uptime') as f:
+                uptime = round(float(f.read().split()[0]))
+        except (OSError, ValueError, IndexError):
+            pass
         return {'model': MODEL, 'references': len(refs), 'people': len({p for _, p, _, _ in refs}),
-                'last_sync': self.last_sync}
+                'last_sync': self.last_sync, 'uptime_seconds': uptime}
 
     def match(self, data, threshold=SAME_PERSON):
         seen = self.engine.look(data)

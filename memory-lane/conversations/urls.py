@@ -9,6 +9,7 @@ from . import views_admin
 urlpatterns = [
     path('moods/', views_moods.moods_page, name='moods'),
     path('moods/settings/', views_settings.settings_page, name='mood_settings'),
+    path('moods/status/', views_settings.status_page, name='mood_status'),
     path('moods/<slug:slug>/rules/', views_settings.rules_page, name='mood_rules'),
     path('moods/manifest.webmanifest', views_moods.app_manifest, name='mood_app_manifest'),
     path('moods/sw.js', views_moods.app_service_worker, name='mood_app_sw'),
@@ -40,6 +41,7 @@ urlpatterns = [
     path('api/moods/', views_moods.api_moods, name='api_moods'),
     path('api/moods/pulse/', views_moods.api_pulse, name='api_moods_pulse'),
     path('api/settings/', views_settings.api_settings, name='api_settings'),
+    path('api/status/', views_settings.api_status, name='api_status'),
     path('api/auth/admin/', views_admin.api_admin, name='api_auth_admin'),
     path('api/moods/<slug:slug>/turns/', views_moods.api_mood_turns, name='api_mood_turns'),
     path('api/moods/<slug:slug>/unfurl/<str:message_id>/', views_moods.api_unfurl, name='api_mood_unfurl'),
