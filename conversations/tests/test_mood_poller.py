@@ -160,6 +160,18 @@ class MoodPollerTest(TestCase):
         self.assertIn('posted from the web', self.waker.woken[0][1])
         self.assertNotIn('minutes', self.waker.woken[0][1])
 
+    def test_another_agents_mention_wakes_at_once(self):
+        # magent's @re from its own session: no session of re's is behind it to answer.
+        said = dict(turn('a', 're', 0, '@magent please reply'), via='session', is_human=False)
+        api = FakeAPI([mention('m26', said)], sessions={'m26': ['s-local']})
+        poller = self.make(api, minutes_now=0)
+        self.assertEqual(poller.poll_once(), ['m26'])
+        self.assertIn('another agent mentioned you here', self.waker.woken[0][1])
+        # A person's, typed into a session, still gives that session its time.
+        typed = dict(turn('b', 'justin', 0), via='session', is_human=True)
+        poller = self.make(FakeAPI([mention('m27', typed)], sessions={'m27': ['s-local']}), minutes_now=0)
+        self.assertEqual(poller.poll_once(), [])
+
     def test_a_handoff_for_the_agent_wakes_at_once(self):
         # Brought in by another agent's handoff: no live session here is about to answer it.
         handed = dict(turn('a', 're', 0), via='handoff', is_human=False)
