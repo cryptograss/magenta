@@ -1259,6 +1259,12 @@ class MoodPoller:
             return True
         return not turn.get('is_human', True) and turn.get('full_tools') is True
 
+    def unlistened(self, turn):
+        """Whether no session of this agent's is behind a post, to answer it unwoken: one from
+        the web, a handoff, or another agent's (its session is its own; Justin, 18 Oct, watched
+        re wait ten minutes for magent's @re)."""
+        return turn.get('via') in UNLISTENED or (not turn.get('is_human', True) and turn.get('sender') != self.agent)
+
     def commands_from(self, turn):
         """Whether this turn may run a command in the agent's harness: a
         trusted person's only, never another agent's."""
@@ -1326,15 +1332,15 @@ class MoodPoller:
         # session -- a reply that happens to come later (from a terminal, or
         # from a woken turn about something else) never read it -- so it is
         # owed until a wake that carried it has run.
-        answered = [t for t in mentioned if t.get('via') not in UNLISTENED
+        answered = [t for t in mentioned if not self.unlistened(t)
                     and any(a > parse_time(t['created_at']) for a in agent_turns)]
         owed = [t for t in mentioned if t not in answered]
         settled = [t['id'] for t in answered]
         if not owed:
             return settled, 'answered'
         # A mention typed into a session gives that session time to answer;
-        # one posted from the web has no session behind it, so none is owed.
-        grace = self.grace if any(t.get('via') not in UNLISTENED for t in owed) else timedelta(0)
+        # one posted from the web, or by another agent, has none of this one's behind it.
+        grace = self.grace if any(not self.unlistened(t) for t in owed) else timedelta(0)
         if self.now() - parse_time(owed[0]['created_at']) < grace:
             return settled, None
         recent = self.recent_wakes()
@@ -1545,6 +1551,8 @@ class MoodPoller:
             why = 'you handed this over to yourself here, from another Mood.'
         elif all(t.get('via') in UNLISTENED for t in owed):
             why = 'another agent handed this over to you here.'
+        elif all(self.unlistened(t) for t in owed):
+            why = 'another agent mentioned you here, from its own session.'
         else:
             why = f'nobody answered this in {int(self.grace.total_seconds() // 60)} minutes.'
         lines = mention_opening(slug, why)
