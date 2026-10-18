@@ -2,6 +2,9 @@
 becomes the same kind of rows any turn does (poller/pi_harness.py)."""
 
 import json
+import os
+import sys
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -74,6 +77,72 @@ class CommandTest(TestCase):
         self.assertEqual(cmd[cmd.index('--thinking') + 1], 'xhigh')
         self.assertNotIn('--tools', waker.command(None, 'new', 'hi', full=True))
         self.assertEqual(cmd[-1], 'hi')
+
+
+# A Pi in RPC mode, as Pi 1.1.0 answers `compact` (tried on hunter, 18 Oct): its events, then the response.
+FAKE_RPC_PI = r'''#!PYTHON
+import json, sys
+open(sys.argv[0] + '.argv', 'w').write(json.dumps(sys.argv[1:]))
+asked = json.loads(sys.stdin.readline())
+open(sys.argv[0] + '.asked', 'w').write(json.dumps(asked))
+small = 'too small' in asked['customInstructions']
+print(json.dumps({'type': 'compaction_start', 'reason': 'manual'}), flush=True)
+if small:
+    print(json.dumps({'type': 'compaction_end', 'reason': 'manual', 'aborted': False,
+                      'errorMessage': 'Compaction failed: Nothing to compact (session too small)'}))
+    print(json.dumps({'id': asked['id'], 'type': 'response', 'command': 'compact', 'success': False,
+                      'error': 'Nothing to compact (session too small)'}), flush=True)
+else:
+    result = {'summary': 'Kept: the setlist.', 'firstKeptEntryId': 'abc123', 'tokensBefore': 150000,
+              'estimatedTokensAfter': 32000, 'usage': {'cost': {'total': 0.03}}}
+    print(json.dumps({'type': 'compaction_end', 'reason': 'manual', 'aborted': False, 'willRetry': False,
+                      'result': result}))
+    print(json.dumps({'id': asked['id'], 'type': 'response', 'command': 'compact', 'success': True,
+                      'data': result}), flush=True)
+sys.stdin.read()  # until the runner closes it, as Pi does
+'''
+
+
+class CompactTest(TestCase):
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.pi = os.path.join(self.dir, 'pi')
+        Path(self.pi).write_text(FAKE_RPC_PI.replace('PYTHON', sys.executable))
+        os.chmod(self.pi, 0o755)
+        sessions = Path(self.dir, 's')
+        sessions.mkdir()
+        (sessions / f'2026-10-18T15-00-00-000Z_{SESSION}.jsonl').write_text(
+            json.dumps({'type': 'session', 'version': 3, 'id': SESSION, 'cwd': self.dir}) + '\n')
+        self.waker = PiWaker(pi=self.pi, model='opus', session_dir=str(sessions))
+
+    def test_compact_asks_pis_rpc_mode_from_a_fork_and_records_what_it_kept(self):
+        events = []
+        new, reply = self.waker.wake(SESSION, '/compact keep the setlist', new_session_id='new-1',
+                                     on_event=events.append, effort='high')
+        self.assertEqual((new, reply), ('new-1', ''))
+        argv = json.loads(Path(self.pi + '.argv').read_text())
+        self.assertEqual(argv[:2], ['--mode', 'rpc'])
+        self.assertEqual((argv[argv.index('--fork') + 1], argv[argv.index('--session-id') + 1]), (SESSION, 'new-1'))
+        self.assertEqual(argv[argv.index('--model') + 1], 'anthropic/claude-opus-5-5')
+        self.assertEqual(json.loads(Path(self.pi + '.asked').read_text())['customInstructions'], 'keep the setlist')
+        self.assertEqual([e['type'] for e in events], ['turn_started', 'compaction', 'turn_ended'])
+        self.assertEqual((events[1]['trigger'], events[1]['summary']), ('manual', 'Kept: the setlist.'))
+        self.assertEqual((events[2]['outcome'], events[2]['cost_usd']), ('completed', 0.03))
+        self.assertEqual(self.waker.last_result['local_command'], 'compact')
+
+    def test_one_pi_wont_do_is_a_failed_turn_saying_why(self):
+        events = []
+        self.waker.wake(SESSION, '/compact too small', new_session_id='new-2', on_event=events.append)
+        self.assertEqual([e['type'] for e in events], ['turn_started', 'turn_ended'])
+        self.assertEqual(events[-1]['outcome'], 'failed')
+        self.assertIn('Nothing to compact', events[-1]['error'])
+        self.assertEqual(self.waker.last_result['subtype'], 'error')
+
+    def test_an_ordinary_wake_that_mentions_compact_is_a_turn(self):
+        self.assertEqual(self.waker.command(SESSION, 'n', 'You were woken: /compact re keep it')[-1],
+                         'You were woken: /compact re keep it')
+        self.assertIsNone(__import__('poller.pi_harness', fromlist=['COMPACT']).COMPACT.match('woken: /compact x'))
 
 
 @override_settings(MOOD_RUNNER_KEYS={'re': KEY}, TOOL_RESULT_CONTENT_CHARS=20000)

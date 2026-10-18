@@ -85,8 +85,12 @@ class SayTest(TestCase):
         self.assertEqual(Message.objects.filter(mood__slug='m26').count(), 1)
         self.assertEqual(self.say('should we /compact soon, @magent?').status_code, 201)  # talk about one
 
-    def test_not_for_an_agent_on_another_harness(self):
+    def test_an_agent_on_pi_compacts_and_has_none_of_the_others(self):
         HarnessModels.objects.create(agent_id='re', harness='pi 1.1.0', vendors=[])
-        refused = self.say('/compact re keep it')
+        self.assertEqual(self.say('/compact re keep it').status_code, 201)
+        self.assertEqual(self.say('/compact magent, re keep the list').status_code, 201)
+        refused = self.say('/context re')
         self.assertEqual(refused.status_code, 400)
         self.assertIn("Claude Code's; not for re (pi 1.1.0)", refused.json()['error'])
+        HarnessModels.objects.filter(agent_id='re').update(harness='goose 2')
+        self.assertIn('not for re (goose 2)', self.say('/compact re keep it').json()['error'])
