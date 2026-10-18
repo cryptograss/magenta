@@ -24,7 +24,7 @@ from .services import delivery_kid, faces, push, servers, wiki_auth, wiki_feed, 
 from .services import agent_commands, mood_auth
 from .services.mood_view import (
     from_wiki_tier,
-    MACHINERY_SENDERS, how_payload, activity, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
+    MACHINERY_SENDERS, how_payload, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
     prose, render_html, step_detail, step_images, step_payload, timeline, turn_payload, turns, wiki_title, wikilinks_in,
 )
 
@@ -231,6 +231,8 @@ def api_mood_turns(request, slug):
         'has_earlier': bool(limit) and first is not None and mood.messages.filter(
             is_sidechain=False, created_at__lt=first).exists(),
         'activity': activity(mood),
+        # Every agent at work here, each with its own line on the page.
+        'activities': activities(mood),
         # Who reads without signing in: how many, to everyone; their addresses, to an SSH-key sign-in.
         **_watchers(request, mood),
         # What an agent started in the background here and is still running.
@@ -1143,9 +1145,10 @@ def api_moods_live(request):
         last = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at) index
         entry['last'] = last.isoformat() if last else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way
-            act = activity(mood)
-            if act and act.get('doing') != 'held':
-                entry['busy'] = act['agent']
+            working = [a['agent'] for a in activities(mood) if a.get('doing') != 'held']
+            if working:
+                entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
+                entry['busy_all'] = working  # every agent at work there, each pulsing in the list
     from .services import watchers
     for slug, n in watchers.by_mood().items():  # who's reading without signing in: a count beside the Mood
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['watching'] = n
