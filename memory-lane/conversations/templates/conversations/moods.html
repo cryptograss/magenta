@@ -433,26 +433,6 @@
                                                   visibility: visible; border: 0; box-shadow: none; padding: 0; } }
   .turn .body.gone { color: var(--muted); font-style: italic; font-size: 13px; }
   /* Sent, not yet in the record: shown at once, faint, till the record has it (say). */
-  /* ⏩ beside ▶: read from this message on (readFrom). Where ▶ is, it is: on a message that
-     follows on, at its right under the small ▶; on a touch screen, floating beside ▶. */
-  .turn .readfrom { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 3px; opacity: .55; }
-  .turn .readfrom:hover, .turn .readfrom:focus { opacity: 1; }
-  .turn .readfrom.mini { display: none; }
-  .turn.cont .readfrom.mini { display: inline-block; position: absolute; right: -21px; top: 38px; opacity: 0; }
-  .turn.cont:hover .readfrom.mini { opacity: .9; }
-  @media (hover: none) { .turn.cont .readfrom.mini { opacity: .45; } }
-  @media (pointer: coarse) {
-    .turn .readfrom { font-size: 15px; padding: 6px 10px; opacity: 1; color: var(--accent); }
-    .turn > .readfrom.dock, .turn.cont .readfrom.mini { position: sticky; top: 8px; z-index: 3; float: right; opacity: 1;
-      margin: 2px 0 4px 6px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg);
-      box-shadow: 0 1px 6px rgba(0,0,0,.12); }
-  }
-  #readFromMenu { position: fixed; z-index: 60; background: var(--bg, #fff); border: 1px solid var(--line); border-radius: 8px;
-                  box-shadow: 0 4px 16px rgba(0,0,0,.15); padding: 4px; display: flex; flex-direction: column; min-width: 150px; }
-  #readFromMenu[hidden] { display: none; }
-  #readFromMenu .head { font-size: 11px; color: var(--muted); padding: 2px 8px; }
-  #readFromMenu button { font: inherit; font-size: 14px; text-align: left; border: 0; background: none; color: var(--ink); padding: 6px 8px; border-radius: 6px; cursor: pointer; }
-  #readFromMenu button:hover { background: var(--code); }
   .turn.pending { opacity: .55; }
   .turn.pending .sending { font-size: 12px; color: var(--muted); font-style: italic; }
   .turn .editbox { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
@@ -817,6 +797,26 @@
                  color: var(--muted); cursor: pointer; padding: 2px 7px; }
   .turn .speak:hover, .turn .speak.playing, .aturn > .speak:hover, .aturn > .speak.playing { color: var(--accent); border-color: var(--accent); }
   .turn .speak.directed::after { content: ' ✦'; }
+  /* ⏩ beside ▶: read from this message on (readFrom). Where ▶ is, it is: on a message that
+     follows on, at its right under the small ▶; on a touch screen, floating beside ▶. */
+  .turn .readfrom { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 3px; opacity: .55; }
+  .turn .readfrom:hover, .turn .readfrom:focus { opacity: 1; }
+  .turn .readfrom.mini { display: none; }
+  .turn.cont .readfrom.mini { display: inline-block; position: absolute; right: -21px; top: 38px; opacity: 0; }
+  .turn.cont:hover .readfrom.mini { opacity: .9; }
+  @media (hover: none) { .turn.cont .readfrom.mini { opacity: .45; } }
+  @media (pointer: coarse) {
+    .turn .readfrom { font-size: 15px; padding: 6px 10px; opacity: 1; color: var(--accent); }
+    .turn > .readfrom.dock, .turn.cont .readfrom.mini { position: sticky; top: 8px; z-index: 3; float: right; opacity: 1;
+      margin: 2px 0 4px 6px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg);
+      box-shadow: 0 1px 6px rgba(0,0,0,.12); }
+  }
+  #readFromMenu { position: fixed; z-index: 60; background: var(--bg, #fff); border: 1px solid var(--line); border-radius: 8px;
+                  box-shadow: 0 4px 16px rgba(0,0,0,.15); padding: 4px; display: flex; flex-direction: column; min-width: 150px; }
+  #readFromMenu[hidden] { display: none; }
+  #readFromMenu .head { font-size: 11px; color: var(--muted); padding: 2px 8px; }
+  #readFromMenu button { font: inherit; font-size: 14px; text-align: left; border: 0; background: none; color: var(--ink); padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+  #readFromMenu button:hover { background: var(--code); }
   .turn .voices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .turn .voices .speak { font-size: 12px; padding: 3px 9px; }
   .turn .speak.busy { cursor: progress; opacity: .6; }
