@@ -710,6 +710,7 @@
   /* In an agent's turn its thinking and its steps are one folded line between its words:
      the words are what it said, open; how it got there is a click away. */
   .abody .work .who { display: none; }
+  .abody .turn > .who .name { display: none; }  /* the turn's heading names it: each message, its time and link */
   .work .steps .thought { margin: 4px 0 8px; padding: 0; }
   /* Images: in turns, as thumbnails on a run of work, inside a step. */
   .turn .body a.img { display: inline-block; margin: 4px 0; }
@@ -2963,6 +2964,9 @@
         const b = blockFor(container, agent, it.v);
         const body = b.querySelector('.abody');
         if (it.kind === 'turn') {
+          // Never a follow-on of its own steps or notes: each message in a turn keeps its time and
+          // its link (Justin, 19 Oct: replies with nowhere to take their address from).
+          prev = null;
           body.appendChild(turnEl(it.v, isNew));
           if (it.v.stop === 'end_turn') { b._ended = true; b._final = (it.v.text || '').split('\n')[0].slice(0, 200); b._finalId = it.v.id; }
         } else if (it.kind === 'thought') addThought(it.v, body);
