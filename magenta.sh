@@ -50,9 +50,9 @@ SUBCOMMANDS:
   login [args...]       Get a one-time link to write into Moods (memory-lane's
                         public conversation view) from any device, vouched for
                         by your SSH key; the key says who you are. Runs
-                        memory-lane's tools/mood_login.py (fetched fresh from
-                        GitHub; set MOOD_LOGIN_SCRIPT to a local copy to use
-                        that instead). Args pass straight through (e.g. --key
+                        memory-lane/tools/mood_login.py from this checkout
+                        (set MOOD_LOGIN_SCRIPT to another copy to use that
+                        instead). Args pass straight through (e.g. --key
                         for a non-default key); `magenta.sh login --help` shows
                         them. Needs no TARGET and opens no SSH connection.
   renew <device>        Bring one of your timed-out devices back (a device
@@ -136,11 +136,22 @@ EOF
 
 # ─── Moods subcommands: login, kick, unban, AZ5 ──────────────────────
 # Handled before anything else: no TARGET, no SSH (until AZ5's picker). The
-# logic lives in one place, memory-lane's tools/ (in this repository since the
-# fold, 18 Oct 2026); we fetch and run it rather than vendoring a copy that would drift.
-MEMORY_LANE_TOOLS="https://raw.githubusercontent.com/cryptograss/magenta/main/memory-lane/tools"
+# logic lives in memory-lane/tools/, beside this script in the same checkout
+# (since the fold, 18 Oct 2026), so we run that copy: the one you pulled and
+# can read, at the same commit as this script.
 
-# run_mood_tool <tool.py> <env var naming a local copy> [args...]
+# This checkout's directory, following symlinks (magenta.sh linked into ~/bin).
+MAGENTA_SELF="$0"
+while [ -L "$MAGENTA_SELF" ]; do
+    link="$(readlink "$MAGENTA_SELF")"
+    case "$link" in
+        /*) MAGENTA_SELF="$link" ;;
+        *) MAGENTA_SELF="$(dirname "$MAGENTA_SELF")/$link" ;;
+    esac
+done
+MEMORY_LANE_TOOLS="$(cd "$(dirname "$MAGENTA_SELF")" && pwd)/memory-lane/tools"
+
+# run_mood_tool <tool.py> <env var naming another copy> [args...]
 run_mood_tool() {
     local tool="$1" override_var="$2"
     shift 2
@@ -148,26 +159,15 @@ run_mood_tool() {
         echo "Error: this needs python3"
         exit 1
     fi
-    local script="${!override_var}"
-    if [ -n "$script" ]; then
-        if [ ! -r "$script" ]; then
+    local script="${!override_var:-$MEMORY_LANE_TOOLS/$tool}"
+    if [ ! -r "$script" ]; then
+        if [ -n "${!override_var}" ]; then
             echo "Error: $override_var='$script' is not a readable file"
-            exit 1
+        else
+            echo "Error: $script is missing: is this magenta.sh in a magenta checkout?"
+            echo "       (or set $override_var to a copy of memory-lane/tools/$tool)"
         fi
-    else
-        if ! command -v curl &> /dev/null; then
-            echo "Error: this needs curl (or set $override_var to a local $tool)"
-            exit 1
-        fi
-        # Global, not local: the EXIT trap fires after this function returns.
-        MOOD_TOOL_TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/mood_tool.XXXXXX")"
-        trap 'rm -rf "$MOOD_TOOL_TMPDIR"' EXIT
-        script="$MOOD_TOOL_TMPDIR/$tool"
-        if ! curl -fsSL "$MEMORY_LANE_TOOLS/$tool" -o "$script"; then
-            echo "Error: could not download $MEMORY_LANE_TOOLS/$tool"
-            echo "       (set $override_var to a local memory-lane checkout's tools/$tool)"
-            exit 1
-        fi
+        exit 1
     fi
     python3 "$script" "$@"
 }
