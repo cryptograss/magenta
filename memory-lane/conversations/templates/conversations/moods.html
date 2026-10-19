@@ -154,6 +154,17 @@
   #readBar .what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #readBar button { font: inherit; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink);
                     padding: 2px 9px; cursor: pointer; }
+  /* What's coming (Justin, 18 Oct): what plays now, then what's next, each droppable; tapped, its message. */
+  #readQueue { max-width: 760px; margin: -2px auto 0; padding: 0 16px 6px; font-size: 12.5px; color: var(--muted); }
+  #readQueue[hidden] { display: none; }
+  #readQueue .q { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; }
+  #readQueue .q .when { flex: none; width: 3.2em; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  #readQueue .q .say { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  #readQueue .q .say b { color: var(--ink); font-weight: 600; }
+  #readQueue .q.now .when, #readQueue .q.now .say b { color: var(--accent); }
+  #readQueue .q .drop { flex: none; font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
+  #readQueue .q .drop:hover { color: var(--err, #c0392b); }
+  #readQueue .more { font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px 0 0 3.7em; }
   #userMenu .readall select { font: inherit; }
   /* What was taken back, opened with the recovery key in this tab (services/sealing.py). */
   #sealsBox { position: fixed; z-index: 30; top: 44px; right: 12px; width: min(560px, 94vw); max-height: 80vh; overflow-y: auto;
@@ -1040,6 +1051,7 @@
     <div id="typing"></div>
     <div id="tasks"></div>
     <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button></div>
+    <div id="readQueue" hidden></div>
     <div id="activity"><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button>
@@ -4776,6 +4788,7 @@
     recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
     recorder.addEventListener('stop', async () => {
       clearInterval(memoTimer);
+      recordingHold(false);
       stream.getTracks().forEach(t => t.stop());
       const seconds = (Date.now() - started) / 1000;
       recorder = null; memoSaving = true;
@@ -4801,6 +4814,7 @@
       recorder = null; stream.getTracks().forEach(t => t.stop());
       showError('voice memo: ' + e.message); return;
     }
+    recordingHold(true);  // nothing read aloud over it
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
     composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Recording: ■ stops it to add words; Send sends it as it is.</span>');
     memoBtn.classList.add('recording');
@@ -5010,6 +5024,9 @@
   const MEMO_AUDIO = /^🎙 \[voice memo[^\]]*\]\((\/moods\/media\/[0-9a-f]{64}\.[a-z0-9]+)\)/;
   const readQueue = [], readHeard = new Set();
   let readMode = 'off', readSinceMs = 0, readLast = null, readNow = null, readHeld = false, readBlocked = false, readWhy = '';
+  // A voice memo being recorded here: nothing is read over it (Justin, 18 Oct); what comes meanwhile waits its turn.
+  let readRecording = false;
+  let readQueueOpen = false;  // the whole queue shown, not only what's next
   let clipDone = null;
   if (voiceOn && viewer) document.getElementById('readAllLabel').hidden = false;
   const readSpeedSel = document.getElementById('readSpeed');
@@ -5068,6 +5085,7 @@
     return new Promise(resolve => {
       clipDone = resolve;
       reader.src = src;
+      if (readHeld || readRecording) return;  // played when they go on (holdRead, recordingHold)
       atSpeed(reader).play().catch(err => {
         if (clipDone !== resolve) return;
         clipDone = null;
@@ -5092,8 +5110,17 @@
     readHeld = hold;
     keepAwake(!hold);
     if (hold) reader.pause();
-    else if (clipDone && reader.paused) reader.play().catch(() => {});
+    else if (clipDone && reader.paused && !readRecording) atSpeed(reader).play().catch(() => {});
     if (!hold) readNext();
+    renderReadBar();
+  }
+  // Recording a memo: what's being read stops where it is, and goes on from there once the
+  // recording's done; a message's own ▶ stops. Messages that come meanwhile are queued.
+  function recordingHold(on) {
+    readRecording = on;
+    if (on) { reader.pause(); if (speaking) stopSpeaking(); }
+    else if (clipDone && reader.paused && !readHeld) atSpeed(reader).play().catch(() => {});
+    if (!on) readNext();
     renderReadBar();
   }
 
@@ -5128,7 +5155,7 @@
   }
 
   async function readNext() {
-    if (readNow || readHeld || readBlocked || readMode === 'off' || !readQueue.length) { renderReadBar(); return; }
+    if (readNow || readHeld || readRecording || readBlocked || readMode === 'off' || !readQueue.length) { renderReadBar(); return; }
     const item = readQueue.shift();
     if (item.kind === 'thinking' && (liveData[item.mood] || {}).busy !== item.agent) { readNext(); return; }  // done before its turn came
     const now = readNow = { item, skipped: false };
@@ -5204,13 +5231,55 @@
     readNext();
   }
 
+  // One item of the reader's, as the queue shows it: who, where, and its first words.
+  function readLabel(item) {
+    if (item.kind === 'deploy') return `<b>${esc(item.text || 'a redeploy')}</b>`;
+    const where = esc((moods.find(m => m.slug === item.mood) || {}).title || item.mood || '');
+    if (item.kind === 'thinking') return `<b>${esc(shown(item.who))}</b> at work · ${where}`;
+    const memo = MEMO_AUDIO.test(item.text || '');
+    const words = memo ? '🎙 voice memo' : (item.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    return `<b>${esc(shown(item.who))}</b> · ${where}${words ? ' — ' + esc(words) : ''}`;
+  }
+  const READ_SHOWN = 2;  // what's next, before "N more"
+  function renderReadQueue() {
+    const box = document.getElementById('readQueue');
+    const now = readNow && readNow.item;
+    if (readMode === 'off' || (!now && !readQueue.length)) { box.hidden = true; box.innerHTML = ''; return; }
+    const upcoming = readQueueOpen ? readQueue : readQueue.slice(0, READ_SHOWN);
+    const row = (item, when, i) => `<div class="q${i < 0 ? ' now' : ''}"><span class="when">${when}</span>`
+      + `<span class="say" data-i="${i}" title="Open it in its Mood">${readLabel(item)}</span>`
+      + (i >= 0 ? `<button type="button" class="drop" data-i="${i}" title="Don't read this one" aria-label="Don't read this one">✕</button>` : '')
+      + '</div>';
+    const left = readQueue.length - upcoming.length;
+    box.innerHTML = (now ? row(now, readRecording ? 'held' : readHeld ? 'paused' : 'now', -1) : '')
+      + upcoming.map((item, i) => row(item, i === 0 ? 'next' : 'then', i)).join('')
+      + (left > 0 ? `<button type="button" class="more">+ ${left} more</button>`
+         : readQueueOpen && readQueue.length > READ_SHOWN ? '<button type="button" class="more">fewer</button>' : '');
+    box.hidden = false;
+  }
+  document.getElementById('readQueue').addEventListener('click', e => {
+    if (e.target.closest('.more')) { readQueueOpen = !readQueueOpen; renderReadQueue(); return; }
+    const drop = e.target.closest('.drop');
+    if (drop) { readQueue.splice(+drop.dataset.i, 1); renderReadBar(); return; }  // heard ids keep it from coming back
+    const say = e.target.closest('.say');
+    if (!say) return;
+    const item = +say.dataset.i < 0 ? readNow && readNow.item : readQueue[+say.dataset.i];
+    if (item && item.mood && item.id && item.kind !== 'deploy' && item.kind !== 'thinking') openAndReveal(item.mood, item.id);
+  });
+
   function renderReadBar(note) {
     readBar.hidden = readMode === 'off';
+    renderReadQueue();
+    const next = readQueue[0];
+    const skip = document.getElementById('readSkip');
+    skip.title = next ? `Skip to the next: ${shown(next.who) || 'a redeploy'}` : 'Skip this one (nothing after it yet)';
+    skip.setAttribute('aria-label', skip.title);
     const item = readNow && readNow.item;
     const where = item ? ((moods.find(m => m.slug === item.mood) || {}).title || item.mood) : '';
     const more = readQueue.length ? ` · ${readQueue.length} more` : '';
     readWhat.textContent = note
-      || (readBlocked ? `🔊 ${readQueue.length} to read: press ▶${readWhy ? ` (it said ${readWhy})` : ''}`
+      || (readRecording ? `🎙 recording: reading waits${readQueue.length || item ? ` (${readQueue.length + (item ? 1 : 0)} to read)` : ''}`
+      : readBlocked ? `🔊 ${readQueue.length} to read: press ▶${readWhy ? ` (it said ${readWhy})` : ''}`
       : item && item.kind === 'deploy' ? `🔊 ${item.text}${more}`
       : item ? `🔊 ${shown(item.who)}${readMode === 'everywhere' ? ' · ' + where : ''}${more}`
       : `🔊 reading ${readMode === 'everywhere' ? 'every Mood' : 'this Mood'} as it comes`);
