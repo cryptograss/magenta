@@ -5127,13 +5127,31 @@
   readSpeedSel.addEventListener('change', () => setReadSpeed(+readSpeedSel.value));
   readSpeedBtn.addEventListener('click', () => setReadSpeed(READ_SPEEDS[(READ_SPEEDS.indexOf(readSpeed) + 1) % READ_SPEEDS.length]));
 
+  // Where reading has got to, kept in this browser: the moment before the first thing not yet
+  // read, and what's been read since. A page reloaded -- a phone discards one in the background --
+  // goes on from there, rather than from now with what was waiting lost. Kept six hours.
+  const READ_PLACE_MS = 6 * 3600e3;
+  function saveReadPlace() {
+    if (readMode === 'off') { store.set('readPlace', null); return; }
+    const waiting = [readNow && readNow.item, ...readQueue].filter(i => i && i.at && i.id);
+    const since = waiting.length ? Math.min(...waiting.map(i => new Date(i.at).getTime())) - 1 : readSinceMs;
+    const unread = new Set(waiting.map(i => i.id));
+    store.set('readPlace', { since, heard: [...readHeard].filter(id => !unread.has(id)).slice(-400), at: Date.now() });
+  }
+  function restoreReadPlace() {
+    const place = store.get('readPlace', null);
+    if (!place || !place.since || Date.now() - place.at > READ_PLACE_MS) return;
+    readSinceMs = place.since;
+    (place.heard || []).forEach(id => readHeard.add(id));
+  }
   function setReadMode(mode) {
     readMode = mode;
     store.set('readAll', mode);
     readSel.value = mode;
-    if (mode === 'off') { readQueue.length = 0; readBlocked = false; skipClip(); readNow = null; readHeld = false; readLast = null; }
+    if (mode === 'off') { readQueue.length = 0; readBlocked = false; skipClip(); readNow = null; readHeld = false; readLast = null; readSinceMs = 0; }
     else if (!readSinceMs) readSinceMs = Date.now() - 15000;  // from now: what was said before isn't news
     keepAwake(mode !== 'off' && !readHeld);
+    saveReadPlace();
     renderReadBar();
   }
   readSel.addEventListener('change', () => { readBlocked = false; setReadMode(readSel.value); readPoll(); });
@@ -5153,6 +5171,7 @@
     const fresh = events.filter(e => (said(e) || redeployed(e)) && e.id && !readHeard.has(e.id))
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     for (const e of fresh) { readHeard.add(e.id); readQueue.push(e); }
+    if (fresh.length) saveReadPlace();
     // Next time from a minute before the newest: a clock a little off misses nothing, and ids keep it once.
     // A full page (reading a stretch through from a message): on from its last, or it would ask the same again.
     const newest = Math.max(0, ...events.map(e => new Date(e.at).getTime() || 0));
@@ -5274,7 +5293,9 @@
   async function readNext() {
     if (readNow || readHeld || readRecording || readBlocked || readMode === 'off' || !readQueue.length) { renderReadBar(); return; }
     const item = readQueue.shift();
-    if (item.kind === 'thinking' && (liveData[item.mood] || {}).busy !== item.agent) { readNext(); return; }  // done before its turn came
+    // "X is thinking" only as the latest news: when nothing else is waiting, it says something's
+    // coming. With more to hear, or its answer already in, it's left out (Justin, 19 Oct).
+    if (item.kind === 'thinking' && ((liveData[item.mood] || {}).busy !== item.agent || readQueue.length)) { readNext(); return; }
     const now = readNow = { item, skipped: false };
     renderReadBar();
     const memo = (item.text || '').match(MEMO_AUDIO);  // heard as recorded: only who's speaking needs saying
@@ -5345,6 +5366,7 @@
     if (item.kind === 'deploy') readLast = null;  // after the news, whoever speaks next is said again
     else if (item.kind !== 'thinking') readLast = { who: item.who, mood: item.mood };  // its answer still says who speaks
     readNow = null;
+    saveReadPlace();
     readNext();
   }
 
@@ -5377,7 +5399,7 @@
   document.getElementById('readQueue').addEventListener('click', e => {
     if (e.target.closest('.more')) { readQueueOpen = !readQueueOpen; renderReadQueue(); return; }
     const drop = e.target.closest('.drop');
-    if (drop) { readQueue.splice(+drop.dataset.i, 1); renderReadBar(); return; }  // heard ids keep it from coming back
+    if (drop) { readQueue.splice(+drop.dataset.i, 1); saveReadPlace(); renderReadBar(); return; }  // heard ids keep it from coming back
     const say = e.target.closest('.say');
     if (!say) return;
     const item = +say.dataset.i < 0 ? readNow && readNow.item : readQueue[+say.dataset.i];
@@ -5421,7 +5443,7 @@
     handle('nexttrack', () => { if (speaking) { stopSpeaking(); return; } skipClip(); });
     handle('stop', () => { if (speaking) { speakHeld = false; stopSpeaking(); return; } setReadMode('off'); });
   }
-  if (voiceOn && viewer && ['here', 'everywhere'].includes(store.get('readAll', 'off'))) setReadMode(store.get('readAll'));
+  if (voiceOn && viewer && ['here', 'everywhere'].includes(store.get('readAll', 'off'))) { restoreReadPlace(); setReadMode(store.get('readAll')); }
 
   function csrf() {
     const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
