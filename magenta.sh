@@ -50,10 +50,9 @@ SUBCOMMANDS:
   login [args...]       Get a one-time link to write into Moods (memory-lane's
                         public conversation view) from any device, vouched for
                         by your SSH key; the key says who you are. Runs
-                        memory-lane/tools/mood_login.py from this checkout
-                        (set MOOD_LOGIN_SCRIPT to another copy to use that
-                        instead). Args pass straight through (e.g. --key
-                        for a non-default key); `magenta.sh login --help` shows
+                        memory-lane/tools/mood_login.py, from this checkout.
+                        Args pass straight through (e.g. --key for a
+                        non-default key); `magenta.sh login --help` shows
                         them. Needs no TARGET and opens no SSH connection.
   renew <device>        Bring one of your timed-out devices back (a device
                         unused for 30 days times out), by the name you gave
@@ -135,77 +134,38 @@ EOF
 }
 
 # ─── Moods subcommands: login, kick, unban, AZ5 ──────────────────────
-# Handled before anything else: no TARGET, no SSH (until AZ5's picker). The
-# logic lives in memory-lane/tools/, beside this script in the same checkout
-# (since the fold, 18 Oct 2026), so we run that copy: the one you pulled and
-# can read, at the same commit as this script.
-
-# This checkout's directory, following symlinks (magenta.sh linked into ~/bin).
-MAGENTA_SELF="$0"
-while [ -L "$MAGENTA_SELF" ]; do
-    link="$(readlink "$MAGENTA_SELF")"
-    case "$link" in
-        /*) MAGENTA_SELF="$link" ;;
-        *) MAGENTA_SELF="$(dirname "$MAGENTA_SELF")/$link" ;;
-    esac
-done
-MEMORY_LANE_TOOLS="$(cd "$(dirname "$MAGENTA_SELF")" && pwd)/memory-lane/tools"
-
-# run_mood_tool <tool.py> <env var naming another copy> [args...]
-run_mood_tool() {
-    local tool="$1" override_var="$2"
-    shift 2
-    if ! command -v python3 &> /dev/null; then
-        echo "Error: this needs python3"
-        exit 1
-    fi
-    local script="${!override_var:-$MEMORY_LANE_TOOLS/$tool}"
-    if [ ! -r "$script" ]; then
-        if [ -n "${!override_var}" ]; then
-            echo "Error: $override_var='$script' is not a readable file"
-        else
-            echo "Error: $script is missing: is this magenta.sh in a magenta checkout?"
-            echo "       (or set $override_var to a copy of memory-lane/tools/$tool)"
-        fi
-        exit 1
-    fi
-    python3 "$script" "$@"
-}
+# Handled before anything else: no TARGET, no SSH (until AZ5's picker).
+# They run memory-lane's tools, from this checkout.
+MOOD_TOOLS="$(dirname "$0")/memory-lane/tools"
 
 case "${1:-}" in
     login)
         shift
-        run_mood_tool mood_login.py MOOD_LOGIN_SCRIPT "$@"
-        exit $?
+        exec python3 "$MOOD_TOOLS/mood_login.py" "$@"
         ;;
     renew)
         shift
-        run_mood_tool mood_login.py MOOD_LOGIN_SCRIPT renew "$@"
-        exit $?
+        exec python3 "$MOOD_TOOLS/mood_login.py" renew "$@"
         ;;
     attest)
         shift
-        run_mood_tool mood_login.py MOOD_LOGIN_SCRIPT attest "$@"
-        exit $?
+        exec python3 "$MOOD_TOOLS/mood_login.py" attest "$@"
         ;;
     kick)
         shift
-        run_mood_tool mood_admin.py MOOD_ADMIN_SCRIPT kick "$@"
-        exit $?
+        exec python3 "$MOOD_TOOLS/mood_admin.py" kick "$@"
         ;;
     unban)
         shift
-        run_mood_tool mood_admin.py MOOD_ADMIN_SCRIPT unban "$@"
-        exit $?
+        exec python3 "$MOOD_TOOLS/mood_admin.py" unban "$@"
         ;;
     AZ5|az5)
         shift
         if [ "${1:-}" = "--lift" ]; then
             shift
-            run_mood_tool mood_admin.py MOOD_ADMIN_SCRIPT lift "$@"
-            exit $?
+            exec python3 "$MOOD_TOOLS/mood_admin.py" lift "$@"
         fi
-        run_mood_tool mood_admin.py MOOD_ADMIN_SCRIPT az5
+        python3 "$MOOD_TOOLS/mood_admin.py" az5
         echo "Dropping you into the session picker…"
         # Then just as `magenta.sh hunter` (or the TARGET given): pick a session.
         exec "$0" "${@:-hunter}"
