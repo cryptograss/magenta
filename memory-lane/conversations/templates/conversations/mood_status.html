@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>status · magenta</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
+    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --code: #f3efe8;
+    --ok: #2e9e5b; --warn: #d48806; --err: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
+            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --code: #29252c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--bg); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex-wrap: wrap; }
+  header .brand { font-weight: 700; color: var(--accent); text-decoration: none; }
+  header nav { display: flex; gap: 12px; font-size: 13px; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  header nav a:hover, header nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+  header .who { margin-left: auto; font-size: 13px; color: var(--muted); }
+  main { max-width: 1120px; margin: 0 auto; padding: 18px 16px 60px; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  h2 { font-size: 15.5px; margin: 26px 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 16px; max-width: 780px; }
+  .scram { background: #3a0d0d; color: #ffd9d9; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card h3 { font-size: 14px; margin: 0 0 6px; }
+  .meta { font-size: 12.5px; color: var(--muted); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px;
+         background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--panel);
+              border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  table.tbl th, table.tbl td { border-bottom: 1px solid var(--line); padding: 6px 10px; text-align: left;
+                               vertical-align: middle; font-variant-numeric: tabular-nums; }
+  table.tbl th { color: var(--muted); font-weight: 600; font-size: 12px; background: var(--code); }
+  table.tbl tr:last-child td { border-bottom: 0; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
+  .dot.up { background: var(--ok); }
+  .dot.down { background: var(--err); }
+  .dot.deploying { background: var(--warn); }
+  select, input[type="checkbox"] { font: inherit; font-size: 12.5px; padding: 2px 5px; border: 1px solid var(--line);
+                                  border-radius: 5px; background: var(--panel); color: var(--ink); }
+  select.catalog:not(.vendor) { max-width: 15.5ch; text-overflow: ellipsis; }
+  .pie { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px; margin-right: 5px;
+         background: conic-gradient(var(--accent) var(--p, 0%), var(--line) 0); }
+  .pie.warm { background: conic-gradient(#d48806 var(--p, 0%), var(--line) 0); }
+  .pie.hot  { background: conic-gradient(#d9534f var(--p, 0%), var(--line) 0); }
+  .pie.full { background: conic-gradient(#b30000 var(--p, 0%), var(--line) 0); }
+  .saved { font-size: 11.5px; color: var(--ok); margin-left: 6px; }
+  .err { font-size: 11.5px; color: var(--err); margin-left: 6px; }
+  .mood-link { font-weight: 600; color: var(--ink); }
+  .agent-name { font-weight: 600; }
+  .agent-name[data-agent="magent"] { color: var(--accent); }
+  .agent-name[data-agent="re"] { color: #c0392b; }
+  .pill { display: inline-block; font-size: 11.5px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); margin: 2px 3px 2px 0; }
+  .pill.usable { border-color: var(--ok); color: var(--ok); font-weight: 600; }
+  .pill.nokey { color: var(--muted); opacity: .75; }
+  details.archived-moods { margin-top: 10px; }
+  details.archived-moods > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/moods/">magenta</a>
+  <nav>
+    <a href="/moods/status/" aria-current="page">status</a>
+    <a href="/moods/settings/">settings</a>
+  </nav>
+  <span class="who" id="who"></span>
+</header>
+<main>
+  <h1>Status</h1>
+  <p class="lede">How magenta and its four servers stand right now: every agent's settings bar in every Mood, server uptime and redeploys, database backups, recent humans, and running versions.</p>
+  <div id="scram"></div>
+
+  <h2>Servers</h2>
+  <div id="servers">Loading…</div>
+
+  <div class="grid2" style="margin-top: 18px;">
+    <div class="card">
+      <h3>Magenta on maybelle</h3>
+      <div id="magentaVersion">Loading…</div>
+    </div>
+    <div class="card">
+      <h3>PickiPedia MCP</h3>
+      <div id="pickipediaMcp">Loading…</div>
+    </div>
+  </div>
+
+  <h2>Database backups (magenta_memory on maybelle)</h2>
+  <div id="backups">Loading…</div>
+
+  <h2>Last seen (last 10 humans)</h2>
+  <div id="humans">Loading…</div>
+
+  <h2>Agent settings bar in every Mood</h2>
+  <div id="moodBars">Loading…</div>
+
+  <h2>Harness vendors</h2>
+  <div id="harnesses">Loading…</div>
+</main>
+<script>
+(function () {
+  const viewer = "{{ viewer|escapejs }}" || null;
+  const viewerTier = "{{ viewer_tier|escapejs }}" || "";
+  const keyHolder = Boolean(viewer && viewerTier === "key");
+  const HUSH = [['on', 0, '👂'], ['mentions', 60, '@ · 1hr'], ['mentions', 0, '@'],
+                ['off', 60, '🤫 · 1hr'], ['off', 120, '🤫 · 2hr'], ['off', 0, '🤫']];
+  const MODELS = [['', 'default'], ['opus', 'opus'], ['sonnet', 'sonnet'], ['fable', 'fable'], ['haiku', 'haiku']];
+  const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+  const EFFORT_LABELS = { xhigh: 'extra' };
+  const DISCRETIONS = ['chatty', 'normal', 'reserved'];
+  const VERBOSITIES = ['brief', 'normal', 'thorough'];
+  const REPLY_LENGTHS = { brief: 'short', normal: 'mid', thorough: 'long' };
+  const SPEAKING_UP = { chatty: 'chatty', normal: 'moderate', reserved: 'reserved' };
+  const READS = [2500, 5000, 10000, 20000];
+
+  let state = null;
+  const catalogs = {};
+  const vendorPicked = {};
+
+  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function csrf() { const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/); return m ? decodeURIComponent(m[1]) : ''; }
+  function when(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+  function ago(iso) {
+    if (!iso) return '—';
+    const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.round(s / 60) + 'm ago';
+    if (s < 86400) return Math.round(s / 3600) + 'h ago';
+    return Math.round(s / 86400) + 'd ago';
+  }
+  function fmtDuration(sec) {
+    if (sec == null || sec < 0) return '—';
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${sec % 60}s`;
+    return `${sec}s`;
+  }
+  function fmtBytes(b) {
+    if (b == null) return '—';
+    if (b >= 1024 * 1024 * 1024) return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + ' MB';
+    if (b >= 1024) return (b / 1024).toFixed(1) + ' KB';
+    return b + ' B';
+  }
+  function kTokens(n) { return (n / 1000).toFixed(n % 1000 ? 1 : 0) + 'k'; }
+  function shortModel(m) { return (m || '').replace(/^claude-/, '').replace(/-(\d+)-(\d+)$/, ' $1.$2'); }
+  function describeListening(l) {
+    if (!l) return '👂';
+    const until = l.until ? ' till ' + new Date(l.until).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+    return l.mode === 'on' ? '👂' : (l.mode === 'mentions' ? '@' : '🤫') + until;
+  }
+  function pieHtml(ctx) {
+    if (!ctx || !ctx.window) return '';
+    const pct = Math.min(100, Math.round(100 * ctx.tokens / ctx.window));
+    const cls = 'pie' + (pct >= 85 ? ' full' : pct >= 70 ? ' hot' : pct >= 50 ? ' warm' : '');
+    const title = `context ${pct}% full · ${(ctx.tokens || 0).toLocaleString()} of ${ctx.window.toLocaleString()} tokens`
+      + (ctx.model ? ` · ${shortModel(ctx.model)}` : '') + (ctx.at ? ` · ${ago(ctx.at)}` : '');
+    return `<span class="${cls}" style="--p:${pct}%" title="${esc(title)}"></span>`;
+  }
+
+  function vendorOf(model) { const i = (model || '').indexOf('/'); return i > 0 ? model.slice(0, i) : ''; }
+  function catalogMenus(moodSlug, agent, c, chosen, fallback, running) {
+    const pickKey = `${moodSlug || ''}:${agent}`;
+    const runsAt = !chosen && running ? (c.vendors.find(x => x.usable && x.models.some(m => m[0] === running)) || {}).name : '';
+    const vendor = vendorPicked[pickKey] || vendorOf(chosen) || runsAt || '';
+    const vendors = c.vendors.filter(x => x.usable || x.name === vendor).sort((x, y) => x.name.localeCompare(y.name));
+    const v = vendors.find(x => x.name === vendor);
+    const attrs = `data-mood="${esc(moodSlug || '')}" data-agent="${esc(agent)}"`;
+    const first = `<select ${attrs} data-role="vendor" class="catalog vendor" title="whose model: the vendors it has a key for">`
+      + (v ? '' : `<option value="" selected disabled>vendor…</option>`)
+      + vendors.map(x => `<option value="${esc(x.name)}"${x === v ? ' selected' : ''}${x.usable ? '' : ' disabled'}>`
+        + `${esc(x.name)}${x.usable ? '' : ' · no key'}</option>`).join('') + '</select>';
+    if (!v) return first;
+    const groups = new Map();
+    for (const m of v.models) {
+      const at = m[0].indexOf('/'), maker = at > 0 ? m[0].slice(0, at).replace(/^~/, '') : '';
+      if (!groups.has(maker)) groups.set(maker, []);
+      groups.get(maker).push(m);
+    }
+    let found = false;
+    const option = ([id, ctx]) => {
+      const full = `${v.name}/${id}`, on = full === chosen;
+      found = found || on;
+      const name = id.slice(id.indexOf('/') + 1);
+      return `<option value="${esc(full)}"${on ? ' selected' : ''}>${esc(name)}${ctx ? ' · ' + esc(kTokens(ctx)) : ''}</option>`;
+    };
+    const body = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([maker, ms]) => maker
+      ? `<optgroup label="${esc(maker)}">${ms.map(option).join('')}</optgroup>` : ms.map(option).join('')).join('');
+    const stale = vendorOf(chosen) === v.name;
+    const pick = !chosen && !vendorPicked[pickKey] ? `<option value="" selected>${esc(fallback)}</option>`
+      : (chosen ? `<option value="">↺ default</option>` : '')
+        + (found ? '' : stale ? `<option value="${esc(chosen)}" selected>${esc(chosen.slice(v.name.length + 1))}</option>`
+                              : '<option value="" selected disabled>pick a model…</option>');
+    return first + ' ' + `<select ${attrs} data-knob="model" class="catalog" title="${esc(chosen || running || '')}">`
+      + `${v.usable ? '' : ' disabled'}>${pick}${body}</select>`;
+  }
+
+  function renderServers(list) {
+    return `<table class="tbl"><thead><tr><th>server</th><th>status</th><th>uptime</th><th>last redeploy</th><th>by</th><th>commit &amp; log</th></tr></thead><tbody>`
+      + list.map(s => {
+        const d = s.deploy || {};
+        const dotCls = s.deploying ? 'deploying' : (s.up ? 'up' : 'down');
+        const statusTxt = s.deploying ? 'redeploying…' : (s.up ? `up (${s.ms} ms)` : 'down');
+        const commitHtml = d.commit ? `<code>${esc(d.commit.slice(0, 10))}</code>` : '—';
+        const logHtml = d.note && /^https?:\/\//.test(d.note) ? ` · <a href="${esc(d.note)}" target="_blank" rel="noopener">log</a>` : '';
+        const tookHtml = d.took != null ? ` <span class="meta">(${fmtDuration(d.took)})</span>` : '';
+        return `<tr>`
+          + `<td><a href="${esc(s.url || '#')}" target="_blank" rel="noopener"><b>${esc(s.name)}</b></a><div class="meta">${esc(s.about || '')}</div></td>`
+          + `<td><span class="dot ${dotCls}"></span>${esc(statusTxt)}</td>`
+          + `<td>${esc(fmtDuration(s.uptime_seconds))}</td>`
+          + `<td>${d.at ? `${esc(ago(d.at))} <span class="meta">(${esc(when(d.at))})</span>${tookHtml}` : '—'}</td>`
+          + `<td>${esc(d.by || '—')}</td>`
+          + `<td>${commitHtml}${logHtml}</td>`
+          + `</tr>`;
+      }).join('') + `</tbody></table>`;
+  }
+
+  function renderMagenta(m) {
+    if (!m) return '—';
+    const d = m.maybelle_deploy || {};
+    const mig = m.migration ? `<code>${esc(m.migration.name)}</code> (${esc(ago(m.migration.applied_at))})` : '—';
+    const commit = m.commit ? `<code>${esc(m.commit)}</code>` : (d.commit ? `<code>${esc(d.commit)}</code> <span class="meta">(maybelle-config)</span>` : '—');
+    return `<div><b>Commit:</b> ${commit}${m.subject ? ` — ${esc(m.subject)}` : ''}</div>`
+      + `<div class="meta" style="margin-top:4px;"><b>Page digest:</b> <code>${esc(m.page_version || '—')}</code> · <b>Latest migration:</b> ${mig}</div>`
+      + (d.at ? `<div class="meta" style="margin-top:4px;"><b>Last maybelle deploy:</b> ${esc(ago(d.at))} (${esc(when(d.at))}) by <b>${esc(d.by || '—')}</b></div>` : '');
+  }
+
+  function renderPickipediaMcp(p) {
+    if (!p) return '—';
+    const head = p.head_sha
+      ? `<a href="https://github.com/${esc(p.fork_repo)}/commit/${esc(p.head_sha)}" target="_blank" rel="noopener"><code>${esc(p.head_sha)}</code></a>`
+        + (p.head_at ? ` (${esc(ago(p.head_at))})` : '')
+        + (p.head_message ? ` — ${esc(p.head_message)}` : '')
+      : `<span class="meta">${esc(p.error || 'unknown')}</span>`;
+    const div = p.ahead_of_tag != null
+      ? `<b>${p.ahead_of_tag}</b> commits ahead, <b>${p.behind_tag || 0}</b> behind upstream <code>${esc(p.upstream_tag)}</code>`
+        + (p.changed_files != null ? ` (${p.changed_files} files changed)` : '')
+        + (p.upstream_since_tag != null ? `; upstream <code>${esc(p.upstream_branch)}</code> has <b>${p.upstream_since_tag}</b> commit${p.upstream_since_tag === 1 ? '' : 's'} since` : '')
+      : `<span class="meta">divergence unavailable (${esc(p.error || 'offline')})</span>`;
+    return `<div><b>Fork (<code>${esc(p.fork_repo)}</code>):</b> ${head}</div>`
+      + `<div class="meta" style="margin-top:4px;"><b>Upstream (<code>${esc(p.upstream_repo)}</code>):</b> ${div}</div>`;
+  }
+
+  function renderBackups(b) {
+    if (!b) return '—';
+    if (!b.mounted) {
+      return `<div class="card"><span class="meta">Backup directory <code>${esc(b.dir)}</code> is not mounted inside this container yet.</span></div>`;
+    }
+    const row = (label, dump, count) => {
+      if (!dump) return `<tr><td><b>${esc(label)}</b></td><td colspan="4" class="meta">No backup files found</td></tr>`;
+      return `<tr>`
+        + `<td><b>${esc(label)}</b>${count ? ` <span class="meta">(${count} kept)</span>` : ''}</td>`
+        + `<td><code>${esc(dump.path)}</code></td>`
+        + `<td><b>${esc(fmtBytes(dump.size_bytes))}</b> <span class="meta">(${dump.size_bytes.toLocaleString()} bytes)</span></td>`
+        + `<td>${esc(ago(dump.created_at))} <span class="meta">(${esc(when(dump.created_at))})</span></td>`
+        + `<td>${dump.block ? `<a href="https://etherscan.io/block/${dump.block}" target="_blank" rel="noopener">${dump.block.toLocaleString()}</a>` : '—'}</td>`
+        + `</tr>`;
+    };
+    return `<table class="tbl"><thead><tr><th>tier</th><th>location on maybelle</th><th>size</th><th>when made</th><th>block</th></tr></thead><tbody>`
+      + row('Most recent (bi-hourly)', b.latest, b.latest_count)
+      + row('Daily (03:00 UTC)', b.daily, b.daily_count)
+      + `</tbody></table>`;
+  }
+
+  function renderHumans(humans) {
+    if (!humans || !humans.length) return `<div class="card meta">No human activity recorded yet.</div>`;
+    return `<table class="tbl"><thead><tr><th>#</th><th>person</th><th>last seen</th><th>where / how</th></tr></thead><tbody>`
+      + humans.map((h, i) => {
+        const wiki = h.wiki_name ? ` <span class="meta">(<a href="https://pickipedia.xyz/wiki/User:${encodeURIComponent(h.wiki_name)}" target="_blank" rel="noopener">${esc(h.wiki_name)}</a>)</span>` : '';
+        const how = h.mood ? `<a href="/moods/${encodeURIComponent(h.mood)}/">${esc(h.how)}</a>` : esc(h.how);
+        return `<tr><td>${i + 1}</td><td><b>${esc(h.name)}</b>${wiki}</td>`
+          + `<td><b>${esc(ago(h.last_seen_at))}</b> <span class="meta">(${esc(when(h.last_seen_at))})</span></td>`
+          + `<td>${how}</td></tr>`;
+      }).join('') + `</tbody></table>`;
+  }
+
+  function agentRowHtml(moodSlug, moodTitle, agent, a, isFirstAgent, agentCount) {
+    const l = a.listening || { mode: 'on' };
+    const ctx = a.context || {};
+    const moodCell = isFirstAgent
+      ? `<td rowspan="${agentCount}">${moodSlug
+          ? `<a class="mood-link" href="/moods/${encodeURIComponent(moodSlug)}/">#${esc(moodSlug)}</a>`
+            + (moodTitle && moodTitle !== moodSlug && moodTitle !== '#' + moodSlug ? `<div class="meta">${esc(moodTitle)}</div>` : '')
+          : `<b>everywhere</b><div class="meta">defaults</div>`}</td>`
+      : '';
+    const nameCell = `<td>${pieHtml(ctx)}<span class="agent-name" data-agent="${esc(agent)}">${esc(agent)}</span></td>`;
+    const runs = a.model ? shortModel(a.model.split('/').pop()) : ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
+
+    if (!keyHolder) {
+      return `<tr>${moodCell}${nameCell}`
+        + `<td>${esc(describeListening(l))}</td>`
+        + `<td><code>${esc(runs)}</code></td>`
+        + `<td>${esc(EFFORT_LABELS[a.effort] || a.effort)}</td>`
+        + `<td>${esc(SPEAKING_UP[a.discretion || 'normal'] || a.discretion)}</td>`
+        + `<td>${esc(REPLY_LENGTHS[a.verbosity || 'normal'])}</td>`
+        + `<td>${esc(kTokens(a.reads || 10000))}</td>`
+        + `<td>${a.ultracode ? 'ultra' : ''}</td></tr>`;
+    }
+
+    const attrs = `data-mood="${esc(moodSlug || '')}" data-agent="${esc(agent)}"`;
+    const listen = `<select ${attrs} data-knob="listening"><option selected disabled>${esc(describeListening(l))}</option>`
+      + HUSH.map(([mode, minutes, label], i) => `<option value="${i}">${esc(label)}</option>`).join('') + '</select>';
+    const models = MODELS.some(([v]) => v === a.model) ? MODELS : [...MODELS, [a.model, a.model]];
+    const catalog = catalogs[agent];
+    const inUse = ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
+    const model = catalog ? catalogMenus(moodSlug, agent, catalog, a.model, inUse, ctx.model)
+      : `<select ${attrs} data-knob="model">`
+        + models.map(([v, label]) => `<option value="${esc(v)}"${v === a.model ? ' selected' : ''}>${esc(v ? label : inUse)}</option>`).join('') + '</select>';
+    const effort = `<select ${attrs} data-knob="mention_effort">`
+      + EFFORTS.map(v => `<option value="${v}"${v === a.effort ? ' selected' : ''}>${EFFORT_LABELS[v] || v}</option>`).join('') + '</select>';
+    const discretion = `<select ${attrs} data-knob="discretion">`
+      + DISCRETIONS.map(v => `<option value="${v}"${v === (a.discretion || 'normal') ? ' selected' : ''}>${SPEAKING_UP[v]}</option>`).join('') + '</select>';
+    const verbosity = `<select ${attrs} data-knob="verbosity">`
+      + VERBOSITIES.map(v => `<option value="${v}"${v === (a.verbosity || 'normal') ? ' selected' : ''}>${REPLY_LENGTHS[v]}</option>`).join('') + '</select>';
+    const reads = `<select ${attrs} data-knob="catch_up_tokens">`
+      + READS.map(n => `<option value="${n}"${n === a.reads ? ' selected' : ''}>${kTokens(n)}</option>`).join('')
+      + (READS.includes(a.reads) ? '' : `<option value="${a.reads}" selected>${kTokens(a.reads)}</option>`) + '</select>';
+    const ultra = a.catalog != null ? '' : `<label><input type="checkbox" ${attrs} data-knob="ultracode"${a.ultracode ? ' checked' : ''}> ultra</label>`;
+    return `<tr>${moodCell}${nameCell}<td>${listen}</td><td>${model}</td><td>${effort}</td><td>${discretion}</td><td>${verbosity}</td><td>${reads}</td><td>${ultra}<span class="save-msg"></span></td></tr>`;
+  }
+
+  function renderMoodTable(moodList, includeEverywhere) {
+    const head = `<table class="tbl"><thead><tr><th>Mood</th><th>agent</th><th>mode</th><th>model</th><th>effort</th><th>speaks up</th><th>replies</th><th>reads back</th><th>ultra</th></tr></thead><tbody>`;
+    const rows = [];
+    if (includeEverywhere && state.everywhere) {
+      const entries = Object.entries(state.everywhere);
+      entries.forEach(([agent, a], idx) => rows.push(agentRowHtml('', 'everywhere', agent, a, idx === 0, entries.length)));
+    }
+    for (const m of moodList) {
+      const entries = Object.entries(m.agents || {});
+      entries.forEach(([agent, a], idx) => rows.push(agentRowHtml(m.slug, m.title, agent, a, idx === 0, entries.length)));
+    }
+    return head + (rows.join('') || `<tr><td colspan="9" class="meta">No Moods yet.</td></tr>`) + `</tbody></table>`;
+  }
+
+  function renderHarnesses(list) {
+    if (!list || !list.length) return `<div class="card meta">No agent harness catalogs reported yet.</div>`;
+    return list.map(h => {
+      const usable = (h.vendors || []).filter(v => v.usable);
+      const nokey = (h.vendors || []).filter(v => !v.usable);
+      return `<div class="card" style="margin-bottom:10px;">`
+        + `<h3><span class="agent-name" data-agent="${esc(h.agent)}">${esc(h.agent)}</span> · <code>${esc(h.harness)}</code>`
+        + (h.reported_at ? ` <span class="meta">(reported ${esc(ago(h.reported_at))})</span>` : '') + `</h3>`
+        + `<div><b>With key (${usable.length}):</b> `
+        + (usable.map(v => `<span class="pill usable">${esc(v.name)} (${v.model_count})</span>`).join('') || '<span class="meta">none</span>') + `</div>`
+        + `<div style="margin-top:6px;"><b>No key (${nokey.length}):</b> `
+        + (nokey.map(v => `<span class="pill nokey">${esc(v.name)} (${v.model_count})</span>`).join('') || '<span class="meta">none</span>') + `</div>`
+        + `</div>`;
+    }).join('');
+  }
+
+  function render() {
+    document.getElementById('who').innerHTML = keyHolder ? `signed in as <b>${esc(viewer)}</b>`
+      : 'read-only · <a href="/moods/">sign in</a> with SSH key to change settings';
+    const scram = state.scram;
+    document.getElementById('scram').innerHTML = scram
+      ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
+    document.getElementById('servers').innerHTML = renderServers(state.servers || []);
+    document.getElementById('magentaVersion').innerHTML = renderMagenta(state.magenta);
+    document.getElementById('pickipediaMcp').innerHTML = renderPickipediaMcp(state.pickipedia_mcp);
+    // Who was last seen where, and where the backups are: for an SSH-key sign-in only.
+    const hidden = '<div class="card meta">Shown to an SSH-key sign-in only (magenta.sh login).</div>';
+    document.getElementById('backups').innerHTML = state.private ? hidden : renderBackups(state.backup);
+    document.getElementById('humans').innerHTML = state.private ? hidden : renderHumans(state.humans || []);
+
+    const activeMoods = (state.moods || []).filter(m => !m.archived);
+    const archivedMoods = (state.moods || []).filter(m => m.archived);
+    document.getElementById('moodBars').innerHTML = renderMoodTable(activeMoods, true)
+      + (archivedMoods.length
+        ? `<details class="archived-moods"><summary>Archived Moods (${archivedMoods.length})</summary>${renderMoodTable(archivedMoods, false)}</details>`
+        : '');
+    document.getElementById('harnesses').innerHTML = renderHarnesses(state.harnesses || []);
+  }
+
+  async function load() {
+    state = await (await fetch('/api/status/')).json();
+    for (const h of state.harnesses || []) {
+      if (catalogs[h.agent] === undefined) {
+        catalogs[h.agent] = null;
+        fetch(`/api/agents/${encodeURIComponent(h.agent)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
+          .then(c => { if (c) { catalogs[h.agent] = c; render(); } });
+      }
+    }
+    render();
+  }
+
+  document.addEventListener('change', async e => {
+    const el = e.target.closest('#moodBars select, #moodBars input[type=checkbox]');
+    if (!el) return;
+    const mood = el.dataset.mood || null;
+    const agent = el.dataset.agent;
+    const pickKey = `${mood || ''}:${agent}`;
+    if (el.dataset.role === 'vendor' && el.value) {
+      vendorPicked[pickKey] = el.value;
+      render();
+      return;
+    }
+    if (el.dataset.role === 'vendor' || el.dataset.knob === 'model') delete vendorPicked[pickKey];
+    const knob = el.dataset.role === 'vendor' ? 'model' : el.dataset.knob;
+    let value = el.type === 'checkbox' ? el.checked : el.value;
+    if (knob === 'listening') {
+      const [mode, minutes] = HUSH[Number(el.value)];
+      value = { mode, until: minutes ? new Date(Date.now() + minutes * 60000).toISOString() : null };
+    } else if (knob === 'catch_up_tokens') {
+      value = Number(el.value);
+    }
+    const msg = el.closest('tr')?.querySelector('.save-msg');
+    const r = await fetch('/api/settings/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ key: knob, value, mood, agent, note: 'from the status page' }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (msg) { msg.className = 'save-msg err'; msg.textContent = body.error || r.status; }
+      return;
+    }
+    if (msg) { msg.className = 'save-msg saved'; msg.textContent = 'saved'; }
+    setTimeout(load, 400);
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
