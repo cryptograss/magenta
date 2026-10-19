@@ -223,6 +223,42 @@ class PushTest(TestCase):
         client.post('/api/push/unsubscribe/', json.dumps({'endpoint': self.phone.endpoint}), content_type='application/json')
         self.assertFalse(PushSubscription.objects.exists())
 
+    def test_a_browser_subscribed_anew_is_told_once_not_once_for_each(self):
+        # Justin, 19 Oct: three notifications for one message. A device keeps one subscription:
+        # a new endpoint (an old key, cleared storage) replaces the one it had.
+        client = self.client_for(self.justin)
+        client.post('/api/push/subscribe/', json.dumps(self.phone.subscription()), content_type='application/json')
+        again = Browser()
+        client.post('/api/push/subscribe/', json.dumps(again.subscription()), content_type='application/json')
+        self.assertEqual(list(PushSubscription.objects.values_list('endpoint', flat=True)), [again.endpoint])
+        # And should two be left from before, the newest is the one told.
+        PushSubscription.objects.create(device=PushSubscription.objects.get().device, endpoint=self.phone.endpoint,
+                                        p256dh=self.phone.p256dh, auth=b64url(self.phone.auth))
+        PushSubscription.objects.filter(endpoint=again.endpoint).update(created_at=timezone.now() - timedelta(days=1))
+        self.said(self.skyler, '@justin one message')
+        service = PushService()
+        with mock.patch('requests.post', service.post):
+            push.sweep()
+        self.assertEqual([url for url, _ in service.sent], [self.phone.endpoint])
+
+    def test_it_carries_when_it_was_said_and_a_mention_goes_at_once(self):
+        self.subscribe(self.justin, self.phone)
+        said = self.said(self.skyler, '@justin from a while ago')
+        Message.objects.filter(id=said.id).update(created_at=timezone.now() - timedelta(seconds=90))
+        self.said(self.skyler, 'and just chatting')
+        PushSubscription.objects.update(from_people=True)
+        service = PushService()
+        with mock.patch('requests.post', service.post):
+            push.sweep()
+        told = [(self.phone.read(kw['data']), kw['headers'].get('Urgency') or kw['headers'].get('urgency'))
+                for _, kw in service.sent]
+        mention = next(t for t in told if t[0]['title'] == 'skyler mentioned you')
+        self.assertEqual(mention[1], 'high')  # a sleeping phone is woken for it
+        said.refresh_from_db()
+        self.assertEqual(mention[0]['timestamp'], int(said.created_at.timestamp() * 1000))  # not "now"
+        chat = next(t for t in told if t[0]['title'] == 'skyler in general')
+        self.assertEqual(chat[1], 'normal')
+
     def test_the_clock_runs_from_the_pulse_and_from_pages(self):
         with mock.patch('conversations.services.push.threading.Thread') as thread:
             self.client.get('/api/moods/pulse/')

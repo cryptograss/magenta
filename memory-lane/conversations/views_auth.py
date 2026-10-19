@@ -1137,6 +1137,10 @@ def api_push_subscribe(request):
     PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={
         'device': device, 'p256dh': p256dh, 'auth': auth,
         'from_people': body.get('people') is True, 'from_agents': body.get('agents') is True})
+    # A browser has one subscription at a time: one it made before (under an old key, or
+    # before its storage was cleared) can still be delivered to, and each would show the
+    # same notice again (Justin, 19 Oct: three at once for one message).
+    PushSubscription.objects.filter(device=device).exclude(endpoint=endpoint).delete()
     return JsonResponse({'subscribed': True}, status=201)
 
 

@@ -1010,21 +1010,35 @@ self.addEventListener('push', e => {
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     if (list.some(c => c.visibilityState === 'visible' && new URL(c.url).pathname.startsWith('/moods/'))) return;
     // The badge: the mark alone, which Android shows in the status bar (it reads only its alpha).
+    // timestamp: when it was said, so one held while the phone slept doesn't say "now".
     return self.registration.showNotification(n.title, { body: n.body || '', tag: n.tag, icon: '/moods/icon-192.png',
-                                                         badge: '/moods/mark-96.png', data: n.data || {} });
+                                                         badge: '/moods/mark-96.png', data: n.data || {},
+                                                         ...(n.timestamp ? { timestamp: n.timestamp } : {}) });
   }));
 });
 // A notification (a mention, an answer) opens its Mood at that message: in a
-// window already open on magenta if there is one, else a new one.
+// window already open on magenta if there is one, else a new one. The open
+// page says it heard; one asleep or gone doesn't, and is sent to the message
+// instead (Justin, 19 Oct: a notice from one Mood opened #general).
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   const { slug, id } = e.notification.data || {};
   const url = '/moods/' + encodeURIComponent(slug || '') + '/' + (id ? '#m-' + id : '');
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+  e.waitUntil((async () => {
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const open = list.find(c => new URL(c.url).pathname.startsWith('/moods/'));
-    if (open) { open.postMessage({ open: slug, id }); return open.focus(); }
+    if (!open) return self.clients.openWindow(url);
+    try { await open.focus(); } catch (err) {}
+    const heard = await new Promise(resolve => {
+      const channel = new MessageChannel();
+      const wait = setTimeout(() => resolve(false), 1500);
+      channel.port1.onmessage = () => { clearTimeout(wait); resolve(true); };
+      open.postMessage({ open: slug, id }, [channel.port2]);
+    });
+    if (heard) return;
+    try { if (open.navigate) return await open.navigate(url); } catch (err) {}
     return self.clients.openWindow(url);
-  }));
+  })());
 });
 """
 

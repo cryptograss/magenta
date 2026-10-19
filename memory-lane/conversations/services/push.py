@@ -166,16 +166,25 @@ def notification(notice):
              'talk': f"{turn['sender']} edited your talk page"}.get(
         notice['kind'], f"{turn['sender']} in {(mood.title or mood.slug) if mood else 'a Mood'}")
     where = f"{(mood.title or mood.slug)}: " if mood and notice['kind'] != 'said' else ''
+    at = parse_datetime(turn.get('created_at') or '')
     return {'title': title, 'body': (where + (turn.get('text') or ''))[:200], 'tag': turn['id'],
+            # When it was said, not when the phone got it: one held while the phone slept shows its own time.
+            **({'timestamp': int(at.timestamp() * 1000)} if at else {}),
             'data': {'slug': notice['mood'], 'id': turn['id']}}
 
 
-def send(subscription, payload, now=None):
+# A mention or an answer is for someone to see now: a phone asleep (Android's Doze)
+# holds a normal push until it next wakes, which can be long after, and then
+# delivers all it held at once. Every message, asked for besides, can wait.
+URGENCY = {'mention': 'high', 'answer': 'high', 'talk': 'high'}
+
+
+def send(subscription, payload, now=None, urgency='normal'):
     """'sent', 'gone' (the push service has forgotten it: so do we) or 'failed: <why>'."""
     from pywebpush import WebPushException, webpush
     try:
         webpush({'endpoint': subscription.endpoint, 'keys': {'p256dh': subscription.p256dh, 'auth': subscription.auth}},
-                data=json.dumps(payload), vapid_private_key=_key(),
+                data=json.dumps(payload), vapid_private_key=_key(), headers={'Urgency': urgency},
                 vapid_claims={'sub': settings.WEBPUSH_CONTACT}, ttl=TTL, timeout=10)
     except WebPushException as e:
         status = getattr(e.response, 'status_code', None)
@@ -218,11 +227,20 @@ def sweep(now=None):
             if not to:
                 continue
             payload = notification(notice)
-            for sub in to:
-                send(sub, payload, now)
+            for sub in newest_per_device(to):
+                send(sub, payload, now, URGENCY.get(notice['kind'], 'normal'))
             told += 1
     cache.set('push:cursor', now, None)
     return told
+
+
+def newest_per_device(subs):
+    """One subscription for each device, its newest: a device is one browser, told once."""
+    newest = {}
+    for sub in subs:
+        if sub.device_id not in newest or sub.created_at > newest[sub.device_id].created_at:
+            newest[sub.device_id] = sub
+    return list(newest.values())
 
 
 def nudge():
