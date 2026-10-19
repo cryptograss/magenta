@@ -20,12 +20,12 @@ from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
-from .services import delivery_kid, faces, push, servers, wiki_auth, wiki_feed, wiki_upload
+from .services import delivery_kid, faces, push, servers, wiki_auth, wiki_feed, wiki_ledger, wiki_upload
 from .services import agent_commands, mood_auth
 from .services.mood_view import (
     from_wiki_tier,
     MACHINERY_SENDERS, how_payload, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
-    prose, render_html, step_detail, step_images, step_payload, timeline, turn_payload, turns, wiki_title, wikilinks_in,
+    prose, render_html, step_detail, step_images, step_payload, timeline, turn_payload, turns, wiki_title,
 )
 
 
@@ -350,6 +350,7 @@ def api_pulse(request):
     archived = knobs.archived_slugs()
     wiki_feed.nudge()  # asked every second by the runner: the wiki feed's clock (at most once a minute)
     push.nudge()       # and the push clock: notices to send to closed pages (at most every 10 s)
+    wiki_ledger.nudge()  # and the Moods' links, written to PickiPedia (at most every 30 s)
     moods = []
     for mood in Mood.objects.all():
         said = mood.messages.filter(is_sidechain=False).exclude(sender_id__in=MACHINERY_SENDERS)
@@ -494,12 +495,7 @@ def api_wikilinks(request):
         if len(links) >= limit:
             break
         next_since = msg.created_at.isoformat()
-        if msg.sender_id not in names:
-            continue
-        text = prose(msg.content)
-        if not text or is_wrapper(text) or is_summary(msg):
-            continue
-        for title in wikilinks_in(text):
+        for title in wiki_ledger.linked_pages(msg, names):
             if page and title != page:
                 continue
             links.append({'page': title, 'mood': msg.mood_slug, 'turn': str(msg.id),

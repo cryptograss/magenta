@@ -13,6 +13,8 @@ The bot: settings.PICKIPEDIA_TODO_BOT_USER / _PASSWORD, a bot password
 (Special:BotPasswords) with "Edit existing pages" and "High-volume (bot)
 access", so its edits are marked a bot's -- the wiki feed and Recent changes
 leave them out by default. Unset, lists are ticked in magenta only, as before.
+It also writes the Moods' link ledgers (wiki_ledger), which needs "Create,
+edit, and move pages" too: each month's ledger is a new page.
 """
 
 import re
@@ -89,32 +91,74 @@ def _tick_waiting(title):
         tick(title, links)
 
 
+class Bot:
+    """The bot, signed in to PickiPedia's API: for ticks here, and the Moods' link ledger (wiki_ledger)."""
+
+    def __init__(self, http=None, purpose='to-do ticks'):
+        import requests
+        from .mood_view import pickipedia_url
+        self.http = http or requests.Session()
+        self.http.headers['User-Agent'] = f'memory-lane (magenta; {purpose})'
+        self.api = f'{pickipedia_url()}/api.php'
+
+    def login(self):
+        token = self.http.get(self.api, params={'action': 'query', 'meta': 'tokens', 'type': 'login', 'format': 'json'},
+                              timeout=10).json()['query']['tokens']['logintoken']
+        login = self.http.post(self.api, data={'action': 'login', 'lgname': settings.PICKIPEDIA_TODO_BOT_USER,
+                                               'lgpassword': settings.PICKIPEDIA_TODO_BOT_PASSWORD, 'lgtoken': token,
+                                               'format': 'json'}, timeout=10).json()
+        return (login.get('login') or {}).get('result') == 'Success'
+
+    def read(self, title):
+        """The page's current revision ({'revid', 'timestamp', 'slots'}), or None if there's no page."""
+        page = self.http.get(self.api, params={'action': 'query', 'prop': 'revisions', 'titles': title, 'rvslots': 'main',
+                                               'rvprop': 'content|ids|timestamp', 'formatversion': 2, 'format': 'json'},
+                             timeout=10).json()['query']['pages'][0]
+        return None if page.get('missing') else page['revisions'][0]
+
+    def edit(self, title, text, summary, revision=None, minor=False):
+        """Save `text` as the page, flagged a bot's: the API's answer. `revision` (as read()
+        gave it) makes a change since then a conflict; without one, the page must be new."""
+        csrf = self.http.get(self.api, params={'action': 'query', 'meta': 'tokens', 'format': 'json'},
+                             timeout=10).json()['query']['tokens']['csrftoken']
+        data = {'action': 'edit', 'title': title, 'text': text, 'token': csrf, 'bot': 1, 'summary': summary,
+                'format': 'json'}
+        if minor:
+            data['minor'] = 1
+        if revision:
+            data.update(nocreate=1, baserevid=revision['revid'], basetimestamp=revision['timestamp'])
+        else:
+            data['createonly'] = 1
+        return self.http.post(self.api, data=data, timeout=15).json()
+
+    def write(self, title, text, summary, create=True):
+        """Make the page say `text`: 'written', 'same' (it does already, or there's no page and
+        `create` is false), or 'refused'."""
+        for _ in range(3):  # again, if someone edited it meanwhile
+            revision = self.read(title)
+            if revision is None and not create:
+                return 'same'
+            if revision is not None and revision['slots']['main']['content'].strip() == text.strip():
+                return 'same'
+            done = self.edit(title, text, summary, revision)
+            if (done.get('edit') or {}).get('result') == 'Success':
+                return 'written'
+            if (done.get('error') or {}).get('code') not in ('editconflict', 'articleexists', 'missingtitle'):
+                return 'refused'
+        return 'refused'
+
+
 def tick(title, links, http=None, settle=1.5):
     """Mark the items linking `links` done on the wiki, in one edit; True if an edit was made and stayed."""
     import time
-    import requests
-    from .mood_view import pickipedia_url
     links = [links] if isinstance(links, str) else list(links)
-    http = http or requests.Session()
-    http.headers['User-Agent'] = 'memory-lane (magenta; to-do ticks)'
-    api = f'{pickipedia_url()}/api.php'
-    token = http.get(api, params={'action': 'query', 'meta': 'tokens', 'type': 'login', 'format': 'json'},
-                     timeout=10).json()['query']['tokens']['logintoken']
-    login = http.post(api, data={'action': 'login', 'lgname': settings.PICKIPEDIA_TODO_BOT_USER,
-                                 'lgpassword': settings.PICKIPEDIA_TODO_BOT_PASSWORD, 'lgtoken': token,
-                                 'format': 'json'}, timeout=10).json()
-    if (login.get('login') or {}).get('result') != 'Success':
+    bot = Bot(http)
+    if not bot.login():
         return False
-
-    def read():
-        page = http.get(api, params={'action': 'query', 'prop': 'revisions', 'titles': title, 'rvslots': 'main',
-                                     'rvprop': 'content|ids|timestamp', 'formatversion': 2, 'format': 'json'},
-                        timeout=10).json()['query']['pages'][0]
-        return None if page.get('missing') else page['revisions'][0]
 
     edited = False
     for _ in range(3):  # again, if someone edited it meanwhile, or a tick didn't stay
-        revision = read()
+        revision = bot.read(title)
         if revision is None:
             return False
         text = revision['slots']['main']['content']
@@ -123,12 +167,7 @@ def tick(title, links, http=None, settle=1.5):
             new = ticked(new, link)
         if new == text:
             return edited  # all done, there
-        csrf = http.get(api, params={'action': 'query', 'meta': 'tokens', 'format': 'json'},
-                        timeout=10).json()['query']['tokens']['csrftoken']
-        done = http.post(api, data={'action': 'edit', 'title': title, 'text': new, 'token': csrf, 'bot': 1,
-                                    'minor': 1, 'nocreate': 1, 'baserevid': revision['revid'],
-                                    'basetimestamp': revision['timestamp'], 'format': 'json',
-                                    'summary': 'Merged, says GitHub: ' + ', '.join(links)}, timeout=15).json()
+        done = bot.edit(title, new, 'Merged, says GitHub: ' + ', '.join(links), revision, minor=True)
         if (done.get('edit') or {}).get('result') == 'Success':
             edited = True
             time.sleep(settle)  # then read it again: did every tick stay?
