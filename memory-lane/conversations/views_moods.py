@@ -579,7 +579,9 @@ def api_recent(request):
 
     ?since=<iso> (default: a day ago), ?limit= (at most RECENT_MAX). Read
     from the record; agents' progress lines between tool calls are left
-    out, or they would be all there is.
+    out, or they would be all there is. ?oldest=1: the first after `since`
+    instead, oldest first -- for reading a stretch through from its start,
+    a page at a time (moods.html, reading aloud from a message on).
     """
     from datetime import timedelta
     from django.utils import timezone
@@ -591,13 +593,15 @@ def api_recent(request):
         limit = min(max(int(request.GET.get('limit', RECENT_MAX)), 1), RECENT_MAX)
     except ValueError:
         limit = RECENT_MAX
+    oldest = request.GET.get('oldest') == '1'
+    order = 'created_at' if oldest else '-created_at'
     names = known_names()
     agents = set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
     titles = dict(Mood.objects.values_list('slug', 'title'))
     events = []
 
     said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since)
-            .exclude(sender_id__in=MACHINERY_SENDERS).order_by('-created_at')[:RECENT_SCAN])
+            .exclude(sender_id__in=MACHINERY_SENDERS).order_by(order)[:RECENT_SCAN])
     for msg in said:
         if msg.sender_id not in names:
             continue
@@ -612,19 +616,19 @@ def api_recent(request):
             break
 
     for msg in (Message.objects.filter(source_file='mood-rename', created_at__gt=since)
-                .order_by('-created_at')[:limit]):
+                .order_by(order)[:limit]):
         content = msg.content if isinstance(msg.content, dict) else {}
         events.append({'kind': 'renamed', 'at': msg.created_at.isoformat(), 'mood': msg.mood_slug,
                        'who': content.get('by', ''), 'text': f"{(content.get('from') or {}).get('title', '')} → "
                                                              f"{(content.get('to') or {}).get('title', '')}"})
 
-    for row in Setting.objects.filter(created_at__gt=since).order_by('-created_at')[:limit]:
+    for row in Setting.objects.filter(created_at__gt=since).order_by(order)[:limit]:
         value = row.value if not isinstance(row.value, dict) else (row.value.get('mode') or row.value)
         events.append({'kind': 'set', 'at': row.created_at.isoformat(), 'mood': mood_slug(row.mood_id),
                        'who': row.set_by_id or '', 'text': f"{row.key} for {row.agent_id or 'every agent'}: {value}"[:140]})
 
     told = set()  # a redeploy is announced in several Moods; list it once
-    for row in (Message.objects.filter(source_file='deploy', created_at__gt=since).order_by('-created_at')
+    for row in (Message.objects.filter(source_file='deploy', created_at__gt=since).order_by(order)
                 .values('id', 'content', 'created_at', 'timestamp')[:limit * 10]):
         c = row['content'] if isinstance(row['content'], dict) else {}
         key = (c.get('server'), c.get('state'), row['created_at'].replace(microsecond=0).isoformat()[:18])
@@ -639,11 +643,11 @@ def api_recent(request):
                        'state': c.get('state', ''),
                        'text': f"{c.get('server')} {verb}" + (f" · {c['commit'][:8]}" if c.get('commit') else '')})
 
-    for mood in Mood.objects.filter(created_at__gt=since).order_by('-created_at')[:limit]:
+    for mood in Mood.objects.filter(created_at__gt=since).order_by(order)[:limit]:
         events.append({'kind': 'opened', 'at': mood.created_at.isoformat(), 'mood': mood.slug, 'who': '',
                        'text': mood.title or mood.slug})
 
-    events.sort(key=lambda e: e['at'], reverse=True)
+    events.sort(key=lambda e: e['at'], reverse=not oldest)
     for e in events:
         e['title'] = titles.get(e['mood'], e['mood'] or 'every Mood')
     return JsonResponse({'events': events[:limit]})

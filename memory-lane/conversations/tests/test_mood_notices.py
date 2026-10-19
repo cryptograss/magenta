@@ -62,6 +62,22 @@ class NoticesTest(TestCase):
         self.assertNotIn('Working on it:', [e.get('text') for e in events])  # progress lines are left out
         self.assertEqual(next(e for e in events if e['kind'] == 'said')['title'], 'Magenta 26 Million')
 
+    def test_recent_oldest_first_reads_a_stretch_from_its_start(self):
+        # Reading aloud from a message on (moods.html readFrom): the first after `since`, in order,
+        # a page at a time -- newest first would give the end of a long stretch, and lose its start.
+        from datetime import timedelta
+        from django.utils import timezone
+        start = timezone.now() - timedelta(hours=1)
+        said = [self.add(self.skyler, f'line {i}', seconds=i) for i in range(35)]
+        for i, m in enumerate(said):
+            Message.objects.filter(id=m.id).update(created_at=start + timedelta(seconds=i))
+        since = (start - timedelta(seconds=1)).isoformat()
+        page = self.client.get('/api/moods/recent/', {'since': since, 'oldest': '1'}).json()['events']
+        self.assertEqual([e['text'] for e in page][:3], ['line 0', 'line 1', 'line 2'])
+        self.assertEqual(len(page), 30)
+        newest = self.client.get('/api/moods/recent/', {'since': since}).json()['events']
+        self.assertEqual(next(e for e in newest if e['kind'] == 'said')['text'], 'line 34')  # as before, without it
+
     def test_search_finds_what_was_said_here_or_anywhere(self):
         self.add(self.justin, 'Who has the CAPO tonight?', seconds=1)
         self.add(self.skyler, 'the capo is in the van', mood=self.dk, seconds=2)
