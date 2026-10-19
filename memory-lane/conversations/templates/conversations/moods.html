@@ -804,6 +804,26 @@
                  color: var(--muted); cursor: pointer; padding: 2px 7px; }
   .turn .speak:hover, .turn .speak.playing, .aturn > .speak:hover, .aturn > .speak.playing { color: var(--accent); border-color: var(--accent); }
   .turn .speak.directed::after { content: ' ✦'; }
+  /* ⏩ beside ▶: read from this message on (readFrom). Where ▶ is, it is: on a message that
+     follows on, at its right under the small ▶; on a touch screen, floating beside ▶. */
+  .turn .readfrom { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 3px; opacity: .55; }
+  .turn .readfrom:hover, .turn .readfrom:focus { opacity: 1; }
+  .turn .readfrom.mini { display: none; }
+  .turn.cont .readfrom.mini { display: inline-block; position: absolute; right: -21px; top: 38px; opacity: 0; }
+  .turn.cont:hover .readfrom.mini { opacity: .9; }
+  @media (hover: none) { .turn.cont .readfrom.mini { opacity: .45; } }
+  @media (pointer: coarse) {
+    .turn .readfrom { font-size: 15px; padding: 6px 10px; opacity: 1; color: var(--accent); }
+    .turn > .readfrom.dock, .turn.cont .readfrom.mini { position: sticky; top: 8px; z-index: 3; float: right; opacity: 1;
+      margin: 2px 0 4px 6px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg);
+      box-shadow: 0 1px 6px rgba(0,0,0,.12); }
+  }
+  #readFromMenu { position: fixed; z-index: 60; background: var(--bg, #fff); border: 1px solid var(--line); border-radius: 8px;
+                  box-shadow: 0 4px 16px rgba(0,0,0,.15); padding: 4px; display: flex; flex-direction: column; min-width: 150px; }
+  #readFromMenu[hidden] { display: none; }
+  #readFromMenu .head { font-size: 11px; color: var(--muted); padding: 2px 8px; }
+  #readFromMenu button { font: inherit; font-size: 14px; text-align: left; border: 0; background: none; color: var(--ink); padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+  #readFromMenu button:hover { background: var(--code); }
   .turn .voices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .turn .voices .speak { font-size: 12px; padding: 3px 9px; }
   .turn .speak.busy { cursor: progress; opacity: .6; }
@@ -1512,7 +1532,9 @@
     const memo = /<audio /.test(t.html);  // a voice memo: ▶ plays the recording itself
     const title = memo ? 'Play the voice memo' : t.voiced ? 'Read aloud, as its writer directed' : 'Read aloud';
     return `<button type="button" class="speak${mini ? ' mini' : ''}${t.voiced && !memo ? ' directed' : ''}" data-id="${esc(t.id)}"`
-      + ` title="${title}" aria-label="${title}">▶</button>`;
+      + ` title="${title}" aria-label="${title}">▶</button>`
+      + `<button type="button" class="readfrom${mini ? ' mini' : ''}" data-id="${esc(t.id)}" title="Read from here on: this and everything after it"`
+      + ` aria-label="Read from here on" aria-haspopup="menu">⏩</button>`;
   }
   let speaking = null;  // {audio, button}
   // How fast it's read, for this listener: the browser's playback rate, pitch kept.
@@ -1539,11 +1561,17 @@
       return asked.get(i);
     };
   }
-  function stopSpeaking() {
+  // A message's own ▶ holds reading-as-they-come while it plays (one voice at a time),
+  // and lets it go on when it's done or stopped -- unless reading was paused already, or
+  // is paused meanwhile (the lock screen's ⏸). Before, the hold stayed: every message
+  // after waited for a press (Justin, 19 Oct, on his bike).
+  let speakHeld = false;
+  function stopSpeaking(another) {
     if (!speaking) return;
     speaking.audio.pause();
     speaking.button.classList.remove('playing'); speaking.button.textContent = speaking.button.dataset.label || '▶';
     speaking = null;
+    if (speakHeld && !another) { speakHeld = false; holdRead(false); }
   }
   let speakAsk = 0;  // the newest ▶ pressed: only it may play, when its audio arrives
   document.addEventListener('click', async e => {
@@ -1551,8 +1579,8 @@
     if (!b) return;
     if (b.classList.contains('busy')) return;  // already on its way: a second press would play it twice
     if (speaking && speaking.button === b) { stopSpeaking(); return; }
-    stopSpeaking();
-    if (readMode !== 'off') holdRead(true);  // one voice at a time: reading as they come waits (▶ on its bar goes on)
+    stopSpeaking(true);
+    if (readMode !== 'off' && !readHeld) { holdRead(true); speakHeld = true; }  // one voice at a time: reading waits while this plays
     const ask = ++speakAsk;
     // A voice memo is heard as it was spoken: ▶ plays the recording, never a voice reading its transcript.
     const memo = b.closest('.turn')?.querySelector('.body audio');
@@ -2152,7 +2180,7 @@
     // On a touch screen ▶ floats at the message's right, kept in sight while any of it is (.dock).
     // (A follow-on message has its own, the mini, kept in sight the same way.)
     if (voiceOn && viewer && !t.deleted && !COARSE) el.querySelector('.who').insertAdjacentHTML('beforeend', speakButton(t, false));
-    else if (voiceOn && viewer && !t.deleted && !cont) el.insertAdjacentHTML('afterbegin', speakButton(t, false).replace('class="speak', 'class="speak dock'));
+    else if (voiceOn && viewer && !t.deleted && !cont) el.insertAdjacentHTML('afterbegin', speakButton(t, false).replace('class="speak', 'class="speak dock').replace('class="readfrom', 'class="readfrom dock'));
     if (voiceOn && viewer && (t.voices || []).length) {  // several voice blocks: a ▶ for each, by its voice
       el.insertAdjacentHTML('beforeend', '<div class="voices">' + t.voices.map((v, i) =>
         `<button type="button" class="speak part" data-id="${esc(t.id)}" data-part="${i}" data-label="▶ ${esc(v)}" title="Read aloud: part ${i + 1}">▶ ${esc(v)}</button>`).join('') + '</div>');
@@ -5116,6 +5144,7 @@
   const readPause = document.getElementById('readPause');
   const reader = new Audio();
   const READ_EVERY_MS = 5000;
+  const READ_PAGE = 30;  // what /api/moods/recent/ gives at most (views_moods.RECENT_MAX)
   const MEMO_AUDIO = /^🎙 \[voice memo[^\]]*\]\((\/moods\/media\/[0-9a-f]{64}\.[a-z0-9]+)\)/;
   const readQueue = [], readHeard = new Set();
   let readMode = 'off', readSinceMs = 0, readLast = null, readNow = null, readHeld = false, readBlocked = false, readWhy = '';
@@ -5140,13 +5169,31 @@
   readSpeedSel.addEventListener('change', () => setReadSpeed(+readSpeedSel.value));
   readSpeedBtn.addEventListener('click', () => setReadSpeed(READ_SPEEDS[(READ_SPEEDS.indexOf(readSpeed) + 1) % READ_SPEEDS.length]));
 
+  // Where reading has got to, kept in this browser: the moment before the first thing not yet
+  // read, and what's been read since. A page reloaded -- a phone discards one in the background --
+  // goes on from there, rather than from now with what was waiting lost. Kept six hours.
+  const READ_PLACE_MS = 6 * 3600e3;
+  function saveReadPlace() {
+    if (readMode === 'off') { store.set('readPlace', null); return; }
+    const waiting = [readNow && readNow.item, ...readQueue].filter(i => i && i.at && i.id);
+    const since = waiting.length ? Math.min(...waiting.map(i => new Date(i.at).getTime())) - 1 : readSinceMs;
+    const unread = new Set(waiting.map(i => i.id));
+    store.set('readPlace', { since, heard: [...readHeard].filter(id => !unread.has(id)).slice(-400), at: Date.now() });
+  }
+  function restoreReadPlace() {
+    const place = store.get('readPlace', null);
+    if (!place || !place.since || Date.now() - place.at > READ_PLACE_MS) return;
+    readSinceMs = place.since;
+    (place.heard || []).forEach(id => readHeard.add(id));
+  }
   function setReadMode(mode) {
     readMode = mode;
     store.set('readAll', mode);
     readSel.value = mode;
-    if (mode === 'off') { readQueue.length = 0; readBlocked = false; skipClip(); readNow = null; readHeld = false; readLast = null; }
+    if (mode === 'off') { readQueue.length = 0; readBlocked = false; skipClip(); readNow = null; readHeld = false; readLast = null; readSinceMs = 0; }
     else if (!readSinceMs) readSinceMs = Date.now() - 15000;  // from now: what was said before isn't news
     keepAwake(mode !== 'off' && !readHeld);
+    saveReadPlace();
     renderReadBar();
   }
   readSel.addEventListener('change', () => { readBlocked = false; setReadMode(readSel.value); readPoll(); });
@@ -5155,7 +5202,7 @@
     if (readMode === 'off' || !readSinceMs) return;
     let events;
     try {
-      const r = await fetch('/api/moods/recent/?since=' + encodeURIComponent(new Date(readSinceMs).toISOString()));
+      const r = await fetch('/api/moods/recent/?oldest=1&since=' + encodeURIComponent(new Date(readSinceMs).toISOString()));
       if (!r.ok) return;
       events = (await r.json()).events || [];
     } catch (e) { return; }
@@ -5166,12 +5213,48 @@
     const fresh = events.filter(e => (said(e) || redeployed(e)) && e.id && !readHeard.has(e.id))
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     for (const e of fresh) { readHeard.add(e.id); readQueue.push(e); }
+    if (fresh.length) saveReadPlace();
     // Next time from a minute before the newest: a clock a little off misses nothing, and ids keep it once.
+    // A full page (reading a stretch through from a message): on from its last, or it would ask the same again.
     const newest = Math.max(0, ...events.map(e => new Date(e.at).getTime() || 0));
-    if (newest - 60000 > readSinceMs) readSinceMs = newest - 60000;
+    if (events.length >= READ_PAGE) readSinceMs = Math.max(readSinceMs, newest - 1);
+    else if (newest - 60000 > readSinceMs) readSinceMs = newest - 60000;
     readNext();
   }
   setInterval(readPoll, READ_EVERY_MS);
+
+  // Read from a message on: it, and everything said after it, people's and agents' -- here, or
+  // in every Mood -- then on as they come (Justin, 19 Oct: "start here and read everything forward").
+  // What was queued goes and what's playing stops; nothing's skipped for having been heard before.
+  function readFrom(id, everywhere) {
+    const at = document.querySelector(`#m-${CSS.escape(id)} time`)?.getAttribute('datetime');
+    if (!at) return;
+    if (speaking) { speakHeld = false; stopSpeaking(); }
+    readQueue.length = 0; readHeard.clear();
+    if (readNow) { readNow.skipped = true; readNow = null; reader.pause(); endClip('skipped'); }
+    readBlocked = false; readWhy = ''; readLast = null; readHeld = false;
+    readSinceMs = new Date(at).getTime() - 1;
+    setReadMode(everywhere ? 'everywhere' : 'here');
+    renderReadBar(everywhere ? '🔊 reading every Mood from there…' : '🔊 reading from there…');
+    readPoll();
+  }
+  const readFromMenu = document.createElement('div');
+  readFromMenu.id = 'readFromMenu'; readFromMenu.hidden = true; readFromMenu.setAttribute('role', 'menu');
+  readFromMenu.innerHTML = '<div class="head">Read from here on</div>'
+    + '<button type="button" role="menuitem" data-where="here">in this Mood</button>'
+    + '<button type="button" role="menuitem" data-where="everywhere">in every Mood</button>';
+  document.body.appendChild(readFromMenu);
+  document.addEventListener('click', e => {
+    const open = e.target.closest('.turn .readfrom');
+    const pick = e.target.closest('#readFromMenu button');
+    if (pick) { readFromMenu.hidden = true; readFrom(readFromMenu.dataset.id, pick.dataset.where === 'everywhere'); return; }
+    if (!open) { readFromMenu.hidden = true; return; }
+    const box = open.getBoundingClientRect();
+    readFromMenu.dataset.id = open.dataset.id;
+    readFromMenu.hidden = false;
+    readFromMenu.style.top = Math.min(box.bottom + 4, innerHeight - readFromMenu.offsetHeight - 8) + 'px';
+    readFromMenu.style.left = Math.max(8, Math.min(box.right - readFromMenu.offsetWidth, innerWidth - readFromMenu.offsetWidth - 8)) + 'px';
+  });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) readPoll(); });  // looked at: anything new, now
 
   let clipError = '';  // why the last clip didn't play, for the bar and the report
@@ -5252,7 +5335,9 @@
   async function readNext() {
     if (readNow || readHeld || readRecording || readBlocked || readMode === 'off' || !readQueue.length) { renderReadBar(); return; }
     const item = readQueue.shift();
-    if (item.kind === 'thinking' && (liveData[item.mood] || {}).busy !== item.agent) { readNext(); return; }  // done before its turn came
+    // "X is thinking" only as the latest news: when nothing else is waiting, it says something's
+    // coming. With more to hear, or its answer already in, it's left out (Justin, 19 Oct).
+    if (item.kind === 'thinking' && ((liveData[item.mood] || {}).busy !== item.agent || readQueue.length)) { readNext(); return; }
     const now = readNow = { item, skipped: false };
     renderReadBar();
     const memo = (item.text || '').match(MEMO_AUDIO);  // heard as recorded: only who's speaking needs saying
@@ -5323,6 +5408,7 @@
     if (item.kind === 'deploy') readLast = null;  // after the news, whoever speaks next is said again
     else if (item.kind !== 'thinking') readLast = { who: item.who, mood: item.mood };  // its answer still says who speaks
     readNow = null;
+    saveReadPlace();
     readNext();
   }
 
@@ -5355,7 +5441,7 @@
   document.getElementById('readQueue').addEventListener('click', e => {
     if (e.target.closest('.more')) { readQueueOpen = !readQueueOpen; renderReadQueue(); return; }
     const drop = e.target.closest('.drop');
-    if (drop) { readQueue.splice(+drop.dataset.i, 1); renderReadBar(); return; }  // heard ids keep it from coming back
+    if (drop) { readQueue.splice(+drop.dataset.i, 1); saveReadPlace(); renderReadBar(); return; }  // heard ids keep it from coming back
     const say = e.target.closest('.say');
     if (!say) return;
     const item = +say.dataset.i < 0 ? readNow && readNow.item : readQueue[+say.dataset.i];
@@ -5395,11 +5481,11 @@
     const handle = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {} };
     // A ▶ pressed on one message is what's playing, if anything: those buttons stop it.
     handle('play', () => { if (speaking) return; readBlocked = false; readWhy = ''; holdRead(false); });
-    handle('pause', () => { if (speaking) { stopSpeaking(); return; } holdRead(true); });
+    handle('pause', () => { if (speaking) { speakHeld = false; stopSpeaking(); return; } holdRead(true); });
     handle('nexttrack', () => { if (speaking) { stopSpeaking(); return; } skipClip(); });
-    handle('stop', () => { if (speaking) { stopSpeaking(); return; } setReadMode('off'); });
+    handle('stop', () => { if (speaking) { speakHeld = false; stopSpeaking(); return; } setReadMode('off'); });
   }
-  if (voiceOn && viewer && ['here', 'everywhere'].includes(store.get('readAll', 'off'))) setReadMode(store.get('readAll'));
+  if (voiceOn && viewer && ['here', 'everywhere'].includes(store.get('readAll', 'off'))) { restoreReadPlace(); setReadMode(store.get('readAll')); }
 
   function csrf() {
     const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
