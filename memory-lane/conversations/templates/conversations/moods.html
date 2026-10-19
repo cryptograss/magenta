@@ -115,6 +115,16 @@
   #wikiPreview img { width: 72px; height: 72px; object-fit: cover; border-radius: 4px; flex: none; }
   #wikiPreview pre.art { margin: 0; flex: none; font-size: 1.7px; line-height: 1.05; letter-spacing: 0; color: var(--ink);
                          font-family: ui-monospace, Menlo, Consolas, monospace; }
+  /* Each server's portrait for the mode: the dark one (its page's image_dark, drawn for a dark ground)
+     in the dark, the light one in the light (Justin, 18-19 Oct). A portrait with no dark one is dark
+     marks on a light ground, and the dark would turn it into its own negative: there, a light tile. */
+  #serverPop pre.art.for-dark { display: none; }
+  @media (prefers-color-scheme: dark) {
+    #serverPop pre.art.for-dark { display: block; }
+    #serverPop pre.art.for-light { display: none; }
+    #serverPop pre.art:not(.for-dark):not(.for-light), #wikiPreview pre.art {
+      color: #161417; background: #d6cfc6; border-radius: 3px; padding: 2px; }
+  }
   #wikiPreview p { margin: 4px 0 0; }
   #wikiPreview dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; font-size: 11.5px; }
   #wikiPreview dt { color: var(--muted); }
@@ -2588,6 +2598,23 @@
     }).join('');
     if (!serverPop.hidden) renderServerPop();
   }
+  // A server's portrait, light and dark where its page has both. The light one as it always was
+  // (2.6px, #serverPop pre.art); the dark one, a drawing of its own (maybelle's: 50 columns, the
+  // light 142), fitted inside the light one's box, so the popover doesn't jump between modes.
+  const ART_PX = 2.6;
+  function artBox(art) {
+    const lines = art.split('\n');
+    return { cols: Math.max(...lines.map(l => [...l].length), 1), rows: lines.length };
+  }
+  function portraits(sv) {
+    const pre = (art, cls, px) => `<pre class="art${cls ? ' ' + cls : ''}" aria-hidden="true"`
+      + `${px ? ` style="font-size:${px.toFixed(2)}px"` : ''}>${esc(art)}</pre>`;
+    if (!sv.art_dark) return sv.art ? pre(sv.art) : '';
+    if (!sv.art) return pre(sv.art_dark);
+    const light = artBox(sv.art), dark = artBox(sv.art_dark);
+    const px = ART_PX * Math.min(light.rows / dark.rows, light.cols / dark.cols);
+    return pre(sv.art, 'for-light') + pre(sv.art_dark, 'for-dark', px);
+  }
   function renderServerPop() {
     serverPop.innerHTML = serverList.map(sv => {
       const d = sv.deploy;
@@ -2595,7 +2622,7 @@
         : `${d.state === 'failed' ? 'redeploy failed' : 'redeployed'} ${ago(d.at)}${d.commit ? ' · ' + d.commit.slice(0, 8) : ''}`) : 'no redeploy told yet';
       const logLink = d && d.state !== 'started' ? deployLog(d.note) : '';
       const name = sv.url ? `<a href="${esc(sv.url)}" target="_blank" rel="noopener" title="${esc(sv.name)} on PickiPedia"><b>${esc(sv.name)}</b></a>` : `<b>${esc(sv.name)}</b>`;
-      return `<div>${sv.art ? `<pre class="art" aria-hidden="true">${esc(sv.art)}</pre>` : ''}<span>${name}`
+      return `<div>${portraits(sv)}<span>${name}`
         + `${sv.role ? ` <span class="role">${esc(sv.role)}</span>` : ''} · ${sv.deploying ? 'redeploying' : sv.up ? 'up' : '<b>not answering</b>'}`
         + `<br><span class="note">${esc(sv.about)} · ${esc(last)}${logLink}</span></span></div>`;
     }).join('');

@@ -148,9 +148,10 @@ class ServersTest(TestCase):
     def test_a_servers_card_comes_from_its_pickipedia_page(self):
         from django.core.cache import cache
         mock.patch.stopall()
-        cache.delete('server-card:Cryptograss:Hunter')
+        cache.delete('server-card2:Cryptograss:Hunter')
         page = {'query': {'pages': [{'revisions': [{'slots': {'main': {'content': (
-            '{{Infobox resource\n| image = <pre style="font-size:5px">\n  ▓▒▒\n ▒▒▒▒\n</pre>\n'
+            '<proposed by="Magent">\n{{Infobox resource\n| image_dark = <pre style="font-size:5px">\n &&..\n&...&\n</pre>\n'
+            '| image = <pre style="font-size:5px">\n  ▓▒▒\n ▒▒▒▒\n</pre>\n'
             '| role = the storyteller\n| type = Server\n}}\nHunter is...')}}}]}]}}
         answer = mock.Mock(json=lambda: page)
         hunter = servers.SERVERS[0]
@@ -159,8 +160,9 @@ class ServersTest(TestCase):
             self.assertEqual(servers.wiki_card(hunter), card)  # kept: asked once
         self.assertEqual(get.call_count, 1)
         self.assertEqual(card, {'url': 'https://pickipedia.xyz/wiki/Cryptograss:Hunter', 'role': 'the storyteller',
-                                'art': '  ▓▒▒\n ▒▒▒▒'})
-        self.assertEqual(servers.wiki_card(servers.SERVERS[3]), {'url': 'https://pickipedia.xyz/', 'role': '', 'art': ''})
+                                'art': '  ▓▒▒\n ▒▒▒▒', 'art_dark': ' &&..\n&...&'})  # each its own, the dark one first
+        self.assertEqual(servers.wiki_card(servers.SERVERS[3]),
+                         {'url': 'https://pickipedia.xyz/', 'role': '', 'art': '', 'art_dark': ''})
 
     def deploy(self, body, key='d' * 40):
         return self.client.post('/api/deploys/', json.dumps(body), content_type='application/json',
