@@ -874,7 +874,12 @@
   /* Folded, all the agents are one line: each one's pie, model and effort in its colour; ▸ opens their menus. */
   .hush .fold { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 2px; }
   .hush .fold:hover { color: var(--accent); }
-  .hush .agent.gist { color: var(--who); cursor: pointer; margin-right: 6px; }
+  /* Each reads as a menu (Sky, 16 Oct: memory-lane#201): boxed like the menus it opens into, a caret after it. */
+  .hush .agent.gist { color: var(--who); cursor: pointer; margin-right: 6px; background: var(--panel);
+                      border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+  .hush .agent.gist::after { content: ' ▾'; color: var(--muted); }
+  .hush .agent.gist:hover { border-color: var(--who); }
+  .hush .agent.gist:hover::after { color: var(--who); }
   /* No pie yet (it hasn't spoken here): a dot of its colour leads instead. */
   .hush .agent.gist:not(:has(.pie))::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%;
                                               background: var(--who); margin-right: 4px; }
