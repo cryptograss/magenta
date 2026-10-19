@@ -22,9 +22,10 @@ from django.views.decorators.http import require_GET, require_POST
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, faces, push, servers, wiki_auth, wiki_feed, wiki_upload
 from .services import agent_commands, mood_auth
+from .services.mood_view import agent_names, turn_tools  # which tools an agent's turn had
 from .services.mood_view import (
     from_wiki_tier,
-    MACHINERY_SENDERS, agent_names, how_payload, turn_tools, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
+    MACHINERY_SENDERS, how_payload, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
     prose, render_html, step_detail, step_images, step_payload, timeline, turn_payload, turns, wiki_title, wikilinks_in,
 )
 
