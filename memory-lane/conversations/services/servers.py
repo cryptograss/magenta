@@ -30,6 +30,8 @@ SERVERS = [
 ]
 CARD_FOR = 6 * 3600       # seconds a server's PickiPedia card (art, role) is kept
 _INFOBOX_ART = re.compile(r'\|\s*image\s*=\s*<pre[^>]*>\n?(.*?)</pre>', re.S)
+# Its portrait drawn for a dark ground (light marks where the photo is light): beside `image`.
+_INFOBOX_ART_DARK = re.compile(r'\|\s*image_dark\s*=\s*<pre[^>]*>\n?(.*?)</pre>', re.S)
 _INFOBOX_ROLE = re.compile(r'\|\s*role\s*=\s*([^\n|]+)')
 NAMES = [s['name'] for s in SERVERS]
 STATES = ('started', 'finished', 'failed')
@@ -69,18 +71,19 @@ def page_url(name):
 
 
 def wiki_card(server):
-    """{'url', 'role', 'art'} from a server's PickiPedia page: the ASCII art
-    and role in its infobox, so the dots' popover shows what the wiki does.
+    """{'url', 'role', 'art', 'art_dark'} from a server's PickiPedia page: the ASCII art
+    and role in its infobox, so the dots' popover shows what the wiki does. art_dark is
+    the portrait drawn for dark mode (`image_dark`), '' where the page has none.
     Kept six hours; a wiki that doesn't answer leaves just the link."""
     from conversations.services.mood_view import pickipedia_url
     base, title = pickipedia_url(), server.get('page') or ''
     url = f"{base}/wiki/{title.replace(' ', '_')}" if title else f'{base}/'
     if not title:
-        return {'url': url, 'role': '', 'art': ''}
-    key = f'server-card:{title}'
+        return {'url': url, 'role': '', 'art': '', 'art_dark': ''}
+    key = f'server-card2:{title}'  # 2: with art_dark
     card = cache.get(key)
     if card is None:
-        card = {'url': url, 'role': '', 'art': ''}
+        card = {'url': url, 'role': '', 'art': '', 'art_dark': ''}
         try:
             import requests
             page = requests.get(f'{base}/api.php', timeout=5, headers={'User-Agent': 'memory-lane (magenta)'},
@@ -89,6 +92,8 @@ def wiki_card(server):
             text = page['query']['pages'][0]['revisions'][0]['slots']['main']['content']
             art, role = _INFOBOX_ART.search(text), _INFOBOX_ROLE.search(text)
             card['art'] = art.group(1).strip('\n').rstrip() if art else ''
+            dark = _INFOBOX_ART_DARK.search(text)
+            card['art_dark'] = dark.group(1).strip('\n').rstrip() if dark else ''
             card['role'] = role.group(1).strip() if role else ''
             cache.set(key, card, CARD_FOR)
         except Exception:
