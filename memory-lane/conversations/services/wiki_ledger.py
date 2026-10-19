@@ -15,12 +15,10 @@ flagged a bot's): what the record says now, so a message deleted or edited
 here drops out there at the next look, and an edit made on the wiki is
 overwritten. No scheduler: the runner's pulse nudges this, and it looks at
 most every LOOK_EVERY seconds, at the months of messages new or changed since
-its last look; every SWEEP_EVERY, at every month.
-
-A message waits GRACE before it's written there. The wiki's history keeps
-every revision, beyond what taking a message back here (services/retract.py)
-can reach; an hour is the time to take back something pasted by mistake, and
-for the scrubber to find a secret, before the wiki hears of it.
+its last look (a little before, for one committed late); every SWEEP_EVERY, at
+every month. A message reaches the wiki within a minute of being said
+(Justin, 19 Oct: "ASAP is good"), and the wiki's history keeps it after
+magenta takes it back -- a revision there can be hidden by a sysop.
 """
 
 import re
@@ -31,8 +29,8 @@ import yaml
 from django.core.cache import cache
 
 MAGENTA = 'https://magenta.cryptograss.live'
-GRACE = 3600          # seconds a message waits before it's written to the wiki
-LOOK_EVERY = 300      # seconds between looks at what's new
+LOOK_EVERY = 30       # seconds between looks at what's new
+OVERLAP = timedelta(minutes=2)  # each look starts this much before the last one ended
 SWEEP_EVERY = 86400   # seconds between looks at every month
 WORDS = 120           # characters of a message's first words
 _THROUGH = 'wiki-ledger:through'  # the moment messages are ledgered up to
@@ -140,10 +138,11 @@ def look(http=None, now=None):
     from conversations.models import Mood
     from . import todo_ticks
     now = now or datetime.now(timezone.utc)
-    until = now - timedelta(seconds=GRACE)
+    until = now
     through = cache.get(_THROUGH)
     sweep = through is None or cache.get(_SWEPT) is None
-    touched = months_touched(None if sweep else through, until, None if sweep else through - timedelta(minutes=10))
+    since = None if sweep else through - OVERLAP
+    touched = months_touched(since, until, since)
     done = {}
     if touched:
         moods = {m.id: m for m in Mood.objects.filter(id__in={mood for mood, _ in touched})}

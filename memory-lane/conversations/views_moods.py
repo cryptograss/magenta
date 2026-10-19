@@ -350,7 +350,7 @@ def api_pulse(request):
     archived = knobs.archived_slugs()
     wiki_feed.nudge()  # asked every second by the runner: the wiki feed's clock (at most once a minute)
     push.nudge()       # and the push clock: notices to send to closed pages (at most every 10 s)
-    wiki_ledger.nudge()  # and the Moods' links, written to PickiPedia (at most every 5 minutes)
+    wiki_ledger.nudge()  # and the Moods' links, written to PickiPedia (at most every 30 s)
     moods = []
     for mood in Mood.objects.all():
         said = mood.messages.filter(is_sidechain=False).exclude(sender_id__in=MACHINERY_SENDERS)

@@ -91,13 +91,17 @@ class LedgerTest(TestCase):
             self.assertEqual(edit['bot'], 1)
             self.assertEqual(edit['createonly'], 1)  # new pages: made, never a page someone else just made
 
-    def test_a_message_waits_an_hour_before_the_wiki_hears_of_it(self):
-        self.say(self.justin, self.m26, '[[Bill Monroe]]', NOW - timedelta(minutes=59))
+    def test_a_message_just_said_is_written_at_the_next_look(self):
+        self.say(self.justin, self.m26, '[[Bill Monroe]]', NOW - timedelta(seconds=5))
         wiki = Wiki()
-        self.assertEqual(wiki_ledger.look(http=wiki, now=NOW), {})
-        self.assertEqual(wiki.edits, [])
-        later = wiki_ledger.look(http=wiki, now=NOW + timedelta(minutes=2))
-        self.assertEqual(list(later.values()), ['written'])
+        self.assertEqual(list(wiki_ledger.look(http=wiki, now=NOW).values()), ['written'])
+
+    def test_one_committed_late_is_still_seen(self):
+        wiki = Wiki()
+        wiki_ledger.look(http=wiki, now=NOW)
+        # Stamped before the last look ended, but only in the database after it.
+        self.say(self.justin, self.m26, '[[Bill Monroe]]', NOW - timedelta(seconds=20))
+        self.assertEqual(list(wiki_ledger.look(http=wiki, now=NOW + timedelta(seconds=30)).values()), ['written'])
 
     def test_a_page_already_saying_it_is_left_alone(self):
         self.say(self.justin, self.m26, '[[Bill Monroe]]', datetime(2026, 10, 2, tzinfo=timezone.utc))
@@ -111,8 +115,8 @@ class LedgerTest(TestCase):
         self.say(self.justin, self.m26, '[[Bill Monroe]]', datetime(2026, 9, 2, tzinfo=timezone.utc))
         wiki = Wiki()
         wiki_ledger.look(http=wiki, now=NOW)
-        self.say(self.justin, self.jams, '[[Jam:Friday]]', NOW - timedelta(minutes=50))
-        self.assertEqual(wiki_ledger.look(http=wiki, now=NOW + timedelta(minutes=15)),
+        self.say(self.justin, self.jams, '[[Jam:Friday]]', NOW + timedelta(seconds=10))
+        self.assertEqual(wiki_ledger.look(http=wiki, now=NOW + timedelta(seconds=30)),
                          {'Cryptograss:Moods/jams/links/2026-10': 'written'})  # September not asked again
 
     def test_a_message_taken_back_leaves_the_ledger(self):
@@ -122,6 +126,7 @@ class LedgerTest(TestCase):
         wiki_ledger.look(http=wiki, now=NOW)
         Message.objects.filter(id=gone.id).update(content='')  # services/retract.py takes its words out
         MessageChange.objects.create(message=gone, mood=self.m26, kind='deleted', by='justin')
+        MessageChange.objects.filter(message=gone).update(at=NOW + timedelta(minutes=1))
         wiki_ledger.look(http=wiki, now=NOW + timedelta(minutes=5))
         self.assertEqual([r['page'] for r in rows_of(wiki.pages['Cryptograss:Moods/m26/links/2026-10'])], ['Tony Rice'])
 
@@ -131,6 +136,7 @@ class LedgerTest(TestCase):
         wiki_ledger.look(http=wiki, now=NOW)
         Message.objects.filter(id=gone.id).update(content='')
         MessageChange.objects.create(message=gone, mood=self.m26, kind='deleted', by='justin')
+        MessageChange.objects.filter(message=gone).update(at=NOW + timedelta(minutes=1))
         wiki_ledger.look(http=wiki, now=NOW + timedelta(minutes=5))
         self.assertEqual(rows_of(wiki.pages['Cryptograss:Moods/m26/links/2026-10']), [])
 
@@ -161,7 +167,7 @@ class LedgerTest(TestCase):
     def test_no_bot_no_looks(self):
         self.assertFalse(wiki_ledger.nudge())
 
-    def test_looks_at_most_every_five_minutes(self):
+    def test_looks_at_most_every_thirty_seconds(self):
         with mock.patch.object(wiki_ledger, 'look') as look, \
                 mock.patch.object(wiki_ledger.threading, 'Thread') as thread:
             self.assertTrue(wiki_ledger.nudge())
