@@ -86,7 +86,10 @@
   #userMenu #alerts { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
                       margin: 4px 0; padding-top: 8px; padding-bottom: 8px; }
   #userMenu #alerts[hidden] { display: none; }
-  #userMenu #alerts .head { color: var(--ink); font-size: 12px; margin-top: 2px; }
+  #userMenu #alerts .head { color: var(--ink); font-size: 12px; font-weight: 600; margin-top: 2px; }
+  #userMenu #alerts .hint { color: var(--muted); font-size: 12px; }
+  #userMenu #alerts .hint[hidden] { display: none; }
+  #userMenu #alerts.bell-off [data-tell] { opacity: .5; }  /* chosen, but nothing tells until the bell's on */
   #userMenu #alerts label[hidden] { display: none; }
   /* The servers: four dots, pulsing while one is being redeployed. */
   .servers { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
@@ -433,8 +436,11 @@
                                                   visibility: visible; border: 0; box-shadow: none; padding: 0; } }
   .turn .body.gone { color: var(--muted); font-style: italic; font-size: 13px; }
   /* Sent, not yet in the record: shown at once, faint, till the record has it (say). */
-  .turn.pending { opacity: .55; }
+  .turn.pending { opacity: .7; }
   .turn.pending .sending { font-size: 12px; color: var(--muted); font-style: italic; }
+  .turn.pending .sending::before { content: '⏳ '; font-style: normal; display: inline-block; animation: pend 1.2s ease-in-out infinite; }
+  @keyframes pend { 50% { opacity: .25; } }
+  .note.memo-note.busy { color: var(--ink); font-weight: 600; }
   .turn .editbox { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
                    background: var(--panel); color: var(--ink); resize: vertical; }
   .turn .editbar { margin-top: 4px; }
@@ -977,14 +983,14 @@
       <label class="me">viewing as <select id="me"><option value="">nobody</option></select></label>
       <label class="only"><input type="checkbox" id="onlyMine"> only mentions of me</label>
       <span class="textsize">text size <button type="button" data-step="-1" aria-label="Smaller text">A−</button><span id="textSizeVal">100%</span><button type="button" data-step="1" aria-label="Larger text">A+</button></span>
-      <button id="notify" type="button" hidden aria-label="Notifications"></button>
       <div id="alerts" hidden>
-        <span class="head">a sound for</span>
+        <span class="head">Sounds</span>
         <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
         <label><input type="checkbox" data-sound="agent-mention"> agents mentioning me</label>
         <label><input type="checkbox" data-sound="person"> every message from people</label>
         <label><input type="checkbox" data-sound="agent"> every message from agents</label>
-        <span class="head" id="tellHead">with the bell on, also tell me of</span>
+        <span class="head" id="tellHead">Notifications <button id="notify" type="button" hidden aria-label="Notifications"></button></span>
+        <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
         <label><input type="checkbox" data-tell="person"> every message from people</label>
         <label><input type="checkbox" data-tell="agent"> every message from agents</label>
       </div>
@@ -3078,7 +3084,8 @@
   }
   function renderBell() {
     bell.hidden = !me || !('Notification' in window);
-    bell.textContent = notifying() ? '🔔' : '🔕';
+    bell.textContent = notifying() ? '🔔 on' : '🔕 off';
+    document.getElementById('alerts').classList.toggle('bell-off', !notifying());
     const closed = pushable() ? ', even with magenta closed' : '';
     bell.title = notifying() ? `Notifying you of mentions and answers${closed} (click to stop)`
       : `Notify me of mentions, and when an agent answers me${closed}`;
@@ -3160,6 +3167,7 @@
     alertsBox.querySelectorAll('[data-sound]').forEach(i => { i.checked = !!sounds[i.dataset.sound]; });
     alertsBox.querySelectorAll('[data-tell]').forEach(i => { i.checked = !!tellAll[i.dataset.tell]; i.closest('label').hidden = !canTell; });
     document.getElementById('tellHead').hidden = !canTell;
+    document.getElementById('tellHint').hidden = !canTell;
   }
   alertsBox.addEventListener('change', e => {
     const box = e.target;
@@ -3314,7 +3322,9 @@
   }
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', e => {
-      if (e.data && e.data.open) openAndReveal(e.data.open, e.data.id);
+      if (!e.data || !e.data.open) return;
+      if (e.ports && e.ports[0]) e.ports[0].postMessage('opening');  // heard: the service worker needn't send us there
+      openAndReveal(e.data.open, e.data.id);
     });
   }
 
@@ -4831,6 +4841,28 @@
   const memoBtn = document.getElementById('memoBtn');
   const MEMO_MAX_S = 600;
   let recorder = null, memoTimer = null, memoSaving = false, memoThenSend = false;
+  let memoStarted = 0, memoPending = null;  // Send pressed before it's saved: its place in the thread, saying how far
+  // Up with XMLHttpRequest, not fetch: only it says how much has gone (a phone's minutes of memo take a while).
+  function postMemo(url, blob, progress) {
+    return new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open('POST', url);
+      x.setRequestHeader('X-CSRFToken', csrf());
+      x.upload.onprogress = e => { if (e.lengthComputable) progress(e.loaded / e.total); };
+      x.onload = () => {
+        let body = {};
+        try { body = JSON.parse(x.responseText); } catch (e) {}
+        resolve({ ok: x.status >= 200 && x.status < 300, status: x.status, body });
+      };
+      x.onerror = () => reject(new Error('the upload failed: is the connection down?'));
+      x.send(blob);
+    });
+  }
+  function memoStatus(text) {
+    composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
+    if (text) composer.insertAdjacentHTML('beforeend', `<span class="note memo-note busy">${esc(text)}</span>`);
+    if (memoPending) pendingSays(memoPending, text.replace(/^🎙 /, ''));
+  }
   if (voiceOn && viewer && window.MediaRecorder && navigator.mediaDevices) memoBtn.hidden = false;
   const clock = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
   memoBtn.addEventListener('click', async () => {
@@ -4842,6 +4874,7 @@
       .find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
     recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
     const chunks = [], started = Date.now();
+    memoStarted = started;
     recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
     recorder.addEventListener('stop', async () => {
       clearInterval(memoTimer);
@@ -4850,17 +4883,25 @@
       const seconds = (Date.now() - started) / 1000;
       recorder = null; memoSaving = true;
       memoBtn.classList.remove('recording'); memoBtn.classList.add('busy'); memoBtn.textContent = 'saving…';
+      memoStatus(`🎙 Saving your memo (${clock(seconds)})…`);
       let ready = false;
       try {
-        const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/memo/', {
-          method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: new Blob(chunks, { type: chunks[0]?.type || type || 'audio/webm' }) });
-        const body = await r.json().catch(() => ({}));
+        const r = await postMemo('/api/moods/' + encodeURIComponent(current) + '/memo/',
+          new Blob(chunks, { type: chunks[0]?.type || type || 'audio/webm' }), done => {
+            const pct = Math.round(done * 100);
+            memoBtn.textContent = pct < 100 ? `saving ${pct}%` : 'saving…';
+            memoStatus(pct < 100 ? `🎙 Saving your memo (${clock(seconds)}): ${pct}%` : `🎙 Saving your memo (${clock(seconds)}): almost…`);
+          });
+        const body = r.body;
         if (!r.ok) throw new Error(body.error || r.status);
         insertAtCaret(`🎙 [voice memo · ${clock(seconds)}](${body.url})`);
         sayBox.dispatchEvent(new Event('input'));
         sayBox.focus();
         ready = true;
-      } catch (e) { memoThenSend = false; showError('voice memo: ' + e.message); }
+      } catch (e) {
+        memoThenSend = false; showError('voice memo: ' + e.message);
+        if (memoPending) { memoPending.remove(); memoPending = null; }  // nothing to send: its place goes too
+      }
       finally { memoSaving = false; memoBtn.classList.remove('busy'); memoBtn.textContent = '🎙'; }
       composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
       if (ready && memoThenSend) { memoThenSend = false; say(); }
@@ -4987,16 +5028,13 @@
 
   // A sent memo whose words aren't in yet: said under the box until it's in the thread.
   function memoOnItsWay(sha) {
-    composer.insertAdjacentHTML('beforeend', `<span class="note memo-pending" data-sha="${esc(sha)}">🎙 Sent: it shows here once its words are written in…</span>`);
-    const note = composer.querySelector(`.memo-pending[data-sha="${CSS.escape(sha)}"]`);
     const started = Date.now();
+    const place = () => document.querySelector(`.turn.pending[data-memo="${CSS.escape(sha)}"]`);
     const look = setInterval(() => {
-      const arrived = document.querySelector(`.turn .body audio[src*="${CSS.escape(sha)}"]`);
-      if (arrived || !note?.isConnected || Date.now() - started > 300e3) {
-        clearInterval(look);
-        if (arrived) note?.remove();
-        else if (note?.isConnected) note.textContent = "🎙 Your memo is taking a while; it'll show when it's in.";
-      }
+      const arrived = document.querySelector(`.turn:not(.pending) .body audio[src*="${CSS.escape(sha)}"]`);
+      if (arrived) { clearInterval(look); place()?.remove(); return; }
+      if (!place()) { clearInterval(look); return; }  // another Mood, or drawn anew
+      if (Date.now() - started > 300e3) { clearInterval(look); pendingSays(place(), "sent · taking a while: it'll show here when its words are in"); }
     }, 1500);
   }
 
@@ -5745,9 +5783,12 @@
     // A memo still recording or uploading: stop it, and send once it's in the box.
     if (recorder || memoSaving) {
       memoThenSend = true;
+      if (!memoPending) {
+        const typed = sayBox.value.trim();
+        memoPending = showPending((typed ? typed + '\n' : '') + `🎙 voice memo · ${clock((Date.now() - memoStarted) / 1000)}`);
+        pendingSays(memoPending, 'saving…');
+      }
       if (recorder) recorder.stop();
-      composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
-      composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Sending as soon as it\'s saved…</span>');
       return;
     }
     // A picture still going up: sent once it's in (picturesSettled), the Send button saying how far.
@@ -5779,7 +5820,10 @@
     sendBtn.disabled = true;
     const old = composer.querySelector('.err'); if (old) old.remove();
     // Shown at once, faint, while it's on its way; the box is free for the next.
-    const pending = showPending(text);
+    const pending = memoPending || showPending(text);
+    memoPending = null;
+    if (pending) pendingSays(pending, 'sending…');
+    composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());  // the thread says how it's going now
     sayBox.value = ''; fitSay();
     tray = []; renderTray(); saveDraft();
     try {
@@ -5790,7 +5834,11 @@
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
       const done = await r.json().catch(() => ({}));
-      if (pending) {
+      if (pending && done.pending) {
+        // A memo whose words aren't in yet: posted once they are (voice.post_when_heard). Its place stays, saying so.
+        pending.dataset.memo = done.pending;
+        pendingSays(pending, 'sent · writing out its words…');
+      } else if (pending) {
         if (!done.id || document.getElementById('m-' + done.id)) pending.remove();  // nothing posted, or drawn already
         else pending.dataset.pendingId = done.id;
       }
@@ -5833,11 +5881,15 @@
     const el = document.createElement('article');
     el.className = 'turn human pending';
     el.innerHTML = `<div class="who"><span class="name">${icon(viewer, true)}${esc(shown(viewer))}</span>`
-      + `<span class="sending">sending…</span></div><div class="body"><p>${roughly(text)}</p></div>`;
+      + `<span class="sending">sending…</span></div><div class="body"><p>${roughly(text.replace(/\[([^\]]*)\]\([^)\s]*\)/g, '$1'))}</p></div>`;
     const empty = turnsEl.querySelector('.empty'); if (empty) empty.remove();
     turnsEl.appendChild(el);
     main.scrollTop = main.scrollHeight;
     return el;
+  }
+  function pendingSays(el, what) {
+    const at = el && el.querySelector('.sending');
+    if (at && what) at.textContent = what;
   }
   composer.addEventListener('submit', e => { e.preventDefault(); say(); });
   // Enter sends; Ctrl+Enter (or Shift+Enter) makes a new line. On a touch
