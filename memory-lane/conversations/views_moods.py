@@ -24,7 +24,7 @@ from .services import delivery_kid, faces, push, servers, wiki_auth, wiki_feed, 
 from .services import agent_commands, mood_auth
 from .services.mood_view import (
     from_wiki_tier,
-    MACHINERY_SENDERS, how_payload, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
+    MACHINERY_SENDERS, agent_names, how_payload, turn_tools, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
     prose, render_html, step_detail, step_images, step_payload, timeline, turn_payload, turns, wiki_title, wikilinks_in,
 )
 
@@ -158,7 +158,10 @@ def api_mood_turns(request, slug):
 
     names = known_names()
     turns_out, step_msgs, quiet_out, thoughts_out, compactions_out, events_out = [], [], [], [], [], []
+    agents_said = []  # agents' messages: which tools each turn had (👀 or 🔨 by its name)
     for kind, msg, text in timeline(mood, after=after, before=before, limit=limit, start=start):
+        if kind in ('turn', 'thought', 'quiet', 'step'):
+            agents_said.append(msg)
         if kind == 'turn':
             turns_out.append(turn_payload(msg, text, names))
         elif kind == 'thought':
@@ -188,6 +191,11 @@ def api_mood_turns(request, slug):
             step_msgs.append(msg)
     images = step_images(step_msgs)
     steps_out = [{**step_payload(m), 'images': images.get(str(m.id), [])} for m in step_msgs]
+    agent_set = agent_names()
+    tools = turn_tools([m for m in agents_said if m.sender_id in agent_set])
+    for p in turns_out + steps_out + quiet_out + thoughts_out:
+        if p['id'] in tools:
+            p['tools'] = tools[p['id']]
     first = min([i['created_at'] for i in turns_out + steps_out + quiet_out + thoughts_out + compactions_out
                  + events_out], default=None)
     agents = agents_in(mood)
@@ -828,7 +836,7 @@ def api_mentions(request, name):
             if not turn['is_human']:
                 # Whether the agent that wrote it was itself woken with full
                 # tools: if so, it may wake this one with them (mood_poller.trusted).
-                turn['full_tools'] = wake_tools(msg.session_id)
+                turn['full_tools'] = wake_tools(msg)
             found.append({'mood': msg.mood_slug, 'turn': turn})
             if len(found) >= limit:
                 break
@@ -836,9 +844,16 @@ def api_mentions(request, name):
     return JsonResponse({'name': name, 'mentions': found})
 
 
-def wake_tools(session_id):
-    """Whether the runner woke this session with the agent's full tools."""
-    return bool(session_id and MoodSession.objects.filter(session_id=session_id, full_tools=True).exists())
+def wake_tools(message):
+    """Whether the agent wrote this message on a wake with its full tools: what the last
+    wake before it in its session said (mood_view.turn_tools); else, for a session
+    whose wakes say neither, what the runner said of the session."""
+    if message is None or not message.session_id:
+        return False
+    said = turn_tools([message]).get(str(message.id))
+    if said:
+        return said == 'full'
+    return MoodSession.objects.filter(session_id=message.session_id, full_tools=True).exists()
 
 
 # An agent waking itself in another Mood by handoff (`wake: yes`): soft loop
@@ -868,7 +883,7 @@ def handoff_mention(msg, name, names):
             content__wake=True, created_at__gt=msg.created_at - timedelta(hours=1), created_at__lt=msg.created_at)
         if earlier.count() >= SELF_WAKES_PER_HOUR:
             return None
-    origin = Message.objects.filter(id=c.get('message')).values_list('session_id', flat=True).first()
+    origin = Message.objects.filter(id=c.get('message')).first()
     whose = 'you' if by == name else by
     text = (f"@{name}: {whose} handed this over from #{c.get('from_mood', '')}: {c.get('about', '')}\n\n"
             f"{c.get('context', '')}").strip()

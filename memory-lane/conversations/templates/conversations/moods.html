@@ -342,6 +342,8 @@
   a.mention { color: inherit; text-decoration: none; }  /* to their PickiPedia page (mood_view.mention_page) */
   a.mention:hover { text-decoration: underline; }
   .mention.me { background: var(--mention); }
+  .wake { font-size: .85em; margin-left: 2px; cursor: help; }  /* 👀 or 🔨: which tools a turn had */
+  .mention .wake { margin-left: 3px; }
   .turn.new { animation: arrive .6s ease-out; }
   @keyframes arrive { from { background: var(--accent-soft); } to { background: transparent; } }
 
@@ -2127,7 +2129,7 @@
     const answers = t.reply ? `<a class="replyto" href="#m-${esc(t.reply.id)}" data-reveal="${esc(t.reply.id)}" title="Go to the message this replies to">`
       + (t.reply.event ? `↩ ${esc(t.reply.snippet || '(an event)')}</a>`
         : `↩ ${icon(t.reply.sender, human[t.reply.sender] !== false)}<b>${esc(shown(t.reply.sender))}</b> ${esc(t.reply.snippet || '(a message)')}</a>`) : '';
-    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}${tokenBadges(t.sender)}</span>${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
+    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}${tokenBadges(t.sender)}</span>${t.is_human ? '' : wakeMark(t.tools)}${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
       + answers
       + `<a class="permalink mini" href="#m-${esc(t.id)}" title="${esc(stamp(t.created_at))} · this message's link: click to copy">#</a>`
       + (voiceOn && viewer && !t.deleted ? speakButton(t, true) : '')
@@ -2157,6 +2159,7 @@
     if (t.reply) noteLink(document.getElementById('m-' + t.reply.id), { id: t.id, sender: t.sender, mood: current, reply: true });
     if (t.attested) el._proof = t.attested;
     markTurn(el, t.mentions || []);
+    markAgentMentions(el, t);
     el.querySelectorAll('a.yarn[data-yarn]').forEach(decorateYarn);
     if (el.querySelector('.body a[href^="http"]:not([class])')) cardsWatch.observe(el);  // a preview, as it nears the screen
     el.insertAdjacentHTML('beforeend', '<div class="reacts"></div>');
@@ -2763,6 +2766,7 @@
     dot.title = q.by === 'screen'
       ? `screened for ${q.sender}: let pass without waking it · ${stamp(q.created_at)}`
       : `${q.sender} chose not to speak · ${stamp(q.created_at)}`
+        + (q.tools === 'look' ? ' · looking only' : q.tools === 'full' ? ' · with full tools' : '')
         + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
     dot.dataset.why = q.reason || '(no reason given)';
     row.appendChild(dot);
@@ -2869,6 +2873,28 @@
     }
     if (v.model) b._how.model = v.model;
     if (v.effort) b._how.effort = v.effort;
+    if (v.tools) b._tools = v.tools;
+  }
+  // Which tools a turn had (mood_view.turn_tools): 👀 it could only look, 🔨 its full tools.
+  const WAKE_MARKS = {
+    look: ['👀', 'Look only: it could read and search, and change nothing (a quiet wake, a post from a PickiPedia sign-in, or another agent that could only look)'],
+    full: ['🔨', 'Full tools: shell, editing, the browser and the rest, as in its terminal'],
+  };
+  function wakeMark(tools) {
+    const m = WAKE_MARKS[tools];
+    return m ? ` <span class="wake" title="${esc(m[1])}">${m[0]}</span>` : '';
+  }
+  // An agent's @mention of another agent wakes it with what the mentioning turn had.
+  function markAgentMentions(el, t) {
+    const m = WAKE_MARKS[t.tools];
+    if (!m || t.is_human) return;
+    el.querySelectorAll('.body .mention[data-who]').forEach(a => {
+      const who = a.dataset.who;
+      if (human[who] !== false || who === t.sender || a.querySelector('.wake')) return;
+      a.insertAdjacentHTML('beforeend', `<span class="wake" title="${esc(t.tools === 'full'
+        ? `${who} wakes on this with its full tools: ${t.sender} had them`
+        : `${who} wakes on this to look only: ${t.sender} could only look`)}">${m[0]}</span>`);
+    });
   }
   // What a turn cost, at API list prices (mood_view.PRICES): on a subscription,
   // what the same work would have cost through the API.
@@ -2888,7 +2914,7 @@
       : `At API list prices (${b._how.model || 'this model'}), for ${calls}: `
         + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
     b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
-      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>`
+      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}`
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
       + (added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
       + (b._priced ? ` · <span class="spent" title="${esc(costTitle)}">${esc(usdText(b._usd))}</span>` : '')

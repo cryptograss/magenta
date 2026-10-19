@@ -924,6 +924,52 @@ def call_usd(model, fresh, out, read, written):
     return ((fresh or 0) * rates[0] + (out or 0) * rates[1] + (read or 0) * rates[2] + (written or 0) * rates[3]) / 1e6
 
 
+# --- which tools a turn had ----------------------------------------------------
+# The runner's wake ends by saying whether the turn may only look (a quiet wake,
+# a PickiPedia sign-in's post, or another agent's that could only look) or has
+# the agent's full tools, and the record keeps each wake in the agent's session.
+# A turn had what the last wake before it in its session said. The wake quotes
+# the Mood, and a message can say either phrase (as this very comment does), so
+# whichever comes last in the wake decides: its closing lines are its end.
+WAKE_SENDER = 'mood-poller'
+LOOK_ONLY = 'can look but not touch'
+FULL_TOOLS = 'has your full tools'
+WAKE_TAIL = 1500        # characters read from a wake's end
+WAKE_REACH = 12 * 3600  # seconds back to look for a turn's wake (a long turn's started long ago)
+
+
+def wake_said(text):
+    """'look' or 'full', as a wake's end says; '' if it says neither."""
+    look, full = text.rfind(LOOK_ONLY), text.rfind(FULL_TOOLS)
+    return '' if look == full else 'look' if look > full else 'full'
+
+
+def turn_tools(messages):
+    """{message id (str): 'look' or 'full'} for agents' messages in a Mood, by the last wake
+    before each in its session. One with no wake within reach is left out."""
+    from datetime import timedelta
+    from django.db.models import TextField
+    from django.db.models.functions import Cast, Right
+    from conversations.models import Message
+    messages = [m for m in messages if m.session_id]
+    if not messages:
+        return {}
+    reach = timedelta(seconds=WAKE_REACH)
+    wakes = {}
+    for sid, at, tail in (Message.objects.filter(session_id__in={m.session_id for m in messages}, sender_id=WAKE_SENDER,
+                                                 created_at__gte=min(m.created_at for m in messages) - reach,
+                                                 created_at__lte=max(m.created_at for m in messages))
+                          .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL))
+                          .order_by('created_at').values_list('session_id', 'created_at', 'tail')):
+        wakes.setdefault(sid, []).append((at, wake_said(tail or '')))
+    found = {}
+    for m in messages:
+        before = [kind for at, kind in wakes.get(m.session_id, []) if m.created_at - reach <= at <= m.created_at]
+        if before and before[-1]:
+            found[str(m.id)] = before[-1]
+    return found
+
+
 def how_payload(msg):
     """Model and effort an agent's message ran on ('' when unknown); what it
     wrote and read, in tokens, and what that cost; and whether it ended its turn.
