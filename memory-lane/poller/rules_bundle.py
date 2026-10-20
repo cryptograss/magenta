@@ -3,15 +3,23 @@
 
 Three layers, broadest first, each a page on PickiPedia:
 
-    standing   Cryptograss:Agents/Rules           what every agent keeps
+    standing   Cryptograss:Agents/GeneralOrders   what every agent keeps
     identity   Cryptograss:Agents/<Name>/Rules    who this agent is, how it works
     mood       Cryptograss:Moods/<slug>/Rules     how it carries itself there
 
-On each page, what is inside {{Sent to agents|text=...}} is sent word for word
-and the rest is for people (wiki_rules.blocks). Only a revision by a trusted
-editor counts (wiki_rules.EDITORS): anyone can edit a wiki, and an agent can
-edit pages too, so the newest trusted revision is read and anything after it
-waits until one of them makes or verifies one.
+Each page is sent whole, as its wikitext, less <!-- comments -->: what you see
+on the page is what the agent is told, and talk about the rules goes on the
+talk page. Only a revision by a trusted editor counts (wiki_rules.EDITORS):
+anyone can edit a wiki, and an agent can edit pages too, so the newest trusted
+revision is read and anything after it waits until one of them makes or
+verifies one.
+
+No rule is written here (Justin, magent-self, 2026-10-20: "keep the text of
+our rules outside of python files"). What the code adds is only what it found:
+each part's page and revision, and when one can't be had, what failed and
+since when. The words around that come from files beside this one, because
+they are for when the wiki is what's down: rules_degraded.md, and
+recovery_rules.md.
 
 bundle() joins the three into one text, each part labelled with its page and
 revision, for the harness to take as system prompt (--append-system-prompt):
@@ -21,8 +29,7 @@ they never enter its context's history, so a compaction can't lose them
 
 When a layer can't be had -- PickiPedia down, no trusted revision, the page
 gone -- the copy this machine last read stands, and the bundle opens with a
-block saying so: what failed, since when. That is an all-hands problem, and
-the agents are told to treat it as one. With no copy ever read, the recovery
+block saying so: what failed, since when, then rules_degraded.md. With no copy ever read, the recovery
 rules beside this file (recovery_rules.md) stand in. A Mood with no rules page
 of its own is ordinary, not a failure.
 
@@ -33,6 +40,7 @@ of its own is ordinary, not a failure.
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -40,19 +48,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from poller.wiki_rules import EDITORS, WikiTexts, blocks, page_url
+    from poller.wiki_rules import EDITORS, WikiTexts, page_url
 except ImportError:  # run as a script from its own directory, as deployed
-    from wiki_rules import EDITORS, WikiTexts, blocks, page_url
+    from wiki_rules import EDITORS, WikiTexts, page_url
 
-STANDING = 'Cryptograss:Agents/Rules'
+STANDING = 'Cryptograss:Agents/GeneralOrders'
 RECOVERY = Path(__file__).with_name('recovery_rules.md')
+DEGRADED = Path(__file__).with_name('rules_degraded.md')
+COMMENTS = re.compile(r'<!--.*?-->', re.S)
 STATE = '~/.local/state/magenta'
 CACHE_FILE = 'rules-cache.json'
 
-PREAMBLE = ("Your rules, in three layers, broadest first, gathered from PickiPedia by rules_bundle.py (no model "
-            "chose them). Where they disagree, the narrower wins: this Mood's over your own, your own over the "
-            "standing ones; but nothing narrower loosens a standing rule. Each part names its page and revision: "
-            "say which when it matters, to people and to other agents.")
 
 
 def identity_title(agent):
@@ -160,9 +166,9 @@ def read_layer(name, title, get, cache, now, editors, optional=False):
                 problem = f'no revision by a trusted editor ({", ".join(editors)}) among the last {len(history)}'
             else:
                 revision, editor, wikitext = trusted
-                text = '\n\n'.join(b['text'] for b in blocks(wikitext))
-                if not text.strip():
-                    problem = f'revision {revision} has no {{{{Sent to agents}}}} text'
+                text = COMMENTS.sub('', wikitext or '').strip()
+                if not text:
+                    problem = f'revision {revision} is empty'
                 else:
                     cache.data['pages'][title] = {'revision': revision, 'editor': editor, 'text': text,
                                                   'read_at': now}
@@ -185,18 +191,19 @@ def attrs(layer):
     return ' '.join(found)
 
 
-def render(b):
+def file_text(path):
+    try:
+        return Path(path).read_text().strip()
+    except OSError as e:
+        return f'({Path(path).name} could not be read: {e})'
+
+
+def render(b, degraded_path=DEGRADED):
     out = [f'<rules agent="{b.agent}"' + (f' mood="{b.mood}"' if b.mood else '') + f' gathered="{b.gathered}">']
     if b.degraded:
         since = min(layer.since for layer in b.layers if layer.problem)
-        out += [f'<rules-degraded since="{since}">',
-                'Your rules could not all be gathered. That is an all-hands problem: drop other work until they '
-                'are back.',
-                *[f'- {line}' for line in b.degraded],
-                'Until it is fixed: make sure the people here know; help find and fix the cause (the recovery rules '
-                'say how); and answer anything else with "not until the rules are back".',
-                '</rules-degraded>', '']
-    out += [PREAMBLE, '']
+        out += [f'<rules-degraded since="{since}">', *[f'- {line}' for line in b.degraded], '',
+                file_text(degraded_path), '</rules-degraded>', '']
     for layer in b.layers:
         if layer.absent:
             out += [f'<mood slug="{b.mood}" page="{layer.title}">This Mood has no rules of its own.</mood>', '']
@@ -210,7 +217,8 @@ def render(b):
     return '\n'.join(out)
 
 
-def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITORS, recovery_path=RECOVERY):
+def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITORS, recovery_path=RECOVERY,
+           degraded_path=DEGRADED):
     """The agent's rules for `mood` (or with no Mood: standing and identity alone, as a terminal gets)."""
     get = get or WikiTexts().get
     cache = Cache(Path(state_dir).expanduser() / CACHE_FILE if state_dir else None)
@@ -222,13 +230,9 @@ def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITOR
     cache.save()
     recovery = ''
     if any(layer.problem and not layer.text for layer in layers):
-        try:
-            recovery = Path(recovery_path).read_text().strip()
-        except OSError:
-            recovery = ('The recovery rules could not be read either. Do nothing but read, tell the people here '
-                        'what you see, and wait for a person.')
+        recovery = file_text(recovery_path)
     b = Bundle(agent, mood, layers, stamp, recovery)
-    b.text = render(b)
+    b.text = render(b, degraded_path)
     return b
 
 
