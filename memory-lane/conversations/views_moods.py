@@ -336,6 +336,60 @@ def media_file(request, sha256, ext):
     return response
 
 
+PREVIEW_EDGE = 288  # a tidings thumbnail's longest side, in pixels
+PREVIEW_CACHE_SECONDS = 7 * 86400  # kept made here; a browser keeps it for good (named by its hash, it never changes)
+
+
+@require_GET
+def media_preview(request, sha256, ext):
+    """A small picture for a grid of thumbs: the stored one, largest side
+    PREVIEW_EDGE, a JPEG where it has no transparency and a PNG where it
+    does. Generated once and cached; a picture pasted into a terminal and
+    never posted is served to nobody who knows the hash anyway, but it is
+    not linked from any page."""
+    from django.core.cache import cache
+    from django.http import HttpResponse
+
+    from .models import Media
+
+    item = Media.objects.filter(sha256=sha256).first()
+    if (item is None or Media.EXTENSIONS.get(item.mime) != ext
+            or item.mime not in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')):
+        raise Http404('no such image')
+    cached = cache.get(f'media-preview:{sha256}')
+    if cached is None:
+        cached = _preview_of(item)
+        cache.set(f'media-preview:{sha256}', cached, PREVIEW_CACHE_SECONDS)
+    body, mime = cached
+    response = HttpResponse(body, content_type=mime)
+    response['Cache-Control'] = 'public, max-age=31536000, immutable'
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    return response
+
+
+def _preview_of(item):
+    """(bytes, mime): the picture made small for media_preview."""
+    import io
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(io.BytesIO(bytes(item.data))) as opened:
+            if getattr(opened, 'is_animated', False):
+                opened.seek(0)
+            picture = ImageOps.exif_transpose(opened)
+            picture.thumbnail((PREVIEW_EDGE, PREVIEW_EDGE))
+            out = io.BytesIO()
+            if picture.mode in ('RGBA', 'LA', 'P'):
+                picture.convert('RGBA').save(out, 'PNG', optimize=True)
+                mime = 'image/png'
+            else:
+                picture.convert('RGB').save(out, 'JPEG', quality=78, optimize=True)
+                mime = 'image/jpeg'
+            return out.getvalue(), mime
+    except Exception:
+        raise Http404('no such image')
+
+
 @require_GET
 def api_pulse(request):
     """Every Mood at a glance, for a runner looking every few seconds.

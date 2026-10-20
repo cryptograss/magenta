@@ -4,7 +4,8 @@ What Justin asked for, while building the status page (block ~26,228,235):
   1. Pictures: the last 20 images shared in the Moods, in order, with who
      shared each one, whether it has gone up to PickiPedia, and whether the
      faces service has looked at it.
-  2. Prompts: the last 20 prompts issued by each biological human.
+  2. Prompts: the last 20 prompts issued by each biological human, each with
+     the tokens and cost of the turn that answered it.
 
 A prompt is a post that addresses an agent, as the Moods themselves count
 it (mood_view.addressed_in): an @mention, or a command that names one.
@@ -17,23 +18,39 @@ more stands alone, whatever came before it; so does a command
 ("/compact magent ..."), and a short post whose author said nothing in
 that Mood in the PAIR_WITHIN before it.
 
+A prompt's turn is what the agent it names did next: its messages after
+that post and before the next person's, as the page draws a turn. Only
+the latest person's post before a turn is what it answered, and only if
+that post was a prompt naming it; a turn after a post that named no one
+(an agent listening to everything) is no prompt's. The tokens and cost are
+each message's own usage, counted once per response: one response can be
+stored as several rows (thinking, words, a tool call), each repeating its
+usage, and repeated usage is one response (mood_view.how_payload's own
+rule). The cost is what the harness said it cost (Pi does); otherwise
+how_payload's price-list call.
+
 Reading is public, like the rest of the record: pictures and prompts are
 already there in the Moods for anyone to see. How far back a Mood is
-looked is a bound, not a claim: MAX_PER_MOOD visible human posts, which
-is far more than any person's last 20 prompts here.
+looked is a bound, not a claim: MAX_PER_MOOD visible human posts, with
+up to AGENT_CAP of the agents' messages from the same stretch.
 """
 
+import heapq
 from collections import defaultdict
 from datetime import timedelta
 
 from conversations.models import FaceLook, FaceName, Media, Message, Mood, ThinkingEntity
-from conversations.services.mood_view import addressed_in, from_wiki_tier, prose, snippet_of
+from conversations.services.mood_view import addressed_in, from_wiki_tier, how_payload, prose, snippet_of
 
 PICTURES = 20
 PROMPTS_PER_HUMAN = 20
 SHORT_POST = 80   # under this many characters, a post that addresses an agent pairs with the one before it
 PAIR_WITHIN = timedelta(minutes=10)  # a short post's nudge is about what its author just said
-MAX_PER_MOOD = 300  # how many of a Mood's visible human posts the prompt scan looks at
+MAX_PER_MOOD = 300   # how many of a Mood's visible human posts the prompt scan looks at
+AGENT_CAP = 3000     # ... and how many of the agents' messages from the same stretch it reads for turns
+# What how_payload reads: an agent's message is read for its usage, never its words.
+USAGE_FIELDS = ('id', 'sender', 'created_at', 'model_backend', 'effort', 'input_tokens', 'output_tokens',
+                'cache_read_input_tokens', 'cache_creation_input_tokens', 'cost_usd', 'stop_reason')
 MAX_POSTS_WITH_PICTURES = 400  # how many of the newest posts showing pictures the picture scan looks at
 
 IMAGE_MIMES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
@@ -64,15 +81,71 @@ def _entry_at(entry):
     return (entry['trigger'] if entry['kind'] == 'paired' else entry)['at']
 
 
+def _run_metrics(run):
+    """One agent turn's tokens and cost, one response's usage counted once.
+
+    `run` is that agent's messages in a row. A response stored as several
+    rows repeats its usage on each; consecutive rows with the identical
+    usage are one response. None when a turn carried no measured usage.
+    """
+    totals = {'in': 0, 'out': 0, 'usd': 0.0, 'priced': False, 'paid': False, 'calls': 0, 'model': ''}
+    last_usage = None
+    for message in run:
+        payload = how_payload(message)
+        if 'out' not in payload:
+            last_usage = None
+            continue
+        usage = (payload.get('ctx', 0), payload['out'])
+        if usage == last_usage:
+            continue
+        if not totals['model'] and payload.get('model'):
+            totals['model'] = payload['model']
+        totals['in'] += usage[0]
+        totals['out'] += usage[1]
+        if payload.get('usd') is not None:
+            totals['usd'] += payload['usd']
+            totals['priced'] = True
+        totals['paid'] = totals['paid'] or payload.get('paid', False)
+        totals['calls'] += 1
+        last_usage = usage
+    if not totals['calls']:
+        return None
+    totals['in'], totals['out'] = int(totals['in']), int(totals['out'])
+    totals['usd'] = round(totals['usd'], 4)
+    return totals
+
+
+def _k(n):
+    """Tokens as the Mood page writes them (moods.html kTokens): 980, 2.1k, 535k, 1.2M."""
+    if n >= 1_000_000:
+        return f'{n / 1_000_000:.1f}M'
+    if n >= 1000:
+        return f'{n / 1000:.1f}k' if n < 10000 and n % 1000 else f'{round(n / 1000)}k'
+    return str(n)
+
+
+def _add_turn(entry, agent, messages):
+    """The prompt `entry` gets the tokens and cost of `agent`'s turn answering it, if it measured any."""
+    metrics = _run_metrics(messages)
+    if metrics is not None:
+        usd = metrics['usd']
+        entry['turns'].append({'agent': agent, **metrics, 'tokens': f"{_k(metrics['in'])}→{_k(metrics['out'])}",
+                               # As the page's usdText; nothing when no call had a price (a model the list lacks).
+                               'cost': '' if not metrics['priced'] else '<$0.01' if usd < 0.005 else f'${usd:.2f}'})
+
+
 def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
     """Every biological human's prompts, newest first, at most `per_human` each.
 
-    One pass over each Mood's visible human posts, oldest first, so a short
+    One pass over each Mood's visible posts, oldest first, so a short
     post that addresses an agent can look back one post: the same person's
     own post right before it, in that Mood (magent's reading of "the message
     immediately preceding", which Justin let stand), and only if that post
     does not itself address an agent -- then each is shown on its own,
     neither twice. Posts that address nobody are never prompts.
+
+    Agents' messages on the same pass become their turns, for the tokens
+    and cost of what answered each prompt (_add_turn).
     """
     humans = list(ThinkingEntity.objects.filter(is_biological_human=True))
     human_names = [human.name for human in humans]
@@ -81,10 +154,25 @@ def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
     grouped = defaultdict(list)
 
     for mood in Mood.objects.order_by('id'):
-        rows = (mood.messages.filter(is_sidechain=False, sender_id__in=human_names)
-                .select_related('sender').order_by('-created_at')[:MAX_PER_MOOD])
-        last = {}
-        for message in reversed(list(rows)):  # oldest first, pairing looks back one post
+        human_rows = (mood.messages.filter(is_sidechain=False, sender_id__in=human_names)
+                      .select_related('sender').order_by('-created_at')[:MAX_PER_MOOD])
+        human_rows = list(reversed(list(human_rows)))
+        if not human_rows:
+            continue
+        agent_rows = list(mood.messages.filter(is_sidechain=False, sender_id__in=agents,
+                                               created_at__gte=human_rows[0].created_at)
+                          .only(*USAGE_FIELDS).order_by('created_at')[:AGENT_CAP])
+        last = {}          # each human's own previous visible post in this Mood: what pairing looks back to
+        entries = []       # this Mood's prompts, oldest first
+        answering = None   # the prompt the latest person's post made, if it made one
+        answers = defaultdict(list)  # (prompt's index, agent) -> that agent's messages after it
+
+        for message in heapq.merge(human_rows, agent_rows, key=lambda m: m.created_at):
+            if message.sender_id in agents:
+                if answering is not None and message.sender_id in entries[answering]['agents']:
+                    answers[(answering, message.sender_id)].append(message)
+                continue
+            answering = None  # a person's post ends every turn, as on the page
             if from_wiki_tier(message):
                 # From a PickiPedia device, an @agent is just text: no agent
                 # is waking for it, so it is not a prompt (mood_view.activities).
@@ -100,12 +188,18 @@ def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
                     and message.created_at - previous.created_at <= PAIR_WITHIN
                     and not addressed_in(_text(previous), agents, by=previous.sender_id)):
                 entry = _brief(previous, mood.slug, named)
-                entry.update(kind='paired', trigger=_brief(message, mood.slug, named))
+                entry.update(kind='paired', trigger=_brief(message, mood.slug, named), by=message.sender_id)
             else:
                 entry = _brief(message, mood.slug, named)
-                entry['kind'] = 'mention'
-            grouped[message.sender_id].append(entry)
+                entry.update(kind='mention', by=message.sender_id)
+            entry['turns'] = []
+            entries.append(entry)
+            answering = len(entries) - 1
             last[message.sender_id] = message
+        for (index, agent), messages in answers.items():
+            _add_turn(entries[index], agent, messages)
+        for entry in entries:
+            grouped[entry['by']].append(entry)
 
     out = []
     for human in humans:
@@ -118,15 +212,16 @@ def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
 
 
 def picture_tidings(limit=PICTURES):
-    """The latest `limit` pictures posted in a Mood, newest first, each with its two marks.
+    """The latest `limit` images, newest first, each with its two marks.
 
-    Only what a Mood's own posts show: a picture pasted into a terminal
-    session is kept as Media too (services/media.py), and isn't anyone's to
-    publish here. Who: whoever shared it (Media.added_by), else who posted it.
+    Only pictures a visible Mood post shows: a picture pasted into a
+    terminal session is someone's work, not public, and stays where it is.
     Pushed: a 'wiki-upload' event line in its Mood (services/wiki_upload.py
     records one when a picture goes up). Faces: a FaceLook row, which exists
     once the faces service has been run on it, with how many faces it found
-    and how many have been named.
+    and how many have been named. Each picture carries a small `preview`
+    beside its `url` (views_moods.media_preview), so a gallery of them
+    costs thumbnails, not the pictures.
     """
     from conversations.services.media import MEDIA_PATH
     posts = (Message.objects.filter(mood__isnull=False, is_sidechain=False, content__icontains='/media/',
@@ -161,6 +256,7 @@ def picture_tidings(limit=PICTURES):
         out.append({
             'sha256': sha,
             'url': row.url,
+            'preview': f'{row.url}/preview',
             'mime': row.mime,
             'size': row.size,
             'added_by': row.added_by.name if row.added_by_id else post.sender_id,
