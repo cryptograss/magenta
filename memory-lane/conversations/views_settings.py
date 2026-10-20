@@ -73,6 +73,14 @@ def tidings_page(request):
     return render(request, 'conversations/mood_tidings.html', {
         'tidings': tidings.tidings_state(),
         'picture_cap': tidings.PICTURES,
+    })
+
+
+@require_GET
+def prompts_page(request):
+    from .services import tidings
+    return render(request, 'conversations/mood_prompts.html', {
+        'prompts': tidings.prompts_state(),
         'prompt_cap': tidings.PROMPTS_PER_HUMAN,
     })
 
@@ -81,6 +89,12 @@ def tidings_page(request):
 def api_tidings(request):
     from .services import tidings
     return JsonResponse(tidings.tidings_state())
+
+
+@require_GET
+def api_prompts(request):
+    from .services import tidings
+    return JsonResponse(tidings.prompts_state())
 
 
 @require_http_methods(['GET', 'POST'])
