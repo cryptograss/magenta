@@ -708,6 +708,10 @@
   .quiet .dot:hover, .quiet .dot.on { background: var(--who); }
   /* The runner's quick screen let this pass; the agent itself never looked. */
   .quiet .dot.screened { background: transparent; border-style: dashed; }
+  /* One that thought before passing grows to hold how many words: still filled, as a quiet dot is. */
+  .quiet .dot.n { width: auto; min-width: 22px; height: 22px; border-radius: 11px; padding: 0 5px; font-family: inherit;
+                  font-size: 10.5px; font-weight: 600; line-height: 20px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .quiet .dot.n:hover, .quiet .dot.n.on { color: #fff; }
   .quiet .dot.screened:hover, .quiet .dot.screened.on { background: transparent; border-color: var(--who); }
   .quiet .why { flex-basis: 100%; font-size: 13px; color: var(--muted); font-style: italic; }
   .quiet .why .thought { margin: 4px 0 0; padding: 0; white-space: pre-wrap; }
@@ -722,6 +726,19 @@
   .abody .work .who { display: none; }
   .abody .turn > .who .name { display: none; }  /* the turn's heading names it: each message, its time and link */
   .work .steps .thought { margin: 4px 0 8px; padding: 0; }
+  /* A thought: a ring in its agent's colour, the words it ran to inside, where it happened among the
+     steps; pressed, filled, its words beneath. Filled dots are outcomes (a quiet wake); rings are
+     thinking (Justin, 20 Oct). */
+  .tdot { display: inline-block; min-width: 22px; height: 22px; border-radius: 11px; padding: 0 5px; vertical-align: middle;
+          border: 1.5px solid var(--who, var(--agent)); background: var(--panel); color: var(--who, var(--agent));
+          font-family: inherit; font-size: 10.5px; font-weight: 600; line-height: 19px; font-variant-numeric: tabular-nums;
+          text-align: center; cursor: pointer; }
+  .tdot.on, .tdot:hover { background: var(--who, var(--agent)); color: #fff; }
+  .tdot.empty { min-width: 12px; width: 12px; height: 12px; padding: 0; }
+  .work-head .what { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .work .steps .trow { margin: 4px 0; }
+  .work .steps .trow .thought { display: none; }
+  .work .steps .trow.on .thought { display: block; }
   /* Images: in turns, as thumbnails on a run of work, inside a step. */
   .turn .body a.img { display: inline-block; margin: 4px 0; }
   .turn .body img { display: block; max-width: 100%; max-height: 420px; border-radius: 6px; border: 1px solid var(--line); }
@@ -2304,15 +2321,33 @@
     container.appendChild(el);
     return el;
   }
+  // The folded line: each thought's ring, and between them what the steps did, in the order it happened.
   function describeWork(el) {
-    const counts = {};
-    el.querySelectorAll('.step').forEach(s => { counts[s.dataset.verb] = (counts[s.dataset.verb] || 0) + 1; });
-    const n = el.querySelectorAll('.step').length;
-    const parts = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([v, c]) => c > 1 ? `${v} ×${c}` : v);
-    const words = [...el.querySelectorAll('.thought')].reduce((a, t) => a + t.textContent.split(/\s+/).filter(Boolean).length, 0);
-    const thought = el.querySelector('.thought') ? `∴ thinking${words ? ` (${words.toLocaleString()} word${words === 1 ? '' : 's'})` : ''}` : '';
-    el.querySelector('.what').textContent = [thought, n ? `${n} step${n === 1 ? '' : 's'} · ${parts.join(', ')}` : '']
-      .filter(Boolean).join(' · ');
+    const parts = [];
+    let verbs = [];
+    const said = () => {
+      if (!verbs.length) return;
+      const counts = {};
+      verbs.forEach(v => { counts[v] = (counts[v] || 0) + 1; });
+      parts.push(`<span class="verbs">${esc(Object.entries(counts).map(([v, c]) => c > 1 ? `${v} ×${c}` : v).join(', '))}</span>`);
+      verbs = [];
+    };
+    [...el.querySelector('.steps').children].forEach((row, i) => {
+      if (row.classList.contains('step')) verbs.push(row.dataset.verb);
+      else if (row.classList.contains('trow')) {
+        said();
+        const dot = row.querySelector('.tdot');
+        parts.push(`<span class="${dot.className.replace(' on', '')}" data-i="${i}">${esc(dot.textContent)}</span>`);
+      }
+    });
+    said();
+    el.querySelector('.what').innerHTML = parts.join('');
+  }
+  function wordsIn(text) { return (text || '').split(/\s+/).filter(Boolean).length; }
+  // A thought among the steps, opened or closed (from its ring there, or its ring in the folded line).
+  function pressThought(row, on) {
+    row.classList.toggle('on', on);
+    row.querySelector('.tdot').classList.toggle('on', on);
   }
   function addStep(s, container) {
     const work = workEl(s, container);
@@ -2359,7 +2394,15 @@
   }
   document.addEventListener('click', async e => {
     const head = e.target.closest('.work-head');
-    if (head) { head.parentElement.classList.toggle('open'); return; }
+    if (head) {
+      const ring = e.target.closest('.tdot');
+      const row = ring && head.parentElement.querySelector('.steps').children[+ring.dataset.i];
+      if (row) { head.parentElement.classList.add('open'); pressThought(row, true); }  // straight to that thought
+      else head.parentElement.classList.toggle('open');
+      return;
+    }
+    const ring = e.target.closest('.steps .tdot');
+    if (ring) { pressThought(ring.parentElement, !ring.classList.contains('on')); return; }
     const stepHead = e.target.closest('.step-head');
     if (!stepHead) return;
     const step = stepHead.parentElement;
@@ -2382,10 +2425,19 @@
     el.className = 'thought';
     el.title = `${t.sender} thinking · ${stamp(t.created_at)}`;
     el.textContent = t.text;
-    // In an agent's turn: folded in with its steps, in the order it thought and did.
+    // In an agent's turn: a ring among its steps, in the order it thought and did; its words when pressed.
     const work = container.classList.contains('abody') ? workEl(t, container) : null;
-    (work ? work.querySelector('.steps') : container).appendChild(el);
-    if (work) describeWork(work);
+    if (work) {
+      const words = wordsIn(t.text);
+      const row = document.createElement('div');
+      row.className = 'trow';
+      const what = words ? `${words.toLocaleString()} word${words === 1 ? '' : 's'}` : 'no words kept';
+      row.innerHTML = `<button type="button" class="tdot${words ? '' : ' empty'}" title="${esc(`${t.sender} thinking · ${what} · ${stamp(t.created_at)}`)}"`
+        + ` aria-label="${esc(`${t.sender} thought, ${what}`)}">${words ? esc(kTokens(words)) : ''}</button>`;
+      row.appendChild(el);
+      work.querySelector('.steps').appendChild(row);
+      describeWork(work);
+    } else container.appendChild(el);
     prev = { sender: t.sender, at: new Date(t.created_at).getTime() };
   }
 
@@ -2817,7 +2869,13 @@
         + (q.tools === 'look' ? ' · looking only' : q.tools === 'full' ? ' · with full tools' : '')
         + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
     dot.dataset.why = q.reason || '(no reason given)';
-    if (thought) dot.dataset.thought = thought;
+    if (thought) {
+      dot.dataset.thought = thought;
+      const words = wordsIn(thought);
+      dot.classList.add('n');
+      dot.textContent = kTokens(words);
+      dot.title += ` · thought ${words.toLocaleString()} word${words === 1 ? '' : 's'} first`;
+    }
     row.appendChild(dot);
   }
   document.addEventListener('click', e => {
