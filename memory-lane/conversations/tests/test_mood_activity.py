@@ -291,6 +291,24 @@ class SeveralAtOnceTest(TestCase):
         self.add(self.justin, 5, '@re what do you think?', source_file='mood-web')
         self.assertEqual(self.now(), [('magent', 'running a command'), ('re', 'waking')])
 
+    def test_woken_by_another_agent_it_is_at_work_since_its_wake_not_since_the_other_began(self):
+        # Justin, 20 Oct: magent "thinking for 15 minutes", two minutes after re woke it. re's tool
+        # results (sender tool-result, in re's session) were read as the start of magent's turn.
+        tool, _ = ConversationParticipant.objects.get_or_create(name='tool-result', defaults={'participant_type': 'tool'})
+        poller, _ = ConversationParticipant.objects.get_or_create(name='mood-poller')
+        re_session, magent_session = uuid.uuid4(), uuid.uuid4()
+        self.add(self.magent, 1500, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn', session_id=magent_session)
+        self.add(self.justin, 1000, '@re, build the tidings fixes', source_file='mood-web')
+        self.add(self.re, 900, {}, model=ToolUse, tool_name='Bash', tool_id='r1', stop_reason='tool_use', session_id=re_session)
+        self.add(tool, 890, 'out', model=ToolResult, tool_use_id='r1', session_id=re_session)
+        self.add(self.re, 130, [{'type': 'text', 'text': '@magent, ready for your review'}], stop_reason='end_turn',
+                 session_id=re_session)
+        self.add(poller, 120, '<mood-wake mood="m26">...</mood-wake>', session_id=magent_session)
+        self.add(self.magent, 100, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use', session_id=magent_session)
+        from conversations.services.mood_view import activities
+        [(agent, since)] = [(a['agent'], a['since']) for a in activities(self.mood, now=NOW)]
+        self.assertEqual((agent, since), ('magent', NOW - 120))
+
     def test_the_turns_endpoint_carries_them(self):
         self.add(self.justin, NOW - time.time() + 1, '@magent @re now', source_file='mood-web')
         body = self.client.get('/api/moods/m26/turns/').json()

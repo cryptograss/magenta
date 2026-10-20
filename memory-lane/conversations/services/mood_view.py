@@ -1255,6 +1255,13 @@ def _activity(mood, now=None, only=None):
     rows = mood.messages.filter(is_sidechain=False).exclude(sender_id='system')
     if only:
         rows = rows.exclude(sender_id__in=agents - {only})
+        # Nor what came back to the others: their tool results are their sessions' lines, not this
+        # agent's, and read as its own they started its turn when theirs began (Justin, 20 Oct:
+        # magent "thinking for 15 minutes" two minutes after re woke it).
+        theirs = {s for s in mood.messages.filter(sender_id__in=agents - {only}).exclude(session_id=None)
+                  .order_by('-created_at').values_list('session_id', flat=True)[:RECENT * 2]}
+        if theirs:
+            rows = rows.exclude(session_id__in=theirs)
     recent = list(rows.select_related('sender', 'tooluse', 'thought', 'toolresult')
                   .order_by('-created_at')[:RECENT * (2 if only else 1)])
 
