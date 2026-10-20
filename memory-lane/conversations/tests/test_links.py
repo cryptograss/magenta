@@ -45,7 +45,8 @@ class LinksTest(TestCase):
         card = (f'<a class="msglink" href="/moods/general/#m-{self.capo.id}" data-mood="general" '
                 f'data-reveal="{self.capo.id}">↗ <strong>justin</strong> in #general: “Who has the capo tonight? Bring two.”</a>')
         for text in (f'#m-{self.capo.id}', f'#m-{str(self.capo.id)[:8]}',
-                     f'https://magenta.cryptograss.live/moods/general/#m-{self.capo.id}'):
+                     f'https://magenta.cryptograss.live/moods/general/#m-{self.capo.id}',
+                     f'https://magenta.cryptograss.live/messages/{self.capo.id}'):
             with self.subTest(text=text):
                 self.assertIn(card, render_html(f'see {text}.'))
 
@@ -62,6 +63,10 @@ class LinksTest(TestCase):
         turns = Client().get('/api/moods/general/turns/').json()['turns']
         first = next(t for t in turns if t['id'] == str(self.capo.id))
         self.assertEqual(len(first['linked_from']), 3)
+
+    def test_a_messages_own_address_counts_as_linking_it(self):
+        linked = self.say(self.magent, self.interface, f'See https://magenta.cryptograss.live/messages/{self.capo.id} for who.')
+        self.assertEqual([f['id'] for f in links.linked_from(self.capo.id, links.index())], [str(linked.id)])
 
     def test_the_index_keeps_up_with_whats_new(self):
         self.assertEqual(links.linked_from(self.capo.id, links.index()), [])

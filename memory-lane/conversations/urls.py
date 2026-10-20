@@ -8,6 +8,8 @@ from . import views_admin
 
 urlpatterns = [
     path('moods/', views_moods.moods_page, name='moods'),
+    path('messages/<str:message_id>', views_moods.message_page, name='message'),
+    path('messages/<str:message_id>/', views_moods.message_page),
     path('moods/settings/', views_settings.settings_page, name='mood_settings'),
     path('moods/status/', views_settings.status_page, name='mood_status'),
     path('moods/tidings/', views_settings.tidings_page, name='mood_tidings'),
@@ -42,6 +44,7 @@ urlpatterns = [
     path('api/moods/<slug:slug>/rename/', views_auth.api_rename, name='api_mood_rename'),
     path('api/moods/', views_moods.api_moods, name='api_moods'),
     path('api/moods/pulse/', views_moods.api_pulse, name='api_moods_pulse'),
+    path('api/messages/<str:message_id>/', views_moods.api_message, name='api_message'),
     path('api/settings/', views_settings.api_settings, name='api_settings'),
     path('api/status/', views_settings.api_status, name='api_status'),
     path('api/tidings/', views_settings.api_tidings, name='api_tidings'),
