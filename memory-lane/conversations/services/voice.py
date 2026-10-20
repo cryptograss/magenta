@@ -652,6 +652,68 @@ def _post_when_heard(sha, text, post):
     post(with_transcript(text, heard(sha) or {'error': 'it took too long'}))
 
 
+# --- a memo heard again ------------------------------------------------------------
+
+_NOT_HEARD = re.compile(r'\n\n\(not transcribed: [^\n]*\)')
+
+
+def not_heard(text):
+    """The sha of the memo in `text` whose words never came ("(not transcribed: ...)"), or None."""
+    match = _MEMO.search(text or '')
+    return match.group(1) if match and _NOT_HEARD.match(text, match.end()) else None
+
+
+def hear_again(message, by, mentionable, aliases=None):
+    """A memo posted without its words (ElevenLabs out of credit, say: Justin, 20 Oct), heard again in
+    the background; when its words come, they take the place of the "(not transcribed: ...)", as an
+    edit by its author (services/retract.edit). An edit wakes nobody: a name said in it is an @mention
+    on the page, but an agent it names isn't woken by it."""
+    from django.core.cache import cache
+    from conversations.models import Media
+    from .mood_view import prose
+    sha = not_heard(prose(message.content))
+    if sha is None:
+        raise VoiceError('this has no memo waiting for its words', status=400)
+    if not Media.objects.filter(sha256=sha).exists():
+        raise VoiceError('the recording itself is gone', status=404)
+    if not cache.add(f'memo:again:{message.id}', 1, HEARING_FOR):
+        raise VoiceError('it is being heard again already', status=409)
+    cache.delete(f'memo:again-said:{message.id}')
+    _in_background(_hear_again, str(message.id), sha, by, sorted(mentionable), aliases or {})
+
+
+def _hear_again(message_id, sha, by, mentionable, aliases):
+    from django.core.cache import cache
+    from conversations.models import Media, Message
+    from . import retract
+    from .mood_view import prose
+    try:
+        message = Message.objects.get(id=message_id)
+        heard = transcribe(Media.objects.get(sha256=sha), message.mood, by)
+        words = spoken_mentions(heard['text'], set(mentionable), aliases)
+        if not words:
+            raise VoiceError('no words heard')
+        text = prose(message.content)
+        if not_heard(text) != sha:
+            raise VoiceError('the message changed meanwhile')
+        retract.edit(message, _NOT_HEARD.sub(lambda _: '\n\n' + words, text, count=1), by)
+        said = {'done': True}
+    except (VoiceError, retract.Refused) as e:
+        said = {'error': str(e)}
+    except Exception:  # noqa: BLE001 -- whatever it was, say so where it was asked
+        said = {'error': 'transcribing failed'}
+    cache.set(f'memo:again-said:{message_id}', said, HEARD_FOR)
+    cache.delete(f'memo:again:{message_id}')
+
+
+def heard_again(message_id):
+    """How hearing a memo again went: {'working': True}, {'done': True}, {'error'}; None if never asked."""
+    from django.core.cache import cache
+    if cache.get(f'memo:again:{message_id}') is not None:
+        return {'working': True}
+    return cache.get(f'memo:again-said:{message_id}')
+
+
 # --- a mention, spoken ------------------------------------------------------------
 
 GREETINGS = r'(?:hey|hi|hello|ok|okay|yo)'
