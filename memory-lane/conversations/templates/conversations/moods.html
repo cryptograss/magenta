@@ -707,6 +707,7 @@
   .quiet .dot.screened { background: transparent; border-style: dashed; }
   .quiet .dot.screened:hover, .quiet .dot.screened.on { background: transparent; border-color: var(--who); }
   .quiet .why { flex-basis: 100%; font-size: 13px; color: var(--muted); font-style: italic; }
+  .quiet .why .thought { margin: 4px 0 0; padding: 0; white-space: pre-wrap; }
   body.only-mine .quiet { display: none; }
   /* Thinking the harness kept: dim, as a terminal shows it between tool calls. */
   .thought { margin: 2px 0 4px -10px; padding: 0 13px; font-size: 13.5px; font-style: italic; color: var(--muted);
@@ -2795,7 +2796,9 @@
   });
 
   function addQuiet(q, container) {
-    if (container._held) delete container._held[q.sender];  // what it thought before choosing not to speak
+    // What it thought before choosing not to speak: shown when its dot is pressed (Justin, 20 Oct).
+    const thought = ((container._held || {})[q.sender] || []).map(t => t.text).filter(Boolean).join('\n\n');
+    if (container._held) delete container._held[q.sender];
     let row = container.lastElementChild;
     if (!row || !row.classList.contains('quiet')) {
       row = document.createElement('div'); row.className = 'quiet';
@@ -2810,6 +2813,7 @@
         + (q.tools === 'look' ? ' · looking only' : q.tools === 'full' ? ' · with full tools' : '')
         + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
     dot.dataset.why = q.reason || '(no reason given)';
+    if (thought) dot.dataset.thought = thought;
     row.appendChild(dot);
   }
   document.addEventListener('click', e => {
@@ -2823,6 +2827,10 @@
     dot.classList.add('on');
     if (!why) { why = document.createElement('div'); why.className = 'why'; row.appendChild(why); }
     why.textContent = dot.title + ': ' + dot.dataset.why;
+    if (dot.dataset.thought) {
+      const t = document.createElement('div'); t.className = 'thought'; t.textContent = dot.dataset.thought;
+      why.appendChild(t);
+    }
   });
 
   // Turns, steps and dots from one response, in the order they happened.
