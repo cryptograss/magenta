@@ -337,7 +337,7 @@ def media_file(request, sha256, ext):
 
 
 PREVIEW_EDGE = 288  # a tidings thumbnail's longest side, in pixels
-PREVIEW_CACHE_SECONDS = 3600
+PREVIEW_CACHE_SECONDS = 7 * 86400  # kept made here; a browser keeps it for good (named by its hash, it never changes)
 
 
 @require_GET
@@ -347,8 +347,6 @@ def media_preview(request, sha256, ext):
     does. Generated once and cached; a picture pasted into a terminal and
     never posted is served to nobody who knows the hash anyway, but it is
     not linked from any page."""
-    import io
-
     from django.core.cache import cache
     from django.http import HttpResponse
 
@@ -359,9 +357,20 @@ def media_preview(request, sha256, ext):
             or item.mime not in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')):
         raise Http404('no such image')
     cached = cache.get(f'media-preview:{sha256}')
-    if cached is not None:
-        body, mime = cached
-        return HttpResponse(body, content_type=mime)
+    if cached is None:
+        cached = _preview_of(item)
+        cache.set(f'media-preview:{sha256}', cached, PREVIEW_CACHE_SECONDS)
+    body, mime = cached
+    response = HttpResponse(body, content_type=mime)
+    response['Cache-Control'] = 'public, max-age=31536000, immutable'
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    return response
+
+
+def _preview_of(item):
+    """(bytes, mime): the picture made small for media_preview."""
+    import io
     try:
         from PIL import Image, ImageOps
         with Image.open(io.BytesIO(bytes(item.data))) as opened:
@@ -376,14 +385,9 @@ def media_preview(request, sha256, ext):
             else:
                 picture.convert('RGB').save(out, 'JPEG', quality=78, optimize=True)
                 mime = 'image/jpeg'
-            body = out.getvalue()
+            return out.getvalue(), mime
     except Exception:
         raise Http404('no such image')
-    cache.set(f'media-preview:{sha256}', (body, mime), PREVIEW_CACHE_SECONDS)
-    response = HttpResponse(body, content_type=mime)
-    response['Cache-Control'] = f'public, max-age={PREVIEW_CACHE_SECONDS}'
-    response['X-Content-Type-Options'] = 'nosniff'
-    return response
 
 
 @require_GET

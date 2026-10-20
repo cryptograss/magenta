@@ -58,8 +58,8 @@
 <header>
   <a class="brand" href="/moods/">magenta</a>
   <nav>
-    <a href="/moods/tidings/" aria-current="page">tidings</a>
     <a href="/moods/status/">status</a>
+    <a href="/moods/tidings/" aria-current="page">tidings</a>
     <a href="/moods/settings/">settings</a>
   </nav>
 </header>
@@ -110,8 +110,8 @@
         {% if prompt.turns %}
         <div class="cost">
           {% for turn in prompt.turns %}
-          <span class="chip" title="what answered it: {{ turn.model }} · {{ turn.in }} tokens in, {{ turn.out }} out, {{ turn.calls }} calls{% if turn.paid %} · the harness's own cost{% else %} · cost per the price list{% endif %}">
-            @{{ turn.agent }} {{ turn.in }}→{{ turn.out }} · ${{ turn.usd|floatformat:4 }}
+          <span class="chip" title="what answered it: {{ turn.model }} · {{ turn.in }} tokens in, {{ turn.out }} out, {{ turn.calls }} call{{ turn.calls|pluralize }}{% if turn.paid %} · the harness's own cost{% elif turn.cost %} · cost per the price list{% else %} · no price known for this model{% endif %}">
+            @{{ turn.agent }} {{ turn.tokens }}{% if turn.cost %} · {{ turn.cost }}{% endif %}
           </span>
           {% endfor %}
         </div>

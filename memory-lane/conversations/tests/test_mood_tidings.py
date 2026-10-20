@@ -9,7 +9,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from conversations.models import FaceLook, FaceName, Media, Message, Mood, ThinkingEntity
+from conversations.models import ConversationParticipant, FaceLook, FaceName, Media, Message, Mood, ThinkingEntity
 from conversations.services import tidings
 
 
@@ -306,12 +306,29 @@ class TidingsPageTests(TestCase):
         self.assertEqual(len(newer['turns']), 1)   # the newest prompt before the run
         self.assertEqual(older['turns'], [])       # the earlier one goes unanswered
 
-    def test_a_turn_long_after_its_prompt_answers_nothing(self):
-        self.post(self.justin, self.mood_a, 'sooner or later @magent')
-        self.clock += tidings.TURN_WITHIN
+    def test_a_turn_after_a_post_naming_no_one_answers_no_prompt(self):
+        # magent listening to everything: it answers a post that named no one, not the prompt before it.
+        self.post(self.justin, self.mood_a, 'have a look at this @magent')
+        self.agent_row(self.magent, self.mood_a, tokens=(100, 8), cost=0.002)
+        self.post(self.justin, self.mood_a, 'and something else, said to the room')
+        self.agent_row(self.magent, self.mood_a, tokens=(900, 90), cost=0.02)
+        [turn] = self.prompts()['justin'][0]['turns']
+        self.assertEqual((turn['in'], turn['out']), (100, 8))
+
+    def test_tool_results_and_events_inside_a_turn_leave_it_one(self):
+        tool = ConversationParticipant.objects.get_or_create(name='tool-result', defaults={'participant_type': 'tool'})[0]
+        self.post(self.justin, self.mood_a, 'look it up @magent')
+        self.agent_row(self.magent, self.mood_a, tokens=(100, 8), cost=0.002)
+        self.post(tool, self.mood_a, '{"output": "found it"}')
+        self.agent_row(self.magent, self.mood_a, tokens=(140, 12), cost=0.003)
+        [turn] = self.prompts()['justin'][0]['turns']
+        self.assertEqual((turn['in'], turn['out'], turn['calls']), (240, 20, 2))
+
+    def test_an_answer_hours_later_still_answers_it(self):
+        self.post(self.justin, self.mood_a, 'whenever you get to it @magent')
+        self.clock += timedelta(hours=5)
         self.agent_row(self.magent, self.mood_a, tokens=(10, 1), cost=0.0001)
-        self.post(self.skyler, self.mood_a, 'closing the turn')
-        self.assertEqual(self.prompts()['justin'][0]['turns'], [])
+        self.assertEqual(len(self.prompts()['justin'][0]['turns']), 1)
 
     def test_an_unanswered_prompt_says_so_with_no_turns(self):
         self.post(self.justin, self.mood_a, 'asking into the dark @magent')
@@ -327,8 +344,22 @@ class TidingsPageTests(TestCase):
         body = self.client.get('/api/tidings/').json()
         justin = next(human for human in body['prompts'] if human['name'] == 'justin')
         [turn] = justin['prompts'][0]['turns']
-        self.assertEqual((turn['agent'], turn['in'], turn['out'], turn['usd']),
-                         ('magent', 100, 8, 0.002))
+        self.assertEqual((turn['agent'], turn['in'], turn['out'], turn['usd'], turn['tokens'], turn['cost']),
+                         ('magent', 100, 8, 0.002, '100→8', '<$0.01'))
+
+    def test_a_model_with_no_price_shows_no_cost(self):
+        self.post(self.justin, self.mood_a, 'over to you @re')
+        self.agent_row(self.re, self.mood_a, tokens=(120_900, 400))  # no harness cost, and no list price for it
+        [turn] = self.prompts()['justin'][0]['turns']
+        self.assertEqual((turn['tokens'], turn['cost'], turn['priced']), ('121k→400', '', False))
+        html = self.client.get('/moods/tidings/').content.decode()
+        self.assertIn('no price known for this model', html)
+        self.assertNotIn('<$0.01', html)
+
+    def test_tokens_and_cost_written_as_the_page_writes_them(self):
+        self.post(self.justin, self.mood_a, 'a big one @magent')
+        self.agent_row(self.magent, self.mood_a, tokens=(535_000, 2_100), cost=0.0512)
+        self.assertIn('@magent 535k→2.1k · $0.05', self.client.get('/moods/tidings/').content.decode())
 
     # --- the preview endpoint ----------------------------------------------------
 

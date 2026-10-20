@@ -18,25 +18,23 @@ more stands alone, whatever came before it; so does a command
 ("/compact magent ..."), and a short post whose author said nothing in
 that Mood in the PAIR_WITHIN before it.
 
-A prompt's turn is the answered agent's run of messages that follows it:
-messages in a row from that agent, ended by anyone else's post -- which is
-how the page draws a turn, and an event line splits one there too. A run
-counts as the answer to the newest prompt before it (the last thing said
-before the agent acted), and only within TURN_WITHIN; an agent may answer
-one prompt with two runs (a look, then words), and both are summed. The
-tokens and cost are each message's own usage, counted once per response:
-one response can be stored as several rows (thinking, words, a tool call),
-each repeating its usage, and repeated usage is one response
-(mood_view.how_payload's own rule). The cost is what the harness said it
-cost (Pi does); otherwise how_payload's price-list call.
+A prompt's turn is what the agent it names did next: its messages after
+that post and before the next person's, as the page draws a turn. Only
+the latest person's post before a turn is what it answered, and only if
+that post was a prompt naming it; a turn after a post that named no one
+(an agent listening to everything) is no prompt's. The tokens and cost are
+each message's own usage, counted once per response: one response can be
+stored as several rows (thinking, words, a tool call), each repeating its
+usage, and repeated usage is one response (mood_view.how_payload's own
+rule). The cost is what the harness said it cost (Pi does); otherwise
+how_payload's price-list call.
 
 Reading is public, like the rest of the record: pictures and prompts are
 already there in the Moods for anyone to see. How far back a Mood is
 looked is a bound, not a claim: MAX_PER_MOOD visible human posts, with
-the other senders' posts from the same stretch.
+up to AGENT_CAP of the agents' messages from the same stretch.
 """
 
-import bisect
 import heapq
 from collections import defaultdict
 from datetime import timedelta
@@ -48,9 +46,11 @@ PICTURES = 20
 PROMPTS_PER_HUMAN = 20
 SHORT_POST = 80   # under this many characters, a post that addresses an agent pairs with the one before it
 PAIR_WITHIN = timedelta(minutes=10)  # a short post's nudge is about what its author just said
-TURN_WITHIN = timedelta(hours=2)     # how long after a prompt its answering turn may start
 MAX_PER_MOOD = 300   # how many of a Mood's visible human posts the prompt scan looks at
-OTHER_CAP = 3000     # ... and how many other senders' posts from the same stretch it reads for turns
+AGENT_CAP = 3000     # ... and how many of the agents' messages from the same stretch it reads for turns
+# What how_payload reads: an agent's message is read for its usage, never its words.
+USAGE_FIELDS = ('id', 'sender', 'created_at', 'model_backend', 'effort', 'input_tokens', 'output_tokens',
+                'cache_read_input_tokens', 'cache_creation_input_tokens', 'cost_usd', 'stop_reason')
 MAX_POSTS_WITH_PICTURES = 400  # how many of the newest posts showing pictures the picture scan looks at
 
 IMAGE_MIMES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
@@ -88,7 +88,7 @@ def _run_metrics(run):
     rows repeats its usage on each; consecutive rows with the identical
     usage are one response. None when a turn carried no measured usage.
     """
-    totals = {'in': 0, 'out': 0, 'usd': 0.0, 'paid': False, 'calls': 0, 'model': ''}
+    totals = {'in': 0, 'out': 0, 'usd': 0.0, 'priced': False, 'paid': False, 'calls': 0, 'model': ''}
     last_usage = None
     for message in run:
         payload = how_payload(message)
@@ -104,6 +104,7 @@ def _run_metrics(run):
         totals['out'] += usage[1]
         if payload.get('usd') is not None:
             totals['usd'] += payload['usd']
+            totals['priced'] = True
         totals['paid'] = totals['paid'] or payload.get('paid', False)
         totals['calls'] += 1
         last_usage = usage
@@ -114,38 +115,23 @@ def _run_metrics(run):
     return totals
 
 
-def _attach_turns(entries, finished):
-    """Each prompt gets the metrics of the turn that answered it, when one did.
+def _k(n):
+    """Tokens as the Mood page writes them (moods.html kTokens): 980, 2.1k, 535k, 1.2M."""
+    if n >= 1_000_000:
+        return f'{n / 1_000_000:.1f}M'
+    if n >= 1000:
+        return f'{n / 1000:.1f}k' if n < 10000 and n % 1000 else f'{round(n / 1000)}k'
+    return str(n)
 
-    `entries` is one Mood's prompts, oldest first. `finished` maps each
-    agent's name to its runs in that Mood. A run answers the newest prompt
-    before it (the last thing said before the agent acted); a run older
-    than TURN_WITHIN behind any prompt answers none.
-    """
-    for agent, runs in finished.items():
-        prompted = sorted(((_entry_at(entry), entry) for entry in entries if agent in entry['agents']),
-                          key=lambda pair: pair[0])
-        if not prompted:
-            continue
-        times = [pair[0] for pair in prompted]
-        for run in runs:
-            metrics = _run_metrics(run)
-            if metrics is None:
-                continue
-            start = run[0].created_at
-            index = bisect.bisect_right(times, start) - 1
-            if index < 0 or start - times[index] > TURN_WITHIN:
-                continue
-            entry = prompted[index][1]
-            existing = next((turn for turn in entry['turns'] if turn['agent'] == agent), None)
-            if existing:
-                existing['in'] += metrics['in']
-                existing['out'] += metrics['out']
-                existing['usd'] = round(existing['usd'] + metrics['usd'], 4)
-                existing['paid'] = existing['paid'] or metrics['paid']
-                existing['calls'] += metrics['calls']
-            else:
-                entry['turns'].append({'agent': agent, **metrics})
+
+def _add_turn(entry, agent, messages):
+    """The prompt `entry` gets the tokens and cost of `agent`'s turn answering it, if it measured any."""
+    metrics = _run_metrics(messages)
+    if metrics is not None:
+        usd = metrics['usd']
+        entry['turns'].append({'agent': agent, **metrics, 'tokens': f"{_k(metrics['in'])}→{_k(metrics['out'])}",
+                               # As the page's usdText; nothing when no call had a price (a model the list lacks).
+                               'cost': '' if not metrics['priced'] else '<$0.01' if usd < 0.005 else f'${usd:.2f}'})
 
 
 def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
@@ -159,11 +145,10 @@ def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
     neither twice. Posts that address nobody are never prompts.
 
     Agents' messages on the same pass become their turns, for the tokens
-    and cost of what answered each prompt (_attach_turns).
+    and cost of what answered each prompt (_add_turn).
     """
     humans = list(ThinkingEntity.objects.filter(is_biological_human=True))
     human_names = [human.name for human in humans]
-    human_set = set(human_names)
     agents = set(ThinkingEntity.objects.filter(is_biological_human=False)
                  .values_list('name', flat=True))
     grouped = defaultdict(list)
@@ -174,54 +159,45 @@ def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
         human_rows = list(reversed(list(human_rows)))
         if not human_rows:
             continue
-        other_rows = list(mood.messages.filter(is_sidechain=False, created_at__gte=human_rows[0].created_at)
-                          .exclude(sender_id__in=human_names).select_related('sender')
-                          .order_by('created_at')[:OTHER_CAP])
+        agent_rows = list(mood.messages.filter(is_sidechain=False, sender_id__in=agents,
+                                               created_at__gte=human_rows[0].created_at)
+                          .only(*USAGE_FIELDS).order_by('created_at')[:AGENT_CAP])
         last = {}          # each human's own previous visible post in this Mood: what pairing looks back to
-        runs = defaultdict(list)     # each agent's turn being built up
-        finished = defaultdict(list)  # each agent's completed turns
         entries = []       # this Mood's prompts, oldest first
+        answering = None   # the prompt the latest person's post made, if it made one
+        answers = defaultdict(list)  # (prompt's index, agent) -> that agent's messages after it
 
-        def flush(except_agent=None):
-            for name, run in list(runs.items()):
-                if except_agent is not None and name == except_agent:
-                    continue
-                finished[name].append(run)
-                del runs[name]
-
-        for message in heapq.merge(human_rows, other_rows, key=lambda m: m.created_at):
+        for message in heapq.merge(human_rows, agent_rows, key=lambda m: m.created_at):
             if message.sender_id in agents:
-                flush(except_agent=message.sender_id)
-                runs[message.sender_id].append(message)
+                if answering is not None and message.sender_id in entries[answering]['agents']:
+                    answers[(answering, message.sender_id)].append(message)
                 continue
-            if message.sender_id in human_set:
-                flush()  # people's posts end every turn, as on the page
-                if from_wiki_tier(message):
-                    # From a PickiPedia device, an @agent is just text: no agent
-                    # is waking for it, so it is not a prompt (mood_view.activities).
-                    last[message.sender_id] = message
-                    continue
-                text = _text(message)
-                named = [n for n in addressed_in(text, agents, by=message.sender_id)]
-                if not named:
-                    last[message.sender_id] = message
-                    continue
-                previous = last.get(message.sender_id)
-                if (previous and len(text) < SHORT_POST and not text.startswith('/')
-                        and message.created_at - previous.created_at <= PAIR_WITHIN
-                        and not addressed_in(_text(previous), agents, by=previous.sender_id)):
-                    entry = _brief(previous, mood.slug, named)
-                    entry.update(kind='paired', trigger=_brief(message, mood.slug, named), by=message.sender_id)
-                else:
-                    entry = _brief(message, mood.slug, named)
-                    entry.update(kind='mention', by=message.sender_id)
-                entry['turns'] = []
-                entries.append(entry)
+            answering = None  # a person's post ends every turn, as on the page
+            if from_wiki_tier(message):
+                # From a PickiPedia device, an @agent is just text: no agent
+                # is waking for it, so it is not a prompt (mood_view.activities).
                 last[message.sender_id] = message
                 continue
-            flush()  # an event line ends a turn: the page splits one there too
-        flush()
-        _attach_turns(entries, finished)
+            text = _text(message)
+            named = [n for n in addressed_in(text, agents, by=message.sender_id)]
+            if not named:
+                last[message.sender_id] = message
+                continue
+            previous = last.get(message.sender_id)
+            if (previous and len(text) < SHORT_POST and not text.startswith('/')
+                    and message.created_at - previous.created_at <= PAIR_WITHIN
+                    and not addressed_in(_text(previous), agents, by=previous.sender_id)):
+                entry = _brief(previous, mood.slug, named)
+                entry.update(kind='paired', trigger=_brief(message, mood.slug, named), by=message.sender_id)
+            else:
+                entry = _brief(message, mood.slug, named)
+                entry.update(kind='mention', by=message.sender_id)
+            entry['turns'] = []
+            entries.append(entry)
+            answering = len(entries) - 1
+            last[message.sender_id] = message
+        for (index, agent), messages in answers.items():
+            _add_turn(entries[index], agent, messages)
         for entry in entries:
             grouped[entry['by']].append(entry)
 
