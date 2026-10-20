@@ -3008,6 +3008,11 @@
   });
 
   function renderItems(items, container, isNew) {
+    // What's still on its way is set aside while the record's own are drawn, and put back last, in the
+    // order it was sent: never below a message sent after it (Justin, 20 Oct: two sending, out of order,
+    // then a jump), and never between an agent's turn or row of dots and what continues it.
+    const sending = [...container.querySelectorAll(':scope > .turn.pending')];
+    sending.forEach(el => el.remove());
     for (const it of items) {
       const agent = agentOf(it);
       if (agent) {
@@ -3029,8 +3034,8 @@
       }
       closeBlock(container);
       if (it.kind === 'turn') {
-        const waiting = container.querySelector(`.turn.pending[data-pending-id="${it.v.id}"]`);
-        if (waiting) waiting.remove();  // sent from here: the record's own now stands in its place
+        const waiting = sending.findIndex(el => el.dataset.pendingId === it.v.id);
+        if (waiting >= 0) sending.splice(waiting, 1);  // sent from here: the record's own now stands in its place
         container.appendChild(turnEl(it.v, isNew));
         container._askedAt = new Date(it.v.created_at).getTime() / 1000;
       }
@@ -3039,6 +3044,7 @@
       else if (it.kind === 'event') addEvent(it.v, container);
       else addStep(it.v, container);
     }
+    sending.forEach(el => container.appendChild(el));
   }
 
   function remarkAll() {
