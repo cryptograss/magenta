@@ -33,30 +33,42 @@ def enabled():
 
 
 def ticked(text, link):
-    """The page's text with the item linking `link` marked done; the text unchanged if there's none, or it is."""
+    """The page's text with every item linking `link` marked done; the text unchanged if there's none, or they are."""
+    def tick_item(item):
+        lines = item.split('\n')
+        if not any(re.fullmatch(r'\s+link:\s*["\']?' + re.escape(link) + r'["\']?\s*', line) for line in lines):
+            return item
+        for i, line in enumerate(lines):
+            done = _DONE.match(line)
+            if done:
+                if _says_done(done.group(2)):
+                    return item  # done already, perhaps in words ("done: built by re"): left as said
+                lines[i] = f'{done.group(1)}done: true'
+                break
+        else:
+            # After its last line with words (an item may end in a blank line before the next).
+            last = max(i for i, line in enumerate(lines) if line.strip())
+            indent = re.match(r'\s+', lines[1]).group(0) if len(lines) > 1 and re.match(r'\s+\S', lines[1]) else '  '
+            lines.insert(last + 1, f'{indent}done: true')
+        return '\n'.join(lines)
+
     def tick_block(block):
         body = block.group(3)
         starts = [m.start() for m in _ITEM.finditer(body)] + [len(body)]
-        for a, b in zip(starts, starts[1:]):
-            item = body[a:b]
-            lines = item.split('\n')
-            if not any(re.fullmatch(r'\s+link:\s*["\']?' + re.escape(link) + r'["\']?\s*', line) for line in lines):
-                continue
-            for i, line in enumerate(lines):
-                done = _DONE.match(line)
-                if done:
-                    if (done.group(2) or '').strip().lower() in ('true', 'yes'):
-                        return block.group(0)  # done already
-                    lines[i] = f'{done.group(1)}done: true'
-                    break
-            else:
-                # After its last line with words (an item may end in a blank line before the next).
-                last = max(i for i, line in enumerate(lines) if line.strip())
-                indent = re.match(r'\s+', lines[1]).group(0) if len(lines) > 1 and re.match(r'\s+\S', lines[1]) else '  '
-                lines.insert(last + 1, f'{indent}done: true')
-            return block.group(1) + body[:a] + '\n'.join(lines) + body[b:] + block.group(4)
-        return block.group(0)
+        # Every item: two can link one pull request (the work, and its merge), both done when it merges.
+        items = [tick_item(body[a:b]) for a, b in zip(starts, starts[1:])]
+        return block.group(1) + body[:starts[0]] + ''.join(items) + block.group(4)
     return _BLOCK.sub(tick_block, text, count=1)
+
+
+def _says_done(value):
+    """Whether a done: line's value says done, as the list's readers take it (services/todo.parse,
+    the wiki's Todo.php): anything but false, no, off, 0 or nothing."""
+    import yaml
+    try:
+        return bool(yaml.safe_load(value or ''))
+    except yaml.YAMLError:
+        return True  # words YAML can't read are still words
 
 
 # Ticks for one page, gathered and made in one edit. Several merges are often
