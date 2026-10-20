@@ -16,7 +16,8 @@ T1 = datetime(2026, 10, 20, 1, 5, tzinfo=timezone.utc)
 
 
 def sent(text):
-    return f'For people: why this rule.\n\n{{{{Sent to agents|text={text}}}}}\n'
+    """A rules page as it's written: the rules, and a comment for editors that is never sent."""
+    return f'<!-- For editors: why this rule. -->\n{text}\n'
 
 
 class FakeWiki:
@@ -33,7 +34,7 @@ class FakeWiki:
 
 def wiki(**extra):
     pages = {
-        'Cryptograss:Agents/Rules': [(101, 'JMyles', sent('Never merge a pull request.'))],
+        'Cryptograss:Agents/GeneralOrders': [(101, 'JMyles', sent('Never merge a pull request.'))],
         identity_title('magent'): [(102, 'JMyles', sent('You are magent, the magenta agent.'))],
         mood_title('magent-self'): [(103, 'SkymanJenkins', sent('Here, talk about yourself freely.'))],
     }
@@ -53,15 +54,14 @@ class RulesBundleTest(TestCase):
         b = self.gather(wiki())
         self.assertEqual(b.degraded, [])
         self.assertTrue(b.text.startswith('<rules agent="magent" mood="magent-self" gathered="2026-10-19T23:40Z">'))
-        self.assertIn('<standing page="Cryptograss:Agents/Rules" revision="101" by="JMyles">\n'
+        self.assertIn('<standing page="Cryptograss:Agents/GeneralOrders" revision="101" by="JMyles">\n'
                       'Never merge a pull request.\n</standing>', b.text)
         self.assertIn('<identity agent="magent" page="Cryptograss:Agents/Magent/Rules" revision="102"', b.text)
         self.assertIn('<mood slug="magent-self" page="Cryptograss:Moods/magent-self/Rules" revision="103"', b.text)
         # Broadest first, and the precedence said once.
         self.assertLess(b.text.index('<standing'), b.text.index('<identity'))
         self.assertLess(b.text.index('<identity'), b.text.index('<mood'))
-        self.assertIn('nothing narrower loosens a standing rule', b.text)
-        self.assertNotIn('For people', b.text)  # only what's inside {{Sent to agents}}
+        self.assertNotIn('For editors', b.text)  # the page whole, less its comments
         self.assertNotIn('<recovery', b.text)
         stamps = b.stamps()
         self.assertEqual({k: v['revision'] for k, v in stamps['layers'].items()},
@@ -143,19 +143,30 @@ class RulesBundleTest(TestCase):
         self.assertIn('<recovery', b.text)
 
     def test_standing_rules_nobody_trusted_has_written_are_a_failure(self):
-        w = wiki(**{'Cryptograss:Agents/Rules': [(130, 'Magent', sent('A proposal.'))]})
+        w = wiki(**{'Cryptograss:Agents/GeneralOrders': [(130, 'Magent', sent('A proposal.'))]})
         b = self.gather(w)
         self.assertIn('no revision by a trusted editor (JMyles, SkymanJenkins) among the last 1', b.degraded[0])
         self.assertNotIn('A proposal.', b.text)
 
-    def test_a_trusted_revision_with_nothing_sent_is_a_failure(self):
-        w = wiki(**{'Cryptograss:Agents/Rules': [(140, 'JMyles', 'Only prose for people, no template.')]})
+    def test_a_trusted_revision_with_nothing_but_comments_is_a_failure(self):
+        w = wiki(**{'Cryptograss:Agents/GeneralOrders': [(140, 'JMyles', '<!-- only a note -->')]})
         b = self.gather(w)
-        self.assertIn('revision 140 has no {{Sent to agents}} text', b.degraded[0])
+        self.assertIn('revision 140 is empty', b.degraded[0])
 
-    def test_several_texts_on_a_page_are_sent_in_order(self):
-        w = wiki(**{'Cryptograss:Agents/Rules': [(150, 'JMyles', sent('First.') + '\n== Two ==\n' + sent('Second.'))]})
-        self.assertIn('First.\n\nSecond.', self.gather(w).text)
+    def test_the_page_is_sent_as_it_is_written(self):
+        page = 'Each has a reason.\n\n== Standing ==\n* Never merge.\n\n== Knowing ==\n* Say what you checked.'
+        b = self.gather(wiki(**{'Cryptograss:Agents/GeneralOrders': [(150, 'JMyles', page)]}))
+        self.assertIn(page, b.text)
+
+    def test_no_rule_is_written_in_the_code(self):
+        # The words around a degraded bundle come from a file beside the code, not from the code.
+        w = wiki()
+        w.down = True
+        words = Path(tempfile.mkdtemp()) / 'degraded.md'
+        words.write_text('Words a person wrote.')
+        b = bundle('magent', 'magent-self', get=w.get, state_dir=self.state, now=T0, degraded_path=words)
+        self.assertIn('Words a person wrote.\n</rules-degraded>', b.text)
+        self.assertNotIn('all-hands', b.text.split('<recovery')[0])
 
     def test_without_a_state_dir_nothing_is_kept(self):
         w = wiki()
