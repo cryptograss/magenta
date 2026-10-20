@@ -189,7 +189,7 @@ class SpeakerEndpointsTest(TestCase):
 
 
 class SpokenMentionsTest(TestCase):
-    NAMES = {'magent', 'justin', 'skyler'}
+    NAMES = {'magent', 'justin', 'skyler', 're', 'blu'}
 
     def heard(self, text, aliases=None):
         return voice.spoken_mentions(text, self.NAMES, aliases)
@@ -202,10 +202,31 @@ class SpokenMentionsTest(TestCase):
         self.assertEqual(self.heard('Magnet, are you there?'), '@magent, are you there?')  # as Scribe may hear it
         self.assertEqual(self.heard('at JMyles see this', {'jmyles': 'justin'}), '@justin see this')
 
+    def test_an_agent_said_by_its_colour(self):
+        # Justin, 20 Oct: "re" is hard to say; "the red agent" is said instead.
+        self.assertEqual(self.heard('I asked at the red agent about the deploy.'), 'I asked @re about the deploy.')
+        self.assertEqual(self.heard('Red agent, can you look at this?'), '@re, can you look at this?')
+        self.assertEqual(self.heard('Hey the magenta agent what do you think'), 'Hey @magent what do you think')
+        self.assertEqual(self.heard('The blue agent started today and the red agent reviewed it.'),
+                         'blu started today and re reviewed it.')
+        self.assertEqual(self.heard('at the green agent, hello'), 'at the green agent, hello')  # no such agent
+        self.assertEqual(voice.spoken_mentions('ask at the red agent', {'justin'}), 'ask at the red agent')  # can't address it
+
     def test_a_name_merely_said_is_left_alone(self):
         for text in ('Justin went to the store.', 'The magnet fell off.', 'That was what magent said.',
                      'Look at magenta-interface', 'cat skyler', 'Already @magent, hi'):
             self.assertEqual(self.heard(text), text)
+
+
+class ColourKeytermsTest(TestCase):
+
+    def test_scribe_is_told_to_expect_each_agents_colour(self):
+        for name, human in (('re', False), ('magent', False), ('justin', True)):
+            ThinkingEntity.objects.get_or_create(name=name, defaults={'is_biological_human': human})
+        terms = voice.keyterms()
+        self.assertIn('red agent', terms)
+        self.assertIn('magenta agent', terms)
+        self.assertNotIn('blue agent', terms)  # no blu here (yet)
 
 
 class ReaderReportsTest(TestCase):
