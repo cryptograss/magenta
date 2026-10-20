@@ -1004,6 +1004,7 @@ def attestation_of(msg):
 
 
 def turn_payload(msg, text, mentionable=()):
+    from . import tiding_links
     from .links import linked_from
     # A ```voice block is how its writer wants it read aloud: performed, not shown.
     # A ```handoff block went to another Mood (services/handoff.py): a line says so, not the block.
@@ -1037,6 +1038,9 @@ def turn_payload(msg, text, mentionable=()):
         'html': render_html(said, mentionable),
         # Who linked here, or replied (services/links.py): shown under it.
         'linked_from': linked_from(msg.id),
+        # Its links, which can be put on Tidings, and the one that is (services/tiding_links.py).
+        'links': tiding_links.links_in(said),
+        'tiding': tiding_links.by_message().get(str(msg.id)),
     }
 
 

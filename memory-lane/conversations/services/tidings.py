@@ -278,7 +278,8 @@ def picture_tidings(limit=PICTURES):
 def tidings_state():
     """Everything /moods/tidings/ shows: each human's Wiki name added, naught else."""
     from conversations.services import wiki_auth
-    state = {'pictures': picture_tidings(), 'prompts': prompt_tidings()}
+    from conversations.services import tiding_links
+    state = {'links': tiding_links.listed(), 'pictures': picture_tidings(), 'prompts': prompt_tidings()}
     wiki = wiki_auth.names()
     for human in state['prompts']:
         human['wiki_name'] = wiki.get(human['name'], '')

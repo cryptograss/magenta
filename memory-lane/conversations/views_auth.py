@@ -276,6 +276,60 @@ def api_message_edit(request, slug, message_id):
 
 
 @require_POST
+def api_message_promote(request, slug, message_id):
+    """{"url"?, "title"?}: put a message's link on Tidings (services/tiding_links.py). Anyone signed in."""
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    message = Message.objects.filter(id=_uuid_or_none(message_id), mood=Mood.by_slug(slug)).first()
+    if message is None:
+        return JsonResponse({'error': 'no such message in this Mood'}, status=404)
+    if not _under_limit(f'promote:{device.pk}', 10):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"url": ..., "title": ...}'}, status=400)
+    try:
+        tiding = tiding_links.promote(message, device.entity, url=body.get('url') or None, title=body.get('title') or None)
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'id': str(tiding.id), 'url': tiding.url, 'title': tiding.title}, status=201)
+
+
+@require_POST
+def api_tiding(request, tiding_id):
+    """{"title"} to retitle a link on Tidings; {"withdraw": true} to take it off. Whoever promoted it, or an admin."""
+    from .models import Tiding
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    tiding = Tiding.objects.filter(id=_uuid_or_none(tiding_id)).first()
+    if tiding is None:
+        return JsonResponse({'error': 'no such link on Tidings'}, status=404)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"title": ...} or {"withdraw": true}'}, status=400)
+    try:
+        if body.get('withdraw'):
+            tiding_links.withdraw(tiding, device)
+            return JsonResponse({'id': tiding_id, 'withdrawn': True})
+        tiding = tiding_links.retitle(tiding, device, body.get('title'))
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'id': str(tiding.id), 'title': tiding.title})
+
+
+@require_POST
 def api_message_delete(request, slug, message_id):
     """Take a message's words out of the record (services/retract.py): yours, or anyone's as an admin."""
     return _retract(request, slug, message_id, edit=False)
