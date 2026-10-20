@@ -1,5 +1,5 @@
 """The tidings pages: /moods/tidings/ and its /api/tidings/ show pictures;
-/moods/prompts/ and its /api/prompts/ show prompts. The two lives here as one
+/moods/prompts/ and its /api/prompts/ show prompts. The two live here as one
 file because a prompt's answering turn is read from the same posts the
 picture scan walks.
 
