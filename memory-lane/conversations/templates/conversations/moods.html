@@ -3026,6 +3026,9 @@
       else if (it.kind === 'event') addEvent(it.v, container);
       else addStep(it.v, container);
     }
+    // What's still on its way stays last, in the order it was sent: the record's own arrive above it,
+    // never below a message sent after them (Justin, 20 Oct: two sending, shown out of order, then a jump).
+    container.querySelectorAll(':scope > .turn.pending').forEach(el => container.appendChild(el));
   }
 
   function remarkAll() {
