@@ -1,0 +1,103 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+.light { --bg:#fbfaf7; --panel:#ffffff; --ink:#1f1d1a; --muted:#6b6560; --line:#e6e1d8; --agent:#b8106b; --code:#f3efe8; }
+.dark  { --bg:#161417; --panel:#1f1c20; --ink:#ece7e1; --muted:#a39b93; --line:#36313a; --agent:#ef5aa6; --code:#29252c; }
+* { box-sizing: border-box; }
+body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:1.5; }
+.wrap { display:flex; }
+.side { flex:1; background:var(--bg); color:var(--ink); padding:18px 22px 22px; }
+h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:18px 0 6px; font-weight:600; }
+h2:first-child { margin-top:0; }
+.note { font-size:12.5px; color:var(--muted); margin:2px 0 0; }
+.human { color:#2a5d9f; font-weight:600; } .dark .human { color:#86b4f0; }
+.msg { margin:6px 0; }
+/* quiet row, as now */
+.quiet { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:4px 0; padding:4px 3px; }
+.dot { --who: var(--agent); width:9px; height:9px; border-radius:50%; padding:0; cursor:pointer;
+       background: color-mix(in srgb, var(--who) 30%, var(--panel)); border:1px solid var(--who); }
+.dot.on { background: var(--who); }
+.dot.screened { background:transparent; border-style:dashed; }
+/* proposed: a quiet dot that thought first grows to hold the count: filled, as quiet dots are */
+.dot.n { width:auto; min-width:22px; height:22px; border-radius:11px; padding:0 5px; font:600 10.5px/20px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         font-variant-numeric:tabular-nums; color:var(--ink); text-align:center; }
+.dot.n.on { color:#fff; }
+/* proposed: a thought dot: a ring in the agent's colour, the count inside */
+.tdot { --who: var(--agent); display:inline-block; min-width:22px; height:22px; border-radius:11px; padding:0 5px; vertical-align:middle;
+        border:1.5px solid var(--who); background:var(--panel); color:var(--who); text-align:center;
+        font:600 10.5px/19px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-variant-numeric:tabular-nums; cursor:pointer; }
+.tdot.on { background:var(--who); color:#fff; }
+.tdot.empty { min-width:12px; width:12px; height:12px; padding:0; vertical-align:middle; }
+/* a turn */
+.aturn { border-left:3px solid var(--agent); padding:4px 0 6px 12px; margin:8px 0; }
+.ahead { font-size:13.5px; color:var(--muted); } .ahead b { color:var(--agent); }
+.work { margin:4px 0 6px; font-size:13px; color:var(--muted); display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.work .caret { display:inline-block; width:10px; }
+.steps { border-left:2px solid var(--line); padding-left:10px; margin:4px 0 8px 4px; font-size:13px; }
+.step { margin:3px 0; color:var(--muted); } .step code { background:var(--code); color:var(--ink); border-radius:4px; padding:0 4px; font-size:12px; margin-right:6px; }
+.trow { margin:4px 0; }
+.thought { font-size:13.5px; font-style:italic; color:var(--muted); margin:4px 0 6px; white-space:pre-wrap; }
+.thought::before { content:'∴ '; font-style:normal; }
+.why { font-size:13px; color:var(--muted); font-style:italic; flex-basis:100%; }
+</style></head><body><div class="wrap">
+<div class="side light">
+<h2>A quiet row (light)</h2>
+<div class="quiet">
+  <span class="dot"></span><span class="dot" style="--who:#d32f2f"></span><span class="dot screened" style="--who:#d32f2f"></span>
+  <span class="dot n">38</span><span class="dot n" style="--who:#d32f2f">240</span><span class="dot n on" style="--who:#d32f2f">1.4k</span>
+  <div class="why">re chose not to speak · Oct 20, 3:16 PM: not mine to answer<div class="thought">Justin is asking magent about the clock; nothing here for me…</div></div>
+</div>
+<p class="note">Small filled dots stay as they are. A quiet wake that thought first grows to hold its count, still filled. Dashed: screened, never looked.</p>
+
+<h2>A turn, folded</h2>
+<div class="msg"><span class="human">justin</span> @magent why does the clock say 15 minutes?</div>
+<div class="aturn">
+  <div class="ahead">▾ <b>magent</b> · 6m 10s · +18k context · $0.42</div>
+  <div class="work"><span class="caret">▸</span><span class="tdot">38</span> reading ×2 <span class="tdot">12</span> running a command ×3 <span class="tdot">62</span> editing <span class="tdot empty"></span></div>
+  <div class="msg">Found it: the clock counted back to re's first tool result…</div>
+</div>
+<p class="note">Rings in the agent's colour, where each thought happened between the steps. No number: the harness kept no words.</p>
+
+<h2>The same turn, opened, one thought pressed</h2>
+<div class="aturn">
+  <div class="work"><span class="caret">▾</span></div>
+  <div class="steps">
+    <div class="trow"><span class="tdot">38</span></div>
+    <div class="step"><code>Read</code>mood_view.py</div>
+    <div class="step"><code>Grep</code>since in moods.html</div>
+    <div class="trow"><span class="tdot on">12</span><div class="thought">_activity with only= leaves out re's messages but not its tool results.</div></div>
+    <div class="step"><code>Bash</code>run the activity tests</div>
+    <div class="step"><code>Bash</code>…</div>
+    <div class="trow"><span class="tdot">62</span></div>
+  </div>
+</div>
+</div><div class="side dark">
+<h2>A quiet row (dark)</h2>
+<div class="quiet">
+  <span class="dot"></span><span class="dot" style="--who:#d32f2f"></span><span class="dot screened" style="--who:#d32f2f"></span>
+  <span class="dot n">38</span><span class="dot n" style="--who:#d32f2f">240</span><span class="dot n on" style="--who:#d32f2f">1.4k</span>
+  <div class="why">re chose not to speak · Oct 20, 3:16 PM: not mine to answer<div class="thought">Justin is asking magent about the clock; nothing here for me…</div></div>
+</div>
+<p class="note">Small filled dots stay as they are. A quiet wake that thought first grows to hold its count, still filled. Dashed: screened, never looked.</p>
+
+<h2>A turn, folded</h2>
+<div class="msg"><span class="human">justin</span> @magent why does the clock say 15 minutes?</div>
+<div class="aturn">
+  <div class="ahead">▾ <b>magent</b> · 6m 10s · +18k context · $0.42</div>
+  <div class="work"><span class="caret">▸</span><span class="tdot">38</span> reading ×2 <span class="tdot">12</span> running a command ×3 <span class="tdot">62</span> editing <span class="tdot empty"></span></div>
+  <div class="msg">Found it: the clock counted back to re's first tool result…</div>
+</div>
+<p class="note">Rings in the agent's colour, where each thought happened between the steps. No number: the harness kept no words.</p>
+
+<h2>The same turn, opened, one thought pressed</h2>
+<div class="aturn">
+  <div class="work"><span class="caret">▾</span></div>
+  <div class="steps">
+    <div class="trow"><span class="tdot">38</span></div>
+    <div class="step"><code>Read</code>mood_view.py</div>
+    <div class="step"><code>Grep</code>since in moods.html</div>
+    <div class="trow"><span class="tdot on">12</span><div class="thought">_activity with only= leaves out re's messages but not its tool results.</div></div>
+    <div class="step"><code>Bash</code>run the activity tests</div>
+    <div class="step"><code>Bash</code>…</div>
+    <div class="trow"><span class="tdot">62</span></div>
+  </div>
+</div>
+</div></div></body></html>
