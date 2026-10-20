@@ -509,6 +509,9 @@
            padding: 6px 10px 2px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
   .ahead b { color: var(--who, var(--agent)); font-weight: 600; }
   .ahead .caret { width: 10px; flex: none; }
+  .ahead .turnlink { flex: none; font-size: 11.5px; color: var(--muted); cursor: copy; }
+  .ahead .turnlink:hover { text-decoration: underline; }
+  .ahead .turnlink[data-copied]::after { content: ' link copied'; color: var(--accent); font-size: 11px; }
   .ahead .preview { display: none; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                     color: var(--ink); font-size: 13.5px; }
   .aturn.folded .ahead .preview { display: block; }
@@ -2859,13 +2862,16 @@
   });
 
   // A message's link: /moods/<slug>/#m-<id>. Clicking its time copies it.
-  document.addEventListener('click', async e => {
+  async function copyLink(el, hash) {
+    const url = `${location.origin}/moods/${encodeURIComponent(current)}/${hash}`;
+    try { await navigator.clipboard.writeText(url); el.dataset.copied = '1'; setTimeout(() => delete el.dataset.copied, 1500); }
+    catch (err) { history.replaceState(history.state, '', url); }
+  }
+  document.addEventListener('click', e => {
     const a = e.target.closest('a.permalink');
     if (!a) return;
     e.preventDefault();
-    const url = `${location.origin}/moods/${encodeURIComponent(current)}/${a.getAttribute('href')}`;
-    try { await navigator.clipboard.writeText(url); a.dataset.copied = '1'; setTimeout(() => delete a.dataset.copied, 1500); }
-    catch (err) { history.replaceState(history.state, '', url); }
+    copyLink(a, a.getAttribute('href'));
   });
 
   // --- an agent's turn, gathered under one header --------------------------------
@@ -2955,6 +2961,8 @@
         + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
     b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
       + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}`
+      // When it began, and the turn's link (to its first step, which opens the turn): click to copy.
+      + (b._firstId ? ` <span class="turnlink" data-href="#m-${esc(b._firstId)}" title="This turn's link: click to copy">${esc(stamp(b._firstAt))}</span>` : '')
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
       + (added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
       + (b._priced ? ` · <span class="spent" title="${esc(costTitle)}">${esc(usdText(b._usd))}</span>` : '')
@@ -2991,6 +2999,8 @@
   document.addEventListener('click', e => {
     const head = e.target.closest('.ahead');
     if (!head) return;
+    const link = e.target.closest('.turnlink');
+    if (link) { copyLink(link, link.dataset.href); return; }  // the turn's time: its link, copied
     const b = head.closest('.aturn');
     b.classList.toggle('folded');
     drawBlockHead(b);
@@ -3001,6 +3011,8 @@
       const agent = agentOf(it);
       if (agent) {
         const b = blockFor(container, agent, it.v);
+        // Its first message or step (a thought has nowhere to be taken to): the turn's link.
+        if (!b._firstId && it.v.id && it.kind !== 'thought') { b._firstId = it.v.id; b._firstAt = it.v.created_at; }
         const body = b.querySelector('.abody');
         if (it.kind === 'turn') {
           // Never a follow-on of its own steps or notes: each message in a turn keeps its time and
