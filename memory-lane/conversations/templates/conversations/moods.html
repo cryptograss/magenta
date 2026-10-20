@@ -741,6 +741,9 @@
   .work .steps .trow.on .thought { display: block; }
   /* Images: in turns, as thumbnails on a run of work, inside a step. */
   .turn .body a.img { display: inline-block; margin: 4px 0; }
+  .turn .body .hearagain { font: inherit; font-size: 12.5px; color: var(--accent); background: none; border: 1px solid var(--line);
+                           border-radius: 12px; padding: 1px 10px; margin: 2px 0 4px; cursor: pointer; }
+  .turn .body .hearagain:disabled { color: var(--muted); cursor: default; }
   .turn .body img { display: block; max-width: 100%; max-height: 420px; border-radius: 6px; border: 1px solid var(--line); }
   /* A picture, large, over everything: its caption, and its page. */
   #lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.86); display: flex; flex-direction: column;
@@ -2224,6 +2227,11 @@
     markAgentMentions(el, t);
     el.querySelectorAll('a.yarn[data-yarn]').forEach(decorateYarn);
     if (el.querySelector('.body a[href^="http"]:not([class])')) cardsWatch.observe(el);  // a preview, as it nears the screen
+    // A memo whose words never came (ElevenLabs out of credit, say): its sender may have it heard again.
+    if (t.is_human && viewer && t.sender === viewer && !t.deleted && /🎙 \[voice memo[^\]]*\]\([^)]*\)\n\n\(not transcribed: /.test(t.text || '')) {
+      el.querySelector('.body').insertAdjacentHTML('beforeend',
+        `<button type="button" class="hearagain" data-id="${esc(t.id)}" title="Ask for its words again; they take the place of this note, as an edit (which wakes no one)">↻ hear it again</button>`);
+    }
     el.insertAdjacentHTML('beforeend', '<div class="reacts"></div>');
     renderReacts(el, reactionsNow[t.id] || {});
     // A person's picture: anyone here may put it on PickiPedia, credited to them, under the license they gave it.
@@ -3792,6 +3800,28 @@
   // Each poll asks what changed since the last (per Mood: a Mood left and come
   // back to is asked from when it was last looked at), and redraws those messages.
   const changesAt = {};
+  document.addEventListener('click', async e => {
+    const btn = e.target.closest('.hearagain');
+    if (!btn || btn.disabled) return;
+    const url = `/api/moods/${encodeURIComponent(current)}/messages/${encodeURIComponent(btn.dataset.id)}/hear-again/`;
+    const says = what => { btn.textContent = what; };
+    btn.disabled = true; says('hearing it again…');
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+      for (let i = 0; i < 60; i++) {  // a long memo takes a while: its words replace this when they come
+        await new Promise(go => setTimeout(go, 4000));
+        if (!btn.isConnected) return;  // drawn anew, with its words
+        const now = await (await fetch(url)).json();
+        if (now.error) throw new Error(now.error);
+        if (now.done) { poll(false); return; }
+      }
+      throw new Error('still not heard: try again in a while');
+    } catch (err) {
+      says(`↻ hear it again (${err.message})`);
+      btn.disabled = false;
+    }
+  });
   function applyChange(c) {
     const old = document.getElementById('m-' + c.id);
     if (!old || !c.turn) return;

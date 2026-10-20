@@ -792,6 +792,42 @@ def api_memo(request, slug):
     return JsonResponse({'url': stored.url}, status=201)
 
 
+@require_http_methods(['GET', 'POST'])
+def api_memo_again(request, slug, message_id):
+    """A memo posted without its words, heard again (services/voice.hear_again): POST to start, by
+    whoever sent it; GET for how it's going: {'working'}, {'done'} or {'error'}."""
+    from .services import voice
+    from .services.mood_view import POSTED
+    message = Message.objects.filter(id=_uuid_or_none(message_id), mood=Mood.by_slug(slug)).first()
+    if message is None:
+        return JsonResponse({'error': 'no such message in this Mood'}, status=404)
+    if request.method == 'GET':
+        return JsonResponse(voice.heard_again(message.id) or {})
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    if message.sender_id != device.entity_id or message.source_file not in POSTED:
+        return JsonResponse({'error': 'only whoever sent a memo can have it heard again'}, status=403)
+    if not voice.enabled():
+        return JsonResponse({'error': "voice isn't set up here (no ElevenLabs key)"}, status=503)
+    if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    from .services import wiki_auth
+    from .services.mood_view import known_names
+    mentionable = set(known_names())
+    if device.tier == 'wiki':  # as when it was recorded: a PickiPedia sign-in can't address agents
+        mentionable -= set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
+    try:
+        voice.check_budget(voice.STT_USD_PER_HOUR * 10 / 60)
+        voice.hear_again(message, device.entity_id, mentionable, wiki_auth.aliases())
+    except voice.VoiceError as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'working': True}, status=202)
+
+
 @require_POST
 def api_speak(request, slug, message_id):
     """One message read aloud, for the device's person: {"url"} of the audio.
