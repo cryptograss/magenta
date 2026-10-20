@@ -32,6 +32,20 @@ class TickedTest(TestCase):
                          '<todo>\n- task: A\n  link: "https://github.com/a/b/pull/1"\n  done: true\n- task: B\n</todo>\n')
         self.assertEqual(todo_ticks.ticked(text, 'https://github.com/a/b/pull/2'), text)
 
+    def test_every_item_linking_it_and_a_done_in_words_left_as_said(self):
+        # The work and its merge, both linking the pull request (the tidings tab, 20 Oct): the bot
+        # ticked only the first, writing "done: true" over what it said.
+        text = ('<todo>\n- task: Build it\n  who: re\n  link: https://github.com/a/b/pull/78\n  done: "re built it"\n'
+                '- task: Merge it\n  who: justin\n  link: https://github.com/a/b/pull/78\n- task: Other\n  done: no\n</todo>\n')
+        new = todo_ticks.ticked(text, 'https://github.com/a/b/pull/78')
+        self.assertEqual(new, text.replace('pull/78\n- task: Other', 'pull/78\n  done: true\n- task: Other'))
+        self.assertEqual([i['done'] for i in todo.parse(new)], [True, True, False])
+
+    def test_what_says_not_done(self):
+        for value in ('false', 'no', 'off', '0', "''", ''):
+            text = f'<todo>\n- task: A\n  link: https://github.com/a/b/pull/1\n  done: {value}\n</todo>\n'
+            self.assertIn('  done: true\n', todo_ticks.ticked(text, 'https://github.com/a/b/pull/1'), value)
+
 
 class FakeWiki:
     def __init__(self, text, conflicts=0, overwritten=0):
