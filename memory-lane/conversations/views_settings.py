@@ -67,6 +67,24 @@ def api_status(request):
     return JsonResponse(status.full_status(private=bool(device and device.tier == 'key')))
 
 
+@require_GET
+def tidings_page(request):
+    device = mood_auth.device_for(request)
+    from .services import tidings
+    return render(request, 'conversations/mood_tidings.html', {
+        'viewer': device.entity_id if device else '',
+        'tidings': tidings.tidings_state(),
+        'picture_cap': tidings.PICTURES,
+        'prompt_cap': tidings.PROMPTS_PER_HUMAN,
+    })
+
+
+@require_GET
+def api_tidings(request):
+    from .services import tidings
+    return JsonResponse(tidings.tidings_state())
+
+
 @require_http_methods(['GET', 'POST'])
 def api_settings(request):
     if request.method == 'GET':
