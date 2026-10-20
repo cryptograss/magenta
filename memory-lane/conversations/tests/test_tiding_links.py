@@ -51,9 +51,15 @@ class TidingLinksTest(TestCase):
         self.assertEqual((tiding.url, tiding.title, tiding.by_id), ('https://thebluegrasssituation.com/fests/',
                                                                      'The Bluegrass Situation: a festival list', 'justin'))
         self.assertEqual(self.promote(self.client_for(self.justin), said).json()['id'], str(tiding.id))  # once
-        second = self.promote(self.client_for(self.skyler), said, url='https://example.org/b', title='  Mine  ')
-        self.assertEqual(second.json()['title'], 'Mine')
-        self.assertEqual(self.promote(self.client_for(self.skyler), said, url='https://elsewhere.test/').status_code, 400)
+        # One per message: its other link isn't put up beside it (re, 20 Oct).
+        second = self.promote(self.client_for(self.skyler), said, url='https://example.org/b', title='Mine')
+        self.assertEqual((second.json()['id'], Tiding.objects.count()), (str(tiding.id), 1))
+        other = self.say(self.skyler, 'Two here: https://a.test/ and https://example.org/b')
+        chosen = self.promote(self.client_for(self.skyler), other, url='https://example.org/b', title='  Mine  ')
+        self.assertEqual((chosen.json()['url'], chosen.json()['title']), ('https://example.org/b', 'Mine'))
+        self.assertEqual(self.promote(self.client_for(self.skyler), said, url='https://elsewhere.test/').status_code, 200)
+        fresh = self.say(self.skyler, 'https://c.test/')
+        self.assertEqual(self.promote(self.client_for(self.skyler), fresh, url='https://elsewhere.test/').status_code, 400)
 
     def test_only_a_message_with_a_link_and_only_signed_in(self):
         plain = self.say(self.justin, 'no link here, just `https://in.code/` and a picture ![image](/moods/media/'
@@ -94,8 +100,10 @@ class TidingLinksTest(TestCase):
         turn = next(t for t in self.client.get('/api/moods/jams/turns/').json()['turns'] if t['id'] == str(said.id))
         self.assertEqual((turn['links'], turn['tiding']['id']), (['https://www.example.org/fest'], tid))
 
-    def test_a_deleted_message_leaves_tidings(self):
+    def test_a_deleted_message_leaves_tidings_and_comes_back_if_put_back(self):
         said = self.say(self.skyler, 'https://example.org/')
         self.promote(self.client_for(self.justin), said)
         Message.objects.filter(id=said.id).update(content='[deleted]')
         self.assertEqual(tiding_links.listed(), [])
+        Message.objects.filter(id=said.id).update(content='https://example.org/')  # put back (services/retract.put_back)
+        self.assertEqual(len(tiding_links.listed()), 1)

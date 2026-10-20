@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
             options={
                 'db_table': 'tidings',
                 'ordering': ['-at'],
-                'constraints': [models.UniqueConstraint(fields=('message', 'url'), name='one_tiding_per_link')],
+                'constraints': [models.UniqueConstraint(fields=('message',), name='one_tiding_per_message')],
             },
         ),
     ]

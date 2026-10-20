@@ -1519,7 +1519,9 @@ class Tiding(models.Model):
     class Meta:
         db_table = 'tidings'
         ordering = ['-at']
-        constraints = [models.UniqueConstraint(fields=['message', 'url'], name='one_tiding_per_link')]
+        # One per message: its link is news or it isn't (re, 20 Oct: two from one message had no way to
+        # tell the page which its ★ meant).
+        constraints = [models.UniqueConstraint(fields=['message'], name='one_tiding_per_message')]
 
 
 class FaceName(models.Model):

@@ -1,6 +1,6 @@
 """Links on Tidings: a message's link, promoted by someone who thinks it's news (Justin, 20 Oct).
 
-A message with a link in it can be promoted: its link is listed on Tidings,
+A message with a link in it can be promoted, once: its link is listed on Tidings,
 newest first for now, under a title -- the page's own, as its preview card
 reads it (services/unfurl.py), until someone gives it another -- with who
 promoted it, the message and Mood it came from, and how much has been said
@@ -70,8 +70,8 @@ def by_message():
     if found is None:
         from conversations.models import Tiding
         found = {}
-        for tiding in Tiding.objects.order_by('at'):
-            found.setdefault(str(tiding.message_id), {'id': str(tiding.id), 'title': tiding.title})
+        for tiding in Tiding.objects.all():
+            found[str(tiding.message_id)] = {'id': str(tiding.id), 'title': tiding.title, 'url': tiding.url}
         cache.set(_BY_MESSAGE, found, 3600)
     return found
 
@@ -81,7 +81,8 @@ def _changed():
 
 
 def promote(message, by, url=None, title=None, http=None):
-    """Put a message's link on Tidings (its first, unless `url` says which). The Tiding."""
+    """Put a message's link on Tidings (its first, unless `url` says which): one per message. The Tiding,
+    or the one already there."""
     from conversations.models import Tiding
     from .mood_view import prose
     from .retract import DELETED
@@ -90,15 +91,15 @@ def promote(message, by, url=None, title=None, http=None):
     text = prose(message.content) or ''
     if text == DELETED:
         raise Refused('that message was deleted', status=404)
+    already = Tiding.objects.filter(message=message).first()
+    if already:
+        return already
     found = links_in(text)
     if not found:
         raise Refused('that message has no link to promote')
     url = url or found[0]
     if url not in found:
         raise Refused('that link isn\'t in that message')
-    already = Tiding.objects.filter(message=message, url=url).first()
-    if already:
-        return already
     tiding = Tiding.objects.create(message=message, url=url, by=by,
                                    title=(title or '').strip()[:MAX_TITLE] or title_for(url, http))
     _changed()
