@@ -710,6 +710,7 @@
   .quiet .dot.screened { background: transparent; border-style: dashed; }
   .quiet .dot.screened:hover, .quiet .dot.screened.on { background: transparent; border-color: var(--who); }
   .quiet .why { flex-basis: 100%; font-size: 13px; color: var(--muted); font-style: italic; }
+  .quiet .why .thought { margin: 4px 0 0; padding: 0; white-space: pre-wrap; }
   body.only-mine .quiet { display: none; }
   /* Thinking the harness kept: dim, as a terminal shows it between tool calls. */
   .thought { margin: 2px 0 4px -10px; padding: 0 13px; font-size: 13.5px; font-style: italic; color: var(--muted);
@@ -2799,6 +2800,9 @@
   });
 
   function addQuiet(q, container) {
+    // What it thought before choosing not to speak: shown when its dot is pressed (Justin, 20 Oct).
+    const thought = ((container._held || {})[q.sender] || []).map(t => t.text).filter(Boolean).join('\n\n');
+    if (container._held) delete container._held[q.sender];
     let row = container.lastElementChild;
     if (!row || !row.classList.contains('quiet')) {
       row = document.createElement('div'); row.className = 'quiet';
@@ -2813,6 +2817,7 @@
         + (q.tools === 'look' ? ' · looking only' : q.tools === 'full' ? ' · with full tools' : '')
         + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
     dot.dataset.why = q.reason || '(no reason given)';
+    if (thought) dot.dataset.thought = thought;
     row.appendChild(dot);
   }
   document.addEventListener('click', e => {
@@ -2826,6 +2831,10 @@
     dot.classList.add('on');
     if (!why) { why = document.createElement('div'); why.className = 'why'; row.appendChild(why); }
     why.textContent = dot.title + ': ' + dot.dataset.why;
+    if (dot.dataset.thought) {
+      const t = document.createElement('div'); t.className = 'thought'; t.textContent = dot.dataset.thought;
+      why.appendChild(t);
+    }
   });
 
   // Turns, steps and dots from one response, in the order they happened.
@@ -2888,9 +2897,22 @@
     if (n >= 1000) return (n < 10000 && n % 1000 ? (n / 1000).toFixed(1) : Math.round(n / 1000)) + 'k';
     return String(n);
   }
-  function blockFor(container, agent, v) {
+  function openBlock(container, agent) {
     const last = container.lastElementChild;
-    if (last && last.classList.contains('aturn') && !last._ended && last._agent === agent) return last;
+    return last && last.classList.contains('aturn') && !last._ended && last._agent === agent ? last : null;
+  }
+  // Thinking alone makes no turn: held until the agent says or does something, so a quiet
+  // wake stays a dot in its row (Justin, 20 Oct). A turn already under way takes it at once.
+  function holdThought(container, agent, it) {
+    if (it.kind !== 'thought' || openBlock(container, agent)) return false;
+    ((container._held ||= {})[agent] ||= []).push(it.v);
+    return true;
+  }
+  function blockFor(container, agent, v) {
+    const open = openBlock(container, agent);
+    if (open) return open;
+    const held = (container._held || {})[agent] || [];
+    if (held.length) { delete container._held[agent]; v = held[0]; }  // its turn began when it began to think
     closeBlock(container);  // another agent's turn begins
     const b = document.createElement('section');
     b.className = 'aturn';
@@ -2902,6 +2924,7 @@
                        _usd: 0, _priced: false, _first: null, _lastOut: 0, _how: {}, _ended: false, _final: '' });
     b.innerHTML = '<button type="button" class="ahead"></button><div class="aspent"></div><div class="abody"></div>';
     container.appendChild(b);
+    held.forEach(t => { addThought(t, b.querySelector('.abody')); tally(b, t); });
     return b;
   }
   function tally(b, v) {
@@ -3015,6 +3038,7 @@
     sending.forEach(el => el.remove());
     for (const it of items) {
       const agent = agentOf(it);
+      if (agent && holdThought(container, agent, it)) continue;
       if (agent) {
         const b = blockFor(container, agent, it.v);
         // Its first message or step (a thought has nowhere to be taken to): the turn's link.
