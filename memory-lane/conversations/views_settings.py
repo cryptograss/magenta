@@ -69,10 +69,8 @@ def api_status(request):
 
 @require_GET
 def tidings_page(request):
-    device = mood_auth.device_for(request)
     from .services import tidings
     return render(request, 'conversations/mood_tidings.html', {
-        'viewer': device.entity_id if device else '',
         'tidings': tidings.tidings_state(),
         'picture_cap': tidings.PICTURES,
         'prompt_cap': tidings.PROMPTS_PER_HUMAN,

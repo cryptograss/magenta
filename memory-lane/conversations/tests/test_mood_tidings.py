@@ -32,11 +32,13 @@ class TidingsPageTests(TestCase):
 
     def post(self, sender, mood, text, sidechain=False, source='mood-web'):
         self.clock += timedelta(seconds=1)
-        return Message.objects.create(
+        message = Message.objects.create(
             id=uuid.uuid4(), sender=sender, mood=mood, content=text, is_sidechain=sidechain,
             source_file=source, timestamp=1_000 + int(self.clock.timestamp()),
-            created_at=self.clock,
         )
+        Message.objects.filter(id=message.id).update(created_at=self.clock)  # auto_now_add ignores it given
+        message.refresh_from_db()
+        return message
 
     def prompts(self):
         return {human['name']: human['prompts'] for human in tidings.prompt_tidings()}
@@ -123,6 +125,18 @@ class TidingsPageTests(TestCase):
         self.assertEqual(prompts[0]['id'], str(second.id))
         self.assertEqual(prompts[1]['id'], str(first.id))
 
+    def test_a_short_mention_long_after_stands_alone(self):
+        self.post(self.justin, self.mood_a, 'look at this one from the jam last night')
+        self.clock += tidings.PAIR_WITHIN
+        self.post(self.justin, self.mood_a, '@magent')
+        self.assertEqual(self.prompts()['justin'][0]['kind'], 'mention')
+
+    def test_a_command_never_pairs(self):
+        self.post(self.justin, self.mood_a, 'look at this one from the jam last night')
+        self.post(self.justin, self.mood_a, '/compact magent keep the setlist')
+        [entry] = self.prompts()['justin']
+        self.assertEqual((entry['kind'], entry['text']), ('mention', '/compact magent keep the setlist'))
+
     def test_very_short_is_under_eighty_characters(self):
         at79 = 'x' * 71 + ' @magent'  # 79 characters: pairs
         at80 = 'x' * 72 + ' @magent'  # 80 characters: stands alone
@@ -164,15 +178,19 @@ class TidingsPageTests(TestCase):
 
     # --- pictures ---------------------------------------------------------------
 
-    def image(self, index=None, mime='image/png', mood=None, **extra):
+    def image(self, index=None, mime='image/png', mood=None, posted=True, **extra):
+        """A picture, and (unless not `posted`) a post in a Mood showing it."""
         at = extra.pop('at', None)
         if index is None:
             self.nsha += 1
             index = self.nsha
-        return Media.objects.create(
+        media = Media.objects.create(
             sha256=fake_sha(index), mime=mime, data=b'', size=0,
             created_at=at or timezone.now(), **extra,
         )
+        if posted:
+            self.post(media.added_by or self.justin, mood or self.mood_a, f'look ![image]({media.url})')
+        return media
 
     def test_a_picture_shows_who_pushed_faces_and_wiki(self):
         picture = self.image(1, added_by=self.justin)
@@ -215,6 +233,17 @@ class TidingsPageTests(TestCase):
         self.assertEqual(len(pictures), 20)
         self.assertEqual(pictures[0]['sha256'], fake_sha(24))
         self.assertEqual(pictures[-1]['sha256'], fake_sha(5))
+
+    def test_only_pictures_a_mood_shows(self):
+        self.image(4, added_by=self.justin, posted=False)  # uploaded, never posted
+        pasted = self.image(5, added_by=self.justin, posted=False)
+        self.clock += timedelta(seconds=1)
+        Message.objects.create(id=uuid.uuid4(), sender=self.justin, content=f'see ![image]({pasted.url})',
+                               source_file='session.jsonl', timestamp=1_000)  # a terminal session's
+        in_mood = self.image(6, posted=False)
+        self.post(self.skyler, self.mood_b, f'![image]({in_mood.url}) from me')
+        [entry] = tidings.picture_tidings()
+        self.assertEqual((entry['sha256'], entry['added_by'], entry['mood']), (in_mood.sha256, 'skyler', 'docs-tests-qa'))
 
     def test_pictures_appear_on_the_page(self):
         self.image(3, added_by=self.justin)

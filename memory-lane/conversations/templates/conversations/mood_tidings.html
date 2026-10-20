@@ -57,8 +57,8 @@
 <header>
   <a class="brand" href="/moods/">magenta</a>
   <nav>
-    <a href="/moods/tidings/" aria-current="page">tidings</a>
     <a href="/moods/status/">status</a>
+    <a href="/moods/tidings/" aria-current="page">tidings</a>
     <a href="/moods/settings/">settings</a>
   </nav>
 </header>
@@ -75,13 +75,13 @@
       <a class="thumb" href="{{ pic.url }}"><img loading="lazy" src="{{ pic.url }}" alt=""></a>
       <div class="meta">
         <div class="marks">
-          {% if pic.wiki %}<span class="chip yes" title="{{ pic.wiki.file }} · by {{ pic.wiki.by }}">→ PickiPedia</span>
+          {% if pic.wiki %}<a class="chip yes" href="{{ pic.wiki.page }}" title="{{ pic.wiki.file }} · by {{ pic.wiki.by }}">→ PickiPedia</a>
           {% else %}<span class="chip no">not on PickiPedia</span>{% endif %}
           {% if pic.faces.looked %}<span class="chip yes" title="{{ pic.faces.model }} · {{ pic.faces.named }} named">faces ✓ {{ pic.faces.count }}</span>
           {% else %}<span class="chip no">no faces run</span>{% endif %}
         </div>
-        <span class="muted at">{{ pic.added_by|default:"unknown" }} · {{ pic.at|date:"M j, g:i A" }}</span>
-        {% if pic.wiki %}<br><span class="muted"><a href="/moods/{{ pic.wiki.mood }}/">{{ pic.wiki.page }}</a> · {{ pic.wiki.at|date:"M j, g:i A" }}</span>{% endif %}
+        <span class="muted at">{{ pic.added_by|default:"unknown" }} · <a href="/moods/{{ pic.mood }}/#m-{{ pic.message }}">#{{ pic.mood }}, {{ pic.at|date:"M j, g:i A" }}</a></span>
+        {% if pic.wiki %}<br><span class="muted">pushed by {{ pic.wiki.by }} as <a href="{{ pic.wiki.page }}">{{ pic.wiki.file }}</a>, {{ pic.wiki.at|date:"M j, g:i A" }}</span>{% endif %}
       </div>
     </div>
   {% empty %}
