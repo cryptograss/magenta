@@ -1108,6 +1108,11 @@
     <button type="button" id="archiveBtn" class="archive" title="Out of the Moods list, into Archived. It stays readable, its sessions and container untouched, and a mention there is still answered.">Archive</button>
     <button type="button" id="pinBtn" class="archive" title="At the top of the Moods list, for everyone">Pin</button></span>
 </form>
+<dialog id="noAgents">
+  <p><b>Agents can't be addressed from a PickiPedia sign-in.</b></p>
+  <p>Take <span class="who"></span> out of your message and send it again. To wake an agent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
+  <button type="button">OK</button>
+</dialog>
 <dialog id="lookBox">
   <form method="dialog">
     <p><b>Your name, your way</b></p>
@@ -1119,11 +1124,6 @@
     <div class="why"></div>
     <div class="bar"><button type="button" class="save">Save</button><button type="button" class="plain">Plain again</button><button type="submit" class="cancel">Cancel</button></div>
   </form>
-</dialog>
-<dialog id="noAgents">
-  <p><b>Agents can't be addressed from a PickiPedia sign-in.</b></p>
-  <p>Take <span class="who"></span> out of your message and send it again. To wake an agent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
-  <button type="button">OK</button>
 </dialog>
 <form id="newBox" hidden>
   <input id="newTitle" maxlength="200" aria-label="Title" placeholder="What the new Mood is about">
