@@ -36,7 +36,7 @@ class LookTest(TestCase):
 
     def test_set_from_any_device_and_shown_with_the_people(self):
         done = self.look(self.client_for(self.justin, tier='wiki'), art='░▒▓ JuStIn ▓▒░', colour='#FF3C00')
-        self.assertEqual(done.json(), {'art': '░▒▓ JuStIn ▓▒░', 'colour': '#ff3c00'})
+        self.assertEqual(done.json(), {'art': '░▒▓ JuStIn ▓▒░', 'colours': '', 'colour': '#ff3c00'})
         people = {p['name']: p for p in self.client.get('/api/moods/').json()['people']}
         self.assertEqual((people['justin']['art'], people['justin']['colour']), ('░▒▓ JuStIn ▓▒░', '#ff3c00'))
         self.assertNotIn('art', people['magent'])
@@ -51,7 +51,22 @@ class LookTest(TestCase):
     def test_plain_again_and_never_an_agents_or_a_strangers(self):
         client = self.client_for(self.justin)
         self.look(client, art='j-u-s-t-i-n', colour='#00ff00')
-        self.assertEqual(self.look(client, art='', colour='').json(), {'art': '', 'colour': ''})
+        self.assertEqual(self.look(client, art='', colour='').json(), {'art': '', 'colours': '', 'colour': ''})
         self.assertNotIn('art', next(p for p in self.client.get('/api/moods/').json()['people'] if p['name'] == 'justin'))
         self.assertEqual(self.look(self.client_for(self.magent), art='m-a-g-e-n-t').status_code, 403)
         self.assertEqual(self.look(Client(), art='justin').status_code, 401)
+
+    # Each character in one of ANSI's sixteen (Justin, 21 Oct: "I'd like to be able to color individual characters").
+    def test_a_code_for_each_character_cut_to_the_art(self):
+        client = self.client_for(self.justin)
+        done = self.look(client, art='░▒▓ JuStIn ▓▒░', colours='999.cccccc.999..')
+        self.assertEqual(done.json()['colours'], '999.cccccc.999')  # cut to the art's 14, trailing none dropped
+        people = {p['name']: p for p in self.client.get('/api/moods/').json()['people']}
+        self.assertEqual(people['justin']['colours'], '999.cccccc.999')
+        self.look(client, art='justin')  # shorter art: the colours go only as far as it does
+        self.assertEqual(self.look(client).json()['colours'], '999.cc')
+
+    def test_only_ansi_codes(self):
+        client = self.client_for(self.justin)
+        for colours in ('99g', '#ff0000', '<b>', 'c' * 31):
+            self.assertEqual(self.look(client, art='justin', colours=colours).status_code, 400, colours)

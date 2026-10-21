@@ -264,6 +264,31 @@
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
   /* A name written its person's way: monospace, its spaces kept, as a BBS would have it. */
   .art { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; white-space: pre; font-size: .95em; }
+  /* Each character in one of ANSI's sixteen, CGA's order, as a BBS had them (settings.name_colours). */
+  .art .a0 { color: #000000; }
+  .art .a1 { color: #0000aa; }
+  .art .a2 { color: #00aa00; }
+  .art .a3 { color: #00aaaa; }
+  .art .a4 { color: #aa0000; }
+  .art .a5 { color: #aa00aa; }
+  .art .a6 { color: #aa5500; }
+  .art .a7 { color: #aaaaaa; }
+  .art .a8 { color: #555555; }
+  .art .a9 { color: #5555ff; }
+  .art .aa { color: #55ff55; }
+  .art .ab { color: #55ffff; }
+  .art .ac { color: #ff5555; }
+  .art .ad { color: #ff55ff; }
+  .art .ae { color: #ffff55; }
+  .art .af { color: #ffffff; }
+  #lookBox .paint { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0 4px; user-select: none; touch-action: none; }
+  #lookBox .paint span { min-width: 1.35em; height: 1.7em; display: inline-flex; align-items: center; justify-content: center;
+                         font: 16px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 3px;
+                         background: var(--code); cursor: crosshair; white-space: pre; }
+  #lookBox .swatches { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+  #lookBox .swatches button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
+  #lookBox .swatches button.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #lookBox .swatches .none { background: linear-gradient(135deg, transparent 45%, var(--muted) 45% 55%, transparent 55%), var(--panel); }
   #lookBox { max-width: min(460px, 92vw); border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
              color: var(--ink); padding: 16px 18px; }
   #lookBox::backdrop { background: rgba(0,0,0,.35); }
@@ -1118,6 +1143,9 @@
     <p><b>Your name, your way</b></p>
     <label for="lookArt">Written as (at most 30 characters, every letter of your name in it, in order)</label>
     <input type="text" id="lookArt" maxlength="30" spellcheck="false" autocomplete="off">
+    <label>Colour each character: pick a colour, then click or drag across them</label>
+    <div class="swatches"></div>
+    <div class="paint"></div>
     <label for="lookColour">Your icon's colour</label>
     <input type="color" id="lookColour" value="#2a5d9f">
     <div class="preview"></div>
@@ -1274,8 +1302,13 @@
   // A name as its person writes it, old-school BBS (Justin, 21 Oct): at most 30 characters with every letter
   // of their name in them, in order (settings.art_fits); else as it is.
   function nameHtml(n) {
-    const art = (looks[n] || {}).art;
-    return art ? `<span class="art" title="${esc(shown(n))}">${esc(art)}</span>` : esc(shown(n));
+    const { art, colours } = looks[n] || {};
+    return art ? `<span class="art" title="${esc(shown(n))}">${artHtml(art, colours)}</span>` : esc(shown(n));
+  }
+  // Each character in its colour: a code each (0-f, ANSI's sixteen; '.' or none for the page's own).
+  function artHtml(art, colours) {
+    const codes = colours || '';
+    return Array.from(art).map((ch, i) => /[0-9a-f]/.test(codes[i] || '') ? `<span class="a${codes[i]}">${esc(ch)}</span>` : esc(ch)).join('');
   }
 
   // Tokens beside a person's name (/api/tokens/, services/tokens.py): for now the Blue
@@ -3197,7 +3230,7 @@
     const body = await r.json();
     moods = body.moods;
     people = body.people || [];
-    people.forEach(p => { human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colour: p.colour || '' }; });
+    people.forEach(p => { human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
     renderMe();
     renderNav();
@@ -5805,31 +5838,55 @@
   const lookBox = document.getElementById('lookBox'), lookArt = document.getElementById('lookArt'),
         lookColour = document.getElementById('lookColour');
   const artFits = (art, name) => { let i = 0; for (const c of art.toLowerCase()) if (c === name[i]) i++; return i === name.length; };
-  function previewLook() {
+  // Painting: a brush (a code, '.' for none) laid on each character pressed or dragged across.
+  const ANSI = ['#000000', '#0000aa', '#00aa00', '#00aaaa', '#aa0000', '#aa00aa', '#aa5500', '#aaaaaa',
+                '#555555', '#5555ff', '#55ff55', '#55ffff', '#ff5555', '#ff55ff', '#ffff55', '#ffffff'];
+  let lookCodes = [], lookBrush = 'c', painting = false;
+  const swatches = lookBox.querySelector('.swatches'), paint = lookBox.querySelector('.paint');
+  swatches.innerHTML = '<button type="button" class="none" data-code="." title="the page\'s own colour"></button>'
+    + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${c}"></button>`).join('');
+  swatches.addEventListener('click', e => {
+    const b = e.target.closest('button[data-code]'); if (!b) return;
+    lookBrush = b.dataset.code;
+    swatches.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+  swatches.querySelector(`[data-code="${lookBrush}"]`).classList.add('on');
+  function drawPaint() {
+    const chars = Array.from(lookArt.value.trim());
+    lookCodes = chars.map((_, i) => lookCodes[i] || '.');
+    paint.innerHTML = chars.map((ch, i) => `<span data-i="${i}" class="art"><span${/[0-9a-f]/.test(lookCodes[i]) ? ` class="a${lookCodes[i]}"` : ''}>${esc(ch)}</span></span>`).join('');
+  }
+  const lay = el => { const cell = el && el.closest('#lookBox .paint [data-i]'); if (cell) { lookCodes[+cell.dataset.i] = lookBrush; drawPaint(); previewLook(true); } };
+  paint.addEventListener('pointerdown', e => { painting = true; lay(e.target); });
+  paint.addEventListener('pointermove', e => { if (painting) lay(document.elementFromPoint(e.clientX, e.clientY)); });
+  addEventListener('pointerup', () => { painting = false; });
+  function previewLook(painted) {
     const art = lookArt.value.trim();
+    if (!painted) drawPaint();
     const ok = !art || artFits(art, viewer.toLowerCase());
     lookBox.querySelector('.preview').innerHTML = ICONS.human.replace('<svg ', `<svg style="color: ${lookColour.value}" `)
-      + (art ? `<span class="art">${esc(art)}</span>` : esc(shown(viewer)));
+      + (art ? `<span class="art">${artHtml(art, lookCodes.join(''))}</span>` : esc(shown(viewer)));
     lookBox.querySelector('.why').textContent = ok ? '' : `every letter of "${viewer}" has to be in it, in order`;
     lookBox.querySelector('.save').disabled = !ok;
   }
-  lookArt.addEventListener('input', previewLook);
-  lookColour.addEventListener('input', previewLook);
+  lookArt.addEventListener('input', () => previewLook());
+  lookColour.addEventListener('input', () => previewLook());
   async function saveLook(body) {
     const r = await fetch('/api/me/look/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
                                               body: JSON.stringify(body) });
     const done = await r.json().catch(() => ({}));
     if (!r.ok) { lookBox.querySelector('.why').textContent = done.error || r.status; return; }
-    looks[viewer] = { art: done.art || '', colour: done.colour || '' };
+    looks[viewer] = { art: done.art || '', colours: done.colours || '', colour: done.colour || '' };
     lookBox.close();
     location.reload();  // every name of yours drawn again, as you have it now
   }
-  lookBox.querySelector('.save').addEventListener('click', () => saveLook({ art: lookArt.value.trim(), colour: lookColour.value }));
-  lookBox.querySelector('.plain').addEventListener('click', () => saveLook({ art: '', colour: '' }));
+  lookBox.querySelector('.save').addEventListener('click', () => saveLook({ art: lookArt.value.trim(), colours: lookCodes.join(''), colour: lookColour.value }));
+  lookBox.querySelector('.plain').addEventListener('click', () => saveLook({ art: '', colours: '', colour: '' }));
   document.getElementById('lookLink').addEventListener('click', e => {
     e.preventDefault();
     const mine = looks[viewer] || {};
     lookArt.value = mine.art || '';
+    lookCodes = Array.from(mine.colours || '');
     lookColour.value = mine.colour || getComputedStyle(document.body).getPropertyValue('--human').trim() || '#2a5d9f';
     previewLook();
     lookBox.showModal();

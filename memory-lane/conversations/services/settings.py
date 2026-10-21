@@ -69,6 +69,10 @@ PERSON_KEYS = {
     'name_art': ('', f"Their name as they'd have it written: at most {30} characters, every letter of their name "
                      "in it, in order (art_fits). Empty: their name as it is."),
     'icon_colour': ('', 'The colour of the little person beside their name, as #rrggbb. Empty: the page\'s own.'),
+    # Each character of name_art in one of ANSI's sixteen colours, as a BBS had them (Justin, 21 Oct): a code
+    # for each, 0-f (CGA's order: black, blue, green, cyan, red, magenta, brown, grey, then the bright eight),
+    # or '.' for the page's own.
+    'name_colours': ('', "A colour for each character of their name as written: 0-f, ANSI's sixteen, or '.' for none."),
 }
 NAME_ART_MAX = 30
 
@@ -161,6 +165,11 @@ def clean(key, value):
         if len(value) > NAME_ART_MAX or not value.isprintable():
             raise Invalid(f'name_art: at most {NAME_ART_MAX} printable characters, on one line')
         return value
+    if key == 'name_colours':
+        value = str(value or '').strip().lower()
+        if len(value) > NAME_ART_MAX or not re.fullmatch(r'[.0-9a-f]*', value):
+            raise Invalid(f"name_colours: at most {NAME_ART_MAX} codes, each 0-f or '.'")
+        return value.rstrip('.')
     if key == 'icon_colour':
         value = str(value or '').strip().lower()
         if value and not re.fullmatch(r'#[0-9a-f]{6}', value):
@@ -191,12 +200,15 @@ def clean(key, value):
 
 
 def looks():
-    """{person: {'art', 'colour'}} for whoever has set either: how the Moods page writes them."""
+    """{person: {'art', 'colours', 'colour'}} for whoever has set any: how the Moods page writes them.
+    `colours` is cut to the art it colours (a code for each character, '.' for none)."""
     from conversations.models import Setting
+    fields = {'name_art': 'art', 'name_colours': 'colours', 'icon_colour': 'colour'}
     found = {}
-    for row in Setting.objects.filter(key__in=('name_art', 'icon_colour'), mood__isnull=True).order_by('created_at'):
-        look = found.setdefault(row.agent_id, {'art': '', 'colour': ''})
-        look['art' if row.key == 'name_art' else 'colour'] = row.value or ''
+    for row in Setting.objects.filter(key__in=list(fields), mood__isnull=True).order_by('created_at'):
+        found.setdefault(row.agent_id, {'art': '', 'colours': '', 'colour': ''})[fields[row.key]] = row.value or ''
+    for look in found.values():
+        look['colours'] = look['colours'][:len(look['art'])].rstrip('.') if look['art'] else ''
     return {name: look for name, look in found.items() if look['art'] or look['colour']}
 
 

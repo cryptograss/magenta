@@ -1018,9 +1018,10 @@ def api_voice_heard(request):
 
 @require_POST
 def api_my_look(request):
-    """{"art"?, "colour"?}: how your name is written on the Moods page -- at most 30 characters with every
-    letter of your name in it, in order -- and your icon's colour, #rrggbb. Empty puts either back. Your own,
-    from any device (services/settings.py: name_art, icon_colour)."""
+    """{"art"?, "colours"?, "colour"?}: how your name is written on the Moods page -- at most 30 characters
+    with every letter of your name in it, in order -- each character in one of ANSI's sixteen colours (a code
+    each, 0-f, '.' for none), and your icon's colour, #rrggbb. Empty puts any back. Your own, from any device
+    (services/settings.py: name_art, name_colours, icon_colour)."""
     from .services import settings as knobs
     from .views_admin import locked_response
     if locked_response():
@@ -1040,12 +1041,12 @@ def api_my_look(request):
         return JsonResponse({'error': f'at most {knobs.NAME_ART_MAX} characters, with every letter of "{name}" '
                                       'in it, in order'}, status=400)
     try:
-        for key, field in (('name_art', 'art'), ('icon_colour', 'colour')):
+        for key, field in (('name_art', 'art'), ('name_colours', 'colours'), ('icon_colour', 'colour')):
             if field in body:
                 knobs.change(key, body[field], agent=device.entity, by=device.entity)
     except knobs.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
-    return JsonResponse(knobs.looks().get(name, {'art': '', 'colour': ''}))
+    return JsonResponse(knobs.looks().get(name, {'art': '', 'colours': '', 'colour': ''}))
 
 
 @require_POST

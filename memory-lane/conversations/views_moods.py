@@ -110,7 +110,7 @@ def api_moods(request):
     look = knobs.looks()
     return JsonResponse({'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
-         **({'art': look[p.name]['art'], 'colour': look[p.name]['colour']} if p.is_biological_human and p.name in look else {})}
+         **(look[p.name] if p.is_biological_human and p.name in look else {})}
         for p in people]})
 
 
