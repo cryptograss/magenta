@@ -107,6 +107,13 @@ class MoodAPI:
             params['since'] = since
         return self._get(f'/api/mentions/{agent}/', **params)['mentions']
 
+    def mood_of(self, message_id):
+        """The Mood a message is in now (its address names none), or None."""
+        try:
+            return self._get(f'/api/messages/{message_id}/').get('mood')
+        except Exception:  # noqa: BLE001 -- gone, or not in a Mood: read where the post was
+            return None
+
     def turns_after(self, slug, message_id):
         return self._get(f'/api/moods/{slug}/turns/', after=message_id)['turns']
 
@@ -1015,17 +1022,19 @@ def transcript_of(turns, new_ids=(), limit=20_000, each=1500):
 # A link to a message -- /moods/<slug>/#m-<uuid>, or just #m-<uuid> for one
 # in the same Mood -- in a post that wakes the agent: read from there, in
 # whichever Mood the link names.
-_MESSAGE_LINK = re.compile(r'(?:/moods/([\w-]+)/)?#m-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})')
+# /messages/<uuid>, a message's own address, names no Mood: where it is is asked (LOOK_UP).
+_MESSAGE_LINK = re.compile(r'(?:/moods/([\w-]+)/#m-|(/messages/)|#m-)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})')
+LOOK_UP = '?'  # linked_message: the Mood to be asked
 CHARS_PER_TOKEN = 4
 EACH_MAX = 8000  # characters of any one message read word for word
 
 
 def linked_message(posts):
-    """(slug or None, message id) for the first message a post links to read from, or None."""
+    """(slug, None for this Mood, or LOOK_UP; message id) for the first message a post links to read from, or None."""
     for post in posts:
         match = _MESSAGE_LINK.search(post.get('text', ''))
         if match:
-            return match.group(1), match.group(2)
+            return match.group(1) or (LOOK_UP if match.group(2) else None), match.group(3)
     return None
 
 
@@ -1694,6 +1703,8 @@ class MoodPoller:
         try:
             if linked:
                 where = linked[0] or slug
+                if where == LOOK_UP:
+                    where = self.api.mood_of(linked[1]) or slug
                 said = [t for t in self.api.turns_from(where, linked[1]) if t['id'] not in owed_ids]
                 note = ('From the message linked, as it was said (newest last):' if where == slug
                         else f'From the message linked in the Mood "{where}", as it was said there (newest last):')

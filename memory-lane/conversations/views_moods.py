@@ -390,6 +390,33 @@ def _preview_of(item):
         raise Http404('no such image')
 
 
+def _in_a_mood(message_id):
+    """A message said in a Mood (not a helper's line), by its id; None if there's none."""
+    from .views_auth import _uuid_or_none
+    return (Message.objects.filter(id=_uuid_or_none(message_id), mood__isnull=False, is_sidechain=False)
+            .select_related('mood').first())
+
+
+@require_GET
+def message_page(request, message_id):
+    """/messages/<id>: a message's own address, wherever it lives. A Mood can be renamed, which moves
+    its page; its messages' addresses stay (Justin, 20 Oct). Sent on to it in its Mood, as it is now."""
+    from django.shortcuts import redirect
+    message = _in_a_mood(message_id)
+    if message is None:
+        raise Http404('no such message in any Mood')
+    return redirect(f'/moods/{message.mood.slug}/#m-{message.id}')
+
+
+@require_GET
+def api_message(request, message_id):
+    """{"id", "mood"}: where a message is now, for whatever holds only its address (the poller)."""
+    message = _in_a_mood(message_id)
+    if message is None:
+        return JsonResponse({'error': 'no such message in any Mood'}, status=404)
+    return JsonResponse({'id': str(message.id), 'mood': message.mood.slug})
+
+
 @require_GET
 def api_pulse(request):
     """Every Mood at a glance, for a runner looking every few seconds.

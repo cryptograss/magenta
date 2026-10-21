@@ -790,6 +790,20 @@ class MentionContextTest(TestCase):
         self.assertIn('linked in the Mood "magenta-26-million"', prompt)
         self.assertIn('What we built today', prompt)
 
+    def test_a_messages_own_address_is_read_in_the_mood_it_is_in(self):
+        said = [turn(self.LINKED, 'justin', 1, 'What we built today, in the other Mood.')]
+        original = FakeAPI.__dict__.get('mood_of')
+        FakeAPI.mood_of = lambda api, message_id: 'magenta-26-million' if message_id == self.LINKED else None
+        try:
+            api, prompt = self.make(said, owed_text=f'@magent read up: https://x/messages/{self.LINKED}')
+        finally:
+            if original is None:
+                del FakeAPI.mood_of
+            else:
+                FakeAPI.mood_of = original
+        self.assertEqual((api.read_in, api.read_from), ('magenta-26-million', self.LINKED))
+        self.assertIn('linked in the Mood "magenta-26-million"', prompt)
+
     def test_over_budget_the_older_part_is_said_to_be_left_out(self):
         said = [turn(f's{i}', 'justin', 1 + i, f'post {i} ' + 'la ' * 400) for i in range(30)]
         api, prompt = self.make(said, settings={'catch_up_tokens': 2000})

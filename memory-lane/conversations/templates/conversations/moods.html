@@ -2938,8 +2938,9 @@
   });
 
   // A message's link: /moods/<slug>/#m-<id>. Clicking its time copies it.
+  // A message's own address, /messages/<id>: it stays when its Mood is renamed (Justin, 20 Oct).
   async function copyLink(el, hash) {
-    const url = `${location.origin}/moods/${encodeURIComponent(current)}/${hash}`;
+    const url = `${location.origin}/messages/${encodeURIComponent(hash.replace(/^#m-/, ''))}`;
     try { await navigator.clipboard.writeText(url); el.dataset.copied = '1'; setTimeout(() => delete el.dataset.copied, 1500); }
     catch (err) { history.replaceState(history.state, '', url); }
   }
