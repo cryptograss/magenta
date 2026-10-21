@@ -1092,7 +1092,9 @@
   <a class="brand" href="/moods/"><span class="logo" aria-hidden="true"></span>magenta</a>
   <a class="crumb moods" href="/moods/">moods</a>
   <span class="crumb" id="crumb"></span>
-  <nav class="sections" aria-label="Sections"><a href="/moods/tidings/">tidings</a><a href="/moods/prompts/">prompts</a><a href="/moods/status/">status</a></nav>
+  <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
+       too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/">tidings</a><a href="/moods/prompts/">prompts</a><a href="/moods/status/">status</a></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <span class="block" id="block" title="Ethereum mainnet's block height"></span>
