@@ -330,14 +330,17 @@
                          font: 16px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 3px;
                          background: var(--code); cursor: crosshair; white-space: pre; }
   #lookBox .swatches { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
-  #lookBox .ansiTable { border-collapse: collapse; font-size: 12.5px; margin: 6px 0 4px; }
-  #lookBox .ansiTable th { text-align: left; font-weight: 600; color: var(--muted); padding: 2px 8px 2px 0; }
-  #lookBox .ansiTable td { padding: 1px 10px 1px 0; }
-  #lookBox .ansiTable .sw { display: inline-block; width: 16px; height: 12px; border: 1px solid var(--line); vertical-align: middle; }
+  #lookBox .charsLink { display: inline-block; margin: 6px 0 2px; font-size: 13px; color: var(--accent); }
+  #lookBox .charsChart { display: grid; grid-template-columns: repeat(16, 1fr); gap: 1px; margin: 4px 0 6px;
+                         background: var(--line); border: 1px solid var(--line); }
+  #lookBox .charsChart > * { height: 1.75em; display: flex; align-items: center; justify-content: center; background: var(--panel); }
+  #lookBox .charsChart button { border: 0; padding: 0; cursor: pointer; color: var(--ink);
+                                font: 15px ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace; }
+  #lookBox .charsChart button:hover { background: var(--accent); color: #fff; }
   #lookBox .swatches button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
   #lookBox .swatches button.on { outline: 2px solid var(--accent); outline-offset: 1px; }
   #lookBox .swatches .none { background: linear-gradient(135deg, transparent 45%, var(--muted) 45% 55%, transparent 55%), var(--panel); }
-  #lookBox { max-width: min(460px, 92vw); border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+  #lookBox { max-width: min(460px, 92vw); max-height: 92vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
              color: var(--ink); padding: 16px 18px; }
   #lookBox::backdrop { background: rgba(0,0,0,.35); }
   #lookBox p { margin: 0 0 10px; }
@@ -1205,9 +1208,9 @@
     <p><b>How your name will be displayed</b></p>
     <label for="lookArt">At most 30 characters, with every letter of <b class="artname"></b> in them, in order (any case)</label>
     <input type="text" id="lookArt" maxlength="30" spellcheck="false" autocomplete="off">
-    <label>Colour each character: pick a colour, then click or drag across them ·
-      <a href="#" class="ansiLink" aria-expanded="false">the sixteen colours</a></label>
-    <table class="ansiTable" hidden></table>
+    <a href="#" class="charsLink" aria-expanded="false">the characters</a>
+    <div class="charsChart" hidden role="grid" aria-label="The characters: press one to put it in your name"></div>
+    <label>Colour each character: pick a colour, then click or drag across them</label>
     <div class="swatches"></div>
     <div class="paint"></div>
     <label for="lookColour">Your icon's colour</label>
@@ -5978,10 +5981,12 @@
     let i = 0; for (const c of art.toLowerCase()) if (c === want[i]) i++;
     return i === want.length;
   };
-  // The sixteen, as a BBS knew them: CGA's order, each with its code here and its ANSI escape number.
+  // The sixteen, as a BBS knew them, in CGA's order: each swatch says which.
   const ANSI_NAMES = ['black', 'blue', 'green', 'cyan', 'red', 'magenta', 'brown', 'light grey',
                       'dark grey', 'light blue', 'light green', 'light cyan', 'light red', 'light magenta', 'yellow', 'white'];
-  const ANSI_SGR = [30, 34, 32, 36, 31, 35, 33, 37, 90, 94, 92, 96, 91, 95, 93, 97];
+  // The characters a BBS drew with: the IBM PC's 256 (code page 437), as Unicode, sixteen to a row as its
+  // chart had them -- boxes, blocks and shades, suits, arrows, faces (Justin, 21 Oct). 0 and 255 were blanks.
+  const CP437 = " ☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼ !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ";
   // Painting: a brush (a code, '.' for none) laid on each character pressed or dragged across.
   const ANSI = ['#000000', '#0000aa', '#00aa00', '#00aaaa', '#aa0000', '#aa00aa', '#aa5500', '#aaaaaa',
                 '#555555', '#5555ff', '#55ff55', '#55ffff', '#ff5555', '#ff55ff', '#ffff55', '#ffffff'];
@@ -5989,14 +5994,25 @@
   const swatches = lookBox.querySelector('.swatches'), paint = lookBox.querySelector('.paint');
   swatches.innerHTML = '<button type="button" class="none" data-code="." title="none: the page\'s own colour"></button>'
     + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${ANSI_NAMES[i]} · ${c}"></button>`).join('');
-  const ansiTable = lookBox.querySelector('.ansiTable'), ansiLink = lookBox.querySelector('.ansiLink');
-  ansiTable.innerHTML = '<tr><th></th><th>colour</th><th>code</th><th>ANSI</th><th>hex</th></tr>'
-    + ANSI.map((c, i) => `<tr><td><span class="sw" style="background: ${c}"></span></td><td>${ANSI_NAMES[i]}</td>`
-      + `<td><code>${'0123456789abcdef'[i]}</code></td><td><code>${ANSI_SGR[i]}</code></td><td><code>${c}</code></td></tr>`).join('');
-  ansiLink.addEventListener('click', e => {
+  // The characters: pressed, one goes into your name where the cursor is (at most 30, as ever).
+  const chars = lookBox.querySelector('.charsChart'), charsLink = lookBox.querySelector('.charsLink');
+  chars.innerHTML = Array.from(CP437).map((ch, i) => i === 0 || i === 255 || ch === ' '
+    ? `<span class="blank"${ch === ' ' ? ' title="a space"' : ''}></span>`
+    : `<button type="button" data-ch="${esc(ch)}" title="${i} · U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}">${esc(ch)}</button>`).join('');
+  charsLink.addEventListener('click', e => {
     e.preventDefault();
-    ansiTable.hidden = !ansiTable.hidden;
-    ansiLink.setAttribute('aria-expanded', String(!ansiTable.hidden));
+    chars.hidden = !chars.hidden;
+    charsLink.setAttribute('aria-expanded', String(!chars.hidden));
+  });
+  chars.addEventListener('click', e => {
+    const b = e.target.closest('button[data-ch]'); if (!b) return;
+    const at = lookArt.selectionStart ?? lookArt.value.length, to = lookArt.selectionEnd ?? at;
+    const next = lookArt.value.slice(0, at) + b.dataset.ch + lookArt.value.slice(to);
+    if (Array.from(next).length > 30) return;
+    lookArt.value = next;
+    lookArt.focus();
+    lookArt.setSelectionRange(at + b.dataset.ch.length, at + b.dataset.ch.length);
+    previewLook();
   });
   swatches.addEventListener('click', e => {
     const b = e.target.closest('button[data-code]'); if (!b) return;
