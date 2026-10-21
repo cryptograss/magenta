@@ -88,12 +88,23 @@ def api_status(request):
     return JsonResponse(status.full_status(private=bool(device and device.tier == 'key')))
 
 
+def _rights(link, device):
+    """What this device may do to a link on Tidings: retitle it (✎), take it off."""
+    from .services import tiding_links
+    link['may_retitle'] = tiding_links.may_retitle(device, link['by'])
+    link['may_withdraw'] = tiding_links.may_withdraw(device, link['by'])
+    return link
+
+
 @section('tidings')
 def tidings_page(request):
     from .services import tidings
     device = mood_auth.device_for(request)
+    state = tidings.tidings_state(viewer=device.entity_id if device else None)
+    for link in state['links']:
+        _rights(link, device)
     return render(request, 'conversations/mood_tidings.html', {
-        'tidings': tidings.tidings_state(viewer=device.entity_id if device else None),
+        'tidings': state,
         'picture_cap': tidings.PICTURES,
         'viewer': device.entity_id if device else '',
         'embed': True,
@@ -119,7 +130,7 @@ def tiding_page(request, tiding_id):
         response = HttpResponse(str(e), status=e.status)
     else:
         response = render(request, 'conversations/mood_tiding.html', {
-            'tiding': state,
+            'tiding': _rights(state, device),
             'viewer': viewer,
             'embed': True,
         })

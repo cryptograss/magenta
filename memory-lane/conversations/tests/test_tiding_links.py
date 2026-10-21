@@ -82,8 +82,11 @@ class TidingLinksTest(TestCase):
         tid = self.promote(self.client_for(self.skyler), said).json()['id']
         url = f'/api/tidings/{tid}/'
         post = lambda client, body: client.post(url, json.dumps(body), content_type='application/json')  # noqa: E731
-        self.assertEqual(post(self.client_for(self.magent), {'title': 'x'}).status_code, 403)
+        self.assertEqual(post(self.client_for(self.magent, tier='wiki'), {'title': 'x'}).status_code, 403)
         self.assertEqual(post(self.client_for(self.skyler), {'title': 'Better'}).json()['title'], 'Better')
+        # Justin, 21 Oct: anyone signed in with an SSH key retitles any of them; taking one off stays the promoter's.
+        self.assertEqual(post(self.client_for(self.magent), {'title': 'Best'}).json()['title'], 'Best')
+        self.assertEqual(post(self.client_for(self.magent), {'withdraw': True}).status_code, 403)
         self.assertEqual(post(self.client_for(self.justin, tier='wiki'), {'withdraw': True}).status_code, 403)  # admin needs a key
         self.assertTrue(post(self.client_for(self.justin), {'withdraw': True}).json()['withdrawn'])
         self.assertFalse(Tiding.objects.exists())
@@ -248,3 +251,31 @@ class TidingTalkTests(TidingLinksTest):
         tiding_links.listed()  # the links index, built once
         with self.assertNumQueries(2):  # the links and their scores: nothing per link
             self.assertEqual([link['comments'] for link in tiding_links.listed()], [1, 1, 1])
+
+    def test_the_pencil_shows_to_whoever_may_retitle(self):
+        said, tiding = self.promoted()  # promoted by justin
+        listing = lambda client: client.get('/moods/tidings/?embed=1').content.decode()  # noqa: E731
+        self.assertIn('class="retitle"', listing(self.client_for(self.skyler)))  # an SSH key
+        self.assertNotIn('class="retitle"', listing(self.client_for(self.skyler, tier='wiki')))
+        self.assertNotIn('class="retitle"', listing(Client()))
+        self.assertNotIn('class="withdraw"', listing(self.client_for(self.skyler)))
+        self.assertIn('class="withdraw"', listing(self.client_for(self.justin)))
+        page = self.client_for(self.skyler).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        self.assertIn('class="retitle"', page)
+
+    def test_a_comment_is_drawn_as_the_mood_draws_it(self):
+        said, tiding = self.promoted()
+        self.comment(self.client_for(self.justin), tiding, 'Two things.\n\n- `pip` first\n- then [[Old Crow Medicine Show]]')
+        html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        self.assertIn('<code>pip</code>', html)
+        self.assertIn('<li>', html)
+        self.assertIn('/wiki/Old_Crow_Medicine_Show', html)
+        self.assertIn('<p>Two things.</p>', html)
+
+    def test_a_wikilink_can_be_promoted_titled_as_its_page(self):
+        said = self.say(self.skyler, 'Read [[Bill Monroe]] first, then https://example.org/x')
+        self.assertEqual(tiding_links.links_in(said.content),
+                         ['https://pickipedia.xyz/wiki/Bill_Monroe', 'https://example.org/x'])
+        tiding = tiding_links.promote(said, self.justin)
+        self.assertEqual((tiding.url, tiding.title), ('https://pickipedia.xyz/wiki/Bill_Monroe', 'Bill Monroe'))
+        self.assertEqual(tiding_links.links_in('a picture [[File:Fest.jpg]], not a link'), [])

@@ -6,7 +6,7 @@
     <span class="who"><b>{{ comment.sender|default:"someone" }}</b> · {{ comment.at|date:"M j, g:i A" }} ·
       <a href="/moods/{{ comment.mood }}/#m-{{ comment.id }}" title="as said, in #{{ comment.mood }}">in #{{ comment.mood }}</a>
       {% if viewer %}<button type="button" class="replyto" data-id="{{ comment.id }}" data-who="{{ comment.sender }}">reply</button>{% endif %}</span>
-    <div class="words">{{ comment.snippet }}</div>
+    <div class="words">{{ comment.html|safe }}</div>
     {% if comment.replies %}<div class="replies">
       {% for reply in comment.replies %}{% include "conversations/mood_tiding_comment.html" with comment=reply %}{% endfor %}
     </div>{% endif %}

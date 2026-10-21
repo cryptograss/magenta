@@ -1871,37 +1871,42 @@
   }
   window.addEventListener('popstate', () => closeLightbox(true));
   lightbox.querySelector('img').addEventListener('click', e => { e.stopPropagation(); lightbox.classList.toggle('whole'); });
+  // {full: the picture, href: its page (or the file), alt, caption, onwiki: its PickiPedia page if it's there,
+  // upload: what "→ PickiPedia" sends it up as, if it may go}: from the thread, or from Tidings' frame.
+  function openPicture(o) {
+    lightbox.querySelector('img').src = o.full;
+    lightbox.querySelector('img').alt = o.alt || '';
+    lightbox.querySelector('.lbcap').textContent = o.caption || '';
+    const page = lightbox.querySelector('.lbpage');
+    page.href = o.onwiki || o.href || o.full;
+    const host = new URL(page.href, location.href).hostname;
+    page.textContent = o.onwiki ? 'its page on PickiPedia ↗' : !o.href || o.href === o.full ? 'the picture itself ↗'
+      : host.endsWith('wikimedia.org') ? 'its page on Commons ↗' : 'its page on PickiPedia ↗';
+    lightbox._upload = o.upload || null;
+    lightbox.querySelector('.lbup').hidden = !lightbox._upload;
+    lightbox.classList.remove('whole');
+    whoIsIn(o.full);
+    if (lightbox.hidden) history.pushState({ ...(history.state || {}), lightbox: true }, '', location.href);
+    lightbox.hidden = false;
+  }
   document.addEventListener('click', e => {
     const a = e.target.closest(LIGHTBOX_LINKS);
     if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
     e.preventDefault();
     const img = a.querySelector('img');
-    const full = a.dataset.full || a.href;
-    lightbox.querySelector('img').src = full;
-    lightbox.querySelector('img').alt = img ? img.alt : '';
-    const cap = a.nextElementSibling && a.nextElementSibling.classList.contains('caption') ? a.nextElementSibling.textContent : '';
-    lightbox.querySelector('.lbcap').textContent = cap;
-    const page = lightbox.querySelector('.lbpage');
-    page.href = a.href;
-    const host = new URL(a.href, location.href).hostname;
-    page.textContent = !a.dataset.full ? 'the picture itself ↗'
-      : host.endsWith('wikimedia.org') ? 'its page on Commons ↗' : 'its page on PickiPedia ↗';
-    // Under the picture in the thread: "→ PickiPedia" (here too), or where it already is on the wiki.
     const next = a.nextElementSibling;
-    const onWiki = next && next.classList.contains('onwiki') ? next : null;
-    if (onWiki) { page.href = onWiki.href; page.textContent = 'its page on PickiPedia ↗'; }
-    lightbox._topp = next && next.classList.contains('topp') ? next : null;
-    lightbox.querySelector('.lbup').hidden = !lightbox._topp;
-    lightbox.classList.remove('whole');
-    whoIsIn(full);
-    if (lightbox.hidden) history.pushState({ ...(history.state || {}), lightbox: true }, '', location.href);
-    lightbox.hidden = false;
+    // Under the picture in the thread: "→ PickiPedia" (here too), or where it already is on the wiki.
+    const topp = next && next.classList.contains('topp') ? next : null;
+    openPicture({ full: a.dataset.full || a.href, href: a.href, alt: img ? img.alt : '',
+                  caption: next && next.classList.contains('caption') ? next.textContent : '',
+                  onwiki: next && next.classList.contains('onwiki') ? next.href : '',
+                  upload: topp && uploadOf(topp) });
   });
   lightbox.querySelector('.lbup').addEventListener('click', e => {
     e.stopPropagation();
-    const offer = lightbox._topp;
+    const offer = lightbox._upload;
     closeLightbox();
-    if (offer) offer.click();  // the same dialog as the button under the picture
+    if (offer) offerUploadFor(offer);  // the same dialog as the button under the picture
   });
   lightbox.addEventListener('click', e => { if (e.target === lightbox || e.target.closest('.close')) closeLightbox(); });
 
@@ -2210,7 +2215,7 @@
   // account, after PickiPedia asks them, credited to whoever shared it. Once one
   // is there, it says so, and its button goes. The lightbox offers it too.
   const uploadBox = document.getElementById('uploadBox');
-  let uploading = null;  // {sha, message}
+  let uploading = null;  // {sha, message, sharer, mood, tidings?}
   function offerUpload(el, t) {
     for (const img of el.querySelectorAll('.body a.img img')) {
       const sha = ((img.getAttribute('src') || '').match(/^\/(?:moods|motions)\/media\/([0-9a-f]{64})\./) || [])[1];
@@ -2228,14 +2233,18 @@
       a.insertAdjacentHTML('afterend', `<a class="caption onwiki" href="${esc(page)}" target="_blank" rel="noopener">on PickiPedia as File:${esc(file)} ↗</a>`);
     }
   }
+  // A picture's "→ PickiPedia" in the thread: what it goes up as.
+  const uploadOf = b => ({ sha: b.dataset.sha, message: b.dataset.message, sharer: b.closest('.turn')?.dataset.sender, mood: current });
   document.addEventListener('click', e => {
     const b = e.target.closest('.turn .body .topp');
-    if (!b) return;
-    uploading = { sha: b.dataset.sha, message: b.dataset.message };
+    if (b) offerUploadFor(uploadOf(b));
+  });
+  function offerUploadFor(up) {
+    uploading = up;
     // Someone else's picture: it goes up credited to them, under the license they gave it, theirs alone to change.
-    const sharer = b.closest('.turn')?.dataset.sender;
+    const sharer = up.sharer;
     const theirs = sharer && sharer !== viewer;
-    const title = (moods.find(m => m.slug === current) || {}).title || current || 'magenta';
+    const title = (moods.find(m => m.slug === up.mood) || {}).title || up.mood || 'magenta';
     document.getElementById('upName').value = `${title} ${new Date().toISOString().slice(0, 10)}`;
     document.getElementById('upDesc').value = '';
     document.getElementById('upNote').textContent = '';
@@ -2255,7 +2264,7 @@
     }).catch(() => {});
     uploadBox.hidden = false;
     document.getElementById('upName').focus();
-  });
+  }
   document.getElementById('upCancel').addEventListener('click', () => { uploadBox.hidden = true; uploading = null; });
   uploadBox.addEventListener('submit', async e => {
     e.preventDefault();
@@ -2265,7 +2274,7 @@
     try {
       const r = await fetch(`/api/media/${uploading.sha}/pickipedia/`, { method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-        body: JSON.stringify({ mood: current, message: uploading.message, name: document.getElementById('upName').value,
+        body: JSON.stringify({ mood: uploading.mood || current, message: uploading.message, name: document.getElementById('upName').value,
                                description: document.getElementById('upDesc').value,
                                license: document.getElementById('upRights').value }) });
       const body = await r.json().catch(() => ({}));
@@ -2277,6 +2286,8 @@
         return;
       }
       markUploaded(uploading.sha, body.file, body.page);  // it was there already
+      // From Tidings: its frame says so at once (its pictures say "on PickiPedia").
+      if (uploading.tidings) sectionFrames.querySelector('iframe[data-section="tidings"]')?.contentWindow.location.reload();
       uploadBox.hidden = true; uploading = null;
       poll(false);
     } catch (err) { note.textContent = err.message; }
@@ -4140,7 +4151,9 @@
       who?.querySelector('.morebtn, .replybtn, .addreact')?.insertAdjacentHTML('beforebegin', onTidingsMark(el._tidings));
       const fresh = done.tidings.filter(x => x.new);
       if (fresh.length) sectionStale.tidings = true;  // the Tidings section, already loaded: its next visit shows these
-      showNote(fresh.length ? `On Tidings: ${fresh.map(x => `“${x.title}”`).join(', ')}` : 'Those were on Tidings already.', 6000);
+      // Titled as the page titles itself; its ✎ on Tidings gives it another (Justin, 21 Oct: where do I edit it?).
+      showNote(fresh.length ? `On Tidings: ${fresh.map(x => `“${x.title}”`).join(', ')}. To retitle, ✎ beside it there.`
+        : 'Those were on Tidings already.', 8000);
     } catch (err) { showError('promote: ' + err.message); }
   }
   async function deleteMessage(id) {
@@ -6576,6 +6589,16 @@
     e.preventDefault();
     if (!userMenu.hidden) userBtn.click();  // from the account menu: it closes
     showSection(a.dataset.section, true);
+  });
+  // A picture on Tidings: opened here, in the lightbox, and sent to PickiPedia from here (mood_tiding_tools.html).
+  window.addEventListener('message', e => {
+    if (e.origin !== location.origin || !e.data) return;
+    const pic = e.data.magentaPicture || e.data.magentaUpload;
+    if (!pic || typeof pic.full !== 'string' || !pic.full.startsWith('/')) return;
+    const upload = pic.sha && !pic.onwiki && viewer
+      ? { sha: pic.sha, message: pic.message, sharer: pic.sharer, mood: pic.mood, tidings: true } : null;
+    if (e.data.magentaUpload) { if (upload) offerUploadFor(upload); return; }
+    openPicture({ full: pic.full, href: pic.full, onwiki: pic.onwiki, upload });
   });
   // A link inside a section into magenta: opened here, without loading anything again.
   window.addEventListener('message', async e => {

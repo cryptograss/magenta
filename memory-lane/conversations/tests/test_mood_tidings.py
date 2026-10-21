@@ -91,9 +91,26 @@ class TidingsPageTests(TidingsTests):
     def test_pictures_appear_on_the_page(self):
         self.image(3, added_by=self.justin)
         html = self.client.get('/moods/tidings/?embed=1').content.decode()
-        self.assertIn('not on wiki', html)
-        self.assertIn('no faces', html)
         self.assertIn('justin', html)
+        self.assertIn('class="thumb"', html)
+        # Justin, 21 Oct: a picture nobody's named anyone in says nothing about faces.
+        self.assertNotIn('no faces', html)
+        self.assertNotIn('not on wiki', html)
+
+    def test_whom_people_named_in_a_picture_is_listed_with_their_pages(self):
+        picture = self.image(1, added_by=self.justin)
+        for x, person in ((40, 'Skyler Golden'), (5, 'Justin Holmes'), (70, 'Skyler Golden')):
+            FaceName.objects.create(media=picture, box=[x, 0, 1, 1], person=person, by=self.justin, at=timezone.now())
+        [entry] = tidings.picture_tidings()
+        self.assertEqual([p['name'] for p in entry['people']], ['Justin Holmes', 'Skyler Golden'])  # left to right, once
+        html = self.client.get('/moods/tidings/?embed=1').content.decode()
+        self.assertIn('/wiki/Skyler_Golden', html)
+
+    def test_a_picture_carries_what_the_lightbox_and_pickipedia_need(self):
+        picture = self.image(2, added_by=self.skyler)
+        html = self.client.get('/moods/tidings/?embed=1').content.decode()
+        self.assertIn(f'data-sha="{picture.sha256}"', html)
+        self.assertNotIn('class="chip topp"', html)  # nobody signed in: not offered
 
     # --- Justin's 20 Oct round: no intro, thumbnails --------------------------
 

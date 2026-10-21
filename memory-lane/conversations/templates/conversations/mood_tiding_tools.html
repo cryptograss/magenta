@@ -1,0 +1,96 @@
+<!-- What Tidings' two pages (the links, and one link's discussion) share: upvotes, retitling and taking a
+     link off, and its pictures opened in the one page's lightbox. -->
+<style>
+  .retitle, .withdraw { all: unset; cursor: pointer; color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .retitle:hover, .withdraw:hover { color: var(--accent); }
+  input.titling { font: inherit; font-weight: 600; width: min(60ch, 100%); padding: 2px 6px; border: 1px solid var(--accent);
+                  border-radius: 6px; background: var(--panel); color: var(--ink); }
+  .tidingerr { color: var(--err, #c0392b); font-size: 12px; margin-left: 8px; }
+</style>
+<script>
+  function csrf() {
+    const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  async function tidingPost(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                 body: body ? JSON.stringify(body) : undefined });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.status);
+    return d;
+  }
+  function tidingSays(near, text) {
+    const note = document.createElement('span');
+    note.className = 'tidingerr';
+    note.textContent = text;
+    near.after(note);
+    setTimeout(() => note.remove(), 6000);
+  }
+  // ▲: an upvote, or -- again -- taken back.
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('button.vote');
+    if (!b || b.disabled) return;
+    b.disabled = true;
+    try {
+      const s = await tidingPost(b.dataset.vote);
+      b.classList.toggle('mine', s.mine);
+      b.title = s.mine ? 'Take your upvote back' : 'Upvote';
+      const score = b.closest('.rank').querySelector('.score');
+      if (score) score.textContent = s.score;
+    } catch (err) { tidingSays(b, err.message); }
+    b.disabled = false;
+  });
+  // ✎: the title, rewritten in place -- Enter keeps it, Esc leaves it (whoever promoted it; anyone with an SSH key).
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button.retitle');
+    if (!b) return;
+    const title = b.parentElement.querySelector('a.title');
+    if (!title || b.parentElement.querySelector('input.titling')) return;
+    const input = document.createElement('input');
+    input.className = 'titling';
+    input.value = title.textContent;
+    input.setAttribute('aria-label', 'Its title on Tidings');
+    title.hidden = true;
+    title.before(input);
+    input.focus();
+    input.select();
+    const done = () => { input.remove(); title.hidden = false; };
+    input.addEventListener('keydown', async ev => {
+      if (ev.key === 'Escape') { ev.preventDefault(); done(); }
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      try {
+        const d = await tidingPost(`/api/tidings/${b.dataset.tiding}/`, { title: input.value });
+        title.textContent = d.title;
+        document.title = document.title.replace(/^.*? · tidings/, `${d.title} · tidings`);
+        done();
+      } catch (err) { tidingSays(input, err.message); }
+    });
+    input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== input) done(); }, 150));
+  });
+  // Taking a link off Tidings: the message and what's said about it stay in their Mood.
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('button.withdraw');
+    if (!b || !confirm('Take this link off Tidings? The message, and what was said about it, stay in the Mood.')) return;
+    try {
+      await tidingPost(`/api/tidings/${b.dataset.tiding}/`, { withdraw: true });
+      if (b.dataset.back) location.href = b.dataset.back;
+      else b.closest('li')?.remove();
+    } catch (err) { tidingSays(b, err.message); }
+  });
+  // A picture opens in the one page's lightbox, where it is anywhere else -- with "→ PickiPedia" and who's
+  // in it -- not as a page of its own (Justin, 21 Oct). On its own, outside the one page, it's just the file.
+  const PIC_DATA = a => ({ full: a.getAttribute('href'), sha: a.dataset.sha, message: a.dataset.message, mood: a.dataset.mood,
+                           sharer: a.dataset.sharer, onwiki: a.dataset.onwiki || '' });
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a.thumb, .words a.img');  // Tidings' pictures; one shown in a comment
+    if (!a || parent === window || e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    parent.postMessage({ magentaPicture: PIC_DATA(a) }, location.origin);
+  });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button.topp');
+    if (!b || parent === window) return;
+    parent.postMessage({ magentaUpload: PIC_DATA(b.closest('.pic').querySelector('a.thumb')) }, location.origin);
+  });
+</script>

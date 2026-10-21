@@ -12,8 +12,9 @@ conversation, seen as chat in its Mood and as a tree on Tidings. Nothing is
 kept apart for it, so "N comments" is the reply tree under the message, read
 from the links index (services/links.py).
 
-Who may: anyone signed in promotes; whoever promoted it, or an admin, retitles
-or withdraws it. Agents don't promote (their sessions have no device).
+Who may: anyone signed in promotes; whoever promoted it, or anyone signed in
+with an SSH key, retitles it (Justin, 21 Oct); whoever promoted it, or an
+admin, withdraws it. Agents don't promote (their sessions have no device).
 """
 
 import re
@@ -39,16 +40,25 @@ class Refused(Exception):
 
 def links_in(text):
     """The web links in what was said, in order, each once: any page, not a picture kept here or a
-    link back into magenta."""
-    from .mood_view import OWN_HOSTS, _INLINE_CODE, _URL, _trim_url
+    link back into magenta. A [[wikilink]] is its PickiPedia page's address (a [[File:...]] is a
+    picture shown, not a link)."""
+    from .mood_view import OWN_HOSTS, _INLINE_CODE, _URL, _WIKILINK, _trim_url, pickipedia_url
     text = re.sub(r'```.*?(```|$)', ' ', text or '', flags=re.S)
     text = _INLINE_CODE.sub(' ', text)
     found = []
     for match in _URL.finditer(text):
         url, _ = _trim_url(match.group(1))
-        if url not in found and (urlsplit(url).hostname or '') not in OWN_HOSTS:
-            found.append(url)
-    return found
+        if (urlsplit(url).hostname or '') not in OWN_HOSTS:
+            found.append((match.start(), url))
+    for match in _WIKILINK.finditer(text):
+        target = match.group(1).strip()
+        if target and target.partition(':')[0].lower() not in ('file', 'image', 'release'):
+            found.append((match.start(), f"{pickipedia_url()}/wiki/{target.replace(' ', '_')}"))
+    out = []
+    for _, url in sorted(found):
+        if url not in out:
+            out.append(url)
+    return out
 
 
 def host_of(url):
@@ -57,8 +67,13 @@ def host_of(url):
 
 
 def title_for(url, http=None):
-    """The page's own title, as its preview card reads it; its address, shortened, if it gives none."""
+    """The page's own title, as its preview card reads it; its address, shortened, if it gives none.
+    A PickiPedia page is titled as the wiki titles it."""
     from . import unfurl
+    from .mood_view import pickipedia_page
+    page = pickipedia_page(url)
+    if page:
+        return (f'{page[0]} § {page[1]}' if page[1] else page[0])[:MAX_TITLE]
     try:
         card = unfurl.card(url, http) if unfurl.public(urlsplit(url).hostname or '') else None
     except Exception:  # noqa: BLE001 -- a page that won't say: its address will do
@@ -119,14 +134,19 @@ def promote(message, by, url=None, title=None, http=None, with_news=False):
     return (tiding, True) if with_news else tiding
 
 
-def _may_change(tiding, device):
+def may_retitle(device, promoted_by):
+    """Whoever promoted it, or anyone signed in with an SSH key: any title (Justin, 21 Oct)."""
+    return device is not None and (device.tier == 'key' or promoted_by == device.entity_id)
+
+
+def may_withdraw(device, promoted_by):
     from .retract import is_admin
-    return device is not None and (tiding.by_id == device.entity_id or is_admin(device))
+    return device is not None and (promoted_by == device.entity_id or is_admin(device))
 
 
 def retitle(tiding, device, title):
-    if not _may_change(tiding, device):
-        raise Refused('only whoever promoted it, or an admin, can retitle it', status=403)
+    if not may_retitle(device, tiding.by_id):
+        raise Refused('only whoever promoted it, or someone signed in with an SSH key, can retitle it', status=403)
     title = (title or '').strip()[:MAX_TITLE]
     if not title:
         raise Refused('give it a title')
@@ -137,7 +157,7 @@ def retitle(tiding, device, title):
 
 
 def withdraw(tiding, device):
-    if not _may_change(tiding, device):
+    if not may_withdraw(device, tiding.by_id):
         raise Refused('only whoever promoted it, or an admin, can take it off Tidings', status=403)
     tiding.delete()
     _changed()
@@ -150,21 +170,33 @@ def _walk(tree):
         yield from _walk(node.get('replies', []))
 
 
+def said_html(text):
+    """A comment as the Mood draws it: its paragraphs, lists, code and links, without the reply mark
+    (and a ```voice or ```handoff block left out, as there)."""
+    from .handoff import split as split_handoffs
+    from .mood_view import render_html, reply_to
+    from .voice import split_voices
+    text, _ = split_voices(text or '')
+    text, _ = split_handoffs(text)
+    return render_html(reply_to(text)[1])
+
+
 def _snippets_and_votes(tree, viewer=None):
-    """Snippet, score and whether `viewer` voted, onto every node: three questions of the database,
-    whatever the tree's size."""
+    """Words (a snippet, and as drawn), score and whether `viewer` voted, onto every node: three
+    questions of the database, whatever the tree's size."""
     from django.db.models import Count
     from conversations.models import Message, TidingVote
     from .mood_view import prose, reply_to, snippet_of
     nodes = list(_walk(tree))
     ids = [node['id'] for node in nodes]
-    texts = {str(m.id): snippet_of(reply_to(prose(m.content))[1]) for m in Message.objects.filter(id__in=ids)} if ids else {}
+    texts = {str(m.id): prose(m.content) for m in Message.objects.filter(id__in=ids)} if ids else {}
     scored = ({str(mid): c for mid, c in TidingVote.objects.filter(message_id__in=ids).values('message_id')
                .annotate(c=Count('id')).values_list('message_id', 'c')} if ids else {})
     mines = ({str(mid) for mid in TidingVote.objects.filter(message_id__in=ids, by_id=viewer)
               .values_list('message_id', flat=True)} if viewer and ids else set())
     for node in nodes:
-        node['snippet'] = texts.get(node['id'], '')
+        node['snippet'] = snippet_of(reply_to(texts.get(node['id'], ''))[1])
+        node['html'] = said_html(texts.get(node['id'], ''))
         node['score'] = scored.get(node['id'], 0)
         node['mine'] = node['id'] in mines
         node['at'] = datetime.fromisoformat(node['at'])  # the index keeps it ISO (it's cached); the page says it
@@ -278,7 +310,7 @@ def comment(tiding, by, text, parent=None, client_version=''):
     from .links import note_new
     note_new(row, [str(target)], str(target))  # a reload the same second still shows it
     return {'id': str(row.id), 'sender': by.name, 'mood': message.mood_slug, 'at': row.created_at,
-            'snippet': snippet_of(text), 'replies': [], 'score': 0, 'mine': False}
+            'snippet': snippet_of(text), 'html': said_html(text), 'replies': [], 'score': 0, 'mine': False}
 
 
 def discussion(tiding_id, viewer=None):
