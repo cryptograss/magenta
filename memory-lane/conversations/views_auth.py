@@ -449,6 +449,44 @@ def api_tiding_comment_vote(request, tiding_id, message_id):
 
 
 @require_POST
+def api_tiding_said(request, tiding_id, kind, node_id):
+    """{"text"} to edit, {"delete": true} to delete, something said about a link: a comment said on Tidings
+    (kind 'comment') or a reply in the Mood showing there (kind 'mood'), by the Mood's own rules
+    (services/tiding_links.change_said)."""
+    from .models import Tiding
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    tiding = Tiding.objects.select_related('message').filter(id=_uuid_or_none(tiding_id)).first()
+    if tiding is None:
+        return JsonResponse({'error': 'no such link on Tidings'}, status=404)
+    if not _under_limit(f'retract:{device.pk}', 20):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"text": ...} or {"delete": true}'}, status=400)
+    delete, text = body.get('delete') is True, body.get('text')
+    if not delete:
+        if not isinstance(text, str):
+            return JsonResponse({'error': 'expected {"text": ...} or {"delete": true}'}, status=400)
+        if len(text) > MAX_CHARS:
+            return JsonResponse({'error': f'longer than {MAX_CHARS} characters'}, status=400)
+        refused = _say_checks(text.strip(), device)  # as when it was said: a wiki sign-in doesn't address agents
+        if refused:
+            return refused
+    try:
+        done = tiding_links.change_said(tiding, device, kind, _uuid_or_none(node_id), text=text, delete=delete)
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse(done)
+
+
+@require_POST
 def api_tiding_comment_vote_row(request, tiding_id, comment_id):
     """Upvote a comment said on Tidings itself, or take it back. {'score', 'mine'} after."""
     from .models import Tiding
