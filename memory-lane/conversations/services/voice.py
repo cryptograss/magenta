@@ -529,6 +529,8 @@ def _make(mood, by, key, voice_id, body, script, http, details):
 def keyterms():
     from conversations.models import Mood, ThinkingEntity
     names = list(ThinkingEntity.objects.values_list('name', flat=True))
+    agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
+    names += [f'{colour} agent' for colour in COLOURS for agent in agents if colour[:-1] == agent.lower()]
     moods = [t for t in Mood.objects.values_list('title', flat=True) if t and len(t) <= 50]
     seen, out = set(), []
     for term in KEYTERMS + names + moods:
@@ -720,6 +722,12 @@ GREETINGS = r'(?:hey|hi|hello|ok|okay|yo)'
 # How a transcription may write a name it heard: only ever read as that name
 # where a name is plainly being said to someone.
 HEARD_AS = {'magnet': 'magent'}
+# An agent is named for its colour less the last letter -- re(d), magent(a), blu(e) -- and "re" is hard to
+# say so it's heard as meant: "the red agent" is said for it (Justin, 20 Oct). Any colour here works for
+# whichever agent comes to be named that way.
+COLOURS = ('red', 'orange', 'yellow', 'green', 'blue', 'purple', 'violet', 'magenta', 'cyan', 'teal', 'pink',
+           'brown', 'black', 'white', 'gray', 'grey', 'gold', 'silver', 'indigo', 'amber', 'olive', 'maroon',
+           'navy', 'crimson', 'scarlet', 'lime', 'rose', 'coral', 'lavender', 'turquoise', 'azure', 'ochre')
 
 
 def spoken_mentions(text, mentionable, aliases=None):
@@ -733,6 +741,12 @@ def spoken_mentions(text, mentionable, aliases=None):
     names.update({k: v for k, v in HEARD_AS.items() if v in names and k not in names})
     if not names or not text:
         return text
+    # "the red agent" (or "red agent") is re: said by its colour. Then "at the red agent" is "at re", which
+    # the rule below makes @re; "Red agent, ..." opens with its name, as a name said to someone does.
+    by_colour = {colour: names[colour[:-1]] for colour in COLOURS if colour[:-1] in names}
+    if by_colour:
+        said = re.compile(rf'\b(?:the\s+)?({"|".join(by_colour)})\s+agent\b', re.I)
+        text = said.sub(lambda m: by_colour[m.group(1).lower()], text)
     alternatives = '|'.join(re.escape(n) for n in sorted(names, key=len, reverse=True))
     name = rf'(?P<name>{alternatives})(?![\w@-])'
 

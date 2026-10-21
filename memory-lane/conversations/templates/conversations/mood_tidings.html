@@ -27,8 +27,6 @@
   main { max-width: 960px; margin: 0 auto; padding: 18px 16px 60px; }
   h1 { font-size: 20px; margin: 4px 0 4px; }
   h2 { font-size: 15.5px; margin: 28px 0 10px; }
-  h3 { font-size: 14px; margin: 20px 0 8px; }
-  h3 .local { color: var(--muted); font-weight: 400; font-size: 12.5px; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   .at { font-variant-numeric: tabular-nums; }
@@ -37,6 +35,14 @@
           border: 1px solid var(--line); margin-right: 6px; color: var(--muted); white-space: nowrap; }
   .chip.yes { border-color: var(--ok); color: var(--ok); font-weight: 600; }
   .chip.no { border-color: var(--err); color: var(--err); }
+  /* Links promoted from the Moods, newest first: a title and its site; who, where, and what's been said. */
+  .links { list-style: none; margin: 0; padding: 0; }
+  .links li { padding: 6px 0 7px; border-bottom: 1px solid var(--line); }
+  .links li:last-child { border-bottom: 0; }
+  .links .title { font-size: 15px; font-weight: 600; color: var(--ink); }
+  .links .title:visited { color: var(--muted); }
+  .links .host { font-size: 12px; color: var(--muted); margin-left: 6px; }
+  .links .meta { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
   .pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
   .pic { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   .pic a.thumb { display: block; line-height: 0; background: var(--code); }
@@ -44,15 +50,22 @@
   .pic .meta { padding: 5px 7px 6px; font-size: 11px; line-height: 1.35; }
   .pic .meta .marks { margin-bottom: 3px; }
   .pic .meta .chip { font-size: 10.5px; padding: 0 5px; margin-right: 4px; }
-  .prompt { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-            padding: 10px 12px; margin-bottom: 10px; }
-  .prompt .head { font-size: 12.5px; color: var(--muted); margin-bottom: 5px; }
-  .prompt .body { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .prompt .then { margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--line); font-size: 13px; }
-  .prompt .then .said { color: var(--accent); font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .prompt .cost { margin-top: 6px; }
   .none { color: var(--muted); font-size: 13px; }
 </style>
+{% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
+     goes there, which opens it without loading anything again. -->
+<style>body > header { display: none; }</style>
+<script>
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
+    const to = new URL(a.href, location.href);
+    if (to.origin !== location.origin) { a.target = '_top'; return; }
+    if (to.pathname === location.pathname && to.hash) return;  // within this page
+    e.preventDefault();
+    parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
+  });
+</script>{% endif %}
 </head>
 <body>
 <header>
@@ -60,11 +73,28 @@
   <nav>
     <a href="/moods/status/">status</a>
     <a href="/moods/tidings/" aria-current="page">tidings</a>
+    <a href="/moods/prompts/">prompts</a>
     <a href="/moods/settings/">settings</a>
   </nav>
 </header>
 <main>
   <h1>Tidings</h1>
+
+  <h2>Links</h2>
+  {% if tidings.links %}
+  <ol class="links">
+  {% for link in tidings.links %}
+    <li id="t-{{ link.id }}">
+      <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a><span class="host">({{ link.host }})</span>
+      <div class="meta">promoted by {{ link.by|default:"someone" }}
+        · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}" title="{{ link.said_by }}: “{{ link.snippet }}”">{{ link.at|date:"M j, g:i A" }} in #{{ link.mood }}</a>
+        · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}">{{ link.comments }} comment{{ link.comments|pluralize }}</a></div>
+    </li>
+  {% endfor %}
+  </ol>
+  {% else %}
+  <p class="none">No links yet: promote one from a message's ⋯ menu.</p>
+  {% endif %}
 
   <h2>Pictures (last {{ picture_cap }})</h2>
   <div class="pics">
@@ -86,42 +116,6 @@
     <p class="none">No pictures on record yet.</p>
   {% endfor %}
   </div>
-
-  <h2>Prompts, by each person (last {{ prompt_cap }} each)</h2>
-  {% for human in tidings.prompts %}
-    <h3>{% if human.wiki_name %}{{ human.wiki_name }} <span class="local">({{ human.name }})</span>{% else %}{{ human.name }}{% endif %}</h3>
-    <div>
-    {% for prompt in human.prompts %}
-      <div class="prompt">
-        <div class="head at">
-          #{{ prompt.mood }}
-          · <a href="/moods/{{ prompt.mood }}/#m-{{ prompt.id }}">{{ prompt.at|date:"M j, g:i A" }}</a>
-          {% if prompt.block %}· block {{ prompt.block }}{% endif %}
-          <span class="chip">mentions {% for agent in prompt.agents %}@{{ agent }}{% if not forloop.last %} {% endif %}{% endfor %}</span>
-        </div>
-        <div class="body">{{ prompt.snippet }}{% if prompt.text|length > 280 %}…{% endif %}</div>
-        {% if prompt.kind == "paired" %}
-        <div class="then">then said, right after:
-          <span class="said">“{{ prompt.trigger.snippet }}”</span>
-          {% for agent in prompt.trigger.agents %}@{{ agent }}{% if not forloop.last %} {% endif %}{% endfor %}
-          · <a class="at" href="/moods/{{ prompt.mood }}/#m-{{ prompt.trigger.id }}">{{ prompt.trigger.at|date:"M j, g:i A" }}</a>
-        </div>
-        {% endif %}
-        {% if prompt.turns %}
-        <div class="cost">
-          {% for turn in prompt.turns %}
-          <span class="chip" title="what answered it: {{ turn.model }} · {{ turn.in }} tokens in, {{ turn.out }} out, {{ turn.calls }} call{{ turn.calls|pluralize }}{% if turn.paid %} · the harness's own cost{% elif turn.cost %} · cost per the price list{% else %} · no price known for this model{% endif %}">
-            @{{ turn.agent }} {{ turn.tokens }}{% if turn.cost %} · {{ turn.cost }}{% endif %}
-          </span>
-          {% endfor %}
-        </div>
-        {% endif %}
-      </div>
-    {% empty %}
-      <p class="none">No prompts on record yet.</p>
-    {% endfor %}
-    </div>
-  {% endfor %}
 </main>
 </body>
 </html>

@@ -1501,6 +1501,29 @@ class FaceLook(models.Model):
         db_table = 'face_looks'
 
 
+class Tiding(models.Model):
+    """A link someone put on Tidings from a message that has it (Justin, 20 Oct: "Promote to Tidings").
+
+    The message stays where it was said; this says that its link is news, under what title (the page's
+    own, as its preview card reads it, until someone says otherwise), and who thought so. What's said
+    about it is the message's replies, in its Mood (services/tiding_links.py).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message = models.ForeignKey(Message, models.CASCADE, related_name='tidings')
+    url = models.URLField(max_length=2000)
+    title = models.CharField(max_length=300, blank=True)
+    by = models.ForeignKey(ThinkingEntity, models.SET_NULL, null=True, blank=True, related_name='tidings')
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'tidings'
+        ordering = ['-at']
+        # Each link of a message once: whoever promotes chooses which (Justin, 21 Oct: a message may hold
+        # several links, more than one of them news). The message's ★ counts them all.
+        constraints = [models.UniqueConstraint(fields=['message', 'url'], name='one_tiding_per_link')]
+
+
 class FaceName(models.Model):
     """Whose a face in a picture is, as someone here said (services/faces.py): the person, by
     their PickiPedia page's title, and who said so."""

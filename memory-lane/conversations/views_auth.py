@@ -276,6 +276,68 @@ def api_message_edit(request, slug, message_id):
 
 
 @require_POST
+def api_message_promote(request, slug, message_id):
+    """{"urls": [...]}: put those of a message's links on Tidings, each once; or {"url"?, "title"?} for one
+    (its first, if no url). Anyone signed in (services/tiding_links.py)."""
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    message = Message.objects.filter(id=_uuid_or_none(message_id), mood=Mood.by_slug(slug)).first()
+    if message is None:
+        return JsonResponse({'error': 'no such message in this Mood'}, status=404)
+    if not _under_limit(f'promote:{device.pk}', 10):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"url": ..., "title": ...}'}, status=400)
+    urls = body.get('urls')
+    try:
+        if isinstance(urls, list) and urls:
+            done = tiding_links.promote_many(message, device.entity, [str(u) for u in urls[:20]])
+        else:
+            done = [tiding_links.promote(message, device.entity, url=body.get('url') or None,
+                                         title=body.get('title') or None, with_news=True)]
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    tidings = [{'id': str(t.id), 'url': t.url, 'title': t.title, 'new': new} for t, new in done]
+    # One asked for, as before: its own fields at the top. 201 if anything went up, 200 if all already had.
+    return JsonResponse({**tidings[0], 'tidings': tidings}, status=201 if any(t['new'] for t in tidings) else 200)
+
+
+@require_POST
+def api_tiding(request, tiding_id):
+    """{"title"} to retitle a link on Tidings; {"withdraw": true} to take it off. Whoever promoted it, or an admin."""
+    from .models import Tiding
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    tiding = Tiding.objects.filter(id=_uuid_or_none(tiding_id)).first()
+    if tiding is None:
+        return JsonResponse({'error': 'no such link on Tidings'}, status=404)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"title": ...} or {"withdraw": true}'}, status=400)
+    try:
+        if body.get('withdraw'):
+            tiding_links.withdraw(tiding, device)
+            return JsonResponse({'id': tiding_id, 'withdrawn': True})
+        tiding = tiding_links.retitle(tiding, device, body.get('title'))
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'id': str(tiding.id), 'title': tiding.title})
+
+
+@require_POST
 def api_message_delete(request, slug, message_id):
     """Take a message's words out of the record (services/retract.py): yours, or anyone's as an admin."""
     return _retract(request, slug, message_id, edit=False)
@@ -774,7 +836,14 @@ def api_memo(request, slug):
         return JsonResponse({'error': f'larger than {media.MAX_AUDIO_BYTES // (1024 * 1024)} MB'}, status=413)
     if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
-    stored = media.store(request.body, added_by=device.entity, audio=True)
+    data = request.body
+    try:  # how long it is, as the page that recorded it knows: written into a WebM, which doesn't say
+        seconds = float(request.GET.get('seconds', ''))
+    except ValueError:
+        seconds = None
+    if seconds and 0 < seconds < 4 * 3600:
+        data = media.webm_with_duration(data, seconds)
+    stored = media.store(data, added_by=device.entity, audio=True)
     if stored is None:
         return JsonResponse({'error': 'not a recording this understands (WebM, Ogg, MP4, MP3 or WAV)'}, status=400)
     try:
@@ -958,6 +1027,39 @@ def api_voice_heard(request):
                  outcome=outcome, error=redact(str(body.get('error') or ''))[0][:200], hidden=bool(body.get('hidden')),
                  device=device.label[:60])
     return JsonResponse({'kept': True}, status=201)
+
+
+@require_POST
+def api_my_look(request):
+    """{"art"?, "colours"?, "colour"?}: how your name is written on the Moods page -- at most 30 characters
+    with every letter of your name in it, in order -- each character in one of ANSI's sixteen colours (a code
+    each, 0-f, '.' for none), and your icon's colour, #rrggbb. Empty puts any back. Your own, from any device
+    (services/settings.py: name_art, name_colours, icon_colour)."""
+    from .services import settings as knobs
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    if not device.entity.is_biological_human:
+        return JsonResponse({'error': "a person's look: agents have their colours"}, status=403)
+    try:
+        body = json.loads(request.body)
+        assert isinstance(body, dict)
+    except (ValueError, AssertionError):
+        return JsonResponse({'error': 'expected {"art": ..., "colour": ...}'}, status=400)
+    name, writes = device.entity_id, knobs.art_name(device.entity_id)
+    if body.get('art') and not knobs.art_fits(str(body['art']).strip(), writes):
+        return JsonResponse({'error': f'at most {knobs.NAME_ART_MAX} characters, with every letter of "{writes}" '
+                                      'in it, in order'}, status=400)
+    try:
+        for key, field in (('name_art', 'art'), ('name_colours', 'colours'), ('icon_colour', 'colour')):
+            if field in body:
+                knobs.change(key, body[field], agent=device.entity, by=device.entity)
+    except knobs.Invalid as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse(knobs.looks().get(name, {'art': '', 'colours': '', 'colour': ''}))
 
 
 @require_POST

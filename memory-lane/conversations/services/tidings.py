@@ -1,4 +1,7 @@
-"""The tidings page (/moods/tidings/ and /api/tidings/): pictures and prompts.
+"""The tidings pages: /moods/tidings/ and its /api/tidings/ show pictures;
+/moods/prompts/ and its /api/prompts/ show prompts. The two live here as one
+file because a prompt's answering turn is read from the same posts the
+picture scan walks.
 
 What Justin asked for, while building the status page (block ~26,228,235):
   1. Pictures: the last 20 images shared in the Moods, in order, with who
@@ -48,9 +51,14 @@ SHORT_POST = 80   # under this many characters, a post that addresses an agent p
 PAIR_WITHIN = timedelta(minutes=10)  # a short post's nudge is about what its author just said
 MAX_PER_MOOD = 300   # how many of a Mood's visible human posts the prompt scan looks at
 AGENT_CAP = 3000     # ... and how many of the agents' messages from the same stretch it reads for turns
-# What how_payload reads: an agent's message is read for its usage, never its words.
-USAGE_FIELDS = ('id', 'sender', 'created_at', 'model_backend', 'effort', 'input_tokens', 'output_tokens',
+# What how_payload reads: an agent's message is read for its usage, never its words. And its Mood: read
+# through mood.messages, each row is handed its Mood, and a deferred mood_id was one query a row (re, 21 Oct:
+# the prompts page took 17 s).
+USAGE_FIELDS = ('id', 'sender', 'mood', 'created_at', 'model_backend', 'effort', 'input_tokens', 'output_tokens',
                 'cache_read_input_tokens', 'cache_creation_input_tokens', 'cost_usd', 'stop_reason')
+# What a reply answers, never looked up: it addresses that message's author only if a person, and a
+# prompt is what addresses an agent (mood_view.addressed_in). Two queries a reply, saved.
+NOT_ASKED = {'sender': None, 'is_human': False}
 MAX_POSTS_WITH_PICTURES = 400  # how many of the newest posts showing pictures the picture scan looks at
 
 IMAGE_MIMES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
@@ -179,14 +187,14 @@ def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
                 last[message.sender_id] = message
                 continue
             text = _text(message)
-            named = [n for n in addressed_in(text, agents, by=message.sender_id)]
+            named = [n for n in addressed_in(text, agents, NOT_ASKED, by=message.sender_id)]
             if not named:
                 last[message.sender_id] = message
                 continue
             previous = last.get(message.sender_id)
             if (previous and len(text) < SHORT_POST and not text.startswith('/')
                     and message.created_at - previous.created_at <= PAIR_WITHIN
-                    and not addressed_in(_text(previous), agents, by=previous.sender_id)):
+                    and not addressed_in(_text(previous), agents, NOT_ASKED, by=previous.sender_id)):
                 entry = _brief(previous, mood.slug, named)
                 entry.update(kind='paired', trigger=_brief(message, mood.slug, named), by=message.sender_id)
             else:
@@ -276,9 +284,17 @@ def picture_tidings(limit=PICTURES):
 
 
 def tidings_state():
-    """Everything /moods/tidings/ shows: each human's Wiki name added, naught else."""
+    """What /moods/tidings/ shows: the links promoted from the Moods (services/tiding_links.py), then the
+    pictures. (Each picture's `preview` is its small form for the gallery; see views_moods.media_preview.)"""
+    from conversations.services import tiding_links
+    return {'links': tiding_links.listed(), 'pictures': picture_tidings()}
+
+
+def prompts_state():
+    """What /moods/prompts/ shows: each human's prompts, with their Wiki names
+    joined on so the page can write people as the wiki knows them."""
     from conversations.services import wiki_auth
-    state = {'pictures': picture_tidings(), 'prompts': prompt_tidings()}
+    state = {'prompts': prompt_tidings()}
     wiki = wiki_auth.names()
     for human in state['prompts']:
         human['wiki_name'] = wiki.get(human['name'], '')

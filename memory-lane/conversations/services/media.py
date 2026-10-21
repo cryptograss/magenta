@@ -32,6 +32,7 @@ import hashlib
 import io
 import json
 import re
+import struct
 
 MAX_BYTES = 8 * 1024 * 1024
 # What a picture's sharer lets others do with it: CC BY-SA 4.0 unless they
@@ -248,6 +249,80 @@ def heic_without_location(data):
     out = bytearray(_XMP_GPS.sub(lambda m: m.group(1) + m.group(2)[:2] + b' ' * (len(m.group(2)) - 3)
                                  + m.group(2)[-1:], bytes(out)))
     return bytes(out)
+
+
+# --- a browser's recording, given its length ------------------------------------------------
+# MediaRecorder's WebM says nothing of how long it is: a phone's player showed what it had loaded so far
+# as the whole, and couldn't seek (Justin, 21 Oct). The page knows how long it recorded; that length is
+# written into the recording's Info as its Duration before it's kept. Nothing else in it moves.
+
+_EBML, _SEGMENT, _INFO, _SEEKHEAD = 0x1A45DFA3, 0x18538067, 0x1549A966, 0x114D9B74
+_DURATION, _TIMECODE_SCALE = 0x4489, 0x2AD7B1
+
+
+def _ebml_id(data, i):
+    length = next(n for n in range(1, 5) if data[i] & (0x80 >> (n - 1)))
+    return int.from_bytes(data[i:i + length], 'big'), length
+
+
+def _ebml_size(data, i):
+    """(size, its length in bytes, whether it's the 'unknown' size a live recording writes)."""
+    length = next(n for n in range(1, 9) if data[i] & (0x80 >> (n - 1)))
+    value = int.from_bytes(data[i:i + length], 'big') & ((1 << (7 * length)) - 1)
+    return value, length, value == (1 << (7 * length)) - 1
+
+
+def _ebml_size_bytes(value, length):
+    if value >= (1 << (7 * length)) - 1:
+        raise ValueError('too big for its size field')
+    return ((1 << (7 * length)) | value).to_bytes(length, 'big')
+
+
+def webm_with_duration(data, seconds):
+    """`data` with its Duration written in, if it's a WebM without one; as it was otherwise."""
+    try:
+        eid, n = _ebml_id(data, 0)
+        if eid != _EBML:
+            return data
+        size, m, _ = _ebml_size(data, n)
+        i = n + m + size
+        eid, n = _ebml_id(data, i)
+        if eid != _SEGMENT:
+            return data
+        seg_at = i + n
+        seg_size, seg_len, seg_unknown = _ebml_size(data, seg_at)
+        j = seg_at + seg_len
+        end = len(data) if seg_unknown else j + seg_size
+        while j < end:
+            eid, n = _ebml_id(data, j)
+            size, m, unknown = _ebml_size(data, j + n)
+            if eid == _SEEKHEAD or unknown:
+                return data  # positions after it would move: left as it is
+            if eid == _INFO:
+                at = j + n + m
+                body, k, scale = data[at:at + size], 0, 1_000_000
+                while k < len(body):
+                    cid, cn = _ebml_id(body, k)
+                    csize, cm, _ = _ebml_size(body, k + cn)
+                    if cid == _DURATION:
+                        return data  # says its length already
+                    if cid == _TIMECODE_SCALE:
+                        scale = int.from_bytes(body[k + cn + cm:k + cn + cm + csize], 'big') or scale
+                    k += cn + cm + csize
+                body += bytes([0x44, 0x89, 0x88]) + struct.pack('>d', seconds * 1e9 / scale)
+                try:
+                    head = data[j:j + n] + _ebml_size_bytes(len(body), m)
+                except ValueError:
+                    head = data[j:j + n] + _ebml_size_bytes(len(body), 8)
+                out = data[:j] + head + body + data[at + size:]
+                if not seg_unknown:
+                    grown = len(out) - len(data)
+                    out = out[:seg_at] + _ebml_size_bytes(seg_size + grown, seg_len) + out[seg_at + seg_len:]
+                return out
+            j += n + m + size
+    except (ValueError, IndexError, StopIteration, struct.error):
+        return data
+    return data
 
 
 def store(data, added_by=None, audio=False, strip=True):

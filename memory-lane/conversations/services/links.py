@@ -4,7 +4,9 @@ In what anyone writes:
 
     #general              a Mood, by its name now or one it had: a link to it
     #m-<id>               a message, by its id or the id's first 8 characters
-    .../moods/<slug>/#m-<id>   a message's link, as its time copies it
+    .../messages/<id>     a message's own address, as its time copies it (Justin, 20 Oct:
+                          a message outlives its Mood's name)
+    .../moods/<slug>/#m-<id>   a message's link, as its time copied it before
 
 A message link renders as a card -- who said it, where, its first words --
 that goes there (mood_view._inline). The other way round, every message
@@ -24,8 +26,8 @@ import time
 from django.core.cache import cache
 
 UUID = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-# A message, by id or its first 8, as '#m-...' alone or ending a permalink.
-TARGET = re.compile(rf'#m-({UUID}|[0-9a-f]{{8}})(?![0-9a-f-])', re.I)
+# A message, by id or its first 8, as '#m-...' alone or ending a permalink; or its own address, /messages/<id>.
+TARGET = re.compile(rf'(?:#m-({UUID}|[0-9a-f]{{8}})|/messages/({UUID}))(?![0-9a-f-])', re.I)
 CARD_FOR = 86400        # a message never changes: its card is kept a day
 REBUILD_EVERY = 3600    # seconds between full looks
 FRESH_EVERY = 5         # seconds between looks at what's new
@@ -82,8 +84,8 @@ def card(ref):
 # --- what links to what ------------------------------------------------------------
 
 def _sources(since=None):
-    """(message, the ids it links, whether it's a reply) for readable Mood messages carrying '#m-'."""
-    from django.db.models import TextField
+    """(message, the ids it links, whether it's a reply) for readable Mood messages carrying '#m-' or '/messages/'."""
+    from django.db.models import Q, TextField
     from django.db.models.functions import Cast
     from conversations.models import Message, Mood
     from .mood_view import MACHINERY_SENDERS, is_summary, is_wrapper, prose, quiet_reason, reply_to
@@ -91,7 +93,8 @@ def _sources(since=None):
             .exclude(sender_id__in=MACHINERY_SENDERS | {'mood-poller'}))
     if since is not None:
         rows = rows.filter(created_at__gt=since)
-    rows = rows.annotate(as_text=Cast('content', TextField())).filter(as_text__contains='#m-')
+    rows = rows.annotate(as_text=Cast('content', TextField())).filter(
+        Q(as_text__contains='#m-') | Q(as_text__contains='/messages/'))
     for message in rows.select_related('tooluse', 'thought'):
         if hasattr(message, 'tooluse') or hasattr(message, 'thought'):
             continue  # a tool's input, or thinking: not something said
@@ -100,7 +103,7 @@ def _sources(since=None):
             continue
         target, _ = reply_to(text)
         refs = [target] if target else []
-        refs += [m.group(1) for m in TARGET.finditer(text)]
+        refs += [m.group(1) or m.group(2) for m in TARGET.finditer(text)]
         yield message, refs, target
 
 

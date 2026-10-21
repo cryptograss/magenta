@@ -41,15 +41,35 @@ def settings_state():
     }
 
 
-@ensure_csrf_cookie
-@require_GET
+SECTIONS = ('tidings', 'prompts', 'status', 'settings')
+
+
+def section(name):
+    """A section's page as the one page shows it (?embed=1: inside it, without its own header); asked for
+    directly, the one page, showing that section (views_moods.moods_page)."""
+    def wrap(page):
+        @ensure_csrf_cookie
+        @require_GET
+        def view(request):
+            if request.GET.get('embed'):
+                response = page(request)
+                # Framed by the one page, and only by a page of ours (Django's default is DENY).
+                response['X-Frame-Options'] = 'SAMEORIGIN'
+                return response
+            from .views_moods import moods_page
+            return moods_page(request, section=name)
+        view.__name__ = page.__name__
+        return view
+    return wrap
+
+
+@section('settings')
 def settings_page(request):
     device = mood_auth.device_for(request)
-    return render(request, 'conversations/mood_settings.html', {'viewer': device.entity_id if device else ''})
+    return render(request, 'conversations/mood_settings.html', {'viewer': device.entity_id if device else '', 'embed': True})
 
 
-@ensure_csrf_cookie
-@require_GET
+@section('status')
 def status_page(request):
     device = mood_auth.device_for(request)
     viewer = device.entity_id if device else ''
@@ -57,6 +77,7 @@ def status_page(request):
     return render(request, 'conversations/mood_status.html', {
         'viewer': viewer,
         'viewer_tier': viewer_tier,
+        'embed': True,
     })
 
 
@@ -67,13 +88,23 @@ def api_status(request):
     return JsonResponse(status.full_status(private=bool(device and device.tier == 'key')))
 
 
-@require_GET
+@section('tidings')
 def tidings_page(request):
     from .services import tidings
     return render(request, 'conversations/mood_tidings.html', {
         'tidings': tidings.tidings_state(),
         'picture_cap': tidings.PICTURES,
+        'embed': True,
+    })
+
+
+@section('prompts')
+def prompts_page(request):
+    from .services import tidings
+    return render(request, 'conversations/mood_prompts.html', {
+        'prompts': tidings.prompts_state(),
         'prompt_cap': tidings.PROMPTS_PER_HUMAN,
+        'embed': True,
     })
 
 
@@ -81,6 +112,12 @@ def tidings_page(request):
 def api_tidings(request):
     from .services import tidings
     return JsonResponse(tidings.tidings_state())
+
+
+@require_GET
+def api_prompts(request):
+    from .services import tidings
+    return JsonResponse(tidings.prompts_state())
 
 
 @require_http_methods(['GET', 'POST'])

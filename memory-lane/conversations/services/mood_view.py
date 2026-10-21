@@ -533,8 +533,9 @@ def yarn_clip(url):
     return match.group(2) if match and match.group(1) in YARN_HOSTS else None
 
 
-# A message's own link (its time copies it): a card, not a URL (services/links.py).
-_PERMALINK = re.compile(r'^https?://[^/\s]+/moods/[\w-]+/#m-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$')
+# A message's own link (its time copies it): a card, not a URL (services/links.py). /messages/<id> now;
+# /moods/<slug>/#m-<id> as it was copied before.
+_PERMALINK = re.compile(r'^https?://[^/\s]+/(?:messages/|moods/[\w-]+/#m-)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$')
 # '#general' (a Mood) or '#m-<id>' (a message, or the id's first 8). Not '&#x27;'
 # (an escaped quote), not 'C#', not a URL's fragment (those are linked already).
 _HASH = re.compile(r'(?<![\w&#/;=])#(m-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})'
@@ -1004,6 +1005,7 @@ def attestation_of(msg):
 
 
 def turn_payload(msg, text, mentionable=()):
+    from . import tiding_links
     from .links import linked_from
     # A ```voice block is how its writer wants it read aloud: performed, not shown.
     # A ```handoff block went to another Mood (services/handoff.py): a line says so, not the block.
@@ -1037,6 +1039,9 @@ def turn_payload(msg, text, mentionable=()):
         'html': render_html(said, mentionable),
         # Who linked here, or replied (services/links.py): shown under it.
         'linked_from': linked_from(msg.id),
+        # Its links, which can be put on Tidings, and the one that is (services/tiding_links.py).
+        'links': tiding_links.links_in(said),
+        'tidings': tiding_links.by_message().get(str(msg.id), []),
     }
 
 

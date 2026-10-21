@@ -267,7 +267,7 @@ MIN_PREFIX = 6  # hex digits of an id before a prefix is accepted
 
 
 def resolve_message(ref):
-    """(message, candidates, problem) for a full id, an id prefix, or a #m-<id> link.
+    """(message, candidates, problem) for a full id, an id prefix, a #m-<id> link or a /messages/<id> address.
 
     A prefix that matches exactly one message resolves to it. One that matches
     several returns them as candidates (up to ten) so the caller can choose.
@@ -278,6 +278,8 @@ def resolve_message(ref):
     ref = str(ref or '').strip()
     if '#m-' in ref:
         ref = ref.split('#m-', 1)[1]
+    elif '/messages/' in ref:  # a message's own address
+        ref = ref.split('/messages/', 1)[1].strip('/')
     ref = ref.strip().lower()
     if not ref:
         return None, [], 'Give a message id, the first few characters of one, or a #m-<id> link.'

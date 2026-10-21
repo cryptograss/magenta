@@ -32,7 +32,10 @@ from .services.mood_view import (
 
 @ensure_csrf_cookie
 @require_GET
-def moods_page(request, slug=None):
+def moods_page(request, slug=None, section=''):
+    """The one page: the Moods, and tidings, prompts, status and settings beside them (`section`: which
+    shows first). Each section is its own page, loaded once into it (?embed=1) and kept, so going back
+    and forth loads nothing again (Justin, 21 Oct)."""
     if slug is not None:
         found = Mood.by_slug_or_404(slug)
         if found.slug != slug:  # renamed since: its page now has the new name
@@ -41,6 +44,7 @@ def moods_page(request, slug=None):
     device = mood_auth.device_for(request)
     return render(request, 'conversations/moods.html', {
         'initial_slug': slug or '',
+        'initial_section': section,
         # A preview can pretend to be someone, to show the composer; its
         # database is read-only, so nothing it sends is kept.
         'viewer': device.entity_id if device else getattr(settings, 'PREVIEW_VIEWER', ''),
@@ -107,8 +111,11 @@ def api_moods(request):
     payloads.sort(key=lambda p: p['last_at'] or started[p['slug']], reverse=True)
     payloads.sort(key=lambda p: not p['pinned'])  # pinned first, each part still newest first
     people = ThinkingEntity.objects.order_by('name')
+    look = knobs.looks()
     return JsonResponse({'moods': payloads, 'people': [
-        {'name': p.name, 'is_human': p.is_biological_human} for p in people]})
+        {'name': p.name, 'is_human': p.is_biological_human,
+         **(look[p.name] if p.is_biological_human and p.name in look else {})}
+        for p in people]})
 
 
 @require_GET
@@ -388,6 +395,33 @@ def _preview_of(item):
             return out.getvalue(), mime
     except Exception:
         raise Http404('no such image')
+
+
+def _in_a_mood(message_id):
+    """A message said in a Mood (not a helper's line), by its id; None if there's none."""
+    from .views_auth import _uuid_or_none
+    return (Message.objects.filter(id=_uuid_or_none(message_id), mood__isnull=False, is_sidechain=False)
+            .select_related('mood').first())
+
+
+@require_GET
+def message_page(request, message_id):
+    """/messages/<id>: a message's own address, wherever it lives. A Mood can be renamed, which moves
+    its page; its messages' addresses stay (Justin, 20 Oct). Sent on to it in its Mood, as it is now."""
+    from django.shortcuts import redirect
+    message = _in_a_mood(message_id)
+    if message is None:
+        raise Http404('no such message in any Mood')
+    return redirect(f'/moods/{message.mood.slug}/#m-{message.id}')
+
+
+@require_GET
+def api_message(request, message_id):
+    """{"id", "mood"}: where a message is now, for whatever holds only its address (the poller)."""
+    message = _in_a_mood(message_id)
+    if message is None:
+        return JsonResponse({'error': 'no such message in any Mood'}, status=404)
+    return JsonResponse({'id': str(message.id), 'mood': message.mood.slug})
 
 
 @require_GET
