@@ -45,7 +45,7 @@
   header .brand .logo { width: 22px; height: 22px; flex: none; background: var(--accent);
                         -webkit-mask: url(/moods/mark-96.png) center / contain no-repeat; mask: url(/moods/mark-96.png) center / contain no-repeat; }
   header .crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-  header .crumb::before { content: '› '; color: var(--muted); font-weight: 400; }
+  header .crumb::before { content: '›'; margin-right: .3em; color: var(--muted); font-weight: 400; }
   header .crumb:empty { display: none; }
   header .crumb #rename { margin-left: 4px; border: 0; background: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 0 2px; }
   header .crumb #rename:hover { color: var(--accent); }
@@ -55,6 +55,15 @@
   header .sections { display: flex; gap: 14px; margin-left: 10px; flex: none; font-size: 14px; }
   header .sections a { color: var(--muted); text-decoration: none; }
   header .sections a:hover { color: var(--ink); }
+  /* The bar never scrolls (Justin, 21 Oct: "status" cut off, a scrollbar): what doesn't fit goes, least needed
+     first -- the block height, then the sections (the account menu has them), then "moods" (☰ and the brand
+     go there too) -- and the Mood's name shortens with … if it must (fitHeader). */
+  header.tight-1 .block, header.tight-2 .sections, header.tight-3 .crumb.moods { display: none; }
+  /* The Mood's name gives way last: room for a few words before the rest goes. */
+  header .crumb:not(.moods):not(:empty) { min-width: min(14em, 30vw); display: flex; align-items: baseline; }
+  header .crumb .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }  /* shortened, never its ✎ */
+  header .crumb #rename { flex: none; }
+  #reloadNudge { white-space: nowrap; }
   header .grow { flex: 1; }
   header select { font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); }
   header .status { font-size: 0; }
@@ -1049,6 +1058,7 @@
     header .block { display: none; }
     header .crumb::before { content: none; }
     header .crumb.moods, header .sections { display: none; }  /* ☰ is the Moods; the account menu has the rest */
+    header .crumb:not(.moods):not(:empty) { min-width: 0; }
     header .preview { max-width: 70px; }
     #serverPop { right: 8px; }
     .layout { flex-direction: column; }
@@ -2913,10 +2923,20 @@
   // The pencil sits by the Mood's name in the top bar, where it's always in view.
   let headMood = null;  // the Mood the head was last drawn for
   const crumb = document.getElementById('crumb');
+  const bar = document.querySelector('header');
+  function fitHeader() {
+    bar.classList.remove('tight-1', 'tight-2', 'tight-3');
+    for (const step of ['tight-1', 'tight-2', 'tight-3']) {
+      if (bar.scrollWidth <= bar.clientWidth) break;
+      bar.classList.add(step);
+    }
+  }
+  new ResizeObserver(fitHeader).observe(bar);
+  new MutationObserver(fitHeader).observe(bar, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
   const renameBox = document.getElementById('renameBox');
   function showMoodName(m) {
     headMood = m;
-    crumb.innerHTML = m ? esc(m.title) + (keyHolder ? '<button type="button" id="rename" title="Rename this Mood" aria-label="Rename this Mood">✎</button>' : '') : '';
+    crumb.innerHTML = m ? `<span class="title">${esc(m.title)}</span>` + (keyHolder ? '<button type="button" id="rename" title="Rename this Mood" aria-label="Rename this Mood">✎</button>' : '') : '';
     const h1 = document.querySelector('.mood-head h1');
     if (h1 && m) h1.textContent = m.title;
     if (m) { baseTitle = m.title + ' · magenta'; setTitle(); }
