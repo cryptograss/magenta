@@ -51,9 +51,14 @@ SHORT_POST = 80   # under this many characters, a post that addresses an agent p
 PAIR_WITHIN = timedelta(minutes=10)  # a short post's nudge is about what its author just said
 MAX_PER_MOOD = 300   # how many of a Mood's visible human posts the prompt scan looks at
 AGENT_CAP = 3000     # ... and how many of the agents' messages from the same stretch it reads for turns
-# What how_payload reads: an agent's message is read for its usage, never its words.
-USAGE_FIELDS = ('id', 'sender', 'created_at', 'model_backend', 'effort', 'input_tokens', 'output_tokens',
+# What how_payload reads: an agent's message is read for its usage, never its words. And its Mood: read
+# through mood.messages, each row is handed its Mood, and a deferred mood_id was one query a row (re, 21 Oct:
+# the prompts page took 17 s).
+USAGE_FIELDS = ('id', 'sender', 'mood', 'created_at', 'model_backend', 'effort', 'input_tokens', 'output_tokens',
                 'cache_read_input_tokens', 'cache_creation_input_tokens', 'cost_usd', 'stop_reason')
+# What a reply answers, never looked up: it addresses that message's author only if a person, and a
+# prompt is what addresses an agent (mood_view.addressed_in). Two queries a reply, saved.
+NOT_ASKED = {'sender': None, 'is_human': False}
 MAX_POSTS_WITH_PICTURES = 400  # how many of the newest posts showing pictures the picture scan looks at
 
 IMAGE_MIMES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
@@ -182,14 +187,14 @@ def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
                 last[message.sender_id] = message
                 continue
             text = _text(message)
-            named = [n for n in addressed_in(text, agents, by=message.sender_id)]
+            named = [n for n in addressed_in(text, agents, NOT_ASKED, by=message.sender_id)]
             if not named:
                 last[message.sender_id] = message
                 continue
             previous = last.get(message.sender_id)
             if (previous and len(text) < SHORT_POST and not text.startswith('/')
                     and message.created_at - previous.created_at <= PAIR_WITHIN
-                    and not addressed_in(_text(previous), agents, by=previous.sender_id)):
+                    and not addressed_in(_text(previous), agents, NOT_ASKED, by=previous.sender_id)):
                 entry = _brief(previous, mood.slug, named)
                 entry.update(kind='paired', trigger=_brief(message, mood.slug, named), by=message.sender_id)
             else:
