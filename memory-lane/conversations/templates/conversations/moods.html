@@ -1597,6 +1597,26 @@
   // and lets it go on when it's done or stopped -- unless reading was paused already, or
   // is paused meanwhile (the lock screen's ⏸). Before, the hold stayed: every message
   // after waited for a press (Justin, 19 Oct, on his bike).
+  // A memo recorded in a browser has no length written in it (MediaRecorder's WebM): the player showed
+  // what it had loaded so far as the whole, and its slider couldn't seek (Justin, 21 Oct). Pressed, it
+  // is asked for a moment past its end, quietly; the browser finds the end, and it plays from the start
+  // with its true length. Only players with controls: the reader's own end means a message was heard.
+  document.addEventListener('loadedmetadata', e => {
+    const a = e.target;
+    if (!(a instanceof HTMLMediaElement) || !a.controls || a.duration !== Infinity || a._measured) return;
+    a._measured = true;
+    const playing = !a.paused, muted = a.muted;
+    a.muted = true;
+    const found = () => {
+      if (!Number.isFinite(a.duration)) return;
+      a.removeEventListener('durationchange', found);
+      a.currentTime = 0;
+      a.muted = muted;
+      if (playing) a.play().catch(() => {});
+    };
+    a.addEventListener('durationchange', found);
+    a.currentTime = 1e101;
+  }, true);
   let speakHeld = false;
   function stopSpeaking(another) {
     if (!speaking) return;
@@ -5078,7 +5098,8 @@
       memoStatus(`🎙 Saving your memo (${clock(seconds)})…`);
       let ready = false;
       try {
-        const r = await postMemo('/api/moods/' + encodeURIComponent(current) + '/memo/',
+        // How long it is goes with it: a browser's WebM doesn't say, and a phone can't seek it (media.webm_with_duration).
+        const r = await postMemo('/api/moods/' + encodeURIComponent(current) + '/memo/?seconds=' + seconds.toFixed(3),
           new Blob(chunks, { type: chunks[0]?.type || type || 'audio/webm' }), done => {
             const pct = Math.round(done * 100);
             memoBtn.textContent = pct < 100 ? `saving ${pct}%` : 'saving…';
