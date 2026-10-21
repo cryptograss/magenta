@@ -91,11 +91,40 @@ def api_status(request):
 @section('tidings')
 def tidings_page(request):
     from .services import tidings
+    device = mood_auth.device_for(request)
     return render(request, 'conversations/mood_tidings.html', {
-        'tidings': tidings.tidings_state(),
+        'tidings': tidings.tidings_state(viewer=device.entity_id if device else None),
         'picture_cap': tidings.PICTURES,
+        'viewer': device.entity_id if device else '',
         'embed': True,
     })
+
+
+@ensure_csrf_cookie
+@require_GET
+def tiding_page(request, tiding_id):
+    """One link's page: itself and what's been said about it, as a comment can be said. Asked for with
+    ?embed=1, it draws inside the one page's Tidings frame; without, the one page, on Tidings."""
+    from .services import tiding_links
+    from .views_auth import _uuid_or_none
+    if not request.GET.get('embed'):
+        from .views_moods import moods_page
+        return moods_page(request, section='tidings')
+    device = mood_auth.device_for(request)
+    viewer = device.entity_id if device else None
+    try:
+        state = tiding_links.discussion(_uuid_or_none(tiding_id), viewer)
+    except tiding_links.Refused as e:
+        from django.http import HttpResponse
+        response = HttpResponse(str(e), status=e.status)
+    else:
+        response = render(request, 'conversations/mood_tiding.html', {
+            'tiding': state,
+            'viewer': viewer,
+            'embed': True,
+        })
+    response['X-Frame-Options'] = 'SAMEORIGIN'  # drawn in the one page's Tidings frame, as section() allows
+    return response
 
 
 @section('prompts')
@@ -111,7 +140,8 @@ def prompts_page(request):
 @require_GET
 def api_tidings(request):
     from .services import tidings
-    return JsonResponse(tidings.tidings_state())
+    device = mood_auth.device_for(request)
+    return JsonResponse(tidings.tidings_state(viewer=device.entity_id if device else None))
 
 
 @require_GET

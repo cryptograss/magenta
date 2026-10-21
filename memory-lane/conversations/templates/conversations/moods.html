@@ -4139,6 +4139,7 @@
       who?.querySelector('.ontidings')?.remove();
       who?.querySelector('.morebtn, .replybtn, .addreact')?.insertAdjacentHTML('beforebegin', onTidingsMark(el._tidings));
       const fresh = done.tidings.filter(x => x.new);
+      if (fresh.length) sectionStale.tidings = true;  // the Tidings section, already loaded: its next visit shows these
       showNote(fresh.length ? `On Tidings: ${fresh.map(x => `“${x.title}”`).join(', ')}` : 'Those were on Tidings already.', 6000);
     } catch (err) { showError('promote: ' + err.message); }
   }
@@ -6525,12 +6526,18 @@
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
   const SECTIONS = ['tidings', 'prompts', 'status', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
+  const sectionStale = {};  // a section whose frame predates a change made here (a promotion): refetched on next show
   const sectionOf = path => SECTIONS.find(s => path.replace(/\/+$/, '') === '/moods/' + s) || null;
   function showSection(name, push) {
     sectionNow = name;
     document.body.classList.toggle('in-section', name !== 'moods');
     sectionFrames.hidden = name === 'moods';
     if (name !== 'moods') {
+      if (sectionStale[name]) {  // what it shows changed while it was away: it draws itself fresh on arrival
+        sectionFrames.querySelector(`iframe[data-section="${name}"]`)?.remove();
+        sectionFrames.querySelectorAll(`.loading[data-section="${name}"]`).forEach(l => l.remove());
+        delete sectionStale[name];
+      }
       let frame = sectionFrames.querySelector(`iframe[data-section="${name}"]`);
       if (!frame) {
         frame = document.createElement('iframe');

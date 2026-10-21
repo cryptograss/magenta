@@ -17,9 +17,14 @@ or withdraws it. Agents don't promote (their sessions have no device).
 """
 
 import re
+import time
+import uuid
+from datetime import datetime
 from urllib.parse import urlsplit
 
 from django.core.cache import cache
+
+from .redaction import redact
 
 LISTED = 30          # links on Tidings
 MAX_TITLE = 300
@@ -138,9 +143,37 @@ def withdraw(tiding, device):
     _changed()
 
 
-def thread(message_id, index=None):
-    """The replies under a message, and theirs, oldest first at each level:
-    [{'id', 'sender', 'mood', 'at', 'replies': [...]}]. What's said about a promoted link."""
+def _walk(tree):
+    """Every node of a reply tree, one at a time."""
+    for node in tree:
+        yield node
+        yield from _walk(node.get('replies', []))
+
+
+def _snippets_and_votes(tree, viewer=None):
+    """Snippet, score and whether `viewer` voted, onto every node: three questions of the database,
+    whatever the tree's size."""
+    from django.db.models import Count
+    from conversations.models import Message, TidingVote
+    from .mood_view import prose, reply_to, snippet_of
+    nodes = list(_walk(tree))
+    ids = [node['id'] for node in nodes]
+    texts = {str(m.id): snippet_of(reply_to(prose(m.content))[1]) for m in Message.objects.filter(id__in=ids)} if ids else {}
+    scored = ({str(mid): c for mid, c in TidingVote.objects.filter(message_id__in=ids).values('message_id')
+               .annotate(c=Count('id')).values_list('message_id', 'c')} if ids else {})
+    mines = ({str(mid) for mid in TidingVote.objects.filter(message_id__in=ids, by_id=viewer)
+              .values_list('message_id', flat=True)} if viewer and ids else set())
+    for node in nodes:
+        node['snippet'] = texts.get(node['id'], '')
+        node['score'] = scored.get(node['id'], 0)
+        node['mine'] = node['id'] in mines
+        node['at'] = datetime.fromisoformat(node['at'])  # the index keeps it ISO (it's cached); the page says it
+    return tree
+
+
+def _tree(message_id, index=None):
+    """The replies under a message, and theirs, oldest first at each level, as the links index has them:
+    [{'id', 'sender', 'mood', 'at', 'replies': [...]}]."""
     from .links import current
     index = index if index is not None else current()
     seen = {str(message_id)}
@@ -155,23 +188,149 @@ def thread(message_id, index=None):
     return under(str(message_id))
 
 
+def thread(message_id, index=None, viewer=None):
+    """What's said about a promoted link: its message's reply tree, each node with its words (`snippet`),
+    its upvotes (`score`) and whether `viewer` gave one (`mine`)."""
+    return _snippets_and_votes(_tree(message_id, index), viewer)
+
+
 def count(tree):
     return sum(1 + count(node['replies']) for node in tree)
 
 
-def listed(limit=LISTED):
-    """The links on Tidings, newest first, as the page shows them."""
+def _tiding_scores(tidings, viewer=None):
+    """(score per Tiding, which of them `viewer` voted) -- two questions of the database."""
+    from django.db.models import Count
+    from conversations.models import TidingVote
+    ids = [t.id for t in tidings]
+    if not ids:
+        return {}, set()
+    scored = {str(tid): c for tid, c in TidingVote.objects.filter(tiding_id__in=ids).values('tiding_id')
+              .annotate(c=Count('id')).values_list('tiding_id', 'c')}
+    mines = ({str(tid) for tid in TidingVote.objects.filter(tiding_id__in=ids, by_id=viewer)
+              .values_list('tiding_id', flat=True)} if viewer else set())
+    return scored, mines
+
+
+def vote(tiding, by):
+    """One person's upvote of a link: there or not -- again takes it back. {'score', 'mine'} after."""
+    from django.db import IntegrityError
+    from conversations.models import TidingVote
+    row = TidingVote.objects.filter(tiding=tiding, by=by).first()
+    if row:
+        row.delete()
+    else:
+        try:
+            TidingVote.objects.create(tiding=tiding, by=by)
+        except IntegrityError:  # two presses racing: the vote's in; leave it
+            pass
+    return _vote_state(tiding_id=tiding.id, by_id=by.pk)
+
+
+def vote_comment(tiding, by, message_id):
+    """One person's upvote of a comment in a link's discussion, or the vote taken back. {'score', 'mine'}.
+    The comment must be under the link's message: a vote never reaches a message that isn't said there."""
+    from django.db import IntegrityError
+    from conversations.models import Message, TidingVote
+    if message_id is None:
+        raise Refused('no such comment under this link', status=404)
+    message = Message.objects.filter(id=message_id, mood_id=tiding.message.mood_id).first()
+    in_tree = any(node['id'] == str(message_id) for node in _walk(_tree(tiding.message_id)))
+    if message is None or not in_tree:
+        raise Refused('no such comment under this link', status=404)
+    row = TidingVote.objects.filter(message=message, by=by).first()
+    if row:
+        row.delete()
+    else:
+        try:
+            TidingVote.objects.create(message=message, by=by)
+        except IntegrityError:
+            pass
+    return _vote_state(message_id=message.id, by_id=by.pk)
+
+
+def _vote_state(tiding_id=None, message_id=None, by_id=None):
+    """A link's or a comment's score -- everyone's upvotes -- and whether this voter's among them."""
+    from conversations.models import TidingVote
+    votes = TidingVote.objects.filter(tiding_id=tiding_id) if tiding_id else TidingVote.objects.filter(message_id=message_id)
+    return {'score': votes.count(), 'mine': votes.filter(by_id=by_id).exists()}
+
+
+def comment(tiding, by, text, parent=None, client_version=''):
+    """Say it about a link: a message in the link's Mood, as a reply to the link's message or to a comment
+    under it. One record: on Tidings it's a comment, in the Mood it's a reply. The new node, as the
+    discussion shows it."""
+    from conversations.models import Message
+    from .mood_view import prose, snippet_of
+    from .retract import DELETED
+    message = tiding.message
+    if message.mood_id is None:
+        raise Refused('only what was said in a Mood', status=404)
+    if prose(message.content) == DELETED:
+        raise Refused('that message was deleted', status=404)
+    target = parent if parent else message.id
+    if str(target) != str(message.id) and not any(node['id'] == str(target) for node in _walk(_tree(message.id))):
+        raise Refused('no such comment under this link', status=404)
+    text, _ = redact(text)  # a secret pasted here is kept out of the record, as in the Mood's own box
+    row = Message.objects.create(id=uuid.uuid4(), sender=by, content=f'↩ #m-{target}\n{text}', mood=message.mood,
+                                 timestamp=int(time.time() * 1000), source_file='mood-web',
+                                 client_version=client_version)
+    from .links import note_new
+    note_new(row, [str(target)], str(target))  # a reload the same second still shows it
+    return {'id': str(row.id), 'sender': by.name, 'mood': message.mood_slug, 'at': row.created_at,
+            'snippet': snippet_of(text), 'replies': [], 'score': 0, 'mine': False}
+
+
+def discussion(tiding_id, viewer=None):
+    """One link's page: itself, then what's been said about it. Missing or deleted: Refused."""
+    from conversations.models import Tiding
+    from .mood_view import prose, snippet_of
+    from .retract import DELETED
+    tiding = Tiding.objects.select_related('message', 'by').filter(id=tiding_id).first()
+    if tiding is None:
+        raise Refused('no such link on Tidings', status=404)
+    message = tiding.message
+    text = prose(message.content) or ''
+    if text == DELETED or message.mood_id is None:
+        raise Refused('that message was deleted', status=404)
+    scored, mines = _tiding_scores([tiding], viewer)
+    return {
+        'id': str(tiding.id),
+        'url': tiding.url,
+        'host': host_of(tiding.url),
+        'title': tiding.title or tiding.url,
+        'by': tiding.by.name if tiding.by_id else '',
+        'at': tiding.at,
+        'message': str(message.id),
+        'mood': message.mood_slug,
+        'said_by': message.sender_id,
+        'snippet': snippet_of(text)[:200],
+        'score': scored.get(str(tiding.id), 0),
+        'mine': str(tiding.id) in mines,
+        'comments': thread(message.id, viewer=viewer),
+    }
+
+
+def listed(limit=LISTED, viewer=None):
+    """The links on Tidings, newest first, as the page shows them: numbered there, each with its
+    score and whether `viewer` voted."""
     from conversations.models import Tiding
     from .links import current
     from .mood_view import prose, snippet_of
     from .retract import DELETED
     index = current()
-    out = []
+    rows = []
     for tiding in Tiding.objects.select_related('message', 'by').order_by('-at')[:limit]:
         message = tiding.message
         text = prose(message.content) or ''
         if text == DELETED or message.mood_id is None:
             continue
+        rows.append(tiding)
+    scored, mines = _tiding_scores(rows, viewer)
+    out = []
+    for tiding in rows:
+        message = tiding.message
+        text = prose(message.content) or ''
         out.append({
             'id': str(tiding.id),
             'url': tiding.url,
@@ -183,6 +342,8 @@ def listed(limit=LISTED):
             'mood': message.mood_slug,
             'said_by': message.sender_id,
             'snippet': snippet_of(text)[:200],
-            'comments': count(thread(message.id, index)),
+            'comments': count(_tree(message.id, index)),
+            'score': scored.get(str(tiding.id), 0),
+            'mine': str(tiding.id) in mines,
         })
     return out

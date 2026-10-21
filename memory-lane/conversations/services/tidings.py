@@ -283,11 +283,12 @@ def picture_tidings(limit=PICTURES):
     return out
 
 
-def tidings_state():
+def tidings_state(viewer=None):
     """What /moods/tidings/ shows: the links promoted from the Moods (services/tiding_links.py), then the
-    pictures. (Each picture's `preview` is its small form for the gallery; see views_moods.media_preview.)"""
+    pictures. (Each picture's `preview` is its small form for the gallery; see views_moods.media_preview.)
+    `viewer` is who's looking: each link says whether they voted for it."""
     from conversations.services import tiding_links
-    return {'links': tiding_links.listed(), 'pictures': picture_tidings()}
+    return {'links': tiding_links.listed(viewer=viewer), 'pictures': picture_tidings()}
 
 
 def prompts_state():
