@@ -1,4 +1,7 @@
-"""The tidings page (/moods/tidings/ and /api/tidings/): pictures and prompts.
+"""The tidings pages: /moods/tidings/ and its /api/tidings/ show pictures;
+/moods/prompts/ and its /api/prompts/ show prompts. The two live here as one
+file because a prompt's answering turn is read from the same posts the
+picture scan walks.
 
 What Justin asked for, while building the status page (block ~26,228,235):
   1. Pictures: the last 20 images shared in the Moods, in order, with who
@@ -276,9 +279,16 @@ def picture_tidings(limit=PICTURES):
 
 
 def tidings_state():
-    """Everything /moods/tidings/ shows: each human's Wiki name added, naught else."""
+    """What /moods/tidings/ shows: the pictures, naught but. (Each picture's
+    `preview` is its small form for the gallery; see views_moods.media_preview.)"""
+    return {'pictures': picture_tidings()}
+
+
+def prompts_state():
+    """What /moods/prompts/ shows: each human's prompts, with their Wiki names
+    joined on so the page can write people as the wiki knows them."""
     from conversations.services import wiki_auth
-    state = {'pictures': picture_tidings(), 'prompts': prompt_tidings()}
+    state = {'prompts': prompt_tidings()}
     wiki = wiki_auth.names()
     for human in state['prompts']:
         human['wiki_name'] = wiki.get(human['name'], '')
