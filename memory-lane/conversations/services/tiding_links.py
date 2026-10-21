@@ -73,10 +73,11 @@ def embed_of(url):
     parts = urlsplit(url)
     host = (parts.hostname or '').lower().removeprefix('www.')
     if host in ('youtube.com', 'm.youtube.com', 'youtu.be'):
-        vid = (parts.path.rsplit('/', 1)[-1] if host == 'youtu.be' else None)
         from urllib.parse import parse_qs
-        vid = vid or (parse_qs(parts.query).get('v') or [None])[0]
-        if vid:
+        path = parts.path.strip('/').split('/')
+        vid = (path[0] if host == 'youtu.be' else path[1] if len(path) > 1 and path[0] in ('shorts', 'embed', 'live')
+               else (parse_qs(parts.query).get('v') or [''])[0])
+        if re.fullmatch(r'[\w-]{6,20}', vid or ''):  # a video's id, nothing else, goes into the player's address
             return {'kind': 'iframe', 'src': f'https://www.youtube-nocookie.com/embed/{vid}'}
     if host in ('vimeo.com', 'player.vimeo.com'):
         vid = parts.path.strip('/').split('/')[0]
@@ -90,7 +91,9 @@ def embed_of(url):
 def _clean_tags(tags):
     """Whichever words a promoter gave each link, one each, lowercase, no # or commas: at most eight."""
     out = []
-    for tag in (tags if isinstance(tags, list) else [tags]):
+    # As typed in the promote box, "music, security": a tag between each pair of commas.
+    tags = tags.split(',') if isinstance(tags, str) else tags if isinstance(tags, list) else []
+    for tag in tags:
         tag = re.sub(r'[^\w -]', ' ', str(tag or '')).strip().lower()
         tag = re.sub(r'\s+', ' ', tag)
         if tag and tag not in out:
@@ -136,8 +139,11 @@ def _changed():
 
 
 def promote_many(message, by, urls, http=None, title=None, tags=None):
-    """Put each of `urls` (links of the message) on Tidings. [(Tiding, whether it's new)], in their order."""
-    return [promote(message, by, url=url, title=title, tags=tags, http=http, with_news=True) for url in dict.fromkeys(urls)]
+    """Put each of `urls` (links of the message) on Tidings. [(Tiding, whether it's new)], in their order.
+    A title given is one link's: with several, each is titled as its page titles itself."""
+    urls = list(dict.fromkeys(urls))
+    title = title if len(urls) == 1 else None
+    return [promote(message, by, url=url, title=title, tags=tags, http=http, with_news=True) for url in urls]
 
 
 def promote(message, by, url=None, title=None, tags=None, http=None, with_news=False):
@@ -417,11 +423,14 @@ def mute(tiding, device, muted):
     return tiding
 
 
-def badges(since):
-    """What's new on Tidings since `since`: promotions and comments said on Tidings (Justin, 21 Oct)."""
+def badges(since, viewer=None):
+    """What's new on Tidings since `since`: promotions and comments said on Tidings (Justin, 21 Oct) --
+    others', not the viewer's own."""
     from conversations.models import Tiding, TidingComment
-    return {'tidings': Tiding.objects.filter(at__gt=since).count(),
-            'comments': TidingComment.objects.filter(at__gt=since).count()}
+    tidings, comments = Tiding.objects.filter(at__gt=since), TidingComment.objects.filter(at__gt=since)
+    if viewer:
+        tidings, comments = tidings.exclude(by_id=viewer), comments.exclude(by_id=viewer)
+    return {'tidings': tidings.count(), 'comments': comments.count()}
 
 
 def comment(tiding, by, text, parent=None, client_version=''):

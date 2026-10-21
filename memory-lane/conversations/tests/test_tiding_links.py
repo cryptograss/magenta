@@ -347,3 +347,81 @@ class TidingTalkTests(TidingLinksTest):
         tiding = tiding_links.promote(said, self.justin)
         self.assertEqual((tiding.url, tiding.title), ('https://pickipedia.xyz/wiki/Bill_Monroe', 'Bill Monroe'))
         self.assertEqual(tiding_links.links_in('a picture [[File:Fest.jpg]], not a link'), [])
+
+
+class TidingRoundTwoReviewTests(TidingLinksTest):
+    """From magent's review of the second round (21 Oct)."""
+
+    def test_tags_typed_in_the_box_are_split_at_commas(self):
+        said = self.say(self.skyler, 'https://example.org/')
+        done = self.promote(self.client_for(self.justin), said, tags='Music, #security,, festival ')
+        self.assertEqual(Tiding.objects.get(id=done.json()['id']).tags, ['music', 'security', 'festival'])
+
+    def test_a_title_given_for_several_links_is_not_put_on_all_of_them(self):
+        said = self.say(self.skyler, 'Two: https://a.test/one https://b.test/two')
+        with CARD, PUBLIC:
+            done = tiding_links.promote_many(said, self.justin, ['https://a.test/one', 'https://b.test/two'], title='Mine')
+        self.assertEqual([t.title for t, _ in done], ['The Bluegrass Situation: a festival list'] * 2)
+        said = self.say(self.skyler, 'One: https://c.test/three')
+        with CARD, PUBLIC:
+            [(only, _)] = tiding_links.promote_many(said, self.justin, ['https://c.test/three'], title='Mine')
+        self.assertEqual(only.title, 'Mine')
+
+    def test_a_tiding_link_by_its_whole_id_or_its_first_eight(self):
+        from conversations.services.mood_view import render_html
+        said = self.say(self.skyler, 'https://example.org/')
+        with CARD, PUBLIC:
+            tiding = tiding_links.promote(said, self.justin, title='Fest list')
+        for ref in (str(tiding.id), str(tiding.id)[:8]):
+            self.assertIn(f'/moods/tidings/{tiding.id}/', render_html(f'see #t-{ref}'))
+        self.assertNotIn('tidinglink', render_html('see #t-00000000'))
+        self.assertNotIn('tidinglink', render_html('see #t-0000-000000'))  # neither: left as it was written
+
+    def test_only_a_video_id_is_embedded(self):
+        embed = tiding_links.embed_of
+        self.assertEqual(embed('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3')['src'],
+                         'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
+        self.assertEqual(embed('https://youtube.com/shorts/dQw4w9WgXcQ')['src'],
+                         'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
+        self.assertIsNone(embed('https://www.youtube.com/watch?v=x"><script>'))
+        self.assertIsNone(embed('https://www.youtube.com/watch?v=../../evil'))
+
+    def test_a_video_is_titled_as_its_site_says(self):
+        from conversations.services import unfurl
+
+        class Answer:
+            def __init__(self, code, body=None):
+                self.status_code, self.body, self.headers = code, body, {}
+
+            def json(self):
+                return self.body
+
+            def close(self):
+                pass
+
+        class Http:
+            asked = []
+
+            def get(self, url, params=None, **kw):
+                self.asked.append(url)
+                if 'oembed' in url:
+                    return Answer(200, {'title': 'Rick Astley - Never Gonna Give You Up', 'provider_name': 'YouTube'})
+                return Answer(200)  # a page with nothing in it to read
+
+        with PUBLIC:
+            found = unfurl.card('https://www.youtube.com/watch?v=dQw4w9WgXcQ', Http())
+        self.assertEqual((found['title'], found['site']), ('Rick Astley - Never Gonna Give You Up', 'YouTube'))
+        self.assertEqual(Http.asked[-1], 'https://www.youtube.com/oembed')
+        with PUBLIC:
+            self.assertIsNone(unfurl.card('https://example.org/nothing', Http()))  # not a video site: no oEmbed asked
+
+    def test_the_badges_count_others_news_not_your_own(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        since = (timezone.now() - timedelta(minutes=1)).isoformat()
+        with CARD, PUBLIC:
+            tiding_links.promote(self.say(self.skyler, 'https://example.org/1'), self.justin)
+            tiding_links.promote(self.say(self.justin, 'https://example.org/2'), self.skyler)
+        got = lambda client: client.get('/api/tidings/badges/', {'since': since}).json()  # noqa: E731
+        self.assertEqual(got(self.client_for(self.justin)), {'tidings': 1, 'comments': 0})
+        self.assertEqual(got(Client()), {'tidings': 2, 'comments': 0})

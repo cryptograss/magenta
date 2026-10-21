@@ -560,12 +560,22 @@ def _message_link(ref):
 def _tiding_link(ref):
     """A '#t-<id or its first 8>' says a link on Tidings: shown as its title, a link to its discussion
     (Justin, 21 Oct). None if it names no link."""
-    from django.db.models import TextField
-    from django.db.models.functions import Cast
+    import uuid as _uuid
+    from django.db.models import Q
     from conversations.models import Tiding
-    ids = Tiding.objects.annotate(id_text=Cast('id', output_field=TextField()))
-    ids = ids.filter(id_text__startswith=ref.lower().replace('-', ''))  # the id, written without its dashes
-    found = list(ids[:2])
+    ref = ref.lower()
+    if len(ref) == 36:
+        try:
+            found = list(Tiding.objects.filter(id=_uuid.UUID(ref))[:1])
+        except ValueError:
+            return None
+    elif not re.fullmatch(r'[0-9a-f]{8}', ref):
+        return None
+    else:
+        # Its first 8: the id's first group, the same whether the database keeps it with dashes (Postgres)
+        # or without (SQLite) -- so it's asked as a range of ids, not as text.
+        low, high = _uuid.UUID(ref + '0' * 24), _uuid.UUID(ref + 'f' * 24)
+        found = list(Tiding.objects.filter(Q(id__gte=low) & Q(id__lte=high))[:2])
     if len(found) != 1:
         return None
     tiding = found[0]

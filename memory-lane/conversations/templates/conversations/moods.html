@@ -71,6 +71,7 @@
   header .badge { font-size: 10.5px; line-height: 1; vertical-align: top; padding: 2px 5px; border-radius: 8px;
     background: var(--accent); color: #fff; margin-left: 3px; }
   header .badge.soft { background: var(--accent-soft); color: var(--accent); }
+  header .badge[hidden] { display: none; }
   #sectionFrames[hidden] { display: none; }
   #sectionFrames iframe { flex: 1; width: 100%; border: 0; background: var(--bg); }
   #sectionFrames iframe[hidden] { display: none; }
@@ -4188,7 +4189,7 @@
       who?.querySelector('.ontidings')?.remove();
       who?.querySelector('.morebtn, .replybtn, .addreact')?.insertAdjacentHTML('beforebegin', onTidingsMark(el._tidings));
       const fresh = done.tidings.filter(x => x.new);
-      if (fresh.length) sectionStale.tidings = true;  // the Tidings section, already loaded: its next visit shows these
+      if (fresh.length) refreshSection('tidings');  // drawn again out of sight, ready with these when it's opened
       // Titled as the page titles itself; its ✎ on Tidings gives it another (Justin, 21 Oct: where do I edit it?).
       showNote(fresh.length ? `On Tidings: ${fresh.map(x => `“${x.title}”`).join(', ')}. To retitle, ✎ beside it there.`
         : 'Those were on Tidings already.', 8000);
@@ -6577,12 +6578,38 @@
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
   const SECTIONS = ['tidings', 'prompts', 'status', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
-  const sectionStale = {};  // a section whose frame predates a change made here (a promotion): refetched on next show
+  // A section drawn again behind the scenes when what it shows has changed (a promotion here, a comment or a
+  // link from someone else): a fresh frame loads hidden and takes the old one's place once it's in, so
+  // nobody waits on it (Justin, 21 Oct). Never under the reader's eyes: open, it's done when they leave.
+  const sectionPending = {};
+  function refreshSection(name) {
+    const old = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
+    if (!old || sectionFrames.querySelector(`iframe[data-section="${name}"][data-fresh]`)) return;  // its first load is fresh; or one's on its way
+    if (sectionNow === name) { sectionPending[name] = true; return; }
+    let at = `/moods/${name}/?embed=1`;  // where they were in it -- a link's discussion, say -- drawn again there
+    try { const l = old.contentWindow.location; if (l.pathname.startsWith(`/moods/${name}/`)) at = l.pathname + l.search; } catch (e) {}
+    const fresh = document.createElement('iframe');
+    fresh.dataset.section = name;
+    fresh.dataset.fresh = '1';
+    fresh.title = name;
+    fresh.hidden = true;
+    fresh.addEventListener('load', function arrived() {
+      let there = false;
+      try { there = fresh.contentWindow.location.pathname === new URL(at, location.origin).pathname; } catch (e) { there = true; }
+      if (!there) return;
+      fresh.removeEventListener('load', arrived);
+      if (sectionNow === name) { fresh.remove(); sectionPending[name] = true; return; }  // opened meanwhile: theirs stays
+      old.remove();
+      delete fresh.dataset.fresh;
+    });
+    fresh.src = at;
+    sectionFrames.append(fresh);
+  }
   const sectionOf = path => SECTIONS.find(s => path.replace(/\/+$/, '') === '/moods/' + s) || null;
   // A frame, made once: tidings is asked for in the background at the start, so it's ready when wanted
   // (Justin, 21 Oct); the others load the first time they're shown. A plain spinner while one loads.
   function frameFor(name, keepQuiet) {
-    let frame = sectionFrames.querySelector(`iframe[data-section="${name}"]`);
+    let frame = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
     if (frame) return frame;
     frame = document.createElement('iframe');
     frame.dataset.section = name;
@@ -6606,16 +6633,14 @@
     return frame;
   }
   function showSection(name, push) {
+    const left = sectionNow;
     sectionNow = name;
+    if (left !== name && left === 'tidings') markTidingsSeen();  // what came while they read it is seen too
+    if (left !== name && sectionPending[left]) { delete sectionPending[left]; refreshSection(left); }
     document.body.classList.toggle('in-section', name !== 'moods');
     sectionFrames.hidden = name === 'moods';
     if (name === 'tidings') markTidingsSeen();  // the badges count from this visit on
     if (name !== 'moods') {
-      if (sectionStale[name]) {  // what it shows changed while it was away: it draws itself fresh on arrival
-        sectionFrames.querySelector(`iframe[data-section="${name}"]`)?.remove();
-        sectionFrames.querySelectorAll(`.loading[data-section="${name}"]`).forEach(l => l.remove());
-        delete sectionStale[name];
-      }
       const frame = frameFor(name);
       frame.hidden = false;
       sectionFrames.querySelectorAll('iframe').forEach(f => { f.hidden = f !== frame; });
@@ -6693,9 +6718,15 @@
   })();
 
   // The Tidings button's two badges: what's new since the viewer last opened Tidings (Justin, 21 Oct).
-  function tidingsSeenSince() { return store.get('tidingsSeen') || new Date(0).toISOString(); }
+  // Never opened here: counted from now, not from the first link ever promoted.
+  function tidingsSeenSince() {
+    if (!store.get('tidingsSeen')) store.set('tidingsSeen', new Date().toISOString());
+    return store.get('tidingsSeen');
+  }
+  let badgesWere = null;  // what the badges said last: more since means Tidings has something new to draw
   function markTidingsSeen() {
     store.set('tidingsSeen', new Date().toISOString());
+    badgesWere = { tidings: 0, comments: 0 };  // counted afresh from here: the next one new is news
     document.querySelectorAll('header [data-badge]').forEach(b => { b.hidden = true; });
   }
   async function fetchBadges() {
@@ -6704,6 +6735,10 @@
       const r = await fetch('/api/tidings/badges/?since=' + encodeURIComponent(tidingsSeenSince()));
       if (!r.ok) return;
       const d = await r.json();
+      if (badgesWere && (d.tidings > badgesWere.tidings || d.comments > badgesWere.comments)) {
+        refreshSection('tidings');  // something new there: drawn again now, ready before it's opened
+      }
+      badgesWere = d;
       for (const key of ['tidings', 'comments']) {
         const b = document.querySelector(`header [data-badge="${key}"]`);
         if (!b) continue;

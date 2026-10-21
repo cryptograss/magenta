@@ -171,7 +171,8 @@ def api_tidings_badges(request):
         since = datetime.fromisoformat(request.GET.get('since', '').replace(' ', '+'))  # a '+' offset comes as a space
     except ValueError:
         return JsonResponse({'error': 'expected ?since= as an ISO time'}, status=400)
-    return JsonResponse(tiding_links.badges(since))
+    device = mood_auth.device_for(request)
+    return JsonResponse(tiding_links.badges(since, viewer=device.entity_id if device else None))
 
 
 @require_http_methods(['GET', 'POST'])
