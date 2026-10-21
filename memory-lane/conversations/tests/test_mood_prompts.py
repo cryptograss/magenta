@@ -231,3 +231,27 @@ class PromptsPageTests(TidingsTests):
         self.post(self.justin, self.mood_a, 'a big one @magent')
         self.agent_row(self.magent, self.mood_a, tokens=(535_000, 2_100), cost=0.0512)
         self.assertIn('@magent 535k→2.1k · $0.05', self.client.get('/moods/prompts/').content.decode())
+
+class PromptsQueriesTests(TidingsTests):
+    """How many questions the prompts ask of the database doesn't grow with the record (re, 21 Oct: the page
+    took 17 s live -- a query for every agent row read, and two for every reply)."""
+
+    def asked(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        with CaptureQueriesContext(connection) as queries:
+            tidings.prompts_state()
+        return len(queries)
+
+    def say_a_while(self, rounds):
+        last = None
+        for i in range(rounds):
+            last = self.post(self.justin, self.mood_a, (f'↩ #m-{last.id}\n' if last else '') + f'@magent round {i}')
+            self.agent_row(self.magent, self.mood_a, tokens=(100 + i, 8))
+            self.agent_row(self.magent, self.mood_a, tokens=(200 + i, 9))
+
+    def test_the_same_few_questions_however_much_was_said(self):
+        self.say_a_while(3)
+        few = self.asked()
+        self.say_a_while(30)
+        self.assertEqual(self.asked(), few)
