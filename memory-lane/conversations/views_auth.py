@@ -830,7 +830,14 @@ def api_memo(request, slug):
         return JsonResponse({'error': f'larger than {media.MAX_AUDIO_BYTES // (1024 * 1024)} MB'}, status=413)
     if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
-    stored = media.store(request.body, added_by=device.entity, audio=True)
+    data = request.body
+    try:  # how long it is, as the page that recorded it knows: written into a WebM, which doesn't say
+        seconds = float(request.GET.get('seconds', ''))
+    except ValueError:
+        seconds = None
+    if seconds and 0 < seconds < 4 * 3600:
+        data = media.webm_with_duration(data, seconds)
+    stored = media.store(data, added_by=device.entity, audio=True)
     if stored is None:
         return JsonResponse({'error': 'not a recording this understands (WebM, Ogg, MP4, MP3 or WAV)'}, status=400)
     try:
