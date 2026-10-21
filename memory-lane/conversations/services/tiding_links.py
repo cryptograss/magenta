@@ -1,6 +1,7 @@
 """Links on Tidings: a message's link, promoted by someone who thinks it's news (Justin, 20 Oct).
 
-A message with a link in it can be promoted, once: its link is listed on Tidings,
+A message with links in it can be promoted -- whichever of its links the promoter picks, each once
+(Justin, 21 Oct) -- and each picked link is listed on Tidings,
 newest first for now, under a title -- the page's own, as its preview card
 reads it (services/unfurl.py), until someone gives it another -- with who
 promoted it, the message and Mood it came from, and how much has been said
@@ -22,7 +23,7 @@ from django.core.cache import cache
 
 LISTED = 30          # links on Tidings
 MAX_TITLE = 300
-_BY_MESSAGE = 'tidings:by-message'
+_BY_MESSAGE = 'tidings:by-message:all'  # a list per message now: the one-each form, under its old name, is never read
 
 
 class Refused(Exception):
@@ -65,13 +66,15 @@ def title_for(url, http=None):
 
 
 def by_message():
-    """{message id: {'id', 'title'}} for every promoted message (a few hundred at most), kept until one changes."""
+    """{message id: [{'id', 'title', 'url'}, ...]} for every promoted message (a few hundred at most), in the
+    order promoted; kept until one changes."""
     found = cache.get(_BY_MESSAGE)
     if found is None:
         from conversations.models import Tiding
         found = {}
-        for tiding in Tiding.objects.all():
-            found[str(tiding.message_id)] = {'id': str(tiding.id), 'title': tiding.title, 'url': tiding.url}
+        for tiding in Tiding.objects.order_by('at'):
+            found.setdefault(str(tiding.message_id), []).append(
+                {'id': str(tiding.id), 'title': tiding.title, 'url': tiding.url})
         cache.set(_BY_MESSAGE, found, 3600)
     return found
 
@@ -80,9 +83,14 @@ def _changed():
     cache.delete(_BY_MESSAGE)
 
 
-def promote(message, by, url=None, title=None, http=None):
-    """Put a message's link on Tidings (its first, unless `url` says which): one per message. The Tiding,
-    or the one already there."""
+def promote_many(message, by, urls, http=None):
+    """Put each of `urls` (links of the message) on Tidings. [(Tiding, whether it's new)], in their order."""
+    return [promote(message, by, url=url, http=http, with_news=True) for url in dict.fromkeys(urls)]
+
+
+def promote(message, by, url=None, title=None, http=None, with_news=False):
+    """Put one of a message's links on Tidings (its first, unless `url` says which), once. The Tiding, or the
+    one already there for that link; with `with_news`, (it, whether it's new)."""
     from conversations.models import Tiding
     from .mood_view import prose
     from .retract import DELETED
@@ -91,19 +99,19 @@ def promote(message, by, url=None, title=None, http=None):
     text = prose(message.content) or ''
     if text == DELETED:
         raise Refused('that message was deleted', status=404)
-    already = Tiding.objects.filter(message=message).first()
-    if already:
-        return already
     found = links_in(text)
     if not found:
         raise Refused('that message has no link to promote')
     url = url or found[0]
     if url not in found:
         raise Refused('that link isn\'t in that message')
+    already = Tiding.objects.filter(message=message, url=url).first()
+    if already:
+        return (already, False) if with_news else already
     tiding = Tiding.objects.create(message=message, url=url, by=by,
                                    title=(title or '').strip()[:MAX_TITLE] or title_for(url, http))
     _changed()
-    return tiding
+    return (tiding, True) if with_news else tiding
 
 
 def _may_change(tiding, device):

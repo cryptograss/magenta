@@ -221,6 +221,20 @@
   #noAgents { max-width: min(420px, 90vw); border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
               color: var(--ink); padding: 16px 18px; }
   #noAgents::backdrop { background: rgba(0,0,0,.35); }
+  /* ★ Promote to Tidings, for a message with several links: each a box to tick (Justin, 21 Oct). */
+  #promotePick { max-width: min(520px, 92vw); border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink);
+                 padding: 16px 18px; }
+  #promotePick::backdrop { background: rgba(0,0,0,.35); }
+  #promotePick p { margin: 0 0 10px; }
+  #promotePick label { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; font-size: 14px; overflow-wrap: anywhere; }
+  #promotePick label .host { font-weight: 600; }
+  #promotePick label .path { color: var(--muted); }
+  #promotePick label.there { color: var(--muted); }
+  #promotePick .bar { margin-top: 12px; }
+  #promotePick button { font: inherit; border: 0; border-radius: 6px; padding: 6px 16px; cursor: pointer; }
+  #promotePick .go { background: var(--accent); color: #fff; }
+  #promotePick .go:disabled { opacity: .45; cursor: default; }
+  #promotePick .cancel { background: none; color: var(--muted); }
   #noAgents p { margin: 0 0 10px; }
   #noAgents button { font: inherit; border: 0; border-radius: 6px; padding: 6px 16px; background: var(--accent); color: #fff; cursor: pointer; }
   #renameBox, #newBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
@@ -1092,6 +1106,13 @@
     <button type="button" id="archiveBtn" class="archive" title="Out of the Moods list, into Archived. It stays readable, its sessions and container untouched, and a mention there is still answered.">Archive</button>
     <button type="button" id="pinBtn" class="archive" title="At the top of the Moods list, for everyone">Pin</button></span>
 </form>
+<dialog id="promotePick">
+  <form method="dialog">
+    <p><b>Which of its links go on Tidings?</b></p>
+    <div class="links"></div>
+    <div class="bar"><button type="submit" value="promote" class="go" disabled>★ Promote</button> <button type="submit" value="cancel" class="cancel">Cancel</button></div>
+  </form>
+</dialog>
 <dialog id="noAgents">
   <p><b>Agents can't be addressed from a PickiPedia sign-in.</b></p>
   <p>Take <span class="who"></span> out of your message and send it again. To wake an agent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
@@ -2205,11 +2226,12 @@
     const mayEdit = viewer && !t.deleted && t.sender === viewer && t.via === 'web' && !t.attested && age < 864e5;
     const mayDelete = viewer && !t.deleted && ((t.sender === viewer && age < 7 * 864e5) || viewerAdmin);
     // ★ a message's link onto Tidings (services/tiding_links.py): anyone signed in, once.
-    const mayPromote = viewer && !t.deleted && (t.links || []).length && !t.tiding;
+    const promoted = new Set((t.tidings || []).map(x => x.url));
+    const mayPromote = viewer && !t.deleted && (t.links || []).some(u => !promoted.has(u));
     const moreBtn = mayEdit || mayDelete || mayPromote
       ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
         + `data-promote="${mayPromote ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
-    const onTidings = t.tiding ? `<a class="ontidings" href="/moods/tidings/#t-${esc(t.tiding.id)}" title="On Tidings: ${esc(t.tiding.title)}">★ Tidings</a>` : '';
+    const onTidings = onTidingsMark(t.tidings || []);
     const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
     const versions = viewerAdmin ? ` data-versions="${esc(t.id)}" role="button" tabindex="0"` : '';
@@ -2231,6 +2253,7 @@
       + (cont ? edited : '');
     if (t.deleted) el.classList.add('deleted');
     el._text = t.text;
+    el._links = t.links || []; el._tidings = t.tidings || [];
     el.dataset.sender = t.sender;
     // On a touch screen ▶ floats at the message's right, kept in sight while any of it is (.dock).
     // (A follow-on message has its own, the mini, kept in sight the same way.)
@@ -3908,17 +3931,47 @@
       ? `${note}. It had already been carried to ${reached.map(shown).join(', ')} in a wake: the record's copies are scrubbed, but that session saw it.`
       : `${note}.`, 9000);
   }
-  // Its link onto Tidings, titled as the page titles itself; marked ★ here at once.
+  // ★ by a message whose links are on Tidings: how many, each title in its tooltip.
+  function onTidingsMark(tidings) {
+    if (!tidings.length) return '';
+    const titles = tidings.map(x => x.title).join(' · ');
+    return `<a class="ontidings" href="/moods/tidings/#t-${esc(tidings[0].id)}" title="On Tidings: ${esc(titles)}">★ ${tidings.length > 1 ? tidings.length + ' on ' : ''}Tidings</a>`;
+  }
+  // Its links onto Tidings, each titled as its page titles itself. One not yet there goes at once;
+  // with several, a box to tick for each, for whoever promotes to choose (Justin, 21 Oct).
+  const promotePick = document.getElementById('promotePick');
+  function pickLinks(el) {
+    const there = new Set(el._tidings.map(x => x.url));
+    const box = promotePick.querySelector('.links'), go = promotePick.querySelector('.go');
+    box.innerHTML = el._links.map((u, i) => {
+      let host = u, path = '';
+      try { const p = new URL(u); host = p.hostname.replace(/^www\./, ''); path = (p.pathname + p.search).replace(/^\/$/, ''); } catch (e) {}
+      const on = there.has(u);
+      return `<label class="${on ? 'there' : ''}"><input type="checkbox" value="${i}"${on ? ' checked disabled' : ''}>`
+        + `<span><span class="host">${esc(host)}</span><span class="path">${esc(path)}</span>${on ? ' · on Tidings' : ''}</span></label>`;
+    }).join('');
+    const ticked = () => [...box.querySelectorAll('input:checked:not(:disabled)')].map(i => el._links[+i.value]);
+    box.onchange = () => { go.disabled = !ticked().length; };
+    go.disabled = true;
+    return new Promise(resolve => {
+      promotePick.onclose = () => resolve(promotePick.returnValue === 'promote' ? ticked() : []);
+      promotePick.returnValue = '';
+      promotePick.showModal();
+    });
+  }
   async function promoteMessage(el, more) {
+    const open = el._links.filter(u => !el._tidings.some(x => x.url === u));
+    const urls = open.length === 1 ? open : await pickLinks(el);
+    if (!urls.length) return;
     try {
-      const done = await changeMessage(more.dataset.more, 'promote');
-      delete more.dataset.promote;
+      const done = await changeMessage(more.dataset.more, 'promote', { urls });
+      el._tidings = [...el._tidings, ...done.tidings.filter(x => !el._tidings.some(y => y.id === x.id))];
+      if (el._links.every(u => el._tidings.some(x => x.url === u))) delete more.dataset.promote;
       const who = el.querySelector('.who');
-      if (who && !who.querySelector('.ontidings')) {
-        who.querySelector('.morebtn, .replybtn, .addreact')?.insertAdjacentHTML('beforebegin',
-          `<a class="ontidings" href="/moods/tidings/#t-${esc(done.id)}" title="On Tidings: ${esc(done.title)}">★ Tidings</a>`);
-      }
-      showNote(`On Tidings: “${done.title}”`, 6000);
+      who?.querySelector('.ontidings')?.remove();
+      who?.querySelector('.morebtn, .replybtn, .addreact')?.insertAdjacentHTML('beforebegin', onTidingsMark(el._tidings));
+      const fresh = done.tidings.filter(x => x.new);
+      showNote(fresh.length ? `On Tidings: ${fresh.map(x => `“${x.title}”`).join(', ')}` : 'Those were on Tidings already.', 6000);
     } catch (err) { showError('promote: ' + err.message); }
   }
   async function deleteMessage(id) {

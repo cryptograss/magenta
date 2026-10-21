@@ -1041,7 +1041,7 @@ def turn_payload(msg, text, mentionable=()):
         'linked_from': linked_from(msg.id),
         # Its links, which can be put on Tidings, and the one that is (services/tiding_links.py).
         'links': tiding_links.links_in(said),
-        'tiding': tiding_links.by_message().get(str(msg.id)),
+        'tidings': tiding_links.by_message().get(str(msg.id), []),
     }
 
 
