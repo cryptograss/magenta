@@ -1049,9 +1049,9 @@ def api_my_look(request):
         assert isinstance(body, dict)
     except (ValueError, AssertionError):
         return JsonResponse({'error': 'expected {"art": ..., "colour": ...}'}, status=400)
-    name = device.entity_id
-    if body.get('art') and not knobs.art_fits(str(body['art']).strip(), name):
-        return JsonResponse({'error': f'at most {knobs.NAME_ART_MAX} characters, with every letter of "{name}" '
+    name, writes = device.entity_id, knobs.art_name(device.entity_id)
+    if body.get('art') and not knobs.art_fits(str(body['art']).strip(), writes):
+        return JsonResponse({'error': f'at most {knobs.NAME_ART_MAX} characters, with every letter of "{writes}" '
                                       'in it, in order'}, status=400)
     try:
         for key, field in (('name_art', 'art'), ('name_colours', 'colours'), ('icon_colour', 'colour')):

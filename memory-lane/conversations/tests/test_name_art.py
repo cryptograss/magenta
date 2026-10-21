@@ -18,6 +18,11 @@ class ArtFitsTest(TestCase):
         for art in ('jsutin', 'justi', 'nitsuj', 'x' * 25 + 'justin', 'just\nin', ''):
             self.assertFalse(art_fits(art, 'justin'), art)
 
+    def test_their_pickipedia_name_any_case_its_spaces_aside(self):
+        self.assertTrue(art_fits('~=[ j.M.y.L.e.S ]=~', 'JMyles'))
+        self.assertTrue(art_fits('JUSTIN*HOLMES', 'Justin Holmes'))
+        self.assertFalse(art_fits('justin', 'JMyles'))
+
 
 class LookTest(TestCase):
 
@@ -70,3 +75,13 @@ class LookTest(TestCase):
         client = self.client_for(self.justin)
         for colours in ('99g', '#ff0000', '<b>', 'c' * 31):
             self.assertEqual(self.look(client, art='justin', colours=colours).status_code, 400, colours)
+
+    # The art writes their PickiPedia name (Justin, 21 Oct: "use the pickipedia username").
+    def test_written_to_their_pickipedia_name(self):
+        from unittest import mock
+        with mock.patch('conversations.services.wiki_auth.names', return_value={'justin': 'JMyles'}):
+            client = self.client_for(self.justin)
+            refused = self.look(client, art='-=[ justin ]=-')
+            self.assertEqual(refused.status_code, 400)
+            self.assertIn('JMyles', refused.json()['error'])
+            self.assertEqual(self.look(client, art='-=[ jmYLES ]=-').json()['art'], '-=[ jmYLES ]=-')
