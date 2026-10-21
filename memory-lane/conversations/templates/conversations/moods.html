@@ -49,6 +49,12 @@
   header .crumb:empty { display: none; }
   header .crumb #rename { margin-left: 4px; border: 0; background: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 0 2px; }
   header .crumb #rename:hover { color: var(--accent); }
+  /* magenta › moods › the Mood ✎, then the page's other sections beside it (Justin, 21 Oct). */
+  header .crumb.moods { flex: none; overflow: visible; color: var(--ink); text-decoration: none; font-weight: 600; }
+  header .crumb.moods:hover { color: var(--accent); }
+  header .sections { display: flex; gap: 14px; margin-left: 10px; flex: none; font-size: 14px; }
+  header .sections a { color: var(--muted); text-decoration: none; }
+  header .sections a:hover { color: var(--ink); }
   header .grow { flex: 1; }
   header select { font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); }
   header .status { font-size: 0; }
@@ -1042,6 +1048,7 @@
     header .brand { display: none; }  /* the Mood's name matters more here */
     header .block { display: none; }
     header .crumb::before { content: none; }
+    header .crumb.moods, header .sections { display: none; }  /* ☰ is the Moods; the account menu has the rest */
     header .preview { max-width: 70px; }
     #serverPop { right: 8px; }
     .layout { flex-direction: column; }
@@ -1072,7 +1079,9 @@
 <header>
   <button id="menu" type="button" aria-label="Moods" aria-expanded="false">☰</button>
   <a class="brand" href="/moods/"><span class="logo" aria-hidden="true"></span>magenta</a>
+  <a class="crumb moods" href="/moods/">moods</a>
   <span class="crumb" id="crumb"></span>
+  <nav class="sections" aria-label="Sections"><a href="/moods/tidings/">tidings</a><a href="/moods/prompts/">prompts</a><a href="/moods/status/">status</a></nav>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <span class="block" id="block" title="Ethereum mainnet's block height"></span>
