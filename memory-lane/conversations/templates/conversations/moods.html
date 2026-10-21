@@ -57,10 +57,11 @@
   header .sections a:hover { color: var(--ink); }
   /* The bar never scrolls (Justin, 21 Oct: "status" cut off, a scrollbar): what doesn't fit goes, least needed
      first -- the block height, then the sections (the account menu has them), then "moods" (☰ and the brand
-     go there too) -- and the Mood's name shortens with … if it must (fitHeader). */
+     go there too) -- and last the Mood's name shortens with … (fitHeader). */
   header.tight-1 .block, header.tight-2 .sections, header.tight-3 .crumb.moods { display: none; }
-  /* The Mood's name gives way last: room for a few words before the rest goes. */
-  header .crumb:not(.moods):not(:empty) { min-width: min(14em, 30vw); display: flex; align-items: baseline; }
+  /* The Mood's name gives way last: whole, at its own width, until the rest has gone (tight-4). */
+  header .crumb:not(.moods):not(:empty) { flex-shrink: 0; display: flex; align-items: baseline; }
+  header.tight-4 .crumb:not(.moods):not(:empty) { flex-shrink: 1; min-width: 0; }
   header .crumb .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }  /* shortened, never its ✎ */
   header .crumb #rename { flex: none; }
   #reloadNudge { white-space: nowrap; }
@@ -1058,7 +1059,7 @@
     header .block { display: none; }
     header .crumb::before { content: none; }
     header .crumb.moods, header .sections { display: none; }  /* ☰ is the Moods; the account menu has the rest */
-    header .crumb:not(.moods):not(:empty) { min-width: 0; }
+    header .crumb:not(.moods):not(:empty) { flex-shrink: 1; min-width: 0; }
     header .preview { max-width: 70px; }
     #serverPop { right: 8px; }
     .layout { flex-direction: column; }
@@ -1091,7 +1092,9 @@
   <a class="brand" href="/moods/"><span class="logo" aria-hidden="true"></span>magenta</a>
   <a class="crumb moods" href="/moods/">moods</a>
   <span class="crumb" id="crumb"></span>
-  <nav class="sections" aria-label="Sections"><a href="/moods/tidings/">tidings</a><a href="/moods/prompts/">prompts</a><a href="/moods/status/">status</a></nav>
+  <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
+       too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/">tidings</a><a href="/moods/prompts/">prompts</a><a href="/moods/status/">status</a></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <span class="block" id="block" title="Ethereum mainnet's block height"></span>
@@ -2925,8 +2928,8 @@
   const crumb = document.getElementById('crumb');
   const bar = document.querySelector('header');
   function fitHeader() {
-    bar.classList.remove('tight-1', 'tight-2', 'tight-3');
-    for (const step of ['tight-1', 'tight-2', 'tight-3']) {
+    bar.classList.remove('tight-1', 'tight-2', 'tight-3', 'tight-4');
+    for (const step of ['tight-1', 'tight-2', 'tight-3', 'tight-4']) {
       if (bar.scrollWidth <= bar.clientWidth) break;
       bar.classList.add(step);
     }
