@@ -167,34 +167,10 @@ def api_logout(request):
 UPLOADING = re.compile(r'!\[uploading [^\]\n]*…\]\(\)\n?')
 
 
-@require_POST
-def api_say(request, slug):
-    """Post a turn into a Mood as the device's person."""
-    from .views_admin import locked_response
-    if locked_response():
-        return locked_response()
-    device = mood_auth.device_for(request)
-    if device is None:
-        return JsonResponse({'error': 'sign in to write'}, status=401)
-    mood = Mood.by_slug_or_404(slug)
-
-    try:
-        text = json.loads(request.body).get('text', '')
-    except (ValueError, AttributeError):
-        return JsonResponse({'error': 'expected {"text": ...}'}, status=400)
-    if not isinstance(text, str):
-        return JsonResponse({'error': 'expected {"text": ...}'}, status=400)
-    text = text.replace('\x00', '').strip()  # Postgres text can't hold NUL
-    # A picture's placeholder while it uploads (the page's upload()) is never a message:
-    # sent before the picture was up, it's dropped, and alone it's refused.
-    unsent = UPLOADING.search(text)
-    text = UPLOADING.sub('', text).strip()
-    if not text:
-        return JsonResponse({'error': "the picture hadn't finished uploading: send it again once it's in the box"
-                             if unsent else 'nothing to say'}, status=400)
-    if len(text) > MAX_CHARS:
-        return JsonResponse({'error': f'longer than {MAX_CHARS} characters'}, status=400)
-
+def _say_checks(text, device):
+    """What a text can't be posted as, by this device -- refused with the reason -- or None. The same
+    checks wherever the device speaks: in a Mood (api_say) or on a link's Tidings page, which posts
+    its comments into the Mood."""
     if device.tier == 'wiki':
         # A PickiPedia sign-in can't address agents: refused, not quietly passed
         # on as text, so nobody believes an agent was asked.
@@ -224,6 +200,40 @@ def api_say(request, slug):
         if elsewhere:
             who = ', '.join(f'{a} ({h})' for a, h in sorted(elsewhere.items()))
             return JsonResponse({'error': f'/{command[0]} is Claude Code\'s; not for {who}'}, status=400)
+    return None
+
+
+@require_POST
+def api_say(request, slug):
+    """Post a turn into a Mood as the device's person."""
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to write'}, status=401)
+    mood = Mood.by_slug_or_404(slug)
+
+    try:
+        text = json.loads(request.body).get('text', '')
+    except (ValueError, AttributeError):
+        return JsonResponse({'error': 'expected {"text": ...}'}, status=400)
+    if not isinstance(text, str):
+        return JsonResponse({'error': 'expected {"text": ...}'}, status=400)
+    text = text.replace('\x00', '').strip()  # Postgres text can't hold NUL
+    # A picture's placeholder while it uploads (the page's upload()) is never a message:
+    # sent before the picture was up, it's dropped, and alone it's refused.
+    unsent = UPLOADING.search(text)
+    text = UPLOADING.sub('', text).strip()
+    if not text:
+        return JsonResponse({'error': "the picture hadn't finished uploading: send it again once it's in the box"
+                             if unsent else 'nothing to say'}, status=400)
+    if len(text) > MAX_CHARS:
+        return JsonResponse({'error': f'longer than {MAX_CHARS} characters'}, status=400)
+
+    refused = _say_checks(text, device)
+    if refused:
+        return refused
 
     # /clips: the team's saved clips (services/clips.py). A command either
     # becomes what's posted, or -- listing them -- posts nothing at all. Sent
@@ -309,15 +319,22 @@ def api_message_promote(request, slug, message_id):
     return JsonResponse({**tidings[0], 'tidings': tidings}, status=201 if any(t['new'] for t in tidings) else 200)
 
 
-@require_POST
+@require_http_methods(['GET', 'POST'])
 def api_tiding(request, tiding_id):
-    """{"title"} to retitle a link on Tidings; {"withdraw": true} to take it off. Whoever promoted it, or an admin."""
+    """GET: the link and what's been said about it (services/tiding_links.discussion). POST: {"title"} to
+    retitle it; {"withdraw": true} to take it off. Whoever promoted it, or an admin."""
     from .models import Tiding
     from .services import tiding_links
     from .views_admin import locked_response
+    device = mood_auth.device_for(request)
+    if request.method == 'GET':
+        try:
+            state = tiding_links.discussion(_uuid_or_none(tiding_id), device.entity_id if device else None)
+        except tiding_links.Refused as e:
+            return JsonResponse({'error': str(e)}, status=e.status)
+        return JsonResponse(state)
     if locked_response():
         return locked_response()
-    device = mood_auth.device_for(request)
     if device is None:
         return JsonResponse({'error': 'sign in first'}, status=401)
     tiding = Tiding.objects.filter(id=_uuid_or_none(tiding_id)).first()
@@ -335,6 +352,89 @@ def api_tiding(request, tiding_id):
     except tiding_links.Refused as e:
         return JsonResponse({'error': str(e)}, status=e.status)
     return JsonResponse({'id': str(tiding.id), 'title': tiding.title})
+
+
+@require_POST
+def api_tiding_comment(request, tiding_id):
+    """{"text": ..., "reply_to"?: a comment's id}: say it about the link. A message in the link's Mood,
+    as a reply to the link's message or to that comment -- one record: on Tidings it's a comment, in the
+    Mood it's a reply (services/tiding_links.comment)."""
+    from .models import Tiding
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to comment'}, status=401)
+    tiding = Tiding.objects.filter(id=_uuid_or_none(tiding_id)).first()
+    if tiding is None:
+        return JsonResponse({'error': 'no such link on Tidings'}, status=404)
+    if not _under_limit(f'comment:{device.pk}', 6):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"text": ..., "reply_to"?: ...}'}, status=400)
+    text = body.get('text')
+    if not isinstance(text, str):
+        return JsonResponse({'error': 'expected {"text": ...}'}, status=400)
+    text = text.replace('\x00', '').strip()
+    if not text:
+        return JsonResponse({'error': 'nothing to say'}, status=400)
+    if len(text) > MAX_CHARS:
+        return JsonResponse({'error': f'longer than {MAX_CHARS} characters'}, status=400)
+    refused = _say_checks(text, device)
+    if refused:
+        return refused
+    try:
+        node = tiding_links.comment(tiding, device.entity, text, body.get('reply_to'),
+                                    client_version=web_client(request, device))
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'comment': node}, status=201)
+
+
+@require_POST
+def api_tiding_vote(request, tiding_id):
+    """Upvote a link on Tidings, or -- again -- take it back. {'score', 'mine'} after."""
+    from .models import Tiding
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to vote'}, status=401)
+    tiding = Tiding.objects.filter(id=_uuid_or_none(tiding_id)).first()
+    if tiding is None:
+        return JsonResponse({'error': 'no such link on Tidings'}, status=404)
+    try:
+        state = tiding_links.vote(tiding, device.entity)
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse(state)
+
+
+@require_POST
+def api_tiding_comment_vote(request, tiding_id, message_id):
+    """Upvote a comment in a link's discussion, or take it back. {'score', 'mine'} after."""
+    from .models import Tiding
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to vote'}, status=401)
+    tiding = Tiding.objects.filter(id=_uuid_or_none(tiding_id)).first()
+    if tiding is None:
+        return JsonResponse({'error': 'no such link on Tidings'}, status=404)
+    try:
+        state = tiding_links.vote_comment(tiding, device.entity, _uuid_or_none(message_id))
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse(state)
 
 
 @require_POST

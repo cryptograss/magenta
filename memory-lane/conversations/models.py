@@ -1524,6 +1524,29 @@ class Tiding(models.Model):
         constraints = [models.UniqueConstraint(fields=['message', 'url'], name='one_tiding_per_link')]
 
 
+class TidingVote(models.Model):
+    """One person's upvote of a link on Tidings, or of one comment in its discussion (Justin, 21 Oct:
+    "upvote, too. More like HN"). A comment is a message replying in the link's Mood, so its votes
+    hang on the message; a link's on its Tiding. One vote each, ever; voting again takes it back.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tiding = models.ForeignKey(Tiding, models.CASCADE, null=True, blank=True, related_name='votes')
+    message = models.ForeignKey(Message, models.CASCADE, null=True, blank=True, related_name='tidings_votes')
+    by = models.ForeignKey(ThinkingEntity, models.CASCADE, related_name='tidings_votes')
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'tiding_votes'
+        ordering = ['-at']
+        constraints = [
+            models.UniqueConstraint(fields=['tiding', 'by'], condition=models.Q(tiding__isnull=False),
+                                    name='one_vote_per_tiding'),
+            models.UniqueConstraint(fields=['message', 'by'], condition=models.Q(message__isnull=False),
+                                    name='one_vote_per_comment'),
+        ]
+
+
 class FaceName(models.Model):
     """Whose a face in a picture is, as someone here said (services/faces.py): the person, by
     their PickiPedia page's title, and who said so."""

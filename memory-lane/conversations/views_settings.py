@@ -91,9 +91,37 @@ def api_status(request):
 @section('tidings')
 def tidings_page(request):
     from .services import tidings
+    device = mood_auth.device_for(request)
     return render(request, 'conversations/mood_tidings.html', {
-        'tidings': tidings.tidings_state(),
+        'tidings': tidings.tidings_state(viewer=device.entity_id if device else None),
         'picture_cap': tidings.PICTURES,
+        'viewer': device.entity_id if device else '',
+        'embed': True,
+    })
+
+
+@ensure_csrf_cookie
+@require_GET
+def tiding_page(request, tiding_id):
+    """One link's page: itself and what's been said about it, as a comment can be said. Asked for with
+    ?embed=1, it draws inside the one page's Tidings frame; without, the one page, on Tidings."""
+    from .services import tiding_links
+    device = mood_auth.device_for(request)
+    viewer = device.entity_id if device else None
+    state, err = None, None
+    try:
+        state = tiding_links.discussion(tiding_id, viewer)
+    except tiding_links.Refused as e:
+        err = (str(e), e.status)
+    if not request.GET.get('embed'):
+        from .views_moods import moods_page
+        return moods_page(request, section='tidings')
+    if state is None:
+        from django.http import HttpResponse
+        return HttpResponse(err[0], status=err[1])
+    return render(request, 'conversations/mood_tiding.html', {
+        'tiding': state,
+        'viewer': viewer,
         'embed': True,
     })
 
@@ -111,7 +139,8 @@ def prompts_page(request):
 @require_GET
 def api_tidings(request):
     from .services import tidings
-    return JsonResponse(tidings.tidings_state())
+    device = mood_auth.device_for(request)
+    return JsonResponse(tidings.tidings_state(viewer=device.entity_id if device else None))
 
 
 @require_GET

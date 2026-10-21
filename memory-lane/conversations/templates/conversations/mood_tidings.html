@@ -35,10 +35,17 @@
           border: 1px solid var(--line); margin-right: 6px; color: var(--muted); white-space: nowrap; }
   .chip.yes { border-color: var(--ok); color: var(--ok); font-weight: 600; }
   .chip.no { border-color: var(--err); color: var(--err); }
-  /* Links promoted from the Moods, newest first: a title and its site; who, where, and what's been said. */
+  /* Links promoted from the Moods, newest first: numbered, a title and its site; who said and who
+     promoted it, where, and what's been said. An upvote like HN's (Justin, 21 Oct). */
   .links { list-style: none; margin: 0; padding: 0; }
-  .links li { padding: 6px 0 7px; border-bottom: 1px solid var(--line); }
+  .links li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
   .links li:last-child { border-bottom: 0; }
+  .rank { flex: none; width: 34px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.4; }
+  .rank .num { display: block; font-variant-numeric: tabular-nums; }
+  .rank button.vote { all: unset; cursor: pointer; display: block; font-size: 10px; color: var(--muted); margin: 0 auto; }
+  .rank button.vote:hover { color: var(--accent); }
+  .rank button.vote.mine { color: var(--accent); font-weight: 700; }
+  .rank .score { display: block; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
   .links .title { font-size: 15px; font-weight: 600; color: var(--ink); }
   .links .title:visited { color: var(--muted); }
   .links .host { font-size: 12px; color: var(--muted); margin-left: 6px; }
@@ -62,8 +69,31 @@
     const to = new URL(a.href, location.href);
     if (to.origin !== location.origin) { a.target = '_top'; return; }
     if (to.pathname === location.pathname && to.hash) return;  // within this page
+    if (to.pathname.startsWith('/moods/tidings/')) return;  // a link's discussion: it opens in this frame
     e.preventDefault();
     parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
+  });
+  function csrf() {
+    const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('button.vote');
+    if (!b || b.disabled) return;
+    b.disabled = true;
+    try {
+      const r = await fetch(b.dataset.vote, { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+      const s = await r.json();
+      if (!r.ok) throw new Error(s.error || r.status);
+      b.classList.toggle('mine', s.mine);
+      const score = b.closest('.rank').querySelector('.score');
+      if (score) score.textContent = s.score;
+    } catch (err) {
+      const note = document.createElement('span');
+      note.textContent = err.message; note.style.color = 'var(--err)';
+      b.closest('.rank')?.appendChild(note);
+    }
+    b.disabled = false;
   });
 </script>{% endif %}
 </head>
@@ -78,17 +108,20 @@
   </nav>
 </header>
 <main>
-  <h1>Tidings</h1>
-
-  <h2>Links</h2>
   {% if tidings.links %}
   <ol class="links">
   {% for link in tidings.links %}
     <li id="t-{{ link.id }}">
-      <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a><span class="host">({{ link.host }})</span>
-      <div class="meta">promoted by {{ link.by|default:"someone" }}
-        · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}" title="{{ link.said_by }}: “{{ link.snippet }}”">{{ link.at|date:"M j, g:i A" }} in #{{ link.mood }}</a>
-        · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}">{{ link.comments }} comment{{ link.comments|pluralize }}</a></div>
+      <span class="rank"><span class="num">{{ forloop.counter }}</span>
+        <button type="button" class="vote{% if link.mine %} mine{% endif %}" data-vote="/api/tidings/{{ link.id }}/vote/"
+                title="{% if link.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
+        <span class="score">{{ link.score }}</span></span>
+      <span class="body">
+        <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a><span class="host">({{ link.host }})</span>
+        <div class="meta">{% if link.said_by == link.by %}posted and promoted by {{ link.by|default:"someone" }}{% else %}posted by {{ link.said_by|default:"someone" }} · promoted by {{ link.by|default:"someone" }}{% endif %}
+          · <a href="/moods/tidings/{{ link.id }}/?embed=1">{{ link.comments }} comment{{ link.comments|pluralize }}</a>
+          · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}" title="{{ link.said_by }}: “{{ link.snippet }}”">{{ link.at|date:"M j, g:i A" }} in #{{ link.mood }}</a></div>
+      </span>
     </li>
   {% endfor %}
   </ol>

@@ -116,3 +116,108 @@ class TidingLinksTest(TestCase):
         self.assertEqual(tiding_links.listed(), [])
         Message.objects.filter(id=said.id).update(content='https://example.org/')  # put back (services/retract.put_back)
         self.assertEqual(len(tiding_links.listed()), 1)
+
+
+@override_settings(MOOD_ADMINS=('justin',))
+class TidingTalkTests(TidingLinksTest):
+    """What's said about a link, and voted for, on its Tidings page (Justin, 21 Oct: comments there too,
+    not just the Mood; upvotes, more like HN). One record: a comment is a reply in the Mood."""
+
+    def promoted(self):
+        said = self.say(self.skyler, 'https://example.org/')
+        return said, tiding_links.promote(said, self.justin)
+
+    def comment(self, client, tiding, text, reply_to=None):
+        with CARD, PUBLIC:
+            return client.post(f'/api/tidings/{tiding.id}/comments/',
+                               json.dumps({'text': text, 'reply_to': reply_to}),
+                               content_type='application/json')
+
+    def vote(self, client, tiding, message=None):
+        url = f'/api/tidings/{tiding.id}/comments/{message.id}/vote/' if message else f'/api/tidings/{tiding.id}/vote/'
+        return client.post(url)
+
+    def test_a_comment_is_a_reply_in_the_mood_and_a_comment_on_the_page(self):
+        said, tiding = self.promoted()
+        done = self.comment(self.client_for(self.justin), tiding, 'yes, that one')
+        self.assertEqual(done.status_code, 201)
+        reply = Message.objects.exclude(id=said.id).get()
+        self.assertEqual((reply.content, reply.sender_id, reply.mood_id), (f'↩ #m-{said.id}\nyes, that one', 'justin', self.mood.id))
+        tree = tiding_links.thread(said.id)
+        self.assertEqual([n['snippet'] for n in tree], ['yes, that one'])
+        body = self.client.get(f'/api/tidings/{tiding.id}/').json()
+        self.assertEqual(body['comments'][0]['snippet'], 'yes, that one')
+
+    def test_a_comment_can_answer_another_comment(self):
+        said, tiding = self.promoted()
+        self.comment(self.client_for(self.justin), tiding, 'first')
+        node = tiding_links.thread(said.id)[0]
+        second = self.comment(self.client_for(self.skyler), tiding, 'second', reply_to=node['id'])
+        self.assertEqual(second.status_code, 201)
+        tree = tiding_links.thread(said.id)
+        self.assertEqual((tree[0]['snippet'], [n['snippet'] for n in tree[0]['replies']]), ('first', ['second']))
+        self.assertEqual(Message.objects.exclude(id=said.id).count(), 2)
+
+    def test_a_comment_on_no_such_comment_or_a_deleted_link_is_refused(self):
+        said, tiding = self.promoted()
+        ghost = self.comment(self.client_for(self.justin), tiding, 'x', reply_to=str(uuid.uuid4()))
+        self.assertEqual(ghost.status_code, 404)
+        Message.objects.filter(id=said.id).update(content='[deleted]')
+        self.assertEqual(self.comment(self.client_for(self.justin), tiding, 'x').status_code, 404)
+
+    def test_saying_it_needs_a_sign_in_and_nothing_said_is_refused(self):
+        said, tiding = self.promoted()
+        self.assertEqual(self.comment(Client(), tiding, 'x').status_code, 401)
+        self.assertEqual(self.comment(self.client_for(self.justin), tiding, '   ').status_code, 400)
+
+    def test_an_upvote_goes_on_and_off_and_only_votes_once_each(self):
+        said, tiding = self.promoted()
+        justin, skyler = self.client_for(self.justin), self.client_for(self.skyler)
+        self.assertEqual(self.vote(justin, tiding).json(), {'score': 1, 'mine': True})
+        self.assertEqual(self.vote(justin, tiding).json(), {'score': 0, 'mine': False})  # again takes it back
+        self.assertEqual(self.vote(justin, tiding).json()['score'], 1)
+        self.assertEqual(self.vote(skyler, tiding).json()['score'], 2)
+        body = skyler.get(f'/api/tidings/{tiding.id}/').json()
+        self.assertEqual((body['score'], body['mine']), (2, True))
+        body = justin.get(f'/api/tidings/{tiding.id}/').json()
+        self.assertEqual((body['score'], body['mine']), (2, True))
+        [link] = tiding_links.listed(viewer='justin')
+        self.assertEqual((link['score'], link['mine']), (2, True))
+        self.assertEqual(self.vote(Client(), tiding).status_code, 401)
+
+    def test_a_comment_can_be_upvoted_and_only_under_its_link(self):
+        said, tiding = self.promoted()
+        self.comment(self.client_for(self.skyler), tiding, 'agreed')
+        node = tiding_links.thread(said.id)[0]
+        justin = self.client_for(self.justin)
+        self.assertEqual(self.vote(justin, tiding, message=Message.objects.get(id=node['id'])).json(),
+                         {'score': 1, 'mine': True})
+        tree = tiding_links.thread(said.id, viewer='justin')
+        self.assertEqual((tree[0]['score'], tree[0]['mine']), (1, True))
+        elsewhere = self.say(self.skyler, 'not about this')
+        self.assertEqual(self.vote(justin, tiding, message=elsewhere).status_code, 404)
+
+    def test_the_page_says_who_said_and_who_promoted_and_ranks(self):
+        said, tiding = self.promoted()
+        self.vote(self.client_for(self.skyler), tiding)
+        [link] = tiding_links.listed()
+        self.assertEqual((link['said_by'], link['by'], link['score']), ('skyler', 'justin', 1))
+        page = self.client.get('/moods/tidings/?embed=1').content.decode()
+        self.assertIn('posted by skyler · promoted by justin', page)
+        self.assertIn('class="rank"', page)  # numbered, HN-style
+        said2 = self.say(self.justin, 'https://example.org/two')
+        tiding_links.promote(said2, self.justin)
+        page = self.client.get('/moods/tidings/?embed=1').content.decode()
+        self.assertIn('posted and promoted by justin', page)
+
+    def test_the_discussion_page_renders_inside_the_one_page(self):
+        said, tiding = self.promoted()
+        self.comment(self.client_for(self.justin), tiding, 'looking forward')
+        page = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1')
+        self.assertEqual(page.status_code, 200)
+        html = page.content.decode()
+        self.assertIn('looking forward', html)
+        self.assertIn('say it', html)
+        self.assertIn('sign in', html)  # nobody signed in here: the box is closed but says so
+        gone = self.client.get(f'/moods/tidings/{uuid.uuid4()}/?embed=1')
+        self.assertEqual(gone.status_code, 404)
