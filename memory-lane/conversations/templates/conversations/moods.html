@@ -55,6 +55,20 @@
   header .sections { display: flex; gap: 14px; margin-left: 10px; flex: none; font-size: 14px; }
   header .sections a { color: var(--muted); text-decoration: none; }
   header .sections a:hover { color: var(--ink); }
+  header .sections a[aria-current], header .crumb.moods[aria-current] { color: var(--ink); font-weight: 700; }
+  header .brand { padding-right: 2px; }
+  header .gear { flex: none; color: var(--muted); text-decoration: none; font-size: 18px; line-height: 1; padding: 2px; }
+  header .gear:hover, header .gear[aria-current] { color: var(--ink); }
+  /* A section showing: its frame fills the page below the bar; the Moods stay as they were, out of sight. */
+  #sectionFrames { flex: 1; min-height: 0; display: flex; }
+  #sectionFrames[hidden] { display: none; }
+  #sectionFrames iframe { flex: 1; width: 100%; border: 0; background: var(--bg); }
+  #sectionFrames iframe[hidden] { display: none; }
+  body.in-section .layout, body.in-section #crumb, body.in-section #todo { display: none; }
+  /* In a section, "moods" is one of the sections: grey, with no › of its own; the one showing is the bold one. */
+  body.in-section header .crumb.moods { color: var(--muted); font-weight: 400; font-size: 14px; }
+  body.in-section header .crumb.moods::before { content: none; }
+  body.in-section header .crumb.moods:hover { color: var(--ink); }
   /* The bar never scrolls (Justin, 21 Oct: "status" cut off, a scrollbar): what doesn't fit goes, least needed
      first -- the block height, then the sections (the account menu has them), then "moods" (☰ and the brand
      go there too) -- and last the Mood's name shortens with … (fitHeader). */
@@ -1089,12 +1103,13 @@
 <body>
 <header>
   <button id="menu" type="button" aria-label="Moods" aria-expanded="false">☰</button>
-  <a class="brand" href="/moods/"><span class="logo" aria-hidden="true"></span>magenta</a>
-  <a class="crumb moods" href="/moods/">moods</a>
+  <!-- The mark alone, to the front page (Moods, for now; a landing page in time) (Justin, 21 Oct). -->
+  <a class="brand" href="/" title="magenta" aria-label="magenta: the front page"><span class="logo" aria-hidden="true"></span></a>
+  <a class="crumb moods" href="/moods/" data-section="moods">moods</a>
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/">tidings</a><a href="/moods/prompts/">prompts</a><a href="/moods/status/">status</a></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings</a><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <span class="block" id="block" title="Ethereum mainnet's block height"></span>
@@ -1126,13 +1141,13 @@
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
-      <a class="settings" href="/moods/status/" title="Agents in every Mood, servers, backups, people, versions">status</a>
-      <a class="settings" href="/moods/tidings/" title="The last 20 pictures shared in the Moods">tidings</a>
-      <a class="settings" href="/moods/prompts/" title="Each person's last 20 prompts, and what answering cost">prompts</a>
-      <a class="settings" href="/moods/settings/" title="How each agent carries itself in each Mood">settings</a>
+      <a class="settings" href="/moods/status/" data-section="status" title="Agents in every Mood, servers, backups, people, versions">status</a>
+      <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
+      <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
+  <a class="gear" href="/moods/settings/" data-section="settings" title="Settings: how each agent carries itself in each Mood" aria-label="Settings">⚙</a>
 </header>
 <div id="lightbox" hidden role="dialog" aria-label="Picture"><button type="button" class="close" aria-label="Close">✕</button>
   <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
@@ -1211,6 +1226,8 @@
   </div>
   <div id="qresults"></div>
 </div>
+<!-- Tidings, prompts, status and settings: each its own page, loaded once and kept, beside the Moods. -->
+<div id="sectionFrames" hidden></div>
 <div class="layout">
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"></div>
@@ -1262,6 +1279,7 @@
 (function () {
   const POLL_MS = 4000;
   const initialSlug = "{{ initial_slug|escapejs }}" || null;
+  const initialSection = "{{ initial_section|escapejs }}" || 'moods';
   const nav = document.getElementById('nav');
   const inner = document.getElementById('inner');
   const main = document.getElementById('main');
@@ -1328,6 +1346,7 @@
   let lastSeen = store.get('lastSeen', {});   // slug -> iso
   let badges = {};          // slug -> count of my mentions since lastSeen
   let baseTitle = 'magenta';
+  let sectionNow = 'moods';  // or tidings, prompts, status, settings (showSection)
   let people = [];          // everyone who can be named, for @-completion
   let human = {};           // name -> is a person
   let looks = {};           // name -> {art, colour}: a person's name written their way, and their icon's colour
@@ -1400,7 +1419,7 @@
   }
   function setTitle() {
     const n = Object.values(badges).reduce((a, b) => a + b, 0);
-    document.title = (n ? '(' + n + ') ' : '') + baseTitle;
+    document.title = (n ? '(' + n + ') ' : '') + (sectionNow === 'moods' ? baseTitle : sectionNow + ' · magenta');
     // The installed app's icon carries the count too, where the system allows.
     try { if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()); } catch (e) {}
   }
@@ -6413,8 +6432,65 @@
     const a = e.target.closest('a.mood'); if (!a) return;
     e.preventDefault(); open(a.dataset.slug, true);
   });
+  // --- one page: the Moods, and tidings, prompts, status and settings beside them -------------------
+  // Each section is its own page, loaded into a frame the first time it's shown and kept: going back and
+  // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
+  const SECTIONS = ['tidings', 'prompts', 'status', 'settings'];
+  const sectionFrames = document.getElementById('sectionFrames');
+  const sectionOf = path => SECTIONS.find(s => path.replace(/\/+$/, '') === '/moods/' + s) || null;
+  function showSection(name, push) {
+    sectionNow = name;
+    document.body.classList.toggle('in-section', name !== 'moods');
+    sectionFrames.hidden = name === 'moods';
+    if (name !== 'moods') {
+      let frame = sectionFrames.querySelector(`iframe[data-section="${name}"]`);
+      if (!frame) {
+        frame = document.createElement('iframe');
+        frame.dataset.section = name;
+        frame.title = name;
+        frame.src = `/moods/${name}/?embed=1`;
+        sectionFrames.appendChild(frame);
+      }
+      sectionFrames.querySelectorAll('iframe').forEach(f => { f.hidden = f !== frame; });
+    }
+    document.querySelectorAll('header [data-section]').forEach(a => {
+      if (a.dataset.section === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
+    const url = name === 'moods' ? (current ? '/moods/' + encodeURIComponent(current) + '/' : '/moods/') : `/moods/${name}/`;
+    if (push && location.pathname !== url) history.pushState({ section: name, slug: current }, '', url);
+    setTitle();
+    fitHeader();
+  }
+  document.addEventListener('click', e => {
+    const a = e.target.closest('header a[data-section], #userMenu a[data-section]');
+    if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    if (!userMenu.hidden) userBtn.click();  // from the account menu: it closes
+    showSection(a.dataset.section, true);
+  });
+  // A link inside a section into magenta: opened here, without loading anything again.
+  window.addEventListener('message', async e => {
+    if (e.origin !== location.origin || !e.data || typeof e.data.magentaGo !== 'string') return;
+    const to = new URL(e.data.magentaGo, location.origin);
+    const sectionTo = sectionOf(to.pathname);
+    if (sectionTo) { showSection(sectionTo, true); return; }
+    const id = (to.hash.match(/^#m-([0-9a-f-]+)$/) || [])[1];
+    let slug = (to.pathname.match(/^\/moods\/([^/]+)\/?$/) || [])[1];
+    const message = (to.pathname.match(/^\/messages\/([0-9a-f-]+)\/?$/) || [])[1];
+    if (message) {
+      const r = await fetch('/api/messages/' + encodeURIComponent(message) + '/');
+      slug = r.ok ? (await r.json()).mood : null;
+    }
+    if (!slug) { location.href = to.href; return; }  // somewhere else: go there
+    showSection('moods', false);
+    if (id || message) openAndReveal(decodeURIComponent(slug), id || message);
+    else open(decodeURIComponent(slug), true);
+  });
   window.addEventListener('popstate', e => {
     if (e.state && e.state.lightbox) return;  // forward into a picture's step: nothing to open
+    const sectionTo = sectionOf(location.pathname);
+    if (sectionTo) { showSection(sectionTo, false); return; }
+    if (sectionNow !== 'moods') showSection('moods', false);
     const slug = (e.state && e.state.slug) || location.pathname.split('/')[2];
     if (slug) open(decodeURIComponent(slug), false);
   });
@@ -6425,6 +6501,8 @@
     await pullSeen();  // where you've read up to, on every device, before anything is counted
     // A share opens where you last were (the Mood opened last in this browser), not at the top of the list.
     const lastOpened = sharing_ && store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived));
+    // Asked for a section: it first, the Moods behind it, ready for when they're wanted.
+    if (initialSection !== 'moods') showSection(initialSection, false);
     const slug = initialSlug || lastOpened || (moods[0] && moods[0].slug);
     if (!slug) { inner.innerHTML = '<div class="empty">No Moods yet.</div>'; setStatus('live', 'live'); return; }
     await open(slug, false);

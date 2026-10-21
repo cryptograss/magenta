@@ -32,7 +32,10 @@ from .services.mood_view import (
 
 @ensure_csrf_cookie
 @require_GET
-def moods_page(request, slug=None):
+def moods_page(request, slug=None, section=''):
+    """The one page: the Moods, and tidings, prompts, status and settings beside them (`section`: which
+    shows first). Each section is its own page, loaded once into it (?embed=1) and kept, so going back
+    and forth loads nothing again (Justin, 21 Oct)."""
     if slug is not None:
         found = Mood.by_slug_or_404(slug)
         if found.slug != slug:  # renamed since: its page now has the new name
@@ -41,6 +44,7 @@ def moods_page(request, slug=None):
     device = mood_auth.device_for(request)
     return render(request, 'conversations/moods.html', {
         'initial_slug': slug or '',
+        'initial_section': section,
         # A preview can pretend to be someone, to show the composer; its
         # database is read-only, so nothing it sends is kept.
         'viewer': device.entity_id if device else getattr(settings, 'PREVIEW_VIEWER', ''),

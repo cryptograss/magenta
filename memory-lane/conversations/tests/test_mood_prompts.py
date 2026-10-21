@@ -16,7 +16,7 @@ class PromptsPageTests(TidingsTests):
 
     def test_prompts_page_renders_and_is_linked_from_moods(self):
         self.post(self.justin, self.mood_a, 'please look at this @magent')
-        response = self.client.get('/moods/prompts/')
+        response = self.client.get('/moods/prompts/?embed=1')
         self.assertEqual(response.status_code, 200)
         self.assertIn('prompts · magenta', response.content.decode())
         self.assertIn('By each person', response.content.decode())
@@ -147,7 +147,7 @@ class PromptsPageTests(TidingsTests):
 
     def test_prompt_head_links_the_time_not_the_mood(self):
         post = self.post(self.justin, self.mood_a, '@magent please')
-        html = self.client.get('/moods/prompts/').content.decode()
+        html = self.client.get('/moods/prompts/?embed=1').content.decode()
         self.assertIn(f'href="/moods/magenta-interface/#m-{post.id}"', html)
         self.assertNotIn(f'<a href="/moods/magenta-interface/#m-{post.id}">#magenta-interface</a>', html)
         self.assertIn(f'>{self.clock:%b %-d, %-I:%M %p}</a>', html)  # the time is what is linked
@@ -205,7 +205,7 @@ class PromptsPageTests(TidingsTests):
         self.post(self.justin, self.mood_a, 'asking into the dark @magent')
         [entry] = self.prompts()['justin']
         self.assertEqual(entry['turns'], [])
-        html = self.client.get('/moods/prompts/').content.decode()
+        html = self.client.get('/moods/prompts/?embed=1').content.decode()
         self.assertNotIn('tokens in', html)
 
     def test_api_prompts_includes_turn_metrics(self):
@@ -223,14 +223,14 @@ class PromptsPageTests(TidingsTests):
         self.agent_row(self.re, self.mood_a, tokens=(120_900, 400))  # no harness cost, and no list price for it
         [turn] = self.prompts()['justin'][0]['turns']
         self.assertEqual((turn['tokens'], turn['cost'], turn['priced']), ('121k→400', '', False))
-        html = self.client.get('/moods/prompts/').content.decode()
+        html = self.client.get('/moods/prompts/?embed=1').content.decode()
         self.assertIn('no price known for this model', html)
         self.assertNotIn('<$0.01', html)
 
     def test_tokens_and_cost_written_as_the_page_writes_them(self):
         self.post(self.justin, self.mood_a, 'a big one @magent')
         self.agent_row(self.magent, self.mood_a, tokens=(535_000, 2_100), cost=0.0512)
-        self.assertIn('@magent 535k→2.1k · $0.05', self.client.get('/moods/prompts/').content.decode())
+        self.assertIn('@magent 535k→2.1k · $0.05', self.client.get('/moods/prompts/?embed=1').content.decode())
 
 class PromptsQueriesTests(TidingsTests):
     """How many questions the prompts ask of the database doesn't grow with the record (re, 21 Oct: the page

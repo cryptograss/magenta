@@ -17,7 +17,7 @@ class TidingsPageTests(TidingsTests):
     # --- the page -----------------------------------------------------------
 
     def test_tidings_page_renders_and_is_linked_from_moods(self):
-        response = self.client.get('/moods/tidings/')
+        response = self.client.get('/moods/tidings/?embed=1')
         self.assertEqual(response.status_code, 200)
         self.assertIn('tidings · magenta', response.content.decode())
         self.assertIn('Pictures', response.content.decode())
@@ -90,7 +90,7 @@ class TidingsPageTests(TidingsTests):
 
     def test_pictures_appear_on_the_page(self):
         self.image(3, added_by=self.justin)
-        html = self.client.get('/moods/tidings/').content.decode()
+        html = self.client.get('/moods/tidings/?embed=1').content.decode()
         self.assertIn('not on wiki', html)
         self.assertIn('no faces', html)
         self.assertIn('justin', html)
@@ -98,7 +98,7 @@ class TidingsPageTests(TidingsTests):
     # --- Justin's 20 Oct round: no intro, thumbnails --------------------------
 
     def test_no_intro_description_and_no_lede(self):
-        html = self.client.get('/moods/tidings/').content.decode()
+        html = self.client.get('/moods/tidings/?embed=1').content.decode()
         self.assertNotIn("record's newest", html)
         self.assertNotIn('class="lede"', html)
 
@@ -106,7 +106,7 @@ class TidingsPageTests(TidingsTests):
         picture = self.image(7, added_by=self.justin)
         [entry] = tidings.picture_tidings()
         self.assertEqual(entry['preview'], f'{entry["url"]}/preview')
-        html = self.client.get('/moods/tidings/').content.decode()
+        html = self.client.get('/moods/tidings/?embed=1').content.decode()
         self.assertIn(f'src="/moods/media/{picture.sha256}.png/preview"', html)
 
     # --- the preview endpoint ----------------------------------------------------
