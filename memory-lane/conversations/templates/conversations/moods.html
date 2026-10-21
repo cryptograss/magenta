@@ -60,7 +60,13 @@
   header .gear { flex: none; color: var(--muted); text-decoration: none; font-size: 18px; line-height: 1; padding: 2px; }
   header .gear:hover, header .gear[aria-current] { color: var(--ink); }
   /* A section showing: its frame fills the page below the bar; the Moods stay as they were, out of sight. */
-  #sectionFrames { flex: 1; min-height: 0; display: flex; }
+  #sectionFrames { flex: 1; min-height: 0; display: flex; position: relative; }
+  /* A section on its way (Justin, 21 Oct: tidings blank for too long): said so, where it'll be. */
+  #sectionFrames .loading { position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: center;
+                            padding-top: 18vh; background: var(--bg); color: var(--muted); font-size: 15px; }
+  #sectionFrames .loading[hidden] { display: none; }
+  #sectionFrames .loading .dot { animation: pulse 1.2s ease-in-out infinite; }
+  #sectionFrames .loading .dot:nth-child(2) { animation-delay: .2s; } #sectionFrames .loading .dot:nth-child(3) { animation-delay: .4s; }
   #sectionFrames[hidden] { display: none; }
   #sectionFrames iframe { flex: 1; width: 100%; border: 0; background: var(--bg); }
   #sectionFrames iframe[hidden] { display: none; }
@@ -6530,10 +6536,24 @@
         frame = document.createElement('iframe');
         frame.dataset.section = name;
         frame.title = name;
+        const loading = document.createElement('div');
+        loading.className = 'loading';
+        loading.dataset.section = name;
+        loading.setAttribute('role', 'status');
+        loading.innerHTML = `${esc(name)} on its way<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>`;
+        // Gone once the section itself is in -- not at the blank page a frame starts with, which loads first.
+        frame.addEventListener('load', function arrived() {
+          let there = false;
+          try { there = frame.contentWindow.location.pathname === `/moods/${name}/`; } catch (e) { there = true; }
+          if (!there) return;
+          loading.remove();
+          frame.removeEventListener('load', arrived);
+        });
         frame.src = `/moods/${name}/?embed=1`;
-        sectionFrames.appendChild(frame);
+        sectionFrames.append(frame, loading);
       }
       sectionFrames.querySelectorAll('iframe').forEach(f => { f.hidden = f !== frame; });
+      sectionFrames.querySelectorAll('.loading').forEach(l => { l.hidden = l.dataset.section !== name; });
     }
     document.querySelectorAll('header [data-section]').forEach(a => {
       if (a.dataset.section === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');

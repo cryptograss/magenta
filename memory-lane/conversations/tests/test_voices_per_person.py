@@ -226,7 +226,8 @@ class ColourKeytermsTest(TestCase):
         terms = voice.keyterms()
         self.assertIn('red agent', terms)
         self.assertIn('magenta agent', terms)
-        self.assertNotIn('blue agent', terms)  # no blu here (yet)
+        self.assertIn('blue agent', terms)  # blu: made by its migration (0033), there from the start
+        self.assertNotIn('green agent', terms)  # no agent named for green
 
 
 class ReaderReportsTest(TestCase):
