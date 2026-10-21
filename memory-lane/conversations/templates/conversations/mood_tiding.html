@@ -41,7 +41,19 @@
   .comment .said { flex: 1; min-width: 0; }
   .comment .who { font-size: 12.5px; color: var(--muted); }
   .comment .who b { color: var(--ink); font-weight: 600; }
-  .comment .words { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; }
+  /* A comment as the Mood draws it (tiding_links.said_html): paragraphs, lists, code, links. */
+  .comment .words { overflow-wrap: anywhere; margin-top: 2px; }
+  .comment .words > :first-child { margin-top: 0; }
+  .comment .words > :last-child { margin-bottom: 0; }
+  .comment .words p { margin: 0 0 8px; }
+  .comment .words ul, .comment .words ol { margin: 0 0 8px; padding-left: 22px; }
+  .comment .words code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-size: 12.5px; }
+  .comment .words pre { background: var(--code); padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin: 0 0 8px; }
+  .comment .words pre code { background: none; padding: 0; }
+  .comment .words blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
+  .comment .words img { max-width: min(100%, 420px); max-height: 320px; border-radius: 6px; }
+  .comment .words table { border-collapse: collapse; margin: 0 0 8px; }
+  .comment .words td, .comment .words th { border: 1px solid var(--line); padding: 2px 8px; }
   .comment .replyto { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
   .comment .replyto:hover { color: var(--accent); }
   .comments .replies { margin-left: 24px; border-left: 2px solid var(--line); padding-left: 12px; }
@@ -64,33 +76,12 @@
     const to = new URL(a.href, location.href);
     if (to.origin !== location.origin) { a.target = '_top'; return; }
     if (to.pathname.startsWith('/moods/tidings/')) return;  // the listing or another discussion: in this frame
+    if (a.matches('.words a.img')) return;  // a picture: the one page's lightbox (mood_tiding_tools.html)
     e.preventDefault();
     parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
   });
 </script>{% endif %}
 <script>
-  function csrf() {
-    const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : '';
-  }
-  document.addEventListener('click', async e => {
-    const b = e.target.closest('button.vote');
-    if (!b || b.disabled) return;
-    b.disabled = true;
-    try {
-      const r = await fetch(b.dataset.vote, { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
-      const s = await r.json();
-      if (!r.ok) throw new Error(s.error || r.status);
-      b.classList.toggle('mine', s.mine);
-      const score = b.closest('.rank').querySelector('.score');
-      if (score) score.textContent = s.score;
-    } catch (err) {
-      const note = document.createElement('span');
-      note.textContent = err.message; note.style.color = 'var(--err, #c0392b)';
-      b.closest('.rank')?.appendChild(note);
-    }
-    b.disabled = false;
-  });
   document.addEventListener('click', e => {
     const b = e.target.closest('button.replyto');
     if (!b) return;
@@ -117,6 +108,7 @@
     button.disabled = false;
   }
 </script>
+{% include "conversations/mood_tiding_tools.html" %}
 </head>
 <body>
 <main>
@@ -127,9 +119,9 @@
             title="{% if tiding.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
       <span class="score">{{ tiding.score }}</span></span>
     <span class="body">
-      <a class="title" href="{{ tiding.url }}" rel="noopener noreferrer" target="_blank">{{ tiding.title }}</a><span class="host">({{ tiding.host }})</span>
+      <a class="title" href="{{ tiding.url }}" rel="noopener noreferrer" target="_blank">{{ tiding.title }}</a><span class="host">({{ tiding.host }})</span>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}
       <div class="meta muted">{% if tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
-        · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a></div>
+        · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}</div>
       <div class="snippet">{{ tiding.snippet }}</div>
     </span>
   </div>
