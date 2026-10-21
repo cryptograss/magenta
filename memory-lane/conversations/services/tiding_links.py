@@ -24,6 +24,8 @@ from urllib.parse import urlsplit
 
 from django.core.cache import cache
 
+from .redaction import redact
+
 LISTED = 30          # links on Tidings
 MAX_TITLE = 300
 _BY_MESSAGE = 'tidings:by-message:all'  # a list per message now: the one-each form, under its old name, is never read
@@ -153,10 +155,10 @@ def _snippets_and_votes(tree, viewer=None):
     whatever the tree's size."""
     from django.db.models import Count
     from conversations.models import Message, TidingVote
-    from .mood_view import reply_to, snippet_of
+    from .mood_view import prose, reply_to, snippet_of
     nodes = list(_walk(tree))
     ids = [node['id'] for node in nodes]
-    texts = {str(m.id): snippet_of(reply_to(m.content or '')[1]) for m in Message.objects.filter(id__in=ids)} if ids else {}
+    texts = {str(m.id): snippet_of(reply_to(prose(m.content))[1]) for m in Message.objects.filter(id__in=ids)} if ids else {}
     scored = ({str(mid): c for mid, c in TidingVote.objects.filter(message_id__in=ids).values('message_id')
                .annotate(c=Count('id')).values_list('message_id', 'c')} if ids else {})
     mines = ({str(mid) for mid in TidingVote.objects.filter(message_id__in=ids, by_id=viewer)
@@ -169,10 +171,9 @@ def _snippets_and_votes(tree, viewer=None):
     return tree
 
 
-def thread(message_id, index=None, viewer=None):
-    """The replies under a message, and theirs, oldest first at each level:
-    [{'id', 'sender', 'mood', 'at', 'snippet', 'score', 'mine', 'replies': [...]}]. What's said about a
-    promoted link; `snippet` is the reply's words, read all at once, and the votes its upvotes."""
+def _tree(message_id, index=None):
+    """The replies under a message, and theirs, oldest first at each level, as the links index has them:
+    [{'id', 'sender', 'mood', 'at', 'replies': [...]}]."""
     from .links import current
     index = index if index is not None else current()
     seen = {str(message_id)}
@@ -184,7 +185,13 @@ def thread(message_id, index=None, viewer=None):
                 seen.add(entry['id'])
                 out.append({**entry, 'replies': under(entry['id'])})
         return out
-    return _snippets_and_votes(under(str(message_id)), viewer)
+    return under(str(message_id))
+
+
+def thread(message_id, index=None, viewer=None):
+    """What's said about a promoted link: its message's reply tree, each node with its words (`snippet`),
+    its upvotes (`score`) and whether `viewer` gave one (`mine`)."""
+    return _snippets_and_votes(_tree(message_id, index), viewer)
 
 
 def count(tree):
@@ -228,7 +235,7 @@ def vote_comment(tiding, by, message_id):
     if message_id is None:
         raise Refused('no such comment under this link', status=404)
     message = Message.objects.filter(id=message_id, mood_id=tiding.message.mood_id).first()
-    in_tree = message_id == tiding.message_id or any(node['id'] == str(message_id) for node in _walk(thread(tiding.message_id)))
+    in_tree = any(node['id'] == str(message_id) for node in _walk(_tree(tiding.message_id)))
     if message is None or not in_tree:
         raise Refused('no such comment under this link', status=404)
     row = TidingVote.objects.filter(message=message, by=by).first()
@@ -262,8 +269,9 @@ def comment(tiding, by, text, parent=None, client_version=''):
     if prose(message.content) == DELETED:
         raise Refused('that message was deleted', status=404)
     target = parent if parent else message.id
-    if str(target) != str(message.id) and not any(node['id'] == str(target) for node in _walk(thread(message.id))):
+    if str(target) != str(message.id) and not any(node['id'] == str(target) for node in _walk(_tree(message.id))):
         raise Refused('no such comment under this link', status=404)
+    text, _ = redact(text)  # a secret pasted here is kept out of the record, as in the Mood's own box
     row = Message.objects.create(id=uuid.uuid4(), sender=by, content=f'↩ #m-{target}\n{text}', mood=message.mood,
                                  timestamp=int(time.time() * 1000), source_file='mood-web',
                                  client_version=client_version)
@@ -334,7 +342,7 @@ def listed(limit=LISTED, viewer=None):
             'mood': message.mood_slug,
             'said_by': message.sender_id,
             'snippet': snippet_of(text)[:200],
-            'comments': count(thread(message.id, index)),
+            'comments': count(_tree(message.id, index)),
             'score': scored.get(str(tiding.id), 0),
             'mine': str(tiding.id) in mines,
         })

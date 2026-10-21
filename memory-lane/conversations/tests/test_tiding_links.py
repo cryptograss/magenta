@@ -215,9 +215,36 @@ class TidingTalkTests(TidingLinksTest):
         self.comment(self.client_for(self.justin), tiding, 'looking forward')
         page = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1')
         self.assertEqual(page.status_code, 200)
+        self.assertEqual(page['X-Frame-Options'], 'SAMEORIGIN')  # else the frame stays blank
         html = page.content.decode()
         self.assertIn('looking forward', html)
         self.assertIn('say it', html)
         self.assertIn('sign in', html)  # nobody signed in here: the box is closed but says so
         gone = self.client.get(f'/moods/tidings/{uuid.uuid4()}/?embed=1')
         self.assertEqual(gone.status_code, 404)
+
+    def test_an_agents_reply_is_a_comment_too(self):
+        # An agent's turn is kept as content blocks, not a string: the discussion reads its words.
+        said, tiding = self.promoted()
+        self.say(self.magent, [{'type': 'text', 'text': f'↩ #m-{said.id}\nI read it: worth a listen.'}])
+        self.assertEqual([n['snippet'] for n in tiding_links.thread(said.id)], ['I read it: worth a listen.'])
+        self.assertIn('worth a listen', self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode())
+
+    def test_a_secret_said_in_a_comment_is_kept_out_of_the_record(self):
+        said, tiding = self.promoted()
+        key = 'ghp_' + 'a1B2' * 9
+        self.assertEqual(self.comment(self.client_for(self.justin), tiding, f'oops {key}').status_code, 201)
+        self.assertNotIn(key, Message.objects.exclude(id=said.id).get().content)
+
+    def test_no_such_link_page_is_a_404_not_a_crash(self):
+        self.assertEqual(self.client.get('/moods/tidings/not-a-uuid/?embed=1').status_code, 404)
+        self.assertEqual(self.client.get('/api/tidings/not-a-uuid/').status_code, 404)
+
+    def test_the_listing_counts_comments_without_reading_each(self):
+        for n in range(3):
+            said = self.say(self.skyler, f'https://example.org/{n}')
+            tiding_links.promote(said, self.justin)
+            self.say(self.justin, f'↩ #m-{said.id}\nnice {n}')
+        tiding_links.listed()  # the links index, built once
+        with self.assertNumQueries(2):  # the links and their scores: nothing per link
+            self.assertEqual([link['comments'] for link in tiding_links.listed()], [1, 1, 1])

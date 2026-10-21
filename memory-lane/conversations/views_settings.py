@@ -106,24 +106,25 @@ def tiding_page(request, tiding_id):
     """One link's page: itself and what's been said about it, as a comment can be said. Asked for with
     ?embed=1, it draws inside the one page's Tidings frame; without, the one page, on Tidings."""
     from .services import tiding_links
-    device = mood_auth.device_for(request)
-    viewer = device.entity_id if device else None
-    state, err = None, None
-    try:
-        state = tiding_links.discussion(tiding_id, viewer)
-    except tiding_links.Refused as e:
-        err = (str(e), e.status)
+    from .views_auth import _uuid_or_none
     if not request.GET.get('embed'):
         from .views_moods import moods_page
         return moods_page(request, section='tidings')
-    if state is None:
+    device = mood_auth.device_for(request)
+    viewer = device.entity_id if device else None
+    try:
+        state = tiding_links.discussion(_uuid_or_none(tiding_id), viewer)
+    except tiding_links.Refused as e:
         from django.http import HttpResponse
-        return HttpResponse(err[0], status=err[1])
-    return render(request, 'conversations/mood_tiding.html', {
-        'tiding': state,
-        'viewer': viewer,
-        'embed': True,
-    })
+        response = HttpResponse(str(e), status=e.status)
+    else:
+        response = render(request, 'conversations/mood_tiding.html', {
+            'tiding': state,
+            'viewer': viewer,
+            'embed': True,
+        })
+    response['X-Frame-Options'] = 'SAMEORIGIN'  # drawn in the one page's Tidings frame, as section() allows
+    return response
 
 
 @section('prompts')
