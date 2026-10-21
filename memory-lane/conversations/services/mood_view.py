@@ -1248,7 +1248,7 @@ def _activity(mood, now=None, only=None):
     `only`: that agent alone, as if no other were here -- its own lines, people's,
     and only the posts that name it (activities()).
     """
-    from conversations.models import ThinkingEntity
+    from conversations.models import Message, ThinkingEntity
     import time
 
     now = now or time.time()
@@ -1274,7 +1274,14 @@ def _activity(mood, now=None, only=None):
         # A wiki-tier post's @agent is just text: no agent is waking for it.
         return [] if from_wiki_tier(msg) else [n for n in addressed_in(prose(msg.content), agents, by=msg.sender_id)]
     if only:  # a post for someone else neither wakes this agent nor ends its turn
-        recent = [m for m in recent if m.source_file not in POSTED or only in named_in(m)][:RECENT]
+        recent = [m for m in recent if m.source_file not in POSTED or only in named_in(m)]
+        # Nor a wake addressed to another: the poller's prompt opens that agent's new session before the
+        # agent has said a word in it, so no line of its own says the session is its (Justin, 21 Oct).
+        elsewhere = set(Message.recipients.through.objects
+                        .filter(message_id__in=[m.pk for m in recent if m.sender_id not in agents],
+                                conversationparticipant_id__in=agents - {only})
+                        .values_list('message_id', flat=True))
+        recent = [m for m in recent if m.pk not in elsewhere][:RECENT]
     if not recent:
         return None
     newest = recent[0]
@@ -1333,11 +1340,19 @@ def _activity(mood, now=None, only=None):
         streak.append(msg)
     agent = next((m.sender_id for m in streak if m.sender_id in agents), None)
     if agent is None:
+        # Nothing yet from an agent: a wake prompt is the agent's it's addressed to -- re on a slow
+        # model writes its first line a minute and more after the poller's prompt.
+        agent = (Message.recipients.through.objects
+                 .filter(message_id__in=[m.pk for m in streak], conversationparticipant_id__in=agents)
+                 .values_list('conversationparticipant_id', flat=True).first())
+    if agent is None:
         # Only a person's lines (typed into a terminal session): whose session it is.
         owner = (mood.messages.filter(session_id=newest.session_id, sender_id__in=agents)
                  .values_list('sender_id', flat=True).first()) if newest.session_id else None
-        agent = owner or sorted(agents or {'magent'})[0]
-    if only and agent != only:
+        # Asked about one agent, lines nobody can say are its are not its turn. (Once, the first agent
+        # by name took them: magent, then blu -- and re's wake read as blu thinking, Justin, 21 Oct.)
+        agent = owner or (None if only else sorted(agents or {'magent'})[0])
+    if agent is None or (only and agent != only):
         return None
     how = next((how_payload(m) for m in streak if m.sender_id in agents and m.model_backend), {'model': '', 'effort': ''})
     start = streak[-1]
