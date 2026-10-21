@@ -65,7 +65,21 @@ MODERATION_KEYS = ('scram', 'banned')
 PERSON_KEYS = {
     'speaker_voice': ('', "The voice their messages are read aloud in (services/voice.py): a voice's id or name. "
                           "Empty until chosen, or given at their first reading."),
+    # A person's look, old-school BBS (Justin, 21 Oct): their name written their way, and their icon's colour.
+    'name_art': ('', f"Their name as they'd have it written: at most {30} characters, every letter of their name "
+                     "in it, in order (art_fits). Empty: their name as it is."),
+    'icon_colour': ('', 'The colour of the little person beside their name, as #rrggbb. Empty: the page\'s own.'),
 }
+NAME_ART_MAX = 30
+
+
+def art_fits(art, name):
+    """Whether `art` writes `name`: every letter of it there, in order, any case; on one line of printable
+    characters, at most NAME_ART_MAX."""
+    if not art or len(art) > NAME_ART_MAX or not art.isprintable():
+        return False
+    letters = iter(art.lower())
+    return all(any(c == ch for c in letters) for ch in name.lower())
 # A Mood's own state, not how an agent carries itself there: set for the
 # Mood alone (no agent), from the Mood's page, and kept apart from the knobs.
 MOOD_KEYS = {
@@ -142,6 +156,16 @@ def clean(key, value):
         if isinstance(value, bool):
             return value
         raise Invalid(f'{key}: true or false')
+    if key == 'name_art':
+        value = str(value or '').strip()
+        if len(value) > NAME_ART_MAX or not value.isprintable():
+            raise Invalid(f'name_art: at most {NAME_ART_MAX} printable characters, on one line')
+        return value
+    if key == 'icon_colour':
+        value = str(value or '').strip().lower()
+        if value and not re.fullmatch(r'#[0-9a-f]{6}', value):
+            raise Invalid('icon_colour: a colour as #rrggbb')
+        return value
     if key in ('voice', 'speaker_voice', 'narrator_voice'):
         value = str(value or '').strip()
         if len(value) > 100:
@@ -164,6 +188,16 @@ def clean(key, value):
             raise Invalid('consider_usd_per_day: from 0 to 500')
         return value
     raise Invalid(f'no such setting: {key}')
+
+
+def looks():
+    """{person: {'art', 'colour'}} for whoever has set either: how the Moods page writes them."""
+    from conversations.models import Setting
+    found = {}
+    for row in Setting.objects.filter(key__in=('name_art', 'icon_colour'), mood__isnull=True).order_by('created_at'):
+        look = found.setdefault(row.agent_id, {'art': '', 'colour': ''})
+        look['art' if row.key == 'name_art' else 'colour'] = row.value or ''
+    return {name: look for name, look in found.items() if look['art'] or look['colour']}
 
 
 def latest(rows):

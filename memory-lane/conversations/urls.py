@@ -71,6 +71,7 @@ urlpatterns = [
     path('api/voice/speaker/', views_auth.api_speaker_voice, name='api_speaker_voice'),
     path('api/voice/narrate/', views_auth.api_narrate, name='api_voice_narrate'),
     path('api/voice/heard/', views_auth.api_voice_heard, name='api_voice_heard'),
+    path('api/me/look/', views_auth.api_my_look, name='api_my_look'),
     path('api/moods/<slug:slug>/media/', views_auth.api_media, name='api_mood_media'),
     path('api/moods/<slug:slug>/stream/', views_runner.api_stream, name='api_mood_stream'),
     path('api/moods/<slug:slug>/quiet/', views_runner.api_quiet, name='api_mood_quiet'),

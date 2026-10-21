@@ -1017,6 +1017,38 @@ def api_voice_heard(request):
 
 
 @require_POST
+def api_my_look(request):
+    """{"art"?, "colour"?}: how your name is written on the Moods page -- at most 30 characters with every
+    letter of your name in it, in order -- and your icon's colour, #rrggbb. Empty puts either back. Your own,
+    from any device (services/settings.py: name_art, icon_colour)."""
+    from .services import settings as knobs
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    if not device.entity.is_biological_human:
+        return JsonResponse({'error': "a person's look: agents have their colours"}, status=403)
+    try:
+        body = json.loads(request.body)
+        assert isinstance(body, dict)
+    except (ValueError, AssertionError):
+        return JsonResponse({'error': 'expected {"art": ..., "colour": ...}'}, status=400)
+    name = device.entity_id
+    if body.get('art') and not knobs.art_fits(str(body['art']).strip(), name):
+        return JsonResponse({'error': f'at most {knobs.NAME_ART_MAX} characters, with every letter of "{name}" '
+                                      'in it, in order'}, status=400)
+    try:
+        for key, field in (('name_art', 'art'), ('icon_colour', 'colour')):
+            if field in body:
+                knobs.change(key, body[field], agent=device.entity, by=device.entity)
+    except knobs.Invalid as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse(knobs.looks().get(name, {'art': '', 'colour': ''}))
+
+
+@require_POST
 def api_speaker_voice(request):
     """{"name", "voice"}: the voice `name`'s messages are read in (a voice's id
     or name; empty to be given one again). Your own, from any device; anyone
