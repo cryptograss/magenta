@@ -28,7 +28,8 @@ COMPACTION_PREFIX = 'This session is being continued from a previous conversatio
 INTERRUPT_SOURCE = 'interrupt'
 # System rows shown as a line in the thread.
 NEW_MOOD_SOURCE = 'mood-new'
-EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff', 'merged', 'release-draft')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
+EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
+                 'merged', 'release-draft', 'tiding-comment')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).
 POSTED = ('mood-web', 'mood-attest')
@@ -539,6 +540,7 @@ _PERMALINK = re.compile(r'^https?://[^/\s]+/(?:messages/|moods/[\w-]+/#m-)([0-9a
 # '#general' (a Mood) or '#m-<id>' (a message, or the id's first 8). Not '&#x27;'
 # (an escaped quote), not 'C#', not a URL's fragment (those are linked already).
 _HASH = re.compile(r'(?<![\w&#/;=])#(m-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})'
+                   r'|t-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})'
                    r'|[a-z0-9][a-z0-9-]{0,79})(?![\w-])', re.I)
 
 
@@ -555,10 +557,29 @@ def _message_link(ref):
             f'“{html.escape(found["snippet"])}”</a>')
 
 
+def _tiding_link(ref):
+    """A '#t-<id or its first 8>' says a link on Tidings: shown as its title, a link to its discussion
+    (Justin, 21 Oct). None if it names no link."""
+    from django.db.models import TextField
+    from django.db.models.functions import Cast
+    from conversations.models import Tiding
+    ids = Tiding.objects.annotate(id_text=Cast('id', output_field=TextField()))
+    ids = ids.filter(id_text__startswith=ref.lower().replace('-', ''))  # the id, written without its dashes
+    found = list(ids[:2])
+    if len(found) != 1:
+        return None
+    tiding = found[0]
+    title = tiding.title or tiding.url
+    return (f'<a class="tidinglink" href="/moods/tidings/{tiding.id}/?embed=1" title="{html.escape(title)}">'
+            f'🔗 {html.escape(title[:80])}</a>')
+
+
 def _hash_link(match):
     ref = match.group(1)
     if ref[:2].lower() == 'm-' and re.fullmatch(r'm-[0-9a-f-]{8,36}', ref, re.I):
         return _message_link(ref[2:]) or match.group(0)
+    if ref[:2].lower() == 't-' and re.fullmatch(r't-[0-9a-f-]{8,36}', ref, re.I):
+        return _tiding_link(ref[2:]) or match.group(0)
     from .links import mood_names
     slug = mood_names().get(ref.lower())
     if not slug:

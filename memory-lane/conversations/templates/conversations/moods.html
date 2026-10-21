@@ -65,8 +65,12 @@
   #sectionFrames .loading { position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: center;
                             padding-top: 18vh; background: var(--bg); color: var(--muted); font-size: 15px; }
   #sectionFrames .loading[hidden] { display: none; }
-  #sectionFrames .loading .dot { animation: pulse 1.2s ease-in-out infinite; }
-  #sectionFrames .loading .dot:nth-child(2) { animation-delay: .2s; } #sectionFrames .loading .dot:nth-child(3) { animation-delay: .4s; }
+  #sectionFrames .loading .spin { display: block; margin: 8vh auto 0; width: 26px; height: 26px; border-radius: 50%;
+    border: 3px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  header .badge { font-size: 10.5px; line-height: 1; vertical-align: top; padding: 2px 5px; border-radius: 8px;
+    background: var(--accent); color: #fff; margin-left: 3px; }
+  header .badge.soft { background: var(--accent-soft); color: var(--accent); }
   #sectionFrames[hidden] { display: none; }
   #sectionFrames iframe { flex: 1; width: 100%; border: 0; background: var(--bg); }
   #sectionFrames iframe[hidden] { display: none; }
@@ -266,6 +270,9 @@
   #promotePick label .host { font-weight: 600; }
   #promotePick label .path { color: var(--muted); }
   #promotePick label.there { color: var(--muted); }
+  #promotePick input[type=text] { width: 100%; font: inherit; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel); color: var(--ink); padding: 6px 8px; margin-bottom: 10px; }
+  #promotePick .muted { font-size: 12.5px; color: var(--muted); }
   #promotePick .bar { margin-top: 12px; }
   #promotePick button { font: inherit; border: 0; border-radius: 6px; padding: 6px 16px; cursor: pointer; }
   #promotePick .go { background: var(--accent); color: #fff; }
@@ -1144,7 +1151,7 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings</a><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <span class="block" id="block" title="Ethereum mainnet's block height"></span>
@@ -1223,6 +1230,9 @@
   <form method="dialog">
     <p><b>Which of its links go on Tidings?</b></p>
     <div class="links"></div>
+    <p><b>What shall it be called?</b> <span class="muted">Leave empty for the page's own title.</span></p>
+    <input type="text" name="title" class="titled" maxlength="300" placeholder="its title" autocomplete="off">
+    <p class="muted">Tags, separated by commas. <input type="text" name="tags" class="tagbox" maxlength="200" placeholder="e.g. music, security" autocomplete="off"></p>
     <div class="bar"><button type="submit" value="promote" class="go" disabled>★ Promote</button> <button type="submit" value="cancel" class="cancel">Cancel</button></div>
   </form>
 </dialog>
@@ -2756,6 +2766,16 @@
       prev = null;
       return;
     }
+    if (e.type === 'tiding-comment') {  // said on Tidings, not here: a line, not the words (services/tiding_links._notice)
+      el.className = 'event tiding-comment';
+      const tid = esc(e.tiding || ''), msg = esc(e.message || ''), mood = encodeURIComponent(e.mood || current);
+      el.innerHTML = `💬 <b>${esc(shown(e.by || 'someone'))}</b> commented on <a href="/moods/tidings/${tid}/?embed=1">Tidings</a>`
+        + (msg ? ` · <a href="/moods/${mood}/#m-${msg}" title="the link was posted in this message">what was said</a>` : '')
+        + ` · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'access') {  // someone signed in, or an admin acted (services/access.py)
       el.className = 'event access';
       const who = `<b>${esc(shown(e.who || 'someone'))}</b>`, by = `<b>${esc(shown(e.by || 'an admin'))}</b>`;
@@ -4116,12 +4136,13 @@
     const titles = tidings.map(x => x.title).join(' · ');
     return `<a class="ontidings" href="/moods/tidings/#t-${esc(tidings[0].id)}" title="On Tidings: ${esc(titles)}">★ ${tidings.length > 1 ? tidings.length + ' on ' : ''}Tidings</a>`;
   }
-  // Its links onto Tidings, each titled as its page titles itself. One not yet there goes at once;
-  // with several, a box to tick for each, for whoever promotes to choose (Justin, 21 Oct).
+  // Its links onto Tidings: a box each time (Justin, 21 Oct), to tick which and say what they'll be
+  // called, and tag them. The title starts as the page's own, from its preview card.
   const promotePick = document.getElementById('promotePick');
-  function pickLinks(el) {
+  function pickLinks(el, messageId) {
     const there = new Set(el._tidings.map(x => x.url));
     const box = promotePick.querySelector('.links'), go = promotePick.querySelector('.go');
+    const title = promotePick.querySelector('.titled'), tags = promotePick.querySelector('.tagbox');
     box.innerHTML = el._links.map((u, i) => {
       let host = u, path = '';
       try { const p = new URL(u); host = p.hostname.replace(/^www\./, ''); path = (p.pathname + p.search).replace(/^\/$/, ''); } catch (e) {}
@@ -4129,21 +4150,38 @@
       return `<label class="${on ? 'there' : ''}"><input type="checkbox" value="${i}"${on ? ' checked disabled' : ''}>`
         + `<span><span class="host">${esc(host)}</span><span class="path">${esc(path)}</span>${on ? ' · on Tidings' : ''}</span></label>`;
     }).join('');
+    const open = [...box.querySelectorAll('input:not(:disabled)')].map(i => el._links[+i.value]);
     const ticked = () => [...box.querySelectorAll('input:checked:not(:disabled)')].map(i => el._links[+i.value]);
-    box.onchange = () => { go.disabled = !ticked().length; };
-    go.disabled = true;
+    box.onchange = () => { go.disabled = !ticked().length; const on = box.querySelector('input:checked:not(:disabled)'); if (on) fillTitle(el._links[+on.value]); };
+    go.disabled = !open.length;
+    title.value = ''; tags.value = '';
+    if (open.length === 1) {  // its only new link: ticked already, its title suggested
+      const only = box.querySelector(`input:not(:disabled)[value="${el._links.indexOf(open[0])}"]`);
+      if (only) { only.checked = true; fillTitle(open[0]); }
+    }
+    async function fillTitle(url) {
+      if (title.value) return;
+      try {
+        const r = await fetch(`/api/moods/${encodeURIComponent(current)}/unfurl/${encodeURIComponent(messageId)}/`);
+        const d = await r.json();
+        const card = (d.cards || []).find(c => c.url === url);
+        if (card && card.title && !title.value) title.value = card.title;
+      } catch (err) { /* the page's own title will do */ }
+    }
     return new Promise(resolve => {
-      promotePick.onclose = () => resolve(promotePick.returnValue === 'promote' ? ticked() : []);
+      promotePick.onclose = () => resolve(promotePick.returnValue === 'promote'
+        ? { urls: ticked(), title: title.value.trim() || null, tags: tags.value || null } : null);
       promotePick.returnValue = '';
       promotePick.showModal();
     });
   }
   async function promoteMessage(el, more) {
-    const open = el._links.filter(u => !el._tidings.some(x => x.url === u));
-    const urls = open.length === 1 ? open : await pickLinks(el);
+    const picked = await pickLinks(el, more.dataset.more);
+    if (!picked) return;
+    const { urls, title, tags } = picked;
     if (!urls.length) return;
     try {
-      const done = await changeMessage(more.dataset.more, 'promote', { urls });
+      const done = await changeMessage(more.dataset.more, 'promote', { urls, title, tags });
       el._tidings = [...el._tidings, ...done.tidings.filter(x => !el._tidings.some(y => y.id === x.id))];
       if (el._links.every(u => el._tidings.some(x => x.url === u))) delete more.dataset.promote;
       const who = el.querySelector('.who');
@@ -6541,37 +6579,45 @@
   const sectionFrames = document.getElementById('sectionFrames');
   const sectionStale = {};  // a section whose frame predates a change made here (a promotion): refetched on next show
   const sectionOf = path => SECTIONS.find(s => path.replace(/\/+$/, '') === '/moods/' + s) || null;
+  // A frame, made once: tidings is asked for in the background at the start, so it's ready when wanted
+  // (Justin, 21 Oct); the others load the first time they're shown. A plain spinner while one loads.
+  function frameFor(name, keepQuiet) {
+    let frame = sectionFrames.querySelector(`iframe[data-section="${name}"]`);
+    if (frame) return frame;
+    frame = document.createElement('iframe');
+    frame.dataset.section = name;
+    frame.title = name;
+    const loading = document.createElement('div');
+    loading.className = 'loading';
+    loading.dataset.section = name;
+    loading.setAttribute('role', 'status');
+    loading.innerHTML = '<span class="spin"></span>';
+    loading.hidden = true;
+    frame.addEventListener('load', function arrived() {
+      let there = false;
+      try { there = frame.contentWindow.location.pathname === `/moods/${name}/`; } catch (e) { there = true; }
+      if (!there) return;
+      loading.remove();
+      frame.removeEventListener('load', arrived);
+    });
+    frame.src = `/moods/${name}/?embed=1`;
+    frame.hidden = keepQuiet;
+    sectionFrames.append(frame, loading);
+    return frame;
+  }
   function showSection(name, push) {
     sectionNow = name;
     document.body.classList.toggle('in-section', name !== 'moods');
     sectionFrames.hidden = name === 'moods';
+    if (name === 'tidings') markTidingsSeen();  // the badges count from this visit on
     if (name !== 'moods') {
       if (sectionStale[name]) {  // what it shows changed while it was away: it draws itself fresh on arrival
         sectionFrames.querySelector(`iframe[data-section="${name}"]`)?.remove();
         sectionFrames.querySelectorAll(`.loading[data-section="${name}"]`).forEach(l => l.remove());
         delete sectionStale[name];
       }
-      let frame = sectionFrames.querySelector(`iframe[data-section="${name}"]`);
-      if (!frame) {
-        frame = document.createElement('iframe');
-        frame.dataset.section = name;
-        frame.title = name;
-        const loading = document.createElement('div');
-        loading.className = 'loading';
-        loading.dataset.section = name;
-        loading.setAttribute('role', 'status');
-        loading.innerHTML = `${esc(name)} on its way<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>`;
-        // Gone once the section itself is in -- not at the blank page a frame starts with, which loads first.
-        frame.addEventListener('load', function arrived() {
-          let there = false;
-          try { there = frame.contentWindow.location.pathname === `/moods/${name}/`; } catch (e) { there = true; }
-          if (!there) return;
-          loading.remove();
-          frame.removeEventListener('load', arrived);
-        });
-        frame.src = `/moods/${name}/?embed=1`;
-        sectionFrames.append(frame, loading);
-      }
+      const frame = frameFor(name);
+      frame.hidden = false;
       sectionFrames.querySelectorAll('iframe').forEach(f => { f.hidden = f !== frame; });
       sectionFrames.querySelectorAll('.loading').forEach(l => { l.hidden = l.dataset.section !== name; });
     }
@@ -6629,7 +6675,9 @@
 
   (async function start() {
     try { await loadMoods(); } catch (e) { setStatus('cannot reach memory-lane', 'stale'); return; }
+    frameFor('tidings', true);  // loaded in the background: ready the moment it's wanted
     loadTokens();  // not awaited: badges fill in when they come
+    fetchBadges();
     await pullSeen();  // where you've read up to, on every device, before anything is counted
     // A share opens where you last were (the Mood opened last in this browser), not at the top of the list.
     const lastOpened = sharing_ && store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived));
@@ -6641,8 +6689,29 @@
     if (sharing_) { history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/'); offerShare(); }
     const linked = location.hash.match(/^#m-([0-9a-f-]{36})$/);  // from a notification
     if (linked) await reveal(linked[1]);
-    setInterval(() => poll(false), POLL_MS);
+    setInterval(() => { poll(false); fetchBadges(); }, POLL_MS);
   })();
+
+  // The Tidings button's two badges: what's new since the viewer last opened Tidings (Justin, 21 Oct).
+  function tidingsSeenSince() { return store.get('tidingsSeen') || new Date(0).toISOString(); }
+  function markTidingsSeen() {
+    store.set('tidingsSeen', new Date().toISOString());
+    document.querySelectorAll('header [data-badge]').forEach(b => { b.hidden = true; });
+  }
+  async function fetchBadges() {
+    if (sectionNow === 'tidings') return;
+    try {
+      const r = await fetch('/api/tidings/badges/?since=' + encodeURIComponent(tidingsSeenSince()));
+      if (!r.ok) return;
+      const d = await r.json();
+      for (const key of ['tidings', 'comments']) {
+        const b = document.querySelector(`header [data-badge="${key}"]`);
+        if (!b) continue;
+        b.hidden = !d[key];
+        b.textContent = d[key];
+      }
+    } catch (e) { /* the badges wait for the next poll */ }
+  }
   // Installable as an app: the browser wants a service worker (it keeps nothing).
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/moods/sw.js', { scope: '/moods/' }).catch(() => {});
 })();

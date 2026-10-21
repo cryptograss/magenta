@@ -161,6 +161,19 @@ def api_prompts(request):
     return JsonResponse(tidings.prompts_state())
 
 
+@require_GET
+def api_tidings_badges(request):
+    """{"tidings", "comments"}: what's new on Tidings since ?since= (an ISO time) -- the nav button's two
+    badges (Justin, 21 Oct)."""
+    from datetime import datetime
+    from .services import tiding_links
+    try:
+        since = datetime.fromisoformat(request.GET.get('since', '').replace(' ', '+'))  # a '+' offset comes as a space
+    except ValueError:
+        return JsonResponse({'error': 'expected ?since= as an ISO time'}, status=400)
+    return JsonResponse(tiding_links.badges(since))
+
+
 @require_http_methods(['GET', 'POST'])
 def api_settings(request):
     if request.method == 'GET':

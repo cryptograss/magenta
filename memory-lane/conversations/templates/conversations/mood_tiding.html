@@ -34,6 +34,13 @@
   .thelink .host { font-size: 12.5px; color: var(--muted); margin-left: 6px; }
   .thelink .meta { margin-top: 2px; }
   .snippet { color: var(--muted); font-size: 13px; margin-top: 4px; max-width: 70ch; }
+  .tags { margin-top: 4px; }
+  .tags .chip { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); margin-right: 5px; }
+  button.mute { font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 12px; background: none; color: var(--muted); padding: 1px 8px; cursor: pointer; margin-left: 8px; }
+  button.mute:hover { color: var(--ink); }
+  .thelink .embed { margin-top: 8px; max-width: 560px; }
+  .thelink .embed iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #000; }
+  .thelink .embed video { width: 100%; max-height: 420px; border-radius: 8px; }
   /* What's been said: a tree, HN-style, each comment's score beside it (Justin, 21 Oct). */
   .comments { margin: 14px 0 0 0; }
   .comment { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
@@ -86,10 +93,32 @@
     const b = e.target.closest('button.replyto');
     if (!b) return;
     document.getElementById('replyTo').value = b.dataset.id;
+    if (b.dataset.kind) document.getElementById('replyKind').value = b.dataset.kind;
     const who = document.getElementById('replyToNote');
     who.textContent = b.dataset.who ? `replying to ${b.dataset.who}` : '';
     document.getElementById('say').focus();
   });
+  document.addEventListener('click', async e => {
+    const m = e.target.closest('button.mute');
+    if (!m || m.disabled) return;
+    m.disabled = true;
+    const muted = m.textContent.includes('muted');
+    try {
+      const r = await fetch(m.dataset.mute, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ mute: !muted })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      m.textContent = d.muted ? '🔇 muted in mood' : '🔊 in mood';
+    } catch (err) {
+      const note = document.createElement('span');
+      note.textContent = err.message; note.style.color = 'var(--err, #c0392b)';
+      m.closest('.meta')?.appendChild(note);
+    }
+    m.disabled = false;
+  });
+
   async function sayIt(form) {
     const button = form.querySelector('button'), err = form.querySelector('.err');
     err.textContent = '';
@@ -99,7 +128,7 @@
     try {
       const r = await fetch(form.action, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-        body: JSON.stringify({ text: text, reply_to: form.replyTo.value || null })
+        body: JSON.stringify({ text: text, reply_to: form.replyTo.value || null, reply_kind: form.replyKind.value || null })
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || r.status);
@@ -121,7 +150,10 @@
     <span class="body">
       <a class="title" href="{{ tiding.url }}" rel="noopener noreferrer" target="_blank">{{ tiding.title }}</a><span class="host">({{ tiding.host }})</span>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}
       <div class="meta muted">{% if tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
-        · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}</div>
+        · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
+        {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
+      {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
+      {% if tiding.embed %}<div class="embed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen></iframe>{% else %}<video src="{{ tiding.embed.src }}" controls preload="none"></video>{% endif %}</div>{% endif %}
       <div class="snippet">{{ tiding.snippet }}</div>
     </span>
   </div>
@@ -136,6 +168,7 @@
 
   <form class="say" action="/api/tidings/{{ tiding.id }}/comments/" method="post" onsubmit="sayIt(this); return false;">
     <input type="hidden" id="replyTo" name="reply_to" value="">
+    <input type="hidden" id="replyKind" name="reply_kind" value="">
     <textarea id="say" name="text" placeholder="Say something about this…"{% if not viewer %} disabled{% endif %}></textarea>
     <div class="bar">
       <button type="submit"{% if not viewer %} disabled{% endif %}>say it</button>
