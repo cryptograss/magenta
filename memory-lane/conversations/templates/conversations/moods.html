@@ -5308,6 +5308,7 @@
   const readPause = document.getElementById('readPause');
   const reader = new Audio();
   const READ_EVERY_MS = 5000;
+  const READ_TRIES = 3;  // asking for a message's clip, before it waits for ▶
   const READ_PAGE = 30;  // what /api/moods/recent/ gives at most (views_moods.RECENT_MAX)
   const MEMO_AUDIO = /^🎙 \[voice memo[^\]]*\]\((\/moods\/media\/[0-9a-f]{64}\.[a-z0-9]+)\)/;
   const readQueue = [], readHeard = new Set();
@@ -5542,8 +5543,23 @@
       }
       if (memo) clips.push(['memo', memo[1]]);
     } catch (err) {
-      showError('read aloud: ' + err.message);
-      if (readNow === now) { readNow = null; readNext(); }
+      // Asking for its clip failed -- a phone between networks on a bike, a server busy: never dropped
+      // as if it were heard (Justin, 20 Oct: a message that came while another was read was lost).
+      // Told to the server, tried again twice, then it waits for ▶ and says why, as a clip that won't play does.
+      if (readNow !== now) return;  // stopped meanwhile (read off, ⏩ from elsewhere)
+      readNow = null;
+      if (item.kind === 'thinking') { readNext(); return; }  // "X is thinking" is news only now
+      clipError = String(err && err.message || err).slice(0, 200);
+      readReport(item, 'ask', 'failed');
+      item.tries = (item.tries || 0) + 1;
+      readQueue.unshift(item);
+      if (item.tries < READ_TRIES) {
+        renderReadBar('🔊 trying that one again…');
+        setTimeout(readNext, 4000 * item.tries);
+        return;
+      }
+      readBlocked = true; readWhy = clipError;
+      keepAwake(false); renderReadBar();
       return;
     }
     for (const [clip, source, after] of clips.filter(([, src]) => src)) {
@@ -5636,7 +5652,7 @@
     }
   }
   readPause.addEventListener('click', () => {
-    if (readBlocked) { readBlocked = false; readWhy = ''; keepAwake(true); readNext(); return; }
+    if (readBlocked) { readBlocked = false; readWhy = ''; if (readQueue[0]) readQueue[0].tries = 0; keepAwake(true); readNext(); return; }
     holdRead(!readHeld);
   });
   document.getElementById('readSkip').addEventListener('click', skipClip);
