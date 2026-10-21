@@ -17,6 +17,6 @@ def add_blu(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
-    dependencies = [('conversations', '0030_message_cost_usd')]
+    dependencies = [('conversations', '0032_tiding_per_link')]
 
     operations = [migrations.RunPython(add_blu, migrations.RunPython.noop)]
