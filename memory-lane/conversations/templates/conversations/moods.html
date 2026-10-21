@@ -276,6 +276,46 @@
   header .block { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
+  /* A name written its person's way: monospace, its spaces kept, as a BBS would have it. */
+  .art { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; white-space: pre; font-size: .95em; }
+  /* Each character in one of ANSI's sixteen, CGA's order, as a BBS had them (settings.name_colours). */
+  .art .a0 { color: #000000; }
+  .art .a1 { color: #0000aa; }
+  .art .a2 { color: #00aa00; }
+  .art .a3 { color: #00aaaa; }
+  .art .a4 { color: #aa0000; }
+  .art .a5 { color: #aa00aa; }
+  .art .a6 { color: #aa5500; }
+  .art .a7 { color: #aaaaaa; }
+  .art .a8 { color: #555555; }
+  .art .a9 { color: #5555ff; }
+  .art .aa { color: #55ff55; }
+  .art .ab { color: #55ffff; }
+  .art .ac { color: #ff5555; }
+  .art .ad { color: #ff55ff; }
+  .art .ae { color: #ffff55; }
+  .art .af { color: #ffffff; }
+  #lookBox .paint { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0 4px; user-select: none; touch-action: none; }
+  #lookBox .paint span { min-width: 1.35em; height: 1.7em; display: inline-flex; align-items: center; justify-content: center;
+                         font: 16px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 3px;
+                         background: var(--code); cursor: crosshair; white-space: pre; }
+  #lookBox .swatches { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+  #lookBox .swatches button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
+  #lookBox .swatches button.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #lookBox .swatches .none { background: linear-gradient(135deg, transparent 45%, var(--muted) 45% 55%, transparent 55%), var(--panel); }
+  #lookBox { max-width: min(460px, 92vw); border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+             color: var(--ink); padding: 16px 18px; }
+  #lookBox::backdrop { background: rgba(0,0,0,.35); }
+  #lookBox p { margin: 0 0 10px; }
+  #lookBox label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+  #lookBox input[type=text] { width: 100%; font: 15px ui-monospace, Menlo, Consolas, monospace; padding: 6px 8px;
+                              border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  #lookBox .preview { margin: 12px 0 2px; font-size: 16px; font-weight: 700; color: var(--human); }
+  #lookBox .why { min-height: 1.3em; font-size: 12.5px; color: var(--err); }
+  #lookBox .bar { margin-top: 12px; display: flex; gap: 8px; }
+  #lookBox button { font: inherit; border: 0; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+  #lookBox .save { background: var(--accent); color: #fff; } #lookBox .save:disabled { opacity: .45; cursor: default; }
+  #lookBox .plain, #lookBox .cancel { background: none; color: var(--muted); }
   /* Drag the pane's edge to size it; the width is remembered in this browser. */
   #grip { width: 5px; margin-left: -3px; flex: none; cursor: col-resize; position: relative; z-index: 1; }
   #grip:hover, body.sizing #grip { background: var(--accent-soft); }
@@ -1061,6 +1101,7 @@
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
       <label class="readall" id="readSpeedLabel" hidden title="How fast anything is read aloud here: every voice, the narrator, and voice memos. Your browser's own playback speed, so it costs nothing and changes at once.">reading speed <select id="readSpeed"></select></label>
       <a href="#" id="voicesLink" hidden>voices</a>
+      <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
       <a class="settings" href="/moods/status/" title="Agents in every Mood, servers, backups, people, versions">status</a>
@@ -1117,6 +1158,21 @@
   <p><b>Agents can't be addressed from a PickiPedia sign-in.</b></p>
   <p>Take <span class="who"></span> out of your message and send it again. To wake an agent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
   <button type="button">OK</button>
+</dialog>
+<dialog id="lookBox">
+  <form method="dialog">
+    <p><b>Your name, your way</b></p>
+    <label for="lookArt">Written as (at most 30 characters, every letter of your name in it, in order)</label>
+    <input type="text" id="lookArt" maxlength="30" spellcheck="false" autocomplete="off">
+    <label>Colour each character: pick a colour, then click or drag across them</label>
+    <div class="swatches"></div>
+    <div class="paint"></div>
+    <label for="lookColour">Your icon's colour</label>
+    <input type="color" id="lookColour" value="#2a5d9f">
+    <div class="preview"></div>
+    <div class="why"></div>
+    <div class="bar"><button type="button" class="save">Save</button><button type="button" class="plain">Plain again</button><button type="submit" class="cancel">Cancel</button></div>
+  </form>
 </dialog>
 <form id="newBox" hidden>
   <input id="newTitle" maxlength="200" aria-label="Title" placeholder="What the new Mood is about">
@@ -1252,6 +1308,7 @@
   let baseTitle = 'magenta';
   let people = [];          // everyone who can be named, for @-completion
   let human = {};           // name -> is a person
+  let looks = {};           // name -> {art, colour}: a person's name written their way, and their icon's colour
   let act = null;           // what an agent is doing now, from /turns/: the one stop and Esc stop
   let acts = [];            // every agent at work here, longest at it first (mood_view.activities)
   let typingNow = [];       // who else is typing here, from /turns/
@@ -1262,7 +1319,19 @@
   };
   function icon(name, isHuman) {
     const h = isHuman === undefined ? !!human[name] : isHuman;
-    return h ? ICONS.human : ICONS.agent;
+    const colour = h && /^#[0-9a-f]{6}$/.test((looks[name] || {}).colour || '') ? looks[name].colour : '';
+    return !h ? ICONS.agent : colour ? ICONS.human.replace('<svg ', `<svg style="color: ${colour}" `) : ICONS.human;
+  }
+  // A name as its person writes it, old-school BBS (Justin, 21 Oct): at most 30 characters with every letter
+  // of their name in them, in order (settings.art_fits); else as it is.
+  function nameHtml(n) {
+    const { art, colours } = looks[n] || {};
+    return art ? `<span class="art" title="${esc(shown(n))}">${artHtml(art, colours)}</span>` : esc(shown(n));
+  }
+  // Each character in its colour: a code each (0-f, ANSI's sixteen; '.' or none for the page's own).
+  function artHtml(art, colours) {
+    const codes = colours || '';
+    return Array.from(art).map((ch, i) => /[0-9a-f]/.test(codes[i] || '') ? `<span class="a${codes[i]}">${esc(ch)}</span>` : esc(ch)).join('');
   }
 
   // Tokens beside a person's name (/api/tokens/, services/tokens.py): for now the Blue
@@ -1347,7 +1416,9 @@
   }
   function peopleLine(slug) {
     const { names, active } = aroundIn(slug);
-    return names.map(n => `<span class="nm${active.has(n) ? ' live' : ''}" data-who="${esc(n)}">${esc(shown(n))}</span>`).join(', ')
+    // At work, an agent pulses in its own colour (Justin, 21 Oct); a person, typing, as written their way.
+    return names.map(n => `<span class="nm${active.has(n) ? ' live' : ''}" data-who="${esc(n)}"`
+      + `${active.has(n) && human[n] === false ? ` style="color: ${agentColor(n)}"` : ''}>${nameHtml(n)}</span>`).join(', ')
       + watchingIn(slug);
   }
   // Who reads without signing in (services/watchers.py): 👁 and how many, on each
@@ -1572,7 +1643,7 @@
       <div class="meta">${block ? block + ' · ' : ''}${m.message_count} messages in the record ·
         <a href="/moods/${encodeURIComponent(m.slug)}/rules/" title="What magent is told here: this Mood's rules, its settings, what each wake says">rules</a></div>
       <div class="people" id="people">${m.participants.map(n =>
-        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${esc(shown(n))}${tokenBadges(n)}</span>`).join('')}</div>
+        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
   }
 
@@ -2218,7 +2289,7 @@
     const signed = t.attested ? `<button type="button" class="signed" title="Signed with ${esc(t.sender)}'s SSH key: click for the proof">✓ signed</button>` : '';
     const phone = t.mobile ? '<span class="from-phone" title="sent from a phone" aria-label="sent from a phone">📱</span>' : '';
     const page = userPage(t.sender);
-    const named = page ? `<a href="${esc(page)}" target="_blank" rel="noopener" title="${esc(shown(t.sender))} on PickiPedia">${esc(shown(t.sender))}</a>` : esc(shown(t.sender));
+    const named = page ? `<a href="${esc(page)}" target="_blank" rel="noopener" title="${esc(shown(t.sender))} on PickiPedia">${nameHtml(t.sender)}</a>` : nameHtml(t.sender);
     const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; @agents from here wake nobody">wiki</span>' : '';
     // ↩ for anyone signed in. A reply addresses a person, never an agent (only an @mention wakes one).
     const replyBtn = viewer && !t.deleted ? `<button type="button" class="replybtn" data-reply="${esc(t.id)}" title="Reply" aria-label="Reply">↩</button>` : '';
@@ -3204,7 +3275,7 @@
     const body = await r.json();
     moods = body.moods;
     people = body.people || [];
-    people.forEach(p => { human[p.name] = p.is_human; });
+    people.forEach(p => { human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
     renderMe();
     renderNav();
@@ -5760,6 +5831,7 @@
         + `or start and archive Moods, sign in with your SSH key (<code>magenta.sh login</code>).`;
     document.getElementById('signout').hidden = false;
     document.getElementById('devicesLink').hidden = false;
+    document.getElementById('lookLink').hidden = !human[viewer];
     document.getElementById('signout').addEventListener('click', async e => {
       e.preventDefault();
       await fetch('/api/auth/logout/', { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
@@ -5838,6 +5910,63 @@
       }).join('');
   }
   document.getElementById('devicesLink').addEventListener('click', e => { e.preventDefault(); showDevices(); });
+  // Your name written your way, and your icon's colour (/api/me/look/): previewed as you type.
+  const lookBox = document.getElementById('lookBox'), lookArt = document.getElementById('lookArt'),
+        lookColour = document.getElementById('lookColour');
+  const artFits = (art, name) => { let i = 0; for (const c of art.toLowerCase()) if (c === name[i]) i++; return i === name.length; };
+  // Painting: a brush (a code, '.' for none) laid on each character pressed or dragged across.
+  const ANSI = ['#000000', '#0000aa', '#00aa00', '#00aaaa', '#aa0000', '#aa00aa', '#aa5500', '#aaaaaa',
+                '#555555', '#5555ff', '#55ff55', '#55ffff', '#ff5555', '#ff55ff', '#ffff55', '#ffffff'];
+  let lookCodes = [], lookBrush = 'c', painting = false;
+  const swatches = lookBox.querySelector('.swatches'), paint = lookBox.querySelector('.paint');
+  swatches.innerHTML = '<button type="button" class="none" data-code="." title="the page\'s own colour"></button>'
+    + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${c}"></button>`).join('');
+  swatches.addEventListener('click', e => {
+    const b = e.target.closest('button[data-code]'); if (!b) return;
+    lookBrush = b.dataset.code;
+    swatches.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+  swatches.querySelector(`[data-code="${lookBrush}"]`).classList.add('on');
+  function drawPaint() {
+    const chars = Array.from(lookArt.value.trim());
+    lookCodes = chars.map((_, i) => lookCodes[i] || '.');
+    paint.innerHTML = chars.map((ch, i) => `<span data-i="${i}" class="art"><span${/[0-9a-f]/.test(lookCodes[i]) ? ` class="a${lookCodes[i]}"` : ''}>${esc(ch)}</span></span>`).join('');
+  }
+  const lay = el => { const cell = el && el.closest('#lookBox .paint [data-i]'); if (cell) { lookCodes[+cell.dataset.i] = lookBrush; drawPaint(); previewLook(true); } };
+  paint.addEventListener('pointerdown', e => { painting = true; lay(e.target); });
+  paint.addEventListener('pointermove', e => { if (painting) lay(document.elementFromPoint(e.clientX, e.clientY)); });
+  addEventListener('pointerup', () => { painting = false; });
+  function previewLook(painted) {
+    const art = lookArt.value.trim();
+    if (!painted) drawPaint();
+    const ok = !art || artFits(art, viewer.toLowerCase());
+    lookBox.querySelector('.preview').innerHTML = ICONS.human.replace('<svg ', `<svg style="color: ${lookColour.value}" `)
+      + (art ? `<span class="art">${artHtml(art, lookCodes.join(''))}</span>` : esc(shown(viewer)));
+    lookBox.querySelector('.why').textContent = ok ? '' : `every letter of "${viewer}" has to be in it, in order`;
+    lookBox.querySelector('.save').disabled = !ok;
+  }
+  lookArt.addEventListener('input', () => previewLook());
+  lookColour.addEventListener('input', () => previewLook());
+  async function saveLook(body) {
+    const r = await fetch('/api/me/look/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                              body: JSON.stringify(body) });
+    const done = await r.json().catch(() => ({}));
+    if (!r.ok) { lookBox.querySelector('.why').textContent = done.error || r.status; return; }
+    looks[viewer] = { art: done.art || '', colours: done.colours || '', colour: done.colour || '' };
+    lookBox.close();
+    location.reload();  // every name of yours drawn again, as you have it now
+  }
+  lookBox.querySelector('.save').addEventListener('click', () => saveLook({ art: lookArt.value.trim(), colours: lookCodes.join(''), colour: lookColour.value }));
+  lookBox.querySelector('.plain').addEventListener('click', () => saveLook({ art: '', colours: '', colour: '' }));
+  document.getElementById('lookLink').addEventListener('click', e => {
+    e.preventDefault();
+    const mine = looks[viewer] || {};
+    lookArt.value = mine.art || '';
+    lookCodes = Array.from(mine.colours || '');
+    lookColour.value = mine.colour || getComputedStyle(document.body).getPropertyValue('--human').trim() || '#2a5d9f';
+    previewLook();
+    lookBox.showModal();
+  });
   document.getElementById('devicesClose').addEventListener('click', () => { devicesBox.hidden = true; });
   devicesBox.addEventListener('click', async e => {
     const c = e.target.closest('.devid[data-copy]');

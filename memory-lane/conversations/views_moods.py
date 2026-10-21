@@ -107,8 +107,11 @@ def api_moods(request):
     payloads.sort(key=lambda p: p['last_at'] or started[p['slug']], reverse=True)
     payloads.sort(key=lambda p: not p['pinned'])  # pinned first, each part still newest first
     people = ThinkingEntity.objects.order_by('name')
+    look = knobs.looks()
     return JsonResponse({'moods': payloads, 'people': [
-        {'name': p.name, 'is_human': p.is_biological_human} for p in people]})
+        {'name': p.name, 'is_human': p.is_biological_human,
+         **(look[p.name] if p.is_biological_human and p.name in look else {})}
+        for p in people]})
 
 
 @require_GET
