@@ -5831,7 +5831,9 @@
         + `or start and archive Moods, sign in with your SSH key (<code>magenta.sh login</code>).`;
     document.getElementById('signout').hidden = false;
     document.getElementById('devicesLink').hidden = false;
-    document.getElementById('lookLink').hidden = !human[viewer];
+    // Not yet known to be a person when this runs (the people list may still be on its way): shown to
+    // anyone signed in but an agent (Justin, 21 Oct: it never appeared).
+    document.getElementById('lookLink').hidden = human[viewer] === false;
     document.getElementById('signout').addEventListener('click', async e => {
       e.preventDefault();
       await fetch('/api/auth/logout/', { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
