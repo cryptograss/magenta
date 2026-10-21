@@ -50,16 +50,25 @@ class TidingLinksTest(TestCase):
         tiding = Tiding.objects.get()
         self.assertEqual((tiding.url, tiding.title, tiding.by_id), ('https://thebluegrasssituation.com/fests/',
                                                                      'The Bluegrass Situation: a festival list', 'justin'))
-        self.assertEqual(self.promote(self.client_for(self.justin), said).json()['id'], str(tiding.id))  # once
-        # One per message: its other link isn't put up beside it (re, 20 Oct).
-        second = self.promote(self.client_for(self.skyler), said, url='https://example.org/b', title='Mine')
-        self.assertEqual((second.json()['id'], Tiding.objects.count()), (str(tiding.id), 1))
-        other = self.say(self.skyler, 'Two here: https://a.test/ and https://example.org/b')
-        chosen = self.promote(self.client_for(self.skyler), other, url='https://example.org/b', title='  Mine  ')
-        self.assertEqual((chosen.json()['url'], chosen.json()['title']), ('https://example.org/b', 'Mine'))
-        self.assertEqual(self.promote(self.client_for(self.skyler), said, url='https://elsewhere.test/').status_code, 200)
-        fresh = self.say(self.skyler, 'https://c.test/')
-        self.assertEqual(self.promote(self.client_for(self.skyler), fresh, url='https://elsewhere.test/').status_code, 400)
+        self.assertEqual(self.promote(self.client_for(self.justin), said).status_code, 200)  # each link once
+        self.assertEqual(Tiding.objects.count(), 1)
+        second = self.promote(self.client_for(self.skyler), said, url='https://example.org/b', title='  Mine  ')
+        self.assertEqual((second.status_code, second.json()['title'], Tiding.objects.count()), (201, 'Mine', 2))
+        self.assertEqual(self.promote(self.client_for(self.skyler), said, url='https://elsewhere.test/').status_code, 400)
+
+    def test_whoever_promotes_picks_which_of_its_links(self):
+        # Justin, 21 Oct: several links in a message, more than one of them news; the promoter chooses.
+        said = self.say(self.skyler, 'Three: https://a.test/one https://b.test/two https://c.test/three')
+        done = self.promote(self.client_for(self.justin), said, urls=['https://c.test/three', 'https://a.test/one'])
+        self.assertEqual(done.status_code, 201)
+        self.assertEqual([t['url'] for t in done.json()['tidings']], ['https://c.test/three', 'https://a.test/one'])
+        again = self.promote(self.client_for(self.skyler), said, urls=['https://a.test/one', 'https://b.test/two'])
+        self.assertEqual([t['new'] for t in again.json()['tidings']], [False, True])
+        self.assertEqual(Tiding.objects.filter(message=said).count(), 3)
+        turn = next(t for t in self.client.get('/api/moods/jams/turns/').json()['turns'] if t['id'] == str(said.id))
+        self.assertEqual([t['url'] for t in turn['tidings']], ['https://c.test/three', 'https://a.test/one', 'https://b.test/two'])
+        self.assertEqual(len(tiding_links.listed()), 3)
+        self.assertEqual(self.promote(self.client_for(self.justin), said, urls=['https://not.in/it']).status_code, 400)
 
     def test_only_a_message_with_a_link_and_only_signed_in(self):
         plain = self.say(self.justin, 'no link here, just `https://in.code/` and a picture ![image](/moods/media/'
@@ -98,7 +107,7 @@ class TidingLinksTest(TestCase):
         self.assertIn('The Bluegrass Situation: a festival list</a><span class="host">(example.org)</span>', page)
         self.assertIn('0 comments', page)
         turn = next(t for t in self.client.get('/api/moods/jams/turns/').json()['turns'] if t['id'] == str(said.id))
-        self.assertEqual((turn['links'], turn['tiding']['id']), (['https://www.example.org/fest'], tid))
+        self.assertEqual((turn['links'], [t['id'] for t in turn['tidings']]), (['https://www.example.org/fest'], [tid]))
 
     def test_a_deleted_message_leaves_tidings_and_comes_back_if_put_back(self):
         said = self.say(self.skyler, 'https://example.org/')

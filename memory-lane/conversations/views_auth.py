@@ -277,7 +277,8 @@ def api_message_edit(request, slug, message_id):
 
 @require_POST
 def api_message_promote(request, slug, message_id):
-    """{"url"?, "title"?}: put a message's link on Tidings (services/tiding_links.py). Anyone signed in."""
+    """{"urls": [...]}: put those of a message's links on Tidings, each once; or {"url"?, "title"?} for one
+    (its first, if no url). Anyone signed in (services/tiding_links.py)."""
     from .services import tiding_links
     from .views_admin import locked_response
     if locked_response():
@@ -294,13 +295,18 @@ def api_message_promote(request, slug, message_id):
         body = json.loads(request.body or b'{}')
     except ValueError:
         return JsonResponse({'error': 'expected {"url": ..., "title": ...}'}, status=400)
-    from .models import Tiding
-    there = Tiding.objects.filter(message=message).exists()  # one per message: then it's that one, as it is
+    urls = body.get('urls')
     try:
-        tiding = tiding_links.promote(message, device.entity, url=body.get('url') or None, title=body.get('title') or None)
+        if isinstance(urls, list) and urls:
+            done = tiding_links.promote_many(message, device.entity, [str(u) for u in urls[:20]])
+        else:
+            done = [tiding_links.promote(message, device.entity, url=body.get('url') or None,
+                                         title=body.get('title') or None, with_news=True)]
     except tiding_links.Refused as e:
         return JsonResponse({'error': str(e)}, status=e.status)
-    return JsonResponse({'id': str(tiding.id), 'url': tiding.url, 'title': tiding.title}, status=200 if there else 201)
+    tidings = [{'id': str(t.id), 'url': t.url, 'title': t.title, 'new': new} for t, new in done]
+    # One asked for, as before: its own fields at the top. 201 if anything went up, 200 if all already had.
+    return JsonResponse({**tidings[0], 'tidings': tidings}, status=201 if any(t['new'] for t in tidings) else 200)
 
 
 @require_POST
