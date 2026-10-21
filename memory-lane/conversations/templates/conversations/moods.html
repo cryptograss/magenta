@@ -316,6 +316,10 @@
                          font: 16px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 3px;
                          background: var(--code); cursor: crosshair; white-space: pre; }
   #lookBox .swatches { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+  #lookBox .ansiTable { border-collapse: collapse; font-size: 12.5px; margin: 6px 0 4px; }
+  #lookBox .ansiTable th { text-align: left; font-weight: 600; color: var(--muted); padding: 2px 8px 2px 0; }
+  #lookBox .ansiTable td { padding: 1px 10px 1px 0; }
+  #lookBox .ansiTable .sw { display: inline-block; width: 16px; height: 12px; border: 1px solid var(--line); vertical-align: middle; }
   #lookBox .swatches button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
   #lookBox .swatches button.on { outline: 2px solid var(--accent); outline-offset: 1px; }
   #lookBox .swatches .none { background: linear-gradient(135deg, transparent 45%, var(--muted) 45% 55%, transparent 55%), var(--panel); }
@@ -1183,10 +1187,12 @@
 </dialog>
 <dialog id="lookBox">
   <form method="dialog">
-    <p><b>Your name, your way</b></p>
-    <label for="lookArt">Written as (at most 30 characters, every letter of your name in it, in order)</label>
+    <p><b>How your name will be displayed</b></p>
+    <label for="lookArt">At most 30 characters, with every letter of <b class="artname"></b> in them, in order (any case)</label>
     <input type="text" id="lookArt" maxlength="30" spellcheck="false" autocomplete="off">
-    <label>Colour each character: pick a colour, then click or drag across them</label>
+    <label>Colour each character: pick a colour, then click or drag across them ·
+      <a href="#" class="ansiLink" aria-expanded="false">the sixteen colours</a></label>
+    <table class="ansiTable" hidden></table>
     <div class="swatches"></div>
     <div class="paint"></div>
     <label for="lookColour">Your icon's colour</label>
@@ -5947,14 +5953,32 @@
   // Your name written your way, and your icon's colour (/api/me/look/): previewed as you type.
   const lookBox = document.getElementById('lookBox'), lookArt = document.getElementById('lookArt'),
         lookColour = document.getElementById('lookColour');
-  const artFits = (art, name) => { let i = 0; for (const c of art.toLowerCase()) if (c === name[i]) i++; return i === name.length; };
+  // Every character of their PickiPedia name (shown) in order, any case, its spaces aside: as settings.art_fits.
+  const artFits = (art, name) => {
+    const want = Array.from(name.toLowerCase()).filter(c => !/\s/.test(c));
+    let i = 0; for (const c of art.toLowerCase()) if (c === want[i]) i++;
+    return i === want.length;
+  };
+  // The sixteen, as a BBS knew them: CGA's order, each with its code here and its ANSI escape number.
+  const ANSI_NAMES = ['black', 'blue', 'green', 'cyan', 'red', 'magenta', 'brown', 'light grey',
+                      'dark grey', 'light blue', 'light green', 'light cyan', 'light red', 'light magenta', 'yellow', 'white'];
+  const ANSI_SGR = [30, 34, 32, 36, 31, 35, 33, 37, 90, 94, 92, 96, 91, 95, 93, 97];
   // Painting: a brush (a code, '.' for none) laid on each character pressed or dragged across.
   const ANSI = ['#000000', '#0000aa', '#00aa00', '#00aaaa', '#aa0000', '#aa00aa', '#aa5500', '#aaaaaa',
                 '#555555', '#5555ff', '#55ff55', '#55ffff', '#ff5555', '#ff55ff', '#ffff55', '#ffffff'];
   let lookCodes = [], lookBrush = 'c', painting = false;
   const swatches = lookBox.querySelector('.swatches'), paint = lookBox.querySelector('.paint');
-  swatches.innerHTML = '<button type="button" class="none" data-code="." title="the page\'s own colour"></button>'
-    + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${c}"></button>`).join('');
+  swatches.innerHTML = '<button type="button" class="none" data-code="." title="none: the page\'s own colour"></button>'
+    + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${ANSI_NAMES[i]} · ${c}"></button>`).join('');
+  const ansiTable = lookBox.querySelector('.ansiTable'), ansiLink = lookBox.querySelector('.ansiLink');
+  ansiTable.innerHTML = '<tr><th></th><th>colour</th><th>code</th><th>ANSI</th><th>hex</th></tr>'
+    + ANSI.map((c, i) => `<tr><td><span class="sw" style="background: ${c}"></span></td><td>${ANSI_NAMES[i]}</td>`
+      + `<td><code>${'0123456789abcdef'[i]}</code></td><td><code>${ANSI_SGR[i]}</code></td><td><code>${c}</code></td></tr>`).join('');
+  ansiLink.addEventListener('click', e => {
+    e.preventDefault();
+    ansiTable.hidden = !ansiTable.hidden;
+    ansiLink.setAttribute('aria-expanded', String(!ansiTable.hidden));
+  });
   swatches.addEventListener('click', e => {
     const b = e.target.closest('button[data-code]'); if (!b) return;
     lookBrush = b.dataset.code;
@@ -5973,10 +5997,10 @@
   function previewLook(painted) {
     const art = lookArt.value.trim();
     if (!painted) drawPaint();
-    const ok = !art || artFits(art, viewer.toLowerCase());
+    const ok = !art || artFits(art, shown(viewer));
     lookBox.querySelector('.preview').innerHTML = ICONS.human.replace('<svg ', `<svg style="color: ${lookColour.value}" `)
       + (art ? `<span class="art">${artHtml(art, lookCodes.join(''))}</span>` : esc(shown(viewer)));
-    lookBox.querySelector('.why').textContent = ok ? '' : `every letter of "${viewer}" has to be in it, in order`;
+    lookBox.querySelector('.why').textContent = ok ? '' : `every letter of "${shown(viewer)}" has to be in it, in order`;
     lookBox.querySelector('.save').disabled = !ok;
   }
   lookArt.addEventListener('input', () => previewLook());
@@ -5995,7 +6019,9 @@
   document.getElementById('lookLink').addEventListener('click', e => {
     e.preventDefault();
     const mine = looks[viewer] || {};
-    lookArt.value = mine.art || '';
+    // Started from their PickiPedia name: every character already there, in order, to dress up.
+    lookArt.value = mine.art || shown(viewer);
+    lookBox.querySelector('.artname').textContent = shown(viewer);
     lookCodes = Array.from(mine.colours || '');
     lookColour.value = mine.colour || getComputedStyle(document.body).getPropertyValue('--human').trim() || '#2a5d9f';
     previewLook();

@@ -78,12 +78,19 @@ NAME_ART_MAX = 30
 
 
 def art_fits(art, name):
-    """Whether `art` writes `name`: every letter of it there, in order, any case; on one line of printable
+    """Whether `art` writes `name` -- their PickiPedia name, the one people know them by (Justin, 21 Oct) --
+    every character of it there, in order, any case (its spaces aside); on one line of printable
     characters, at most NAME_ART_MAX."""
     if not art or len(art) > NAME_ART_MAX or not art.isprintable():
         return False
-    letters = iter(art.lower())
-    return all(any(c == ch for c in letters) for ch in name.lower())
+    letters = iter(art.casefold())
+    return all(any(c == ch for c in letters) for ch in name.casefold() if not ch.isspace())
+
+
+def art_name(person):
+    """The name a person's art has to write: their PickiPedia name, else their name here."""
+    from .wiki_auth import names
+    return names().get(person) or person
 # A Mood's own state, not how an agent carries itself there: set for the
 # Mood alone (no agent), from the Mood's page, and kept apart from the knobs.
 MOOD_KEYS = {
