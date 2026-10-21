@@ -1054,12 +1054,12 @@ def api_my_look(request):
         return JsonResponse({'error': f'at most {knobs.NAME_ART_MAX} characters, with every letter of "{writes}" '
                                       'in it, in order'}, status=400)
     try:
-        for key, field in (('name_art', 'art'), ('name_colours', 'colours'), ('icon_colour', 'colour')):
+        for key, field in (('name_art', 'art'), ('name_colours', 'colours'), ('name_backs', 'backs'), ('icon_colour', 'colour')):
             if field in body:
                 knobs.change(key, body[field], agent=device.entity, by=device.entity)
     except knobs.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
-    return JsonResponse(knobs.looks().get(name, {'art': '', 'colours': '', 'colour': ''}))
+    return JsonResponse(knobs.looks().get(name, {'art': '', 'colours': '', 'backs': '', 'colour': ''}))
 
 
 @require_POST

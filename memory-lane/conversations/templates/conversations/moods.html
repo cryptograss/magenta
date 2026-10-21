@@ -325,14 +325,36 @@
   .art .ad { color: #ff55ff; }
   .art .ae { color: #ffff55; }
   .art .af { color: #ffffff; }
+  /* And behind each, as a BBS's cell had its background (iCE colour: all sixteen). */
+  .art .b0 { background: #000000; }
+  .art .b1 { background: #0000aa; }
+  .art .b2 { background: #00aa00; }
+  .art .b3 { background: #00aaaa; }
+  .art .b4 { background: #aa0000; }
+  .art .b5 { background: #aa00aa; }
+  .art .b6 { background: #aa5500; }
+  .art .b7 { background: #aaaaaa; }
+  .art .b8 { background: #555555; }
+  .art .b9 { background: #5555ff; }
+  .art .ba { background: #55ff55; }
+  .art .bb { background: #55ffff; }
+  .art .bc { background: #ff5555; }
+  .art .bd { background: #ff55ff; }
+  .art .be { background: #ffff55; }
+  .art .bf { background: #ffffff; }
   #lookBox .paint { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0 4px; user-select: none; touch-action: none; }
-  #lookBox .paint span { min-width: 1.35em; height: 1.7em; display: inline-flex; align-items: center; justify-content: center;
+  #lookBox .paint > span { min-width: 1.35em; height: 1.7em; display: inline-flex; align-items: center; justify-content: center;
                          font: 16px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 3px;
                          background: var(--code); cursor: crosshair; white-space: pre; }
   #lookBox .swatches { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
-  #lookBox .charsLink { display: inline-block; margin: 6px 0 2px; font-size: 13px; color: var(--accent); }
+  #lookBox .charsLink { display: inline-block; margin: 8px 0 2px; font: inherit; font-size: 13px; color: var(--accent);
+                        background: none; border: 1px solid var(--line); border-radius: 12px; padding: 2px 10px; cursor: pointer; }
+  #lookBox .layer { font-size: 13px; color: var(--muted); display: flex; gap: 12px; align-items: center; margin: 2px 0; }
+  #lookBox .layer label { display: inline-flex; gap: 4px; margin: 0; color: var(--ink); }
   #lookBox .charsChart { display: grid; grid-template-columns: repeat(16, 1fr); gap: 1px; margin: 4px 0 6px;
                          background: var(--line); border: 1px solid var(--line); }
+  #lookBox .paint > span > span { padding: 0 .12em; }  /* its background, as it'll be drawn, around the character */
+  #lookBox .charsChart[hidden] { display: none; }  /* its display: grid otherwise outranks [hidden]: it never closed */
   #lookBox .charsChart > * { height: 1.75em; display: flex; align-items: center; justify-content: center; background: var(--panel); }
   #lookBox .charsChart button { border: 0; padding: 0; cursor: pointer; color: var(--ink);
                                 font: 15px ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace; }
@@ -1208,9 +1230,12 @@
     <p><b>How your name will be displayed</b></p>
     <label for="lookArt">At most 30 characters, with every letter of <b class="artname"></b> in them, in order (any case)</label>
     <input type="text" id="lookArt" maxlength="30" spellcheck="false" autocomplete="off">
-    <a href="#" class="charsLink" aria-expanded="false">the characters</a>
+    <button type="button" class="charsLink" aria-expanded="false">▸ the characters</button>
     <div class="charsChart" hidden role="grid" aria-label="The characters: press one to put it in your name"></div>
     <label>Colour each character: pick a colour, then click or drag across them</label>
+    <div class="layer" role="radiogroup" aria-label="What a colour paints">painting
+      <label><input type="radio" name="lookLayer" value="fg" checked> letters</label>
+      <label><input type="radio" name="lookLayer" value="bg"> backgrounds</label></div>
     <div class="swatches"></div>
     <div class="paint"></div>
     <label for="lookColour">Your icon's colour</label>
@@ -1375,13 +1400,17 @@
   // A name as its person writes it, old-school BBS (Justin, 21 Oct): at most 30 characters with every letter
   // of their name in them, in order (settings.art_fits); else as it is.
   function nameHtml(n) {
-    const { art, colours } = looks[n] || {};
-    return art ? `<span class="art" title="${esc(shown(n))}">${artHtml(art, colours)}</span>` : esc(shown(n));
+    const { art, colours, backs } = looks[n] || {};
+    return art ? `<span class="art" title="${esc(shown(n))}">${artHtml(art, colours, backs)}</span>` : esc(shown(n));
   }
-  // Each character in its colour: a code each (0-f, ANSI's sixteen; '.' or none for the page's own).
-  function artHtml(art, colours) {
-    const codes = colours || '';
-    return Array.from(art).map((ch, i) => /[0-9a-f]/.test(codes[i] || '') ? `<span class="a${codes[i]}">${esc(ch)}</span>` : esc(ch)).join('');
+  // Each character in its colours: a code each for its letter and its background (0-f, ANSI's sixteen;
+  // '.' or none for the page's own).
+  function artHtml(art, colours, backs) {
+    const fg = colours || '', bg = backs || '', ok = c => /[0-9a-f]/.test(c || '');
+    return Array.from(art).map((ch, i) => {
+      const cls = [ok(fg[i]) ? 'a' + fg[i] : '', ok(bg[i]) ? 'b' + bg[i] : ''].filter(Boolean).join(' ');
+      return cls ? `<span class="${cls}">${esc(ch)}</span>` : esc(ch);
+    }).join('');
   }
 
   // Tokens beside a person's name (/api/tokens/, services/tokens.py): for now the Blue
@@ -3335,7 +3364,7 @@
     const body = await r.json();
     moods = body.moods;
     people = body.people || [];
-    people.forEach(p => { human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', colour: p.colour || '' }; });
+    people.forEach(p => { human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
     renderMe();
     renderNav();
@@ -5990,7 +6019,8 @@
   // Painting: a brush (a code, '.' for none) laid on each character pressed or dragged across.
   const ANSI = ['#000000', '#0000aa', '#00aa00', '#00aaaa', '#aa0000', '#aa00aa', '#aa5500', '#aaaaaa',
                 '#555555', '#5555ff', '#55ff55', '#55ffff', '#ff5555', '#ff55ff', '#ffff55', '#ffffff'];
-  let lookCodes = [], lookBrush = 'c', painting = false;
+  let lookCodes = [], lookBacks = [], lookBrush = 'c', painting = false;
+  const layerNow = () => lookBox.querySelector('input[name=lookLayer]:checked').value;  // letters (fg) or backgrounds (bg)
   const swatches = lookBox.querySelector('.swatches'), paint = lookBox.querySelector('.paint');
   swatches.innerHTML = '<button type="button" class="none" data-code="." title="none: the page\'s own colour"></button>'
     + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${ANSI_NAMES[i]} · ${c}"></button>`).join('');
@@ -5999,10 +6029,10 @@
   chars.innerHTML = Array.from(CP437).map((ch, i) => i === 0 || i === 255 || ch === ' '
     ? `<span class="blank"${ch === ' ' ? ' title="a space"' : ''}></span>`
     : `<button type="button" data-ch="${esc(ch)}" title="${i} · U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}">${esc(ch)}</button>`).join('');
-  charsLink.addEventListener('click', e => {
-    e.preventDefault();
+  charsLink.addEventListener('click', () => {
     chars.hidden = !chars.hidden;
     charsLink.setAttribute('aria-expanded', String(!chars.hidden));
+    charsLink.textContent = chars.hidden ? '▸ the characters' : '▾ hide the characters';
   });
   chars.addEventListener('click', e => {
     const b = e.target.closest('button[data-ch]'); if (!b) return;
@@ -6023,10 +6053,19 @@
   function drawPaint() {
     const chars = Array.from(lookArt.value.trim());
     lookCodes = chars.map((_, i) => lookCodes[i] || '.');
-    paint.innerHTML = chars.map((ch, i) => `<span data-i="${i}" class="art"><span${/[0-9a-f]/.test(lookCodes[i]) ? ` class="a${lookCodes[i]}"` : ''}>${esc(ch)}</span></span>`).join('');
+    lookBacks = chars.map((_, i) => lookBacks[i] || '.');
+    paint.innerHTML = chars.map((ch, i) => `<span data-i="${i}" class="art">${artHtml(ch, lookCodes[i], lookBacks[i]).replace(/^(?!<span)(.*)$/, '<span>$1</span>')}</span>`).join('');
   }
-  const lay = el => { const cell = el && el.closest('#lookBox .paint [data-i]'); if (cell) { lookCodes[+cell.dataset.i] = lookBrush; drawPaint(); previewLook(true); } };
-  paint.addEventListener('pointerdown', e => { painting = true; lay(e.target); });
+  // Every character from where the pointer was to where it is: a quick drag misses none between.
+  let laidLast = null;
+  const lay = el => {
+    const cell = el && el.closest('#lookBox .paint [data-i]'); if (!cell) return;
+    const at = +cell.dataset.i, from = laidLast === null ? at : laidLast, codes = layerNow() === 'bg' ? lookBacks : lookCodes;
+    for (let i = Math.min(from, at); i <= Math.max(from, at); i++) codes[i] = lookBrush;
+    laidLast = at;
+    drawPaint(); previewLook(true);
+  };
+  paint.addEventListener('pointerdown', e => { painting = true; laidLast = null; lay(e.target); });
   paint.addEventListener('pointermove', e => { if (painting) lay(document.elementFromPoint(e.clientX, e.clientY)); });
   addEventListener('pointerup', () => { painting = false; });
   function previewLook(painted) {
@@ -6034,7 +6073,7 @@
     if (!painted) drawPaint();
     const ok = !art || artFits(art, shown(viewer));
     lookBox.querySelector('.preview').innerHTML = ICONS.human.replace('<svg ', `<svg style="color: ${lookColour.value}" `)
-      + (art ? `<span class="art">${artHtml(art, lookCodes.join(''))}</span>` : esc(shown(viewer)));
+      + (art ? `<span class="art">${artHtml(art, lookCodes.join(''), lookBacks.join(''))}</span>` : esc(shown(viewer)));
     lookBox.querySelector('.why').textContent = ok ? '' : `every letter of "${shown(viewer)}" has to be in it, in order`;
     lookBox.querySelector('.save').disabled = !ok;
   }
@@ -6045,12 +6084,12 @@
                                               body: JSON.stringify(body) });
     const done = await r.json().catch(() => ({}));
     if (!r.ok) { lookBox.querySelector('.why').textContent = done.error || r.status; return; }
-    looks[viewer] = { art: done.art || '', colours: done.colours || '', colour: done.colour || '' };
+    looks[viewer] = { art: done.art || '', colours: done.colours || '', backs: done.backs || '', colour: done.colour || '' };
     lookBox.close();
     location.reload();  // every name of yours drawn again, as you have it now
   }
-  lookBox.querySelector('.save').addEventListener('click', () => saveLook({ art: lookArt.value.trim(), colours: lookCodes.join(''), colour: lookColour.value }));
-  lookBox.querySelector('.plain').addEventListener('click', () => saveLook({ art: '', colours: '', colour: '' }));
+  lookBox.querySelector('.save').addEventListener('click', () => saveLook({ art: lookArt.value.trim(), colours: lookCodes.join(''), backs: lookBacks.join(''), colour: lookColour.value }));
+  lookBox.querySelector('.plain').addEventListener('click', () => saveLook({ art: '', colours: '', backs: '', colour: '' }));
   document.getElementById('lookLink').addEventListener('click', e => {
     e.preventDefault();
     const mine = looks[viewer] || {};
@@ -6058,6 +6097,7 @@
     lookArt.value = mine.art || shown(viewer);
     lookBox.querySelector('.artname').textContent = shown(viewer);
     lookCodes = Array.from(mine.colours || '');
+    lookBacks = Array.from(mine.backs || '');
     lookColour.value = mine.colour || getComputedStyle(document.body).getPropertyValue('--human').trim() || '#2a5d9f';
     previewLook();
     lookBox.showModal();

@@ -41,7 +41,7 @@ class LookTest(TestCase):
 
     def test_set_from_any_device_and_shown_with_the_people(self):
         done = self.look(self.client_for(self.justin, tier='wiki'), art='░▒▓ JuStIn ▓▒░', colour='#FF3C00')
-        self.assertEqual(done.json(), {'art': '░▒▓ JuStIn ▓▒░', 'colours': '', 'colour': '#ff3c00'})
+        self.assertEqual(done.json(), {'art': '░▒▓ JuStIn ▓▒░', 'colours': '', 'backs': '', 'colour': '#ff3c00'})
         people = {p['name']: p for p in self.client.get('/api/moods/').json()['people']}
         self.assertEqual((people['justin']['art'], people['justin']['colour']), ('░▒▓ JuStIn ▓▒░', '#ff3c00'))
         self.assertNotIn('art', people['magent'])
@@ -56,7 +56,7 @@ class LookTest(TestCase):
     def test_plain_again_and_never_an_agents_or_a_strangers(self):
         client = self.client_for(self.justin)
         self.look(client, art='j-u-s-t-i-n', colour='#00ff00')
-        self.assertEqual(self.look(client, art='', colour='').json(), {'art': '', 'colours': '', 'colour': ''})
+        self.assertEqual(self.look(client, art='', colour='').json(), {'art': '', 'colours': '', 'backs': '', 'colour': ''})
         self.assertNotIn('art', next(p for p in self.client.get('/api/moods/').json()['people'] if p['name'] == 'justin'))
         self.assertEqual(self.look(self.client_for(self.magent), art='m-a-g-e-n-t').status_code, 403)
         self.assertEqual(self.look(Client(), art='justin').status_code, 401)
@@ -70,6 +70,15 @@ class LookTest(TestCase):
         self.assertEqual(people['justin']['colours'], '999.cccccc.999')
         self.look(client, art='justin')  # shorter art: the colours go only as far as it does
         self.assertEqual(self.look(client).json()['colours'], '999.cc')
+
+    def test_a_background_for_each_character_too(self):
+        # Justin, 21 Oct: "the BBSs I remember... had more colors" -- each cell had its background (iCE colour).
+        client = self.client_for(self.justin)
+        done = self.look(client, art='[justin]', colours='.eeeeee.', backs='11111111..').json()
+        self.assertEqual((done['colours'], done['backs']), ('.eeeeee', '11111111'))
+        people = {p['name']: p for p in self.client.get('/api/moods/').json()['people']}
+        self.assertEqual(people['justin']['backs'], '11111111')
+        self.assertEqual(self.look(client, backs='1g').status_code, 400)
 
     def test_only_ansi_codes(self):
         client = self.client_for(self.justin)
