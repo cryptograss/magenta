@@ -515,7 +515,7 @@ class ClaudeCodeWaker:
             return None
 
     def command(self, session_id, new_session_id, prompt, grant=(), budget=None, effort=None, model=None,
-                full=False, ultracode=False):
+                full=False, ultracode=False, system=None):
         # No session to resume (a new Mood's first turn): start one.
         resume = ['--resume', session_id, '--fork-session'] if session_id else []
         cmd = [self.claude, '-p', *resume,
@@ -546,10 +546,12 @@ class ClaudeCodeWaker:
             # session setting, not an effort level. Only with full tools --
             # a look-only turn couldn't run a workflow anyway.
             cmd += ['--settings', json.dumps({'ultracode': True})]
+        if system:  # its rules (MoodPoller.rules_for): after Claude Code's own, never in the history
+            cmd += ['--append-system-prompt', system]
         return cmd + ['--', prompt]
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, grant=(), budget=None, effort=None,
-             model=None, full=False, stop=None, ultracode=False):
+             model=None, full=False, stop=None, ultracode=False, system=None):
         """Run one turn; (new session id, its reply). `on_event` sees every
         stream event as it comes out; `stop()`, if given, is asked now and
         then whether to end the turn. self.last_result keeps the run's
@@ -564,7 +566,7 @@ class ClaudeCodeWaker:
             spent_before = self.session_cost(session_id)
         new_session_id = new_session_id or str(uuid.uuid4())
         cmd = self.command(session_id, new_session_id, prompt, grant=grant, budget=budget, effort=effort, model=model,
-                           full=full, ultracode=ultracode)
+                           full=full, ultracode=ultracode, system=system)
         # Its own process group, so ending it ends everything it started: a
         # child left holding the output pipe would keep the turn open.
         proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -1093,8 +1095,11 @@ class MoodPoller:
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
                  letter=None, agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
-                 end_orphans=end_orphans, texts=None):
+                 end_orphans=end_orphans, texts=None, rules_bundle=False):
         self.api = api
+        # Its rules, gathered for each turn and given as system prompt (poller/rules_bundle.py): for an agent
+        # that has them on PickiPedia (blu first), never for one whose rules live elsewhere yet.
+        self.rules_bundle = rules_bundle
         # The dials' texts, from PickiPedia (poller/wiki_rules.WikiTexts); None: this file's own.
         self.texts = texts
         self.waker = waker
@@ -1627,9 +1632,27 @@ class MoodPoller:
         outcome, self.last_reply, _ = self.run_turn_for(slug, session_id, prompt, **options)
         return outcome
 
+    def rules_for(self, slug):
+        """This agent's rules for `slug`, as its harness takes them (--append-system-prompt): gathered
+        fresh for each turn, so a page saved on PickiPedia holds from the next one. If they can't be
+        gathered at all, the recovery rules beside this file -- never a turn with none."""
+        try:
+            try:
+                from poller.rules_bundle import bundle
+            except ImportError:
+                from rules_bundle import bundle
+            return bundle(self.agent, slug).text
+        except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery rules stand
+            logger.error(f'{slug}: rules not gathered ({e}); the recovery rules stand in')
+            recovery = Path(__file__).with_name('recovery_rules.md')
+            text = recovery.read_text() if recovery.exists() else 'Your rules could not be gathered.'
+            return f'<rules agent="{self.agent}" mood="{slug}">\n<recovery>\n{text}\n</recovery>\n</rules>'
+
     def run_turn_for(self, slug, session_id, prompt, **options):
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
         new_session = options.pop('new_session', None) or str(uuid.uuid4())
+        if self.rules_bundle:
+            options['system'] = self.rules_for(slug)
         if hasattr(self.waker, 'harness_for'):  # two harnesses: settled here, so the poster suits it
             options['harness'] = options.get('harness') or self.waker.harness_for(options.get('model'))
         poster = None
@@ -2254,6 +2277,8 @@ def main(argv=None):
                              "(its home went with its container), so a mention starts it over from the record")
     parser.add_argument('--letter', default=None,
                         help="The letter a new Mood's first session reads (default: poller/letter.md, for magent only)")
+    parser.add_argument('--rules-bundle', action='store_true',
+                        help="Give each turn the agent's rules from PickiPedia as system prompt (poller/rules_bundle.py)")
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--dry-run', action='store_true', help='Log what would be woken; change nothing')
     args = parser.parse_args(argv)
@@ -2315,7 +2340,8 @@ def main(argv=None):
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
                           letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour,
                           only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
-                          texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')))
+                          texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')),
+                          rules_bundle=args.rules_bundle)
     report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on

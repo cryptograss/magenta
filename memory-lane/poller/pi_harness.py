@@ -419,7 +419,7 @@ class PiWaker:
         threading.Thread(target=watch, daemon=True).start()
         return done
 
-    def command(self, session_id, new_session_id, prompt, model=None, effort=None, full=False):
+    def command(self, session_id, new_session_id, prompt, model=None, effort=None, full=False, system=None):
         cmd = [self.pi, '--mode', 'json', '--session-dir', str(self.session_dir), '--session-id', new_session_id]
         if session_id:
             cmd += ['--fork', session_id]
@@ -430,10 +430,12 @@ class PiWaker:
             cmd += ['--thinking', EFFORTS.get(effort, effort)]
         if not full:
             cmd += ['--tools', LOOK_ONLY_TOOLS]  # reading only; MCP tools stay
+        if system:  # its rules (mood_poller.MoodPoller.rules_for): after Pi's own, never in the session
+            cmd += ['--append-system-prompt', system]
         return cmd + [prompt]
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, model=None, effort=None, full=False,
-             stop=None, **ignored):
+             stop=None, system=None, **ignored):
         """Run one turn; (new session id, its reply). '/compact <what to keep>' compacts instead."""
         keep = COMPACT.match(prompt or '')
         if keep and session_id:
@@ -448,7 +450,7 @@ class PiWaker:
         new_session_id = new_session_id or str(uuid.uuid4())
         self.session_dir.mkdir(parents=True, exist_ok=True)
         translator = PiTranslator(new_session_id, effort=effort)
-        cmd = self.command(session_id, new_session_id, prompt, model=model, effort=effort, full=full)
+        cmd = self.command(session_id, new_session_id, prompt, model=model, effort=effort, full=full, system=system)
         proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, start_new_session=True)
         done = self._watch(proc, stop)
