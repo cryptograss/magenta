@@ -1,11 +1,12 @@
-<div class="comment" id="c-{{ comment.id }}">
-  <span class="rank"><button type="button" class="vote{% if comment.mine %} mine{% endif %}" data-vote="/api/tidings/{{ tiding.id }}/comments/{{ comment.id }}/vote/"
-          title="{% if comment.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
+<div class="comment {{ comment.kind }}" id="c-{{ comment.id }}">
+  <span class="rank"><button type="button" class="vote{% if comment.mine %} mine{% endif %}"
+      data-vote="{% if comment.kind == 'comment' %}/api/tidings/{{ tiding.id }}/comment/{{ comment.id }}/vote/{% else %}/api/tidings/{{ tiding.id }}/comments/{{ comment.id }}/vote/{% endif %}"
+      title="{% if comment.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
     <span class="score">{{ comment.score }}</span></span>
   <span class="said">
-    <span class="who"><b>{{ comment.sender|default:"someone" }}</b> · {{ comment.at|date:"M j, g:i A" }} ·
-      <a href="/moods/{{ comment.mood }}/#m-{{ comment.id }}" title="as said, in #{{ comment.mood }}">in #{{ comment.mood }}</a>
-      {% if viewer %}<button type="button" class="replyto" data-id="{{ comment.id }}" data-who="{{ comment.sender }}">reply</button>{% endif %}</span>
+    <span class="who"><b>{{ comment.sender|default:"someone" }}</b> · {{ comment.at|date:"M j, g:i A" }}
+      {% if comment.kind == 'mood' %} · <a href="/moods/{{ comment.mood }}/#m-{{ comment.id }}" title="as said, in #{{ comment.mood }}">in #{{ comment.mood }}</a>{% else %} · <span title="said on Tidings">on tidings</span>{% endif %}
+      {% if viewer %}<button type="button" class="replyto" data-id="{{ comment.id }}" data-kind="{{ comment.kind }}" data-who="{{ comment.sender }}">reply</button>{% endif %}</span>
     <div class="words">{{ comment.html|safe }}</div>
     {% if comment.replies %}<div class="replies">
       {% for reply in comment.replies %}{% include "conversations/mood_tiding_comment.html" with comment=reply %}{% endfor %}

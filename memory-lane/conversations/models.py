@@ -1506,13 +1506,17 @@ class Tiding(models.Model):
 
     The message stays where it was said; this says that its link is news, under what title (the page's
     own, as its preview card reads it, until someone says otherwise), and who thought so. What's said
-    about it is the message's replies, in its Mood (services/tiding_links.py).
+    about it is its message's replies in the Mood, and the comments said on Tidings itself
+    (TidingComment) -- the one discussion (services/tiding_links.py). Its tags are whoever promoted it's
+    words; muted_in_mood quiets even the "new comment by" line a comment would leave there.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     message = models.ForeignKey(Message, models.CASCADE, related_name='tidings')
     url = models.URLField(max_length=2000)
     title = models.CharField(max_length=300, blank=True)
+    tags = models.JSONField(default=list, blank=True)
+    muted_in_mood = models.BooleanField(default=False)
     by = models.ForeignKey(ThinkingEntity, models.SET_NULL, null=True, blank=True, related_name='tidings')
     at = models.DateTimeField(auto_now_add=True)
 
@@ -1524,15 +1528,37 @@ class Tiding(models.Model):
         constraints = [models.UniqueConstraint(fields=['message', 'url'], name='one_tiding_per_link')]
 
 
+class TidingComment(models.Model):
+    """Something said about a link on Tidings itself, not in its Mood (Justin, 21 Oct: "most people will
+    choose to interact in the tidings interface"). A full comment no longer goes into the Mood as a
+    reply; a short "new comment by …" line does, unless the link is muted. A comment may answer the
+    link's message, one of the Mood's replies to it, or another comment here.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tiding = models.ForeignKey(Tiding, models.CASCADE, related_name='comments')
+    by = models.ForeignKey(ThinkingEntity, models.SET_NULL, null=True, blank=True, related_name='tiding_comments')
+    parent = models.ForeignKey('self', models.CASCADE, null=True, blank=True, related_name='replies')
+    parent_message = models.ForeignKey(Message, models.CASCADE, null=True, blank=True, related_name='tiding_comments')
+    text = models.TextField()
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'tiding_comments'
+        ordering = ['at']
+
+
 class TidingVote(models.Model):
     """One person's upvote of a link on Tidings, or of one comment in its discussion (Justin, 21 Oct:
-    "upvote, too. More like HN"). A comment is a message replying in the link's Mood, so its votes
-    hang on the message; a link's on its Tiding. One vote each, ever; voting again takes it back.
+    "upvote, too. More like HN"). A comment may be a message replying in the link's Mood, or a comment
+    said on Tidings itself (TidingComment); a link's vote hangs on its Tiding. One vote each, ever;
+    voting again takes it back.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tiding = models.ForeignKey(Tiding, models.CASCADE, null=True, blank=True, related_name='votes')
     message = models.ForeignKey(Message, models.CASCADE, null=True, blank=True, related_name='tidings_votes')
+    comment = models.ForeignKey(TidingComment, models.CASCADE, null=True, blank=True, related_name='votes')
     by = models.ForeignKey(ThinkingEntity, models.CASCADE, related_name='tidings_votes')
     at = models.DateTimeField(auto_now_add=True)
 
@@ -1544,6 +1570,8 @@ class TidingVote(models.Model):
                                     name='one_vote_per_tiding'),
             models.UniqueConstraint(fields=['message', 'by'], condition=models.Q(message__isnull=False),
                                     name='one_vote_per_comment'),
+            models.UniqueConstraint(fields=['comment', 'by'], condition=models.Q(comment__isnull=False),
+                                    name='one_vote_per_tiding_comment'),
         ]
 
 

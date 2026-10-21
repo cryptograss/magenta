@@ -66,6 +66,41 @@ def host_of(url):
     return host[4:] if host.startswith('www.') else host
 
 
+def embed_of(url):
+    """How a link's page can be played in place, if it's a video Justin (21 Oct): {"kind", "src"} for
+    the players we know -- YouTube and Vimeo pages, and a bare media file -- else None. Downloading and
+    keeping a copy of a yt-dlp-supported video is a separate job, not yet built."""
+    parts = urlsplit(url)
+    host = (parts.hostname or '').lower().removeprefix('www.')
+    if host in ('youtube.com', 'm.youtube.com', 'youtu.be'):
+        from urllib.parse import parse_qs
+        path = parts.path.strip('/').split('/')
+        vid = (path[0] if host == 'youtu.be' else path[1] if len(path) > 1 and path[0] in ('shorts', 'embed', 'live')
+               else (parse_qs(parts.query).get('v') or [''])[0])
+        if re.fullmatch(r'[\w-]{6,20}', vid or ''):  # a video's id, nothing else, goes into the player's address
+            return {'kind': 'iframe', 'src': f'https://www.youtube-nocookie.com/embed/{vid}'}
+    if host in ('vimeo.com', 'player.vimeo.com'):
+        vid = parts.path.strip('/').split('/')[0]
+        if vid.isdigit():
+            return {'kind': 'iframe', 'src': f'https://player.vimeo.com/video/{vid}'}
+    if any(parts.path.lower().endswith('.' + ext) for ext in ('mp4', 'webm', 'mov', 'm4v', 'ogv')):
+        return {'kind': 'video', 'src': url}
+    return None
+
+
+def _clean_tags(tags):
+    """Whichever words a promoter gave each link, one each, lowercase, no # or commas: at most eight."""
+    out = []
+    # As typed in the promote box, "music, security": a tag between each pair of commas.
+    tags = tags.split(',') if isinstance(tags, str) else tags if isinstance(tags, list) else []
+    for tag in tags:
+        tag = re.sub(r'[^\w -]', ' ', str(tag or '')).strip().lower()
+        tag = re.sub(r'\s+', ' ', tag)
+        if tag and tag not in out:
+            out.append(tag[:40])
+    return out[:8]
+
+
 def title_for(url, http=None):
     """The page's own title, as its preview card reads it; its address, shortened, if it gives none.
     A PickiPedia page is titled as the wiki titles it."""
@@ -103,14 +138,18 @@ def _changed():
     cache.delete(_BY_MESSAGE)
 
 
-def promote_many(message, by, urls, http=None):
-    """Put each of `urls` (links of the message) on Tidings. [(Tiding, whether it's new)], in their order."""
-    return [promote(message, by, url=url, http=http, with_news=True) for url in dict.fromkeys(urls)]
+def promote_many(message, by, urls, http=None, title=None, tags=None):
+    """Put each of `urls` (links of the message) on Tidings. [(Tiding, whether it's new)], in their order.
+    A title given is one link's: with several, each is titled as its page titles itself."""
+    urls = list(dict.fromkeys(urls))
+    title = title if len(urls) == 1 else None
+    return [promote(message, by, url=url, title=title, tags=tags, http=http, with_news=True) for url in urls]
 
 
-def promote(message, by, url=None, title=None, http=None, with_news=False):
-    """Put one of a message's links on Tidings (its first, unless `url` says which), once. The Tiding, or the
-    one already there for that link; with `with_news`, (it, whether it's new)."""
+def promote(message, by, url=None, title=None, tags=None, http=None, with_news=False):
+    """Put one of a message's links on Tidings (its first, unless `url` says which), once, under the
+    promoter's title and tags if they gave any. The Tiding, or the one already there for that link;
+    with `with_news`, (it, whether it's new)."""
     from conversations.models import Tiding
     from .mood_view import prose
     from .retract import DELETED
@@ -129,7 +168,8 @@ def promote(message, by, url=None, title=None, http=None, with_news=False):
     if already:
         return (already, False) if with_news else already
     tiding = Tiding.objects.create(message=message, url=url, by=by,
-                                   title=(title or '').strip()[:MAX_TITLE] or title_for(url, http))
+                                   title=(title or '').strip()[:MAX_TITLE] or title_for(url, http),
+                                   tags=_clean_tags(tags))
     _changed()
     return (tiding, True) if with_news else tiding
 
@@ -182,25 +222,74 @@ def said_html(text):
 
 
 def _snippets_and_votes(tree, viewer=None):
-    """Words (a snippet, and as drawn), score and whether `viewer` voted, onto every node: three
-    questions of the database, whatever the tree's size."""
+    """Words (a snippet, and as drawn), score and whether `viewer` voted, onto every node: a few questions
+    of the database, whatever the tree's size. A comment said on Tidings already carries its words; a Mood
+    reply's are read here, all at once."""
     from django.db.models import Count
     from conversations.models import Message, TidingVote
     from .mood_view import prose, reply_to, snippet_of
     nodes = list(_walk(tree))
-    ids = [node['id'] for node in nodes]
-    texts = {str(m.id): prose(m.content) for m in Message.objects.filter(id__in=ids)} if ids else {}
-    scored = ({str(mid): c for mid, c in TidingVote.objects.filter(message_id__in=ids).values('message_id')
-               .annotate(c=Count('id')).values_list('message_id', 'c')} if ids else {})
-    mines = ({str(mid) for mid in TidingVote.objects.filter(message_id__in=ids, by_id=viewer)
-              .values_list('message_id', flat=True)} if viewer and ids else set())
+    mood_ids = [n['id'] for n in nodes if n.get('kind', 'mood') == 'mood']
+    comment_ids = [n['id'] for n in nodes if n.get('kind') == 'comment']
+    texts = {str(m.id): prose(m.content) for m in Message.objects.filter(id__in=mood_ids)} if mood_ids else {}
+    scored, mines = {}, set()
+    if mood_ids:
+        scored.update({str(i): c for i, c in TidingVote.objects.filter(message_id__in=mood_ids).values('message_id')
+                       .annotate(c=Count('id')).values_list('message_id', 'c')})
+    if comment_ids:
+        scored.update({str(i): c for i, c in TidingVote.objects.filter(comment_id__in=comment_ids).values('comment_id')
+                       .annotate(c=Count('id')).values_list('comment_id', 'c')})
+    if viewer:
+        if mood_ids:
+            mines |= {str(i) for i in TidingVote.objects.filter(message_id__in=mood_ids, by_id=viewer)
+                      .values_list('message_id', flat=True)}
+        if comment_ids:
+            mines |= {str(i) for i in TidingVote.objects.filter(comment_id__in=comment_ids, by_id=viewer)
+                      .values_list('comment_id', flat=True)}
     for node in nodes:
-        node['snippet'] = snippet_of(reply_to(texts.get(node['id'], ''))[1])
-        node['html'] = said_html(texts.get(node['id'], ''))
+        if node.get('kind', 'mood') == 'mood':
+            node['snippet'] = snippet_of(reply_to(texts.get(node['id'], ''))[1])
+            node['html'] = said_html(texts.get(node['id'], ''))
+            if isinstance(node['at'], str):
+                node['at'] = datetime.fromisoformat(node['at'])  # the index keeps it ISO (it's cached); the page says it
         node['score'] = scored.get(node['id'], 0)
         node['mine'] = node['id'] in mines
-        node['at'] = datetime.fromisoformat(node['at'])  # the index keeps it ISO (it's cached); the page says it
     return tree
+
+
+def tree_of(tiding, message_id, index=None, viewer=None):
+    """A link's whole discussion, both kinds of comment together, oldest first at each level:
+    the Mood's replies under its message ({'kind': 'mood', ...}, from the links index) and the comments
+    said on Tidings itself ({'kind': 'comment', ...}, TidingComment) -- neither a record apart."""
+    from conversations.models import TidingComment
+    from .links import current
+    index = index if index is not None else current()
+    seen = {str(message_id)}
+
+    def mood_under(mid):
+        out = []
+        for entry in sorted(index.get(mid, []), key=lambda e: e['at']):
+            if entry['reply'] and entry['id'] not in seen:
+                seen.add(entry['id'])
+                out.append({**entry, 'kind': 'mood', 'at': datetime.fromisoformat(entry['at']),
+                            'replies': mood_under(entry['id'])})
+        return out
+
+    extras = {}
+    for row in TidingComment.objects.filter(tiding=tiding).select_related('by').order_by('at'):
+        node = {'kind': 'comment', 'id': str(row.id), 'sender': row.by.name if row.by_id else '',
+                'at': row.at, 'snippet': row.text, 'html': said_html(row.text), 'replies': []}
+        key = 'c:' + str(row.parent_id) if row.parent_id else 'm:' + str(row.parent_message_id or message_id)
+        extras.setdefault(key, []).append(node)
+
+    def splice(nodes, key):
+        nodes = nodes + extras.pop(key, [])
+        nodes.sort(key=lambda n: n['at'])
+        for node in nodes:
+            node['replies'] = splice(node.get('replies', []),
+                                     ('m:' if node['kind'] == 'mood' else 'c:') + node['id'])
+        return nodes
+    return _snippets_and_votes(splice(mood_under(str(message_id)), 'm:' + str(message_id)), viewer)
 
 
 def _tree(message_id, index=None):
@@ -221,8 +310,8 @@ def _tree(message_id, index=None):
 
 
 def thread(message_id, index=None, viewer=None):
-    """What's said about a promoted link: its message's reply tree, each node with its words (`snippet`),
-    its upvotes (`score`) and whether `viewer` gave one (`mine`)."""
+    """The Mood's replies under a promoted link's message, each with its words (`snippet`), its upvotes
+    (`score`) and whether `viewer` gave one (`mine`) -- tree_of's Mood half, for listing counts."""
     return _snippets_and_votes(_tree(message_id, index), viewer)
 
 
@@ -281,36 +370,102 @@ def vote_comment(tiding, by, message_id):
     return _vote_state(message_id=message.id, by_id=by.pk)
 
 
-def _vote_state(tiding_id=None, message_id=None, by_id=None):
+def _vote_state(tiding_id=None, message_id=None, comment_id=None, by_id=None):
     """A link's or a comment's score -- everyone's upvotes -- and whether this voter's among them."""
     from conversations.models import TidingVote
-    votes = TidingVote.objects.filter(tiding_id=tiding_id) if tiding_id else TidingVote.objects.filter(message_id=message_id)
+    votes = TidingVote.objects.filter(tiding_id=tiding_id) if tiding_id else (
+        TidingVote.objects.filter(message_id=message_id) if message_id else TidingVote.objects.filter(comment_id=comment_id))
     return {'score': votes.count(), 'mine': votes.filter(by_id=by_id).exists()}
 
 
+def vote_on_comment(tiding, by, comment_id):
+    """One person's upvote of a comment said on Tidings itself, or the vote taken back. {'score', 'mine'}."""
+    from django.db import IntegrityError
+    from conversations.models import TidingComment, TidingVote
+    row = TidingComment.objects.filter(id=comment_id, tiding=tiding).first()
+    if row is None:
+        raise Refused('no such comment under this link', status=404)
+    vote = TidingVote.objects.filter(comment=row, by=by).first()
+    if vote:
+        vote.delete()
+    else:
+        try:
+            TidingVote.objects.create(comment=row, by=by)
+        except IntegrityError:
+            pass
+    return _vote_state(comment_id=row.id, by_id=by.pk)
+
+
+COMMENT_SOURCE = 'tiding-comment'
+
+
+def _notice(tiding, by):
+    """A line in the link's Mood: '💬 new comment by …', referring to the message it was posted from.
+    The comment's words stay on Tidings (Justin, 21 Oct); the notice is all the Mood gets, and only
+    if the link isn't muted there."""
+    import time as _time
+    from conversations.models import ConversationParticipant, Message
+    system, _ = ConversationParticipant.objects.get_or_create(name='system',
+                                                              defaults={'participant_type': 'system'})
+    Message.objects.create(id=uuid.uuid4(), sender=system, mood=tiding.message.mood, source_file=COMMENT_SOURCE,
+                           timestamp=int(_time.time() * 1000),
+                           content={'type': COMMENT_SOURCE, 'by': by.name, 'message': str(tiding.message_id),
+                                    'tiding': str(tiding.id)})
+
+
+def mute(tiding, device, muted):
+    """Quiet the 'new comment by …' lines this link leaves in its Mood -- whoever promoted it, or an admin."""
+    if not may_withdraw(device, tiding.by_id):
+        raise Refused('only whoever promoted it, or an admin, can mute it in its Mood', status=403)
+    type(tiding).objects.filter(pk=tiding.pk).update(muted_in_mood=bool(muted))
+    tiding.muted_in_mood = bool(muted)
+    _changed()
+    return tiding
+
+
+def badges(since, viewer=None):
+    """What's new on Tidings since `since`: promotions and comments said on Tidings (Justin, 21 Oct) --
+    others', not the viewer's own."""
+    from conversations.models import Tiding, TidingComment
+    tidings, comments = Tiding.objects.filter(at__gt=since), TidingComment.objects.filter(at__gt=since)
+    if viewer:
+        tidings, comments = tidings.exclude(by_id=viewer), comments.exclude(by_id=viewer)
+    return {'tidings': tidings.count(), 'comments': comments.count()}
+
+
 def comment(tiding, by, text, parent=None, client_version=''):
-    """Say it about a link: a message in the link's Mood, as a reply to the link's message or to a comment
-    under it. One record: on Tidings it's a comment, in the Mood it's a reply. The new node, as the
-    discussion shows it."""
-    from conversations.models import Message
-    from .mood_view import prose, snippet_of
+    """Say it about a link, on Tidings itself: a TidingComment -- the record of what's said there -- and,
+    unless the link is muted, a one-line note in its Mood. `parent` is (kind, id): ('message', id) answers
+    the link's message or one of the Mood's replies under it; ('comment', id) answers a comment said here."""
+    from conversations.models import TidingComment
+    from .mood_view import prose
     from .retract import DELETED
     message = tiding.message
     if message.mood_id is None:
         raise Refused('only what was said in a Mood', status=404)
     if prose(message.content) == DELETED:
         raise Refused('that message was deleted', status=404)
-    target = parent if parent else message.id
-    if str(target) != str(message.id) and not any(node['id'] == str(target) for node in _walk(_tree(message.id))):
-        raise Refused('no such comment under this link', status=404)
+    kind, parent_id = parent or (None, None)
+    comment_parent, parent_message_id = None, None
+    if kind is None:
+        parent_message_id = message.id
+    elif kind == 'message':
+        if str(parent_id) != str(message.id) and not any(node['id'] == str(parent_id) for node in _walk(_tree(message.id))):
+            raise Refused('no such comment under this link', status=404)
+        parent_message_id = parent_id
+    elif kind == 'comment':
+        comment_parent = TidingComment.objects.filter(id=parent_id, tiding=tiding).first()
+        if comment_parent is None:
+            raise Refused('no such comment under this link', status=404)
+    else:
+        raise Refused('expected a comment or a Mood reply to answer', status=400)
     text, _ = redact(text)  # a secret pasted here is kept out of the record, as in the Mood's own box
-    row = Message.objects.create(id=uuid.uuid4(), sender=by, content=f'↩ #m-{target}\n{text}', mood=message.mood,
-                                 timestamp=int(time.time() * 1000), source_file='mood-web',
-                                 client_version=client_version)
-    from .links import note_new
-    note_new(row, [str(target)], str(target))  # a reload the same second still shows it
-    return {'id': str(row.id), 'sender': by.name, 'mood': message.mood_slug, 'at': row.created_at,
-            'snippet': snippet_of(text), 'html': said_html(text), 'replies': [], 'score': 0, 'mine': False}
+    row = TidingComment.objects.create(tiding=tiding, by=by, parent=comment_parent,
+                                       parent_message_id=parent_message_id, text=text)
+    if not tiding.muted_in_mood:
+        _notice(tiding, by)
+    return {'id': str(row.id), 'kind': 'comment', 'sender': by.name, 'at': row.at,
+            'snippet': text, 'html': said_html(text), 'replies': [], 'score': 0, 'mine': False}
 
 
 def discussion(tiding_id, viewer=None):
@@ -339,7 +494,10 @@ def discussion(tiding_id, viewer=None):
         'snippet': snippet_of(text)[:200],
         'score': scored.get(str(tiding.id), 0),
         'mine': str(tiding.id) in mines,
-        'comments': thread(message.id, viewer=viewer),
+        'tags': tiding.tags or [],
+        'muted': tiding.muted_in_mood,
+        'embed': embed_of(tiding.url),
+        'comments': tree_of(tiding, message.id, viewer=viewer),
     }
 
 
@@ -359,6 +517,12 @@ def listed(limit=LISTED, viewer=None):
             continue
         rows.append(tiding)
     scored, mines = _tiding_scores(rows, viewer)
+    # How much has been said: the Mood's replies (the links index, free) and the comments said on Tidings,
+    # counted in one question of the database -- not read one link at a time.
+    from django.db.models import Count
+    from conversations.models import TidingComment
+    said = {str(tid): c for tid, c in TidingComment.objects.filter(tiding__in=rows).values('tiding_id')
+            .annotate(c=Count('id')).values_list('tiding_id', 'c')}
     out = []
     for tiding in rows:
         message = tiding.message
@@ -374,7 +538,9 @@ def listed(limit=LISTED, viewer=None):
             'mood': message.mood_slug,
             'said_by': message.sender_id,
             'snippet': snippet_of(text)[:200],
-            'comments': count(_tree(message.id, index)),
+            'comments': count(_tree(message.id, index)) + said.get(str(tiding.id), 0),
+            'tags': tiding.tags or [],
+            'muted': tiding.muted_in_mood,
             'score': scored.get(str(tiding.id), 0),
             'mine': str(tiding.id) in mines,
         })

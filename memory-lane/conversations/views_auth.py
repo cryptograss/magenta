@@ -306,12 +306,14 @@ def api_message_promote(request, slug, message_id):
     except ValueError:
         return JsonResponse({'error': 'expected {"url": ..., "title": ...}'}, status=400)
     urls = body.get('urls')
+    title = body.get('title') or None
+    tags = body.get('tags') or None
     try:
         if isinstance(urls, list) and urls:
-            done = tiding_links.promote_many(message, device.entity, [str(u) for u in urls[:20]])
+            done = tiding_links.promote_many(message, device.entity, [str(u) for u in urls[:20]], title=title, tags=tags)
         else:
             done = [tiding_links.promote(message, device.entity, url=body.get('url') or None,
-                                         title=body.get('title') or None, with_news=True)]
+                                         title=title, tags=tags, with_news=True)]
     except tiding_links.Refused as e:
         return JsonResponse({'error': str(e)}, status=e.status)
     tidings = [{'id': str(t.id), 'url': t.url, 'title': t.title, 'new': new} for t, new in done]
@@ -348,6 +350,8 @@ def api_tiding(request, tiding_id):
         if body.get('withdraw'):
             tiding_links.withdraw(tiding, device)
             return JsonResponse({'id': tiding_id, 'withdrawn': True})
+        if body.get('mute') is not None:
+            return JsonResponse({'id': str(tiding.id), 'muted': tiding_links.mute(tiding, device, body['mute']).muted_in_mood})
         tiding = tiding_links.retitle(tiding, device, body.get('title'))
     except tiding_links.Refused as e:
         return JsonResponse({'error': str(e)}, status=e.status)
@@ -356,9 +360,9 @@ def api_tiding(request, tiding_id):
 
 @require_POST
 def api_tiding_comment(request, tiding_id):
-    """{"text": ..., "reply_to"?: a comment's id}: say it about the link. A message in the link's Mood,
-    as a reply to the link's message or to that comment -- one record: on Tidings it's a comment, in the
-    Mood it's a reply (services/tiding_links.comment)."""
+    """{"text": ..., "reply_to"?: an id, "reply_kind"?: 'message'|'comment'}: say it about the link, on
+    Tidings itself. Its words stay there; the Mood gets a short 'new comment by …' line unless the link
+    is muted (services/tiding_links.comment)."""
     from .models import Tiding
     from .services import tiding_links
     from .views_admin import locked_response
@@ -387,8 +391,15 @@ def api_tiding_comment(request, tiding_id):
     refused = _say_checks(text, device)
     if refused:
         return refused
+    reply_to = body.get('reply_to')
+    reply_kind = body.get('reply_kind')
+    parent = None
+    if reply_to and reply_kind != 'comment':
+        parent = ('message', _uuid_or_none(reply_to))
+    elif reply_to:
+        parent = ('comment', _uuid_or_none(reply_to))
     try:
-        node = tiding_links.comment(tiding, device.entity, text, body.get('reply_to'),
+        node = tiding_links.comment(tiding, device.entity, text, parent,
                                     client_version=web_client(request, device))
     except tiding_links.Refused as e:
         return JsonResponse({'error': str(e)}, status=e.status)
@@ -418,7 +429,7 @@ def api_tiding_vote(request, tiding_id):
 
 @require_POST
 def api_tiding_comment_vote(request, tiding_id, message_id):
-    """Upvote a comment in a link's discussion, or take it back. {'score', 'mine'} after."""
+    """Upvote a Mood reply showing as a comment in a link's discussion, or take it back. {'score', 'mine'}."""
     from .models import Tiding
     from .services import tiding_links
     from .views_admin import locked_response
@@ -432,6 +443,27 @@ def api_tiding_comment_vote(request, tiding_id, message_id):
         return JsonResponse({'error': 'no such link on Tidings'}, status=404)
     try:
         state = tiding_links.vote_comment(tiding, device.entity, _uuid_or_none(message_id))
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse(state)
+
+
+@require_POST
+def api_tiding_comment_vote_row(request, tiding_id, comment_id):
+    """Upvote a comment said on Tidings itself, or take it back. {'score', 'mine'} after."""
+    from .models import Tiding
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to vote'}, status=401)
+    tiding = Tiding.objects.filter(id=_uuid_or_none(tiding_id)).first()
+    if tiding is None:
+        return JsonResponse({'error': 'no such link on Tidings'}, status=404)
+    try:
+        state = tiding_links.vote_on_comment(tiding, device.entity, _uuid_or_none(comment_id))
     except tiding_links.Refused as e:
         return JsonResponse({'error': str(e)}, status=e.status)
     return JsonResponse(state)

@@ -124,42 +124,66 @@ class TidingLinksTest(TestCase):
 @override_settings(MOOD_ADMINS=('justin',))
 class TidingTalkTests(TidingLinksTest):
     """What's said about a link, and voted for, on its Tidings page (Justin, 21 Oct: comments there too,
-    not just the Mood; upvotes, more like HN). One record: a comment is a reply in the Mood."""
+    not just the Mood; upvotes, more like HN). A comment's words stay on Tidings; the Mood gets a short
+    'new comment by …' line, unless the link is muted there."""
 
     def promoted(self):
         said = self.say(self.skyler, 'https://example.org/')
         return said, tiding_links.promote(said, self.justin)
 
-    def comment(self, client, tiding, text, reply_to=None):
+    def comment(self, client, tiding, text, reply_to=None, kind=None):
         with CARD, PUBLIC:
+            body = {'text': text, 'reply_to': str(reply_to) if reply_to else None}
+            if kind:
+                body['reply_kind'] = kind
             return client.post(f'/api/tidings/{tiding.id}/comments/',
-                               json.dumps({'text': text, 'reply_to': reply_to}),
-                               content_type='application/json')
+                               json.dumps(body), content_type='application/json')
 
-    def vote(self, client, tiding, message=None):
-        url = f'/api/tidings/{tiding.id}/comments/{message.id}/vote/' if message else f'/api/tidings/{tiding.id}/vote/'
+    def vote(self, client, tiding, message=None, comment=None):
+        if comment:
+            url = f'/api/tidings/{tiding.id}/comment/{comment}/vote/'
+        else:
+            url = f'/api/tidings/{tiding.id}/comments/{message.id}/vote/' if message else f'/api/tidings/{tiding.id}/vote/'
         return client.post(url)
 
-    def test_a_comment_is_a_reply_in_the_mood_and_a_comment_on_the_page(self):
+    def test_a_comment_is_said_on_tidings_and_noted_in_the_mood(self):
         said, tiding = self.promoted()
         done = self.comment(self.client_for(self.justin), tiding, 'yes, that one')
         self.assertEqual(done.status_code, 201)
-        reply = Message.objects.exclude(id=said.id).get()
-        self.assertEqual((reply.content, reply.sender_id, reply.mood_id), (f'↩ #m-{said.id}\nyes, that one', 'justin', self.mood.id))
-        tree = tiding_links.thread(said.id)
-        self.assertEqual([n['snippet'] for n in tree], ['yes, that one'])
+        notice = Message.objects.exclude(id=said.id).get()
+        self.assertEqual(notice.content['type'], 'tiding-comment')  # the words aren't in the Mood
+        self.assertEqual(notice.content['by'], 'justin')
+        self.assertNotIn('yes, that one', str(notice.content))
         body = self.client.get(f'/api/tidings/{tiding.id}/').json()
-        self.assertEqual(body['comments'][0]['snippet'], 'yes, that one')
+        self.assertEqual((body['comments'][0]['kind'], body['comments'][0]['snippet']), ('comment', 'yes, that one'))
 
-    def test_a_comment_can_answer_another_comment(self):
+    def test_a_comment_can_answer_a_mood_reply_or_another_comment(self):
         said, tiding = self.promoted()
-        self.comment(self.client_for(self.justin), tiding, 'first')
-        node = tiding_links.thread(said.id)[0]
-        second = self.comment(self.client_for(self.skyler), tiding, 'second', reply_to=node['id'])
+        mood_reply = self.say(self.justin, f'↩ #m-{said.id}\nGoing?')
+        first = self.comment(self.client_for(self.justin), tiding, 'first', reply_to=mood_reply.id, kind='message')
+        self.assertEqual(first.status_code, 201)
+        tree = self.client.get(f'/api/tidings/{tiding.id}/').json()['comments']
+        going = next(n for n in tree if n['snippet'] == 'Going?')
+        first_node = going['replies'][0]
+        self.assertEqual((first_node['kind'], first_node['snippet']), ('comment', 'first'))
+        second = self.comment(self.client_for(self.skyler), tiding, 'second', reply_to=first_node['id'], kind='comment')
         self.assertEqual(second.status_code, 201)
-        tree = tiding_links.thread(said.id)
-        self.assertEqual((tree[0]['snippet'], [n['snippet'] for n in tree[0]['replies']]), ('first', ['second']))
-        self.assertEqual(Message.objects.exclude(id=said.id).count(), 2)
+        tree = self.client.get(f'/api/tidings/{tiding.id}/').json()['comments']
+        going = next(n for n in tree if n['snippet'] == 'Going?')
+        self.assertEqual([n['snippet'] for n in going['replies']], ['first'])
+        self.assertEqual([n['snippet'] for n in going['replies'][0]['replies']], ['second'])
+
+    def test_muting_a_link_keeps_the_notice_out_of_its_mood(self):
+        said, tiding = self.promoted()
+        self.assertEqual(self.comment(self.client_for(self.justin), tiding, 'one').status_code, 201)
+        refused = self.client_for(self.skyler).post(f'/api/tidings/{tiding.id}/', json.dumps({'mute': True}),
+                                                   content_type='application/json')
+        self.assertEqual(refused.status_code, 403)  # only whoever promoted it, or an admin
+        done = self.client_for(self.justin).post(f'/api/tidings/{tiding.id}/', json.dumps({'mute': True}),
+                                                content_type='application/json')
+        self.assertEqual(done.json()['muted'], True)
+        self.assertEqual(self.comment(self.client_for(self.skyler), tiding, 'two').status_code, 201)
+        self.assertEqual(Message.objects.exclude(id=said.id).count(), 1)  # only 'one' left a line
 
     def test_a_comment_on_no_such_comment_or_a_deleted_link_is_refused(self):
         said, tiding = self.promoted()
@@ -190,15 +214,20 @@ class TidingTalkTests(TidingLinksTest):
 
     def test_a_comment_can_be_upvoted_and_only_under_its_link(self):
         said, tiding = self.promoted()
-        self.comment(self.client_for(self.skyler), tiding, 'agreed')
-        node = tiding_links.thread(said.id)[0]
+        mood_reply = self.say(self.justin, f'↩ #m-{said.id}\nGoing?')
+        self.comment(self.client_for(self.skyler), tiding, 'agreed', reply_to=mood_reply.id, kind='message')
         justin = self.client_for(self.justin)
-        self.assertEqual(self.vote(justin, tiding, message=Message.objects.get(id=node['id'])).json(),
-                         {'score': 1, 'mine': True})
-        tree = tiding_links.thread(said.id, viewer='justin')
-        self.assertEqual((tree[0]['score'], tree[0]['mine']), (1, True))
+        body = justin.get(f'/api/tidings/{tiding.id}/').json()['comments']
+        going = next(n for n in body if n['snippet'] == 'Going?')
+        agreed = going['replies'][0]
+        # a Mood reply and a comment said on Tidings each vote their own way, and only under this link:
+        self.assertEqual(self.vote(justin, tiding, message=mood_reply).json(), {'score': 1, 'mine': True})
+        self.assertEqual(self.vote(justin, tiding, comment=agreed['id']).json(), {'score': 1, 'mine': True})
         elsewhere = self.say(self.skyler, 'not about this')
         self.assertEqual(self.vote(justin, tiding, message=elsewhere).status_code, 404)
+        tree = justin.get(f'/api/tidings/{tiding.id}/').json()['comments']
+        going = next(n for n in tree if n['snippet'] == 'Going?')
+        self.assertEqual((going['score'], going['replies'][0]['score']), (1, 1))
 
     def test_the_page_says_who_said_and_who_promoted_and_ranks(self):
         said, tiding = self.promoted()
@@ -234,14 +263,53 @@ class TidingTalkTests(TidingLinksTest):
         self.assertIn('worth a listen', self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode())
 
     def test_a_secret_said_in_a_comment_is_kept_out_of_the_record(self):
+        from conversations.models import TidingComment
         said, tiding = self.promoted()
         key = 'ghp_' + 'a1B2' * 9
         self.assertEqual(self.comment(self.client_for(self.justin), tiding, f'oops {key}').status_code, 201)
-        self.assertNotIn(key, Message.objects.exclude(id=said.id).get().content)
+        self.assertNotIn(key, TidingComment.objects.get().text)  # and so not in the Mood's line either
 
     def test_no_such_link_page_is_a_404_not_a_crash(self):
         self.assertEqual(self.client.get('/moods/tidings/not-a-uuid/?embed=1').status_code, 404)
         self.assertEqual(self.client.get('/api/tidings/not-a-uuid/').status_code, 404)
+
+    def test_a_promotion_takes_the_title_and_tags_its_promoter_gives(self):
+        said = self.say(self.skyler, 'https://example.org/fest')
+        done = self.promote(self.client_for(self.justin), said, title='My own title', tags=['Music', '  festival', 'music'])
+        self.assertEqual(done.status_code, 201)
+        [link] = tiding_links.listed()
+        self.assertEqual((link['title'], link['tags']), ('My own title', ['music', 'festival']))
+
+    def test_the_badges_count_what_is_new_since(self):
+        from django.utils import timezone
+        said, tiding = self.promoted()
+        before = timezone.now()
+        self.comment(self.client_for(self.justin), tiding, 'one')
+        self.say(self.justin, 'https://example.org/two')
+        tiding_links.promote(Message.objects.latest('created_at'), self.justin)
+        body = self.client.get(f'/api/tidings/badges/?since={before.isoformat()}').json()
+        self.assertEqual(body, {'tidings': 1, 'comments': 1})
+
+    def test_a_tiding_said_as_its_link_says_its_title(self):
+        from conversations.services.mood_view import render_html
+        said, tiding = self.promoted()
+        [link] = tiding_links.listed()
+        html = render_html(f'see #t-{tiding.id}')
+        self.assertIn('tidinglink', html)
+        self.assertIn(link['title'], html)
+        self.assertNotIn('tidinglink', render_html('#t-ffffffff'))  # names nothing: as written
+
+    def test_a_video_link_says_how_it_plays(self):
+        self.assertEqual(tiding_links.embed_of('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
+                         {'kind': 'iframe', 'src': 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'})
+        self.assertEqual(tiding_links.embed_of('https://vimeo.com/76979871'),
+                         {'kind': 'iframe', 'src': 'https://player.vimeo.com/video/76979871'})
+        self.assertEqual(tiding_links.embed_of('https://example.org/clip.mp4'),
+                         {'kind': 'video', 'src': 'https://example.org/clip.mp4'})
+        self.assertIsNone(tiding_links.embed_of('https://example.org/page'))
+        said, tiding = self.promoted()
+        body = self.client.get(f'/api/tidings/{tiding.id}/').json()
+        self.assertIsNone(body['embed'])  # example.org isn't a video
 
     def test_the_listing_counts_comments_without_reading_each(self):
         for n in range(3):
@@ -249,7 +317,7 @@ class TidingTalkTests(TidingLinksTest):
             tiding_links.promote(said, self.justin)
             self.say(self.justin, f'↩ #m-{said.id}\nnice {n}')
         tiding_links.listed()  # the links index, built once
-        with self.assertNumQueries(2):  # the links and their scores: nothing per link
+        with self.assertNumQueries(3):  # the links, their scores, their comments: nothing per link
             self.assertEqual([link['comments'] for link in tiding_links.listed()], [1, 1, 1])
 
     def test_the_pencil_shows_to_whoever_may_retitle(self):
@@ -279,3 +347,81 @@ class TidingTalkTests(TidingLinksTest):
         tiding = tiding_links.promote(said, self.justin)
         self.assertEqual((tiding.url, tiding.title), ('https://pickipedia.xyz/wiki/Bill_Monroe', 'Bill Monroe'))
         self.assertEqual(tiding_links.links_in('a picture [[File:Fest.jpg]], not a link'), [])
+
+
+class TidingRoundTwoReviewTests(TidingLinksTest):
+    """From magent's review of the second round (21 Oct)."""
+
+    def test_tags_typed_in_the_box_are_split_at_commas(self):
+        said = self.say(self.skyler, 'https://example.org/')
+        done = self.promote(self.client_for(self.justin), said, tags='Music, #security,, festival ')
+        self.assertEqual(Tiding.objects.get(id=done.json()['id']).tags, ['music', 'security', 'festival'])
+
+    def test_a_title_given_for_several_links_is_not_put_on_all_of_them(self):
+        said = self.say(self.skyler, 'Two: https://a.test/one https://b.test/two')
+        with CARD, PUBLIC:
+            done = tiding_links.promote_many(said, self.justin, ['https://a.test/one', 'https://b.test/two'], title='Mine')
+        self.assertEqual([t.title for t, _ in done], ['The Bluegrass Situation: a festival list'] * 2)
+        said = self.say(self.skyler, 'One: https://c.test/three')
+        with CARD, PUBLIC:
+            [(only, _)] = tiding_links.promote_many(said, self.justin, ['https://c.test/three'], title='Mine')
+        self.assertEqual(only.title, 'Mine')
+
+    def test_a_tiding_link_by_its_whole_id_or_its_first_eight(self):
+        from conversations.services.mood_view import render_html
+        said = self.say(self.skyler, 'https://example.org/')
+        with CARD, PUBLIC:
+            tiding = tiding_links.promote(said, self.justin, title='Fest list')
+        for ref in (str(tiding.id), str(tiding.id)[:8]):
+            self.assertIn(f'/moods/tidings/{tiding.id}/', render_html(f'see #t-{ref}'))
+        self.assertNotIn('tidinglink', render_html('see #t-00000000'))
+        self.assertNotIn('tidinglink', render_html('see #t-0000-000000'))  # neither: left as it was written
+
+    def test_only_a_video_id_is_embedded(self):
+        embed = tiding_links.embed_of
+        self.assertEqual(embed('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3')['src'],
+                         'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
+        self.assertEqual(embed('https://youtube.com/shorts/dQw4w9WgXcQ')['src'],
+                         'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
+        self.assertIsNone(embed('https://www.youtube.com/watch?v=x"><script>'))
+        self.assertIsNone(embed('https://www.youtube.com/watch?v=../../evil'))
+
+    def test_a_video_is_titled_as_its_site_says(self):
+        from conversations.services import unfurl
+
+        class Answer:
+            def __init__(self, code, body=None):
+                self.status_code, self.body, self.headers = code, body, {}
+
+            def json(self):
+                return self.body
+
+            def close(self):
+                pass
+
+        class Http:
+            asked = []
+
+            def get(self, url, params=None, **kw):
+                self.asked.append(url)
+                if 'oembed' in url:
+                    return Answer(200, {'title': 'Rick Astley - Never Gonna Give You Up', 'provider_name': 'YouTube'})
+                return Answer(200)  # a page with nothing in it to read
+
+        with PUBLIC:
+            found = unfurl.card('https://www.youtube.com/watch?v=dQw4w9WgXcQ', Http())
+        self.assertEqual((found['title'], found['site']), ('Rick Astley - Never Gonna Give You Up', 'YouTube'))
+        self.assertEqual(Http.asked[-1], 'https://www.youtube.com/oembed')
+        with PUBLIC:
+            self.assertIsNone(unfurl.card('https://example.org/nothing', Http()))  # not a video site: no oEmbed asked
+
+    def test_the_badges_count_others_news_not_your_own(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        since = (timezone.now() - timedelta(minutes=1)).isoformat()
+        with CARD, PUBLIC:
+            tiding_links.promote(self.say(self.skyler, 'https://example.org/1'), self.justin)
+            tiding_links.promote(self.say(self.justin, 'https://example.org/2'), self.skyler)
+        got = lambda client: client.get('/api/tidings/badges/', {'since': since}).json()  # noqa: E731
+        self.assertEqual(got(self.client_for(self.justin)), {'tidings': 1, 'comments': 0})
+        self.assertEqual(got(Client()), {'tidings': 2, 'comments': 0})
