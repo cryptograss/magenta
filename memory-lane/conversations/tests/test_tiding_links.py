@@ -103,7 +103,7 @@ class TidingLinksTest(TestCase):
     def test_the_page_lists_it_and_the_message_carries_its_star(self):
         said = self.say(self.skyler, 'https://www.example.org/fest')
         tid = self.promote(self.client_for(self.justin), said).json()['id']
-        page = self.client.get('/moods/tidings/').content.decode()
+        page = self.client.get('/moods/tidings/?embed=1').content.decode()
         self.assertIn('The Bluegrass Situation: a festival list</a><span class="host">(example.org)</span>', page)
         self.assertIn('0 comments', page)
         turn = next(t for t in self.client.get('/api/moods/jams/turns/').json()['turns'] if t['id'] == str(said.id))

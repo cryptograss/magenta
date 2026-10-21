@@ -41,14 +41,14 @@ class StatusPageTests(TestCase):
         self.assertIn('href="/moods/status/"', html)
 
     def test_status_page_renders_and_shows_viewer(self):
-        anon = self.client.get('/moods/status/')
+        anon = self.client.get('/moods/status/?embed=1')
         self.assertEqual(anon.status_code, 200)
         self.assertIn('status · magenta', anon.content.decode())
 
         _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
         signed = Client()
         signed.cookies[mood_auth.COOKIE] = token
-        resp = signed.get('/moods/status/')
+        resp = signed.get('/moods/status/?embed=1')
         self.assertEqual(resp.status_code, 200)
         self.assertIn('justin', resp.content.decode())
 
