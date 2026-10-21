@@ -27,10 +27,10 @@ class TidingsPageTests(TidingsTests):
         self.assertIn('href="/moods/tidings/"', moods_html)
         self.assertIn('href="/moods/prompts/"', moods_html)
 
-    def test_api_tidings_lists_the_pictures_and_naught_else(self):
+    def test_api_tidings_lists_the_links_and_pictures_and_naught_else(self):
         self.image(3, added_by=self.justin)
         body = self.client.get('/api/tidings/').json()
-        self.assertEqual(set(body), {'pictures'})
+        self.assertEqual(set(body), {'links', 'pictures'})  # the prompts have their own (/api/prompts/)
         self.assertEqual(len(body['pictures']), 1)
 
     # --- pictures ---------------------------------------------------------------

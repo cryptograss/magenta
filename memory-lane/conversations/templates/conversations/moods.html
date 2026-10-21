@@ -741,6 +741,7 @@
   .work .steps .trow.on .thought { display: block; }
   /* Images: in turns, as thumbnails on a run of work, inside a step. */
   .turn .body a.img { display: inline-block; margin: 4px 0; }
+  .who .ontidings { font-size: 12px; color: var(--accent); text-decoration: none; white-space: nowrap; }
   .turn .body .hearagain { font: inherit; font-size: 12.5px; color: var(--accent); background: none; border: 1px solid var(--line);
                            border-radius: 12px; padding: 1px 10px; margin: 2px 0 4px; cursor: pointer; }
   .turn .body .hearagain:disabled { color: var(--muted); cursor: default; }
@@ -2183,9 +2184,12 @@
     const age = Date.now() - new Date(t.created_at).getTime();
     const mayEdit = viewer && !t.deleted && t.sender === viewer && t.via === 'web' && !t.attested && age < 864e5;
     const mayDelete = viewer && !t.deleted && ((t.sender === viewer && age < 7 * 864e5) || viewerAdmin);
-    const moreBtn = mayEdit || mayDelete
+    // ★ a message's link onto Tidings (services/tiding_links.py): anyone signed in, once.
+    const mayPromote = viewer && !t.deleted && (t.links || []).length && !t.tiding;
+    const moreBtn = mayEdit || mayDelete || mayPromote
       ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
-        + `title="${mayEdit ? 'Edit or delete' : 'Delete'}" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
+        + `data-promote="${mayPromote ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
+    const onTidings = t.tiding ? `<a class="ontidings" href="/moods/tidings/#t-${esc(t.tiding.id)}" title="On Tidings: ${esc(t.tiding.title)}">★ Tidings</a>` : '';
     const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
     const versions = viewerAdmin ? ` data-versions="${esc(t.id)}" role="button" tabindex="0"` : '';
@@ -2195,7 +2199,7 @@
     const answers = t.reply ? `<a class="replyto" href="#m-${esc(t.reply.id)}" data-reveal="${esc(t.reply.id)}" title="Go to the message this replies to">`
       + (t.reply.event ? `↩ ${esc(t.reply.snippet || '(an event)')}</a>`
         : `↩ ${icon(t.reply.sender, human[t.reply.sender] !== false)}<b>${esc(shown(t.reply.sender))}</b> ${esc(t.reply.snippet || '(a message)')}</a>`) : '';
-    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}${tokenBadges(t.sender)}</span>${t.is_human ? '' : wakeMark(t.tools)}${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
+    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}${tokenBadges(t.sender)}</span>${t.is_human ? '' : wakeMark(t.tools)}${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${onTidings}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
       + answers
       + `<a class="permalink mini" href="#m-${esc(t.id)}" title="${esc(stamp(t.created_at))} · this message's link: click to copy">#</a>`
       + (voiceOn && viewer && !t.deleted ? speakButton(t, true) : '')
@@ -3846,7 +3850,9 @@
     const more = e.target.closest('.turn .morebtn[data-more]');
     if (more) {
       if (msgMenu._for === more) { closeMsgMenu(); return; }
-      msgMenu.innerHTML = (more.dataset.edit ? '<button type="button" role="menuitem" data-act="edit">✎ Edit</button>' : '')
+      msgMenu.innerHTML = (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
+        + (more.dataset.promote && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
+        + (more.dataset.edit ? '<button type="button" role="menuitem" data-act="edit">✎ Edit</button>' : '')
         + (more.dataset.edit && more.dataset.delete ? '<hr>' : '')
         + (more.dataset.delete ? '<button type="button" role="menuitem" data-act="delete" class="danger">🗑 Delete…</button>' : '');
       msgMenu._for = more;
@@ -3865,6 +3871,7 @@
     closeMsgMenu();
     const el = from.closest('.turn');
     if (act.dataset.act === 'edit') editMessage(el, from.dataset.more);
+    else if (act.dataset.act === 'promote') promoteMessage(el, from);
     else deleteMessage(from.dataset.more);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !msgMenu.hidden) closeMsgMenu(); });
@@ -3880,6 +3887,19 @@
     showNote(reached.length
       ? `${note}. It had already been carried to ${reached.map(shown).join(', ')} in a wake: the record's copies are scrubbed, but that session saw it.`
       : `${note}.`, 9000);
+  }
+  // Its link onto Tidings, titled as the page titles itself; marked ★ here at once.
+  async function promoteMessage(el, more) {
+    try {
+      const done = await changeMessage(more.dataset.more, 'promote');
+      delete more.dataset.promote;
+      const who = el.querySelector('.who');
+      if (who && !who.querySelector('.ontidings')) {
+        who.querySelector('.morebtn, .replybtn, .addreact')?.insertAdjacentHTML('beforebegin',
+          `<a class="ontidings" href="/moods/tidings/#t-${esc(done.id)}" title="On Tidings: ${esc(done.title)}">★ Tidings</a>`);
+      }
+      showNote(`On Tidings: “${done.title}”`, 6000);
+    } catch (err) { showError('promote: ' + err.message); }
   }
   async function deleteMessage(id) {
     if (!confirm('Delete this message for everyone? Its words are taken out of the record; a line says it was deleted.')) return;
