@@ -67,12 +67,17 @@ def lately(limit=LATELY, scan=300):
 
 def slogans_in(wikitext):
     """The lines of a slogans page: each '*' line as plain words -- a [[link]] its words, bold and italic
-    marks gone, tags gone -- each once, in the page's order."""
+    marks gone, tags and templates gone -- each once, in the page's order. A line an agent wrote waits,
+    wrapped in {{Bot_proposes|...}}, until a person has verified it (Special:VerifyBotEdits): only then is it
+    shown, as the wiki asks of what bots write."""
     out = []
     for line in (wikitext or '').splitlines():
         if not line.startswith('*'):
             continue
         text = line.lstrip('*').strip()
+        if re.search(r'\{\{\s*Bot[ _]proposes', text, re.I):
+            continue
+        text = re.sub(r'\{\{[^{}]*\}\}', '', text)                        # any other template
         text = re.sub(r'\[\[(?:[^\]|]*\|)?([^\]]*)\]\]', r'\1', text)   # [[Page|words]], [[words]]
         text = re.sub(r'\[https?://\S+\s+([^\]]*)\]', r'\1', text)        # [url words]
         text = re.sub(r"'{2,}", '', text)

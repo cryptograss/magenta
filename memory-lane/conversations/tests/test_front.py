@@ -197,3 +197,13 @@ class SlogansTest(TestCase):
         html = self.client.get('/').content.decode()
         self.assertTrue('>one line</p>' in html or '>another line</p>' in html)
         self.assertIn('"another line"', html)  # for the turns
+
+    def test_an_agents_line_waits_for_a_person_and_templates_are_not_words(self):
+        # PickiPedia wraps what a bot writes in {{Bot_proposes}} until a person verifies it (22 Oct: magent's
+        # first copy of Justin's line came back so, and would have been shown as markup).
+        page = ("{{Bot_proposes|Add yours: each * line.|by=Magent}}\n"
+                "* {{Bot_proposes|a line magent wrote|by=Magent}}\n"
+                "* a line a person wrote{{citation needed}}\n"
+                "* {{bot proposes|another of magent's|by=Magent}}\n")
+        self.assertEqual(front.slogans_in(page), ['a line a person wrote'])
+        self.assertEqual(front.slogans(self.answer(200, page[:page.index('* a line a person')])), [front.SLOGAN])
