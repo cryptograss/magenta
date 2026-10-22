@@ -186,6 +186,8 @@ def api_stream(request, slug):
     # The effort the runner launched the turn at. Stream events don't carry
     # it, and the transcript that does may never reach a watcher (the turn
     # ran in another container), so the runner says it with each post.
+    if imported:
+        clips_played(session_id, agent)
     effort = str(body.get('effort') or '')
     if re.fullmatch(r'[a-z]{2,12}', effort):
         Message.objects.filter(session_id=session_id, sender_id=agent, model_backend__isnull=False,
@@ -198,6 +200,29 @@ def api_stream(request, slug):
             finished = True
 
     return JsonResponse({'imported': imported, 'skipped': skipped, 'errors': errors[:10], 'finished': finished})
+
+
+def clips_played(session_id, agent):
+    """An agent's replies in this session that are only '/clips <name>': stored as the clip,
+    as the composer posts it for people (services/clips.played_by). A reply is a string, or
+    (events/1) a list of text blocks; one block alone is a reply too, and keeps its shape."""
+    from django.db.models import TextField
+    from django.db.models.functions import Cast
+    from .services import clips
+    said = (Message.objects.filter(session_id=session_id, sender_id=agent)
+            .annotate(as_text=Cast('content', TextField())).filter(as_text__icontains='/clip'))
+    for message in said:
+        content = message.content
+        if isinstance(content, list) and len(content) == 1 and isinstance(content[0], dict) \
+                and content[0].get('type') == 'text':
+            played = clips.played_by(content[0].get('text'))
+            new = [{**content[0], 'text': played}] if played else None
+        else:
+            played = clips.played_by(content)
+            new = played
+        if new is not None and new != content:
+            message.content = new
+            message.save(update_fields=['content'])
 
 
 def stream_events(mood, session_id, agent, body):
@@ -221,6 +246,8 @@ def stream_events(mood, session_id, agent, body):
     turn = Turn(agent=agent, mood=mood, session_id=session_id, harness=str(body.get('harness') or '')[:50] or None,
                 forked_from=forked_from, source=SOURCE, keep_tool_output=scrubbed)
     imported, skipped, ignored, errors = turn.take(events)
+    if imported:
+        clips_played(session_id, agent)
     if turn.finished:
         finish_turn(mood, session_id, agent, turn.finished)
     return JsonResponse({'imported': imported, 'skipped': skipped, 'ignored': ignored, 'errors': errors[:10],
