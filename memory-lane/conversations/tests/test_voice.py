@@ -97,7 +97,9 @@ class SpeakAndTranscribeTest(TestCase):
         fake = FakeEleven()
         message = self.say('Hello **there**.\n```voice\nvoice: george\nstyle: 0.3\n---\n[warmly] Hello there.\n```')
         url = voice.speak(message, 'justin', http=fake)
-        self.assertTrue(url.endswith('.mp3'))
+        self.assertTrue(url.split('#')[0].endswith('.mp3'))
+        # How many words it says, and whose: the page plays it at the listener's words a minute (Justin, 22 Oct).
+        self.assertEqual(url.split('#')[1], 'words=3&who=agent')
         _, where, sent = fake.asked[-1]
         self.assertTrue(where.endswith('/text-to-speech/v-george'))  # "george" matched "George - warm storyteller"
         self.assertEqual(sent['json'], {'text': '[warmly] Hello there.', 'model_id': 'eleven_v4',
@@ -277,7 +279,7 @@ class VoiceEndpointsTest(SignedInCase):
             spoken = self.post(client, f'/api/moods/m26/speak/{here.id}/').json()
             Mood.objects.create(slug='other')
             elsewhere = self.post(client, f'/api/moods/other/speak/{here.id}/')
-        self.assertTrue(spoken['url'].endswith('.mp3'))
+        self.assertTrue(spoken['url'].split('#')[0].endswith('.mp3'))
         self.assertEqual(elsewhere.status_code, 404)
 
     def test_voices_listed_with_todays_spend(self):

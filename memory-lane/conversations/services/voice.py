@@ -467,6 +467,12 @@ def speak(message, by, http=requests, part=0, piece=0):
     return speak_piece(message, by, http=http, part=part, piece=piece)['url']
 
 
+def _whose(name):
+    """'person' or 'agent': whose words a clip says, for the speed it's heard at."""
+    from conversations.models import ThinkingEntity
+    return 'agent' if ThinkingEntity.objects.filter(name=name, is_biological_human=False).exists() else 'person'
+
+
 def speak_piece(message, by, http=requests, part=0, piece=0):
     """{'url', 'pieces'}: the `piece`th piece of `message` read aloud, and how many
     there are. Made once and kept; made knowing the pieces before it, if they
@@ -489,7 +495,7 @@ def speak_piece(message, by, http=requests, part=0, piece=0):
     before = [_request_id(_key(voice_id, body_for(text))) for text in parts[max(0, piece - 3):piece]]
     stitch = {'previous_request_ids': [r for r in before if r]} if any(before) else {}
     url = _spoken(message.mood, by, voice_id, body_for(parts[piece]), parts[piece], http, extra=stitch,
-                  message=str(message.id), **({'piece': piece} if piece else {}))
+                  who=_whose(message.sender_id), message=str(message.id), **({'piece': piece} if piece else {}))
     return {'url': url, 'pieces': len(parts)}
 
 
@@ -508,9 +514,17 @@ def _request_id(key):
     return (row or {}).get('request_id') or None
 
 
-def _spoken(mood, by, voice_id, body, script, http, extra=None, **details):
-    """The URL of `body` spoken in `voice_id`: the kept one if it's been made, else
-    made now (sent with `extra` too: what it's stitched onto, not part of what it is)."""
+def _spoken(mood, by, voice_id, body, script, http, extra=None, who='agent', **details):
+    """The URL of `body` spoken in `voice_id`: the kept one if it's been made, else made now (sent with
+    `extra` too: what it's stitched onto, not part of what it is). Its fragment says how many words it
+    says, and whose they are (`who`: 'agent', the narrator's too, or 'person'): the page plays each clip
+    at the listener's own words a minute for one or the other, whatever the voice's own pace (Justin,
+    22 Oct). A fragment never reaches the server, so the file and its caching are the same."""
+    return _spoken_file(mood, by, voice_id, body, script, http, extra, **details) + \
+        f"#words={len((script or '').split())}&who={'person' if who == 'person' else 'agent'}"
+
+
+def _spoken_file(mood, by, voice_id, body, script, http, extra=None, **details):
     from conversations.models import Media, Message
     key = _key(voice_id, body)
 

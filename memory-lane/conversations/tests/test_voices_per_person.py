@@ -177,7 +177,7 @@ class SpeakerEndpointsTest(TestCase):
             self.assertEqual(ask(Client(), 'magent').status_code, 401)
             self.assertEqual(ask(client, 'skyler').status_code, 404)  # a person: never "thinking", by this
             said = ask(client, 'magent')
-        self.assertTrue(said.json()['url'].endswith('.mp3'))
+        self.assertTrue(said.json()['url'].split('#')[0].endswith('.mp3'))
         self.assertEqual(fake.asked[-1][2]['json']['text'], 'Pound general. Magent is thinking.')
 
     def test_still_thinking_says_how_long_and_how_far(self):
@@ -360,7 +360,7 @@ class NarratorSaysTheMoodAndRedeploysTest(TestCase):
         with mock.patch('requests.get', fake.get), mock.patch('requests.post', fake.post), \
                 mock.patch.object(wiki_auth, 'aliases', return_value={'jmyles': 'justin'}):
             said = ask(done['row'])
-            self.assertTrue(said.json()['url'].endswith('.mp3'))
+            self.assertTrue(said.json()['url'].split('#')[0].endswith('.mp3'))
             self.assertEqual(fake.asked[-1][2]['json']['text'], 'Maybelle redeployed, by Justin.')
             started = next(e for e in events if e['state'] == 'started')
             self.assertEqual(ask(started['row']).status_code, 400)  # only started: news when it's done

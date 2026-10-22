@@ -1191,7 +1191,7 @@
         <label><input type="checkbox" data-tell="agent"> every message from agents</label>
       </div>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
-      <label class="readall" id="readSpeedLabel" hidden title="How fast anything is read aloud here: every voice, the narrator, and voice memos. Your browser's own playback speed, so it costs nothing and changes at once.">reading speed <select id="readSpeed"></select></label>
+      <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: agents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
       <a href="#" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
@@ -1787,15 +1787,40 @@
       + ` aria-label="Read from here on" aria-haspopup="menu">⏩</button>`;
   }
   let speaking = null;  // {audio, button}
-  // How fast it's read, for this listener: the browser's playback rate, pitch kept.
-  // Every voice, the narrator and memos alike; nothing is made again, so it costs
-  // nothing. Set on each player before it plays (a new src goes back to
-  // defaultPlaybackRate, so that's set too).
-  const READ_SPEEDS = [1, 1.15, 1.25, 1.5, 1.75, 2];
-  let readSpeed = READ_SPEEDS.includes(store.get('readSpeed', 1)) ? store.get('readSpeed', 1) : 1;
+  // How fast it's read, for this listener: in words a minute, one pace for agents (and the narrator) and
+  // one for people (Justin, 22 Oct: a person's articulation is harder to follow fast, and at one multiplier
+  // re's voice ran faster than magent's). Each clip says how many words it holds (its URL's fragment,
+  // voice._spoken); its length, once the browser knows it, gives its own pace, and it's played at the rate
+  // that brings that to the listener's. The browser's playback rate, pitch kept: nothing is made again.
+  // A clip that can't say (an older memo) is taken at an ordinary pace; a chime is played as it is.
+  const PACES = [130, 160, 190, 220, 250, 280, 310, 340, 370, 400];
+  const NATURAL = { agent: 165, person: 150 };  // words a minute, about, when a clip can't say
+  const nearest = v => PACES.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a);
+  const wasSpeed = Number(store.get('readSpeed', 1)) || 1;  // the multiplier there was: the paces start near it
+  const pace = { agent: PACES.includes(store.get('readPaceAgent')) ? store.get('readPaceAgent') : nearest(NATURAL.agent * wasSpeed),
+                 person: PACES.includes(store.get('readPacePerson')) ? store.get('readPacePerson') : nearest(Math.min(NATURAL.person * wasSpeed, 220)) };
+  function clipSays(audio) {
+    const src = audio.currentSrc || audio.src || '';
+    if (src.startsWith('blob:')) return null;  // a chime
+    const f = new URLSearchParams((src.split('#')[1] || ''));
+    return { who: f.get('who') === 'agent' ? 'agent' : 'person', words: Number(f.get('words')) || 0 };
+  }
+  function rateFor(audio) {
+    const says = clipSays(audio);
+    if (!says) return 1;
+    const natural = says.words && isFinite(audio.duration) && audio.duration > 0.5
+      ? says.words / (audio.duration / 60) : NATURAL[says.who];
+    return Math.min(3.5, Math.max(0.5, pace[says.who] / Math.max(natural, 60)));
+  }
   function atSpeed(audio) {
-    audio.defaultPlaybackRate = readSpeed; audio.playbackRate = readSpeed;
+    const set = () => { const r = rateFor(audio); audio.defaultPlaybackRate = r; audio.playbackRate = r; };
+    if (!audio._paced) {  // its length known (or a new clip in it): its own pace, and so its rate
+      audio._paced = true;
+      audio.addEventListener('loadedmetadata', set);
+      audio.addEventListener('durationchange', set);
+    }
     audio.preservesPitch = true;
+    set();
     return audio;
   }
   // A message read aloud comes in pieces (voice.pieces): the first is short, so it
@@ -5461,7 +5486,9 @@
         if (!r.ok) throw new Error(body.error || r.status);
         insertAtCaret(`🎙 [voice memo · ${clock(seconds)}](${body.url})`);
         sayBox.dispatchEvent(new Event('input'));
-        sayBox.focus();
+        // Not on a touch screen: there the box's focus brings the keyboard up over everything, and a memo is
+        // sent by touch, not typed after (Justin, 22 Oct, driving).
+        if (!matchMedia('(pointer: coarse)').matches) sayBox.focus();
         ready = true;
       } catch (e) {
         memoThenSend = false; showError('voice memo: ' + e.message);
@@ -5692,20 +5719,24 @@
   let clipDone = null;
   if (voiceOn && viewer) document.getElementById('readAllLabel').hidden = false;
   const readSpeedSel = document.getElementById('readSpeed');
+  const readSpeedPeople = document.getElementById('readSpeedPeople');
   const readSpeedBtn = document.getElementById('readSpeedBtn');
-  const speedName = v => (v === 1 ? '1' : String(v)) + '×';
-  readSpeedSel.innerHTML = READ_SPEEDS.map(v => `<option value="${v}">${speedName(v)}</option>`).join('');
+  for (const sel of [readSpeedSel, readSpeedPeople]) sel.innerHTML = PACES.map(v => `<option value="${v}">${v}</option>`).join('');
   if (voiceOn) document.getElementById('readSpeedLabel').hidden = false;
-  function setReadSpeed(v) {
-    readSpeed = READ_SPEEDS.includes(v) ? v : 1;
-    store.set('readSpeed', readSpeed);
-    readSpeedSel.value = String(readSpeed);
-    readSpeedBtn.textContent = speedName(readSpeed);
+  function setPace(who, v) {
+    pace[who] = PACES.includes(v) ? v : nearest(v);
+    store.set(who === 'agent' ? 'readPaceAgent' : 'readPacePerson', pace[who]);
+    readSpeedSel.value = String(pace.agent);
+    readSpeedPeople.value = String(pace.person);
+    readSpeedBtn.textContent = String(pace.agent);
+    readSpeedBtn.title = `Agents read at ${pace.agent} words a minute, people at ${pace.person}: press for agents' next`;
     for (const a of [reader, speaking && speaking.audio]) if (a) atSpeed(a);  // what's playing changes at once
   }
-  setReadSpeed(readSpeed);
-  readSpeedSel.addEventListener('change', () => setReadSpeed(+readSpeedSel.value));
-  readSpeedBtn.addEventListener('click', () => setReadSpeed(READ_SPEEDS[(READ_SPEEDS.indexOf(readSpeed) + 1) % READ_SPEEDS.length]));
+  setPace('agent', pace.agent);
+  setPace('person', pace.person);
+  readSpeedSel.addEventListener('change', () => setPace('agent', +readSpeedSel.value));
+  readSpeedPeople.addEventListener('change', () => setPace('person', +readSpeedPeople.value));
+  readSpeedBtn.addEventListener('click', () => setPace('agent', PACES[(PACES.indexOf(pace.agent) + 1) % PACES.length]));
 
   // Where reading has got to, kept in this browser: the moment before the first thing not yet
   // read, and what's been read since. A page reloaded -- a phone discards one in the background --
