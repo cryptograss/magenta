@@ -350,6 +350,8 @@ def api_tiding(request, tiding_id):
         if body.get('withdraw'):
             tiding_links.withdraw(tiding, device)
             return JsonResponse({'id': tiding_id, 'withdrawn': True})
+        if isinstance(body.get('pin'), bool):
+            return JsonResponse({'id': str(tiding.id), 'pinned': tiding_links.pin(tiding, device, body['pin'])})
         if body.get('mute') is not None:
             return JsonResponse({'id': str(tiding.id), 'muted': tiding_links.mute(tiding, device, body['mute']).muted_in_mood})
         tiding = tiding_links.retitle(tiding, device, body.get('title'))

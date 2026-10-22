@@ -13,7 +13,7 @@ from conversations.models import ConversationParticipant, Message, Mood, Thinkin
 from conversations.services import front, links, tiding_links
 
 
-class FrontPageTest(TestCase):
+class FrontBase(TestCase):
 
     def setUp(self):
         cache.clear()
@@ -32,6 +32,9 @@ class FrontPageTest(TestCase):
                                    source_file='mood-web', **fields)
         Message.objects.filter(id=row.id).update(created_at=timezone.now() + timedelta(seconds=self.n))
         return row
+
+
+class FrontPageTest(FrontBase):
 
     def test_it_is_what_the_bare_address_shows_to_anyone(self):
         page = self.client.get('/')
@@ -81,3 +84,67 @@ class FrontPageTest(TestCase):
         tiding = tiding_links.promote(said, self.justin, title='X')
         page = self.client.get(f'/moods/tidings/{tiding.id}/').content.decode()
         self.assertIn('tidingAt', page)  # the one page, which opens the discussion in its Tidings frame
+
+
+class RankingAndPinsTest(FrontBase):
+    """Justin, 22 Oct: rank Tidings by votes, talk and age -- HN's gravity on a half-day clock, "pretty
+    dynamic" -- pin to the top for anyone signed in with an SSH key, and the front page's clicks."""
+
+    WEIGHTS = {'tidings_age_hours': 12.0, 'tidings_gravity': 1.5, 'tidings_comment_weight': 0.5}
+
+    def test_the_rank_is_hns_on_a_half_day_clock(self):
+        now = timezone.now()
+        rank = lambda votes, comments, hours: tiding_links.rank(votes, comments, now - timedelta(hours=hours), now, self.WEIGHTS)  # noqa: E731
+        self.assertAlmostEqual(rank(0, 0, 0), 1.0)
+        self.assertAlmostEqual(rank(3, 0, 12), 4 / 2 ** 1.5)       # half a day, three votes
+        self.assertGreater(rank(3, 0, 12), rank(0, 0, 0))          # three votes outlast half a day
+        self.assertLess(rank(3, 0, 24), rank(0, 0, 0))             # but not a day
+        self.assertAlmostEqual(rank(0, 2, 0), 2.0)                 # two comments, a vote's worth
+
+    def test_a_fresh_link_passes_an_old_favourite(self):
+        from conversations.models import Tiding
+        old = tiding_links.promote(self.say(self.skyler, self.jams, 'https://example.org/old'), self.justin, title='Old')
+        Tiding.objects.filter(id=old.id).update(at=timezone.now() - timedelta(days=2))
+        for who in (self.skyler, self.justin, self.magent):
+            TidingVote.objects.create(tiding=old, by=who)
+        tiding_links.promote(self.say(self.skyler, self.jams, 'https://example.org/new'), self.justin, title='New')
+        self.assertEqual([t['title'] for t in tiding_links.listed()], ['New', 'Old'])
+        self.assertEqual([t['title'] for t in tiding_links.listed(order='new')], ['New', 'Old'])
+
+    def test_pinned_first_by_an_ssh_key_only(self):
+        import json
+        from django.test import Client
+        from conversations.services import mood_auth
+        first = tiding_links.promote(self.say(self.skyler, self.jams, 'https://example.org/1'), self.justin, title='One')
+        tiding_links.promote(self.say(self.skyler, self.jams, 'https://example.org/2'), self.justin, title='Two')
+
+        def client(who, tier):
+            _, token = mood_auth.enrol_device(who, 'laptop', tier=tier)
+            c = Client()
+            c.cookies[mood_auth.COOKIE] = token
+            return c
+        front.state()  # the front page, drawn and kept before the pin
+        pin = lambda c, on: c.post(f'/api/tidings/{first.id}/', json.dumps({'pin': on}), content_type='application/json')  # noqa: E731
+        self.assertEqual(pin(client(self.skyler, 'wiki'), True).status_code, 403)
+        self.assertEqual(pin(client(self.skyler, 'key'), True).json()['pinned'], [str(first.id)])
+        self.assertEqual([t['title'] for t in tiding_links.listed()], ['One', 'Two'])
+        self.assertEqual([t['title'] for t in front.state()['tidings']][:1], ['One'])  # at once, not after the cache
+        page = client(self.skyler, 'key').get('/moods/tidings/?embed=1').content.decode()
+        self.assertIn('class="pinit"', page)
+        self.assertIn('📌', page)
+        self.assertNotIn('class="pinit"', client(self.skyler, 'wiki').get('/moods/tidings/?embed=1').content.decode())
+        pin(client(self.justin, 'key'), False)
+        self.assertEqual([t['title'] for t in tiding_links.listed()], ['Two', 'One'])
+
+    def test_the_front_pages_clicks(self):
+        tiding = tiding_links.promote(self.say(self.skyler, self.jams, 'https://example.org/x'), self.justin, title='X')
+        self.say(self.justin, self.jams, 'first')
+        self.say(self.skyler, self.dev, 'elsewhere')
+        self.say(self.justin, self.jams, 'again')  # justin in jams again: still one line, at its latest
+        cache.clear()
+        self.assertEqual([(s['who'], s['mood']) for s in front.lately()],
+                         [('justin', 'jams'), ('skyler', 'magenta-interface'), ('skyler', 'jams')])
+        html = self.client.get('/').content.decode()
+        self.assertIn('class="enter" href="/moods/tidings/"', html)                      # come in: Tidings
+        self.assertIn(f'class="it" href="/moods/tidings/{tiding.id}/"', html)            # a link: its discussion
+        self.assertIn('<li><a href="/moods/magenta-interface/">', html)                 # who spoke: that Mood

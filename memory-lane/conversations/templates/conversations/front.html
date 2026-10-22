@@ -40,7 +40,12 @@
   .tidings .score b { display: block; color: var(--ink); font-size: 14px; }
   .tidings .title { color: var(--ink); font-weight: 600; }
   .tidings .meta { font-size: 12.5px; color: var(--muted); }
-  .lately li { padding: 6px 0; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .tidings a.it { color: inherit; display: block; }
+  .tidings a.it:hover { text-decoration: none; }
+  .tidings a.it:hover .title { color: var(--accent); }
+  .lately li a { padding: 6px 0; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; color: var(--muted); }
+  .lately li a:hover { text-decoration: none; }
+  .lately li a:hover .where { text-decoration: underline; }
   .lately .who { font-weight: 600; color: var(--ink); }
   .lately .who.agent { color: var(--agent, var(--accent)); }
   .lately .where { color: var(--accent); }
@@ -56,7 +61,7 @@
     <div class="mark" role="img" aria-label="magenta: pickers in a ring around a campfire"></div>
     <h1>magenta</h1>
     <p class="line">A place for hackers, bluegrassers, deadheads, and free folk of middle internet.</p>
-    <a class="enter" href="/moods/">come in →</a>
+    <a class="enter" href="/moods/tidings/">come in →</a>
   </section>
 
   <div class="now">
@@ -67,10 +72,10 @@
         {% for link in front.tidings %}
         <li>
           <span class="score" title="upvotes"><b>{{ link.score }}</b>▲</span>
-          <span>
-            <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a>
-            <div class="meta">{{ link.host }} · <a href="/moods/tidings/{{ link.id }}/">{{ link.comments }} comment{{ link.comments|pluralize }}</a></div>
-          </span>
+          <a class="it" href="/moods/tidings/{{ link.id }}/">
+            <span class="title">{{ link.title }}</span>{% if link.pinned %} <span title="Pinned to the top">📌</span>{% endif %}
+            <div class="meta">{{ link.host }} · {{ link.comments }} comment{{ link.comments|pluralize }}</div>
+          </a>
         </li>
         {% endfor %}
       </ol>
@@ -84,11 +89,11 @@
       {% if front.lately %}
       <ul>
         {% for said in front.lately %}
-        <li>
+        <li><a href="/moods/{{ said.mood }}/">
           <span class="who{% if said.colour %} agent{% endif %}"{% if said.colour %} style="--agent: {{ said.colour }}"{% endif %}>{{ said.who }}</span>
-          <span>in <a class="where" href="/moods/{{ said.mood }}/">#{{ said.title }}</a></span>
+          <span class="in">in <span class="where">#{{ said.title }}</span></span>
           <span class="when" title="{{ said.at|date:'M j, H:i' }} UTC">{{ said.ago }} ago</span>
-        </li>
+        </a></li>
         {% endfor %}
       </ul>
       {% else %}

@@ -317,7 +317,7 @@ class TidingTalkTests(TidingLinksTest):
             tiding_links.promote(said, self.justin)
             self.say(self.justin, f'↩ #m-{said.id}\nnice {n}')
         tiding_links.listed()  # the links index, built once
-        with self.assertNumQueries(3):  # the links, their scores, their comments: nothing per link
+        with self.assertNumQueries(4):  # its settings (pins, ranking), the links, their votes, their comments: nothing per link
             self.assertEqual([link['comments'] for link in tiding_links.listed()], [1, 1, 1])
 
     def test_the_pencil_shows_to_whoever_may_retitle(self):
