@@ -205,6 +205,34 @@
   #readBar { display: flex; align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; padding: 6px 16px; font-size: 13px;
              color: var(--muted); }
   #readBar[hidden] { display: none; }
+  /* Voice mode (Justin, 22 Oct: driving, biking, hiking -- "only the things that are voice relevant, and
+     quite a bit bigger"): the thread, the box and the small bar make way for what's being read and what's
+     next, as big bars, and big buttons found by thumb. Where you are stays, one small line (re). */
+  body.voice-mode #main, body.voice-mode #composer, body.voice-mode #readBar, body.voice-mode #readQueue,
+  body.voice-mode .layout > nav { display: none !important; }
+  #voiceMode { position: fixed; inset: 41px 0 0 0; z-index: 30; background: var(--bg); display: none; flex-direction: column;
+               gap: 10px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); overflow-y: auto; }
+  body.voice-mode #voiceMode { display: flex; }
+  #voiceMode .where { font-size: 14px; color: var(--muted); text-align: center; }
+  #voiceMode .where b { color: var(--ink); }
+  #voiceMode .bars { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #voiceMode .bar { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 14px; border-radius: 14px;
+                    background: var(--panel); border: 1px solid var(--line); font-size: 18px; line-height: 1.3; }
+  #voiceMode .bar .when { flex: none; width: 3.4em; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  #voiceMode .bar .say { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #voiceMode .bar.now { border-color: var(--accent); background: var(--accent-soft, var(--panel)); font-size: 20px; }
+  #voiceMode .bar.work { border-style: dashed; }
+  #voiceMode .bar .drop { flex: none; font: inherit; font-size: 20px; border: 0; background: none; color: var(--muted); padding: 8px 12px; cursor: pointer; }
+  #voiceMode .none { color: var(--muted); font-size: 18px; text-align: center; padding: 24px 0; }
+  #voiceMode .pads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  #voiceMode .pads button { font: inherit; font-size: 26px; min-height: 76px; border-radius: 16px; border: 1px solid var(--line);
+                            background: var(--panel); color: var(--ink); cursor: pointer; }
+  #voiceMode .pads button small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  #voiceMode .pads button.hot { background: var(--accent); color: #fff; border-color: transparent; }
+  #voiceMode .pads button.hot small { color: #fff; }
+  #voiceMode .pads button:disabled { opacity: .4; }
+  #voiceMode .leave { font: inherit; font-size: 14px; border: 0; background: none; color: var(--muted); padding: 10px; cursor: pointer; }
+  #readBar #voiceModeBtn { font-size: 14px; }
   #readBar .what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #readBar button { font: inherit; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink);
                     padding: 2px 9px; cursor: pointer; }
@@ -220,6 +248,9 @@
   #readQueue .q .drop:hover { color: var(--err, #c0392b); }
   #readQueue .more { font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px 0 0 3.7em; }
   #userMenu .readall select { font: inherit; }
+  #userMenu button#voiceModeOpen { font: inherit; text-align: left; border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+                                   color: var(--ink); padding: 4px 10px; cursor: pointer; }
+  #userMenu button#voiceModeOpen[hidden] { display: none; }
   /* What was taken back, opened with the recovery key in this tab (services/sealing.py). */
   #sealsBox { position: fixed; z-index: 30; top: 44px; right: 12px; width: min(560px, 94vw); max-height: 80vh; overflow-y: auto;
               background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
@@ -1191,6 +1222,7 @@
         <label><input type="checkbox" data-tell="agent"> every message from agents</label>
       </div>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
+      <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
       <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: agents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
       <a href="#" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
@@ -1294,13 +1326,14 @@
 <div class="layout">
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"></div>
+  <div id="voiceMode" role="region" aria-label="Voice mode"></div>
   <main id="main"><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
     <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
     <div id="typing"></div>
     <div id="tasks"></div>
-    <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button></div>
+    <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button><button type="button" id="voiceModeBtn" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧</button></div>
     <div id="readQueue" hidden></div>
     <div id="activity"><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
@@ -6093,6 +6126,7 @@
       : item ? `🔊 ${shown(item.who)}${readMode === 'everywhere' ? ' · ' + where : ''}${more}`
       : `🔊 reading ${readMode === 'everywhere' ? 'every Mood' : 'this Mood'} as it comes`);
     readPause.textContent = readHeld || readBlocked ? '▶' : '⏸';
+    if (typeof renderVoiceMode === 'function') renderVoiceMode();
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = item && readMode !== 'off' ? new MediaMetadata({
         title: shown(item.who), artist: where, album: 'magenta',
@@ -6974,6 +7008,73 @@
     });
     recorder.start();
   });
+  // --- Voice mode (Justin, 22 Oct) ---------------------------------------------------------------------
+  // On by its own button (re: reading aloud at a desk still wants the thread), remembered on this device.
+  // What it shows is the reader's own state, drawn big: the agents at work, what's playing, what's next.
+  // Its buttons press the page's own -- pause, skip, 🧭, the memo's 🎙, send -- so they do just what those do.
+  const voiceMode = document.getElementById('voiceMode');
+  const voiceModeBtn = document.getElementById('voiceModeBtn');
+  const voiceModeOpen = document.getElementById('voiceModeOpen');
+  if (voiceOn && viewer) { voiceModeBtn.hidden = false; voiceModeOpen.hidden = false; }
+  voiceModeOpen.addEventListener('click', () => setVoiceMode(true));
+  function setVoiceMode(on) {
+    document.body.classList.toggle('voice-mode', on);
+    store.set('voiceMode', on);
+    if (on && readMode === 'off') setReadMode('here');  // voice mode is for listening: it starts listening here
+    renderVoiceMode();
+  }
+  function workBars() {  // the agents at work where one listens: here, or every Mood
+    const out = [];
+    if (readMode === 'everywhere') {
+      for (const [slug, d] of Object.entries(liveData)) {
+        for (const agent of d.busy_all || (d.busy ? [d.busy] : [])) {
+          out.push(`<b>${esc(shown(agent))}</b> at work · ${esc((moods.find(m => m.slug === slug) || {}).title || slug)}`);
+        }
+      }
+    } else {
+      for (const a of acts.filter(a => a.doing !== 'held')) out.push(`<b>${esc(shown(a.agent))}</b> ${esc(a.doing)} · ${esc(elapsed(a.since))}`);
+    }
+    return out;
+  }
+  function renderVoiceMode() {
+    if (!document.body.classList.contains('voice-mode')) return;
+    const here = (moods.find(m => m.slug === current) || {}).title || current || '';
+    const now = readNow && readNow.item;
+    const bar = (cls, when, html, i) => `<div class="bar ${cls}"><span class="when">${when}</span><span class="say">${html}</span>`
+      + (i >= 0 ? `<button type="button" class="drop" data-i="${i}" aria-label="Don't read this one">✕</button>` : '') + '</div>';
+    const bars = workBars().map(w => bar('work', 'at work', w, -1))
+      + (now ? bar('now', readRecording ? 'held' : readHeld ? 'paused' : 'now', readLabel(now), -1) : '')
+      + readQueue.slice(0, 6).map((item, i) => bar('', i === 0 ? 'next' : 'then', readLabel(item), i)).join('')
+      + (readQueue.length > 6 ? `<div class="where">+ ${readQueue.length - 6} more</div>` : '');
+    const recording = memoBtn.classList.contains('recording'), saving = memoBtn.classList.contains('busy');
+    const html = `<div class="where">#<b>${esc(here)}</b> · ${readMode === 'everywhere' ? 'hearing every Mood' : readMode === 'here' ? 'hearing this Mood' : 'not reading aloud'}</div>`
+      + `<div class="bars">${bars || '<div class="none">Nothing to hear yet. It comes as it’s said.</div>'}</div>`
+      + '<div class="pads">'
+      + `<button type="button" data-v="pause">${readHeld || readBlocked ? '▶' : '⏸'}<small>${readHeld || readBlocked ? 'go on' : 'pause'}</small></button>`
+      + `<button type="button" data-v="skip">⏭<small>skip</small></button>`
+      + `<button type="button" data-v="go"${goBtn.classList.contains('listening') ? ' class="hot"' : ''}>🧭<small>go to…</small></button>`
+      + `<button type="button" data-v="memo"${recording ? ' class="hot"' : ''}${saving ? ' disabled' : ''}>🎙<small>${recording ? 'stop' : saving ? 'saving' : 'record'}</small></button>`
+      + `<button type="button" data-v="send"${sayBox.value.trim() && !saving ? '' : ' disabled'}>➤<small>send</small></button>`
+      + `<button type="button" data-v="where">${readMode === 'everywhere' ? '🌐' : '📍'}<small>${readMode === 'everywhere' ? 'every Mood' : 'this Mood'}</small></button>`
+      + '</div><button type="button" class="leave" data-v="leave">leave voice mode</button>';
+    if (voiceMode.innerHTML !== html) voiceMode.innerHTML = html;
+  }
+  voiceMode.addEventListener('click', e => {
+    const drop = e.target.closest('.drop');
+    if (drop) { readQueue.splice(+drop.dataset.i, 1); saveReadPlace(); renderReadBar(); return; }
+    const v = e.target.closest('[data-v]')?.dataset.v;
+    if (v === 'pause') readPause.click();
+    else if (v === 'skip') skipClip();
+    else if (v === 'go') goBtn.click();
+    else if (v === 'memo') memoBtn.click();
+    else if (v === 'send') composer.requestSubmit();
+    else if (v === 'where') { setReadMode(readMode === 'everywhere' ? 'here' : 'everywhere'); readPoll(); }
+    else if (v === 'leave') setVoiceMode(false);
+    setTimeout(renderVoiceMode, 50);
+  });
+  voiceModeBtn.addEventListener('click', () => setVoiceMode(true));
+  setInterval(renderVoiceMode, 1000);  // the clock on an agent's work, the memo's state, what came
+  if (voiceOn && viewer && store.get('voiceMode', false)) setVoiceMode(true);
   // Installable as an app: the browser wants a service worker (it keeps nothing).
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/moods/sw.js', { scope: '/moods/' }).catch(() => {});
 })();
