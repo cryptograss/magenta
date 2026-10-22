@@ -340,10 +340,19 @@ def intro(message, by, where=False, http=requests):
                    http, intro=message.sender_id)
 
 
-def narrate_thinking(mood, agent, by, where=False, http=requests):
+def narrate_thinking(mood, agent, by, where=False, still=None, http=requests):
     """The URL of the narrator saying `agent` has started work ("Magent is
-    thinking." -- with `where`, the Mood first: "Pound magenta interface. ..."). Made once per wording, and kept."""
-    script = (_where(mood) if where else '') + f'{spoken_name(agent)} is thinking.'
+    thinking." -- with `where`, the Mood first: "Pound magenta interface. ..."). With `still`, (minutes, steps):
+    that it's still at it, a minute or more on, and how far (Justin, 22 Oct: "are they still thinking?").
+    Made once per wording, and kept."""
+    if still:
+        minutes, steps = still
+        how = [f"{minutes} minute{'s' if minutes != 1 else ''} in"]
+        if steps:
+            how.append(f"{steps} step{'s' if steps != 1 else ''} so far")
+        script = (_where(mood) if where else '') + f"{spoken_name(agent)} is still thinking: {', '.join(how)}."
+    else:
+        script = (_where(mood) if where else '') + f'{spoken_name(agent)} is thinking.'
     return _spoken(mood, by, voice_of(NARRATOR, http), {'text': script, 'model_id': TTS_MODEL}, script,
                    http, narrated='thinking', agent=agent)
 

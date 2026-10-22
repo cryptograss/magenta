@@ -162,6 +162,26 @@ class SpeakerEndpointsTest(TestCase):
         self.assertTrue(said.json()['url'].endswith('.mp3'))
         self.assertEqual(fake.asked[-1][2]['json']['text'], 'Pound general. Magent is thinking.')
 
+    def test_still_thinking_says_how_long_and_how_far(self):
+        # Justin, 22 Oct: a minute on, with nothing else to hear, "are they still thinking?"
+        import time
+        from conversations.models import ToolUse
+        fake = FakeQuartet()
+        client = self.client_for(self.justin)
+        ask = lambda: client.post('/api/voice/narrate/', json.dumps({'mood': 'general', 'agent': 'magent', 'still': True}),  # noqa: E731
+                                  content_type='application/json')
+        with mock.patch('requests.get', fake.get), mock.patch('requests.post', fake.post):
+            self.assertEqual(ask().status_code, 409)  # not at work: nothing to say
+            now = int(time.time() * 1000)
+            Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, timestamp=now - 190_000,
+                                   content='@magent have a look', source_file='mood-web')
+            for i in range(3):
+                ToolUse.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.mood, timestamp=now - 185_000 + 60_000 * i,
+                                       stop_reason='tool_use', content={}, tool_name='Bash', tool_id=f't{i}')
+            said = ask()
+        self.assertEqual(said.status_code, 200)
+        self.assertEqual(fake.asked[-1][2]['json']['text'], 'Magent is still thinking: 3 minutes in, 3 steps so far.')
+
     def test_speak_can_say_who_speaks_first_or_only_that(self):
         fake = FakeQuartet()
         message = Message.objects.create(id=uuid.uuid4(), sender=self.skyler, mood=self.mood, timestamp=1,

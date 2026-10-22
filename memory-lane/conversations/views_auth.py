@@ -1271,8 +1271,22 @@ def api_narrate(request):
         return JsonResponse({'error': 'no such Mood, or no such agent'}, status=404)
     if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
+    still = None
+    if body.get('still'):
+        # Still at it: for how long, and how many steps (tool calls) so far. Not words: an agent's thinking
+        # may be kept hidden, and a response's token count is on each of its lines.
+        import time
+        from .models import ToolUse
+        from .services.mood_view import activity
+        doing = activity(mood, only=agent.name)
+        if doing is None or doing['doing'] in ('waking', 'held'):
+            return JsonResponse({'error': f'{agent.name} is not at work there now'}, status=409)
+        steps = ToolUse.objects.filter(mood=mood, sender=agent, is_sidechain=False,
+                                       timestamp__gte=int(doing['since'] * 1000)).count()
+        still = (max(1, int((time.time() - doing['since']) // 60)), steps)
     try:
-        return JsonResponse({'url': voice.narrate_thinking(mood, agent.name, device.entity_id, where=bool(body.get('where')))})
+        return JsonResponse({'url': voice.narrate_thinking(mood, agent.name, device.entity_id,
+                                                           where=bool(body.get('where')), still=still)})
     except voice.VoiceError as e:
         return JsonResponse({'error': str(e)}, status=e.status)
 

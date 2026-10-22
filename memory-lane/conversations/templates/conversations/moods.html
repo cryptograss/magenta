@@ -1554,12 +1554,23 @@
   }
   // An agent starting work where Moods are being read as they come: the narrator
   // says so ("Magent is thinking"), in its own voice, in turn with what's said.
+  // And while it's at work and there's nothing else to hear, a word every minute that it still is, and how
+  // far it's got (Justin, 22 Oct: "Okay, are they still thinking? What's going on?").
+  const STILL_EVERY_MS = 60000;
+  const thinkingToldAt = {};  // Mood -> when its agent's work was last said, or anything of it read
   function noticeThinking(before) {
     if (readMode === 'off') return;  // (after an await: the reader's state is set up by then)
+    const now = Date.now();
     for (const [slug, d] of Object.entries(liveData)) {
-      if (!d.busy || (before[slug] || {}).busy === d.busy) continue;  // not working, or working already
       if (readMode !== 'everywhere' && slug !== current) continue;
-      readQueue.push({ kind: 'thinking', mood: slug, who: d.busy, agent: d.busy });
+      if (!d.busy) { delete thinkingToldAt[slug]; continue; }
+      if ((before[slug] || {}).busy !== d.busy) {  // just started
+        readQueue.push({ kind: 'thinking', mood: slug, who: d.busy, agent: d.busy });
+        thinkingToldAt[slug] = now;
+      } else if (!readNow && !readQueue.length && now - (thinkingToldAt[slug] || now) >= STILL_EVERY_MS) {
+        readQueue.push({ kind: 'thinking', still: true, mood: slug, who: d.busy, agent: d.busy });
+        thinkingToldAt[slug] = now;
+      } else if (!thinkingToldAt[slug]) thinkingToldAt[slug] = now;  // at work when reading began: a minute from now
     }
     readNext();
   }
@@ -1854,9 +1865,25 @@
     if (readMode !== 'off' && !readHeld) { holdRead(true); speakHeld = true; }  // one voice at a time: reading waits while this plays
     const ask = ++speakAsk;
     atSpeed(new Audio(chimeUrl('in'))).play().catch(() => {});  // something's coming: heard, not looked for
+    // The narrator first, saying where and who ("Pound jams. Skyler says:"): ▶ is pressed by someone not
+    // looking, as reading aloud is (Justin, 22 Oct). Not before a second voice block of the same message.
+    const introFirst = !Number(b.dataset.part || 0);
     // A voice memo is heard as it was spoken: ▶ plays the recording, never a voice reading its transcript.
     const memo = b.closest('.turn')?.querySelector('.body audio');
     if (memo) {
+      b.classList.add('busy'); b.textContent = '…';
+      const intro = introFirst ? await fetch(`/api/moods/${encodeURIComponent(current)}/speak/${encodeURIComponent(b.dataset.id)}/?only=intro&intro=where`,
+                                             { method: 'POST', headers: { 'X-CSRFToken': csrf() } })
+        .then(r => r.ok ? r.json() : {}).then(d => d.intro).catch(() => null) : null;
+      b.classList.remove('busy');
+      if (ask !== speakAsk) { b.textContent = '▶'; return; }  // another ▶ meanwhile
+      if (intro) {
+        const said = atSpeed(new Audio(intro));
+        speaking = { audio: said, button: b };
+        b.classList.add('playing'); b.textContent = '■';
+        await new Promise(done => { said.onended = done; said.onerror = done; said.play().catch(done); });
+        if (speaking?.audio !== said) return;  // stopped while it was said
+      }
       speaking = { audio: memo, button: b };
       memo.addEventListener('ended', stopSpeaking, { once: true });
       b.classList.add('playing'); b.textContent = '■';
@@ -1865,16 +1892,22 @@
     }
     b.classList.add('busy'); b.textContent = '…';
     try {
-      const r = await fetch(`/api/moods/${encodeURIComponent(current)}/speak/${encodeURIComponent(b.dataset.id)}/?part=${encodeURIComponent(b.dataset.part || 0)}`, {
+      const r = await fetch(`/api/moods/${encodeURIComponent(current)}/speak/${encodeURIComponent(b.dataset.id)}/?part=${encodeURIComponent(b.dataset.part || 0)}${introFirst ? '&intro=where' : ''}`, {
         method: 'POST', headers: { 'X-CSRFToken': csrf() } });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || r.status);
       if (ask !== speakAsk) { b.textContent = b.dataset.label || '▶'; return; }  // another ▶ was pressed meanwhile: that one plays
-      const audio = atSpeed(new Audio(body.url));
+      const audio = atSpeed(new Audio(body.intro || body.url));
       const more = laterPieces(current, b.dataset.id, b.dataset.part, body.pieces || 1);
-      let at = 0;
+      let at = 0, introSaid = !body.intro;
       speaking = { audio, button: b };
       audio.addEventListener('ended', async () => {
+        if (!introSaid) {  // the narrator's done: now the message
+          introSaid = true;
+          if (speaking?.audio !== audio) return;
+          try { audio.src = body.url; await audio.play(); more(1); } catch (err) { showError('read aloud: ' + err.message); stopSpeaking(); }
+          return;
+        }
         const next = more(++at);
         if (!next || speaking?.audio !== audio) { stopSpeaking(); return; }
         try {
@@ -1887,7 +1920,7 @@
       });
       b.classList.add('playing'); b.textContent = b.dataset.label ? b.dataset.label.replace(/^▶/, '■') : '■';
       await audio.play();
-      more(1);
+      if (introSaid) more(1);
     } catch (err) {
       showError('read aloud: ' + err.message);
       b.textContent = b.dataset.label || '▶';
@@ -5692,7 +5725,8 @@
     if (readMode === 'off' || !readSinceMs) return;
     let events;
     try {
-      const r = await fetch('/api/moods/recent/?oldest=1&since=' + encodeURIComponent(new Date(readSinceMs).toISOString()));
+      // An agent's words as it says them, mid-turn, not all at once when it's done (Justin, 22 Oct).
+      const r = await fetch('/api/moods/recent/?oldest=1&progress=1&since=' + encodeURIComponent(new Date(readSinceMs).toISOString()));
       if (!r.ok) return;
       events = (await r.json()).events || [];
     } catch (e) { return; }
@@ -5853,7 +5887,7 @@
         const r = await fetch('/api/voice/narrate/', { method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
           body: JSON.stringify(item.kind === 'deploy' ? { mood: current, deploy: item.row }
-                               : { mood: item.mood, agent: item.agent, where: readMode === 'everywhere' }) });
+                               : { mood: item.mood, agent: item.agent, where: readMode === 'everywhere', still: !!item.still }) });
         const body = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(body.error || r.status);
         clips.push([item.kind, body.url]);
@@ -5925,6 +5959,7 @@
       }
     }
     if (readNow !== now) return;  // stopped meanwhile
+    if (item.mood && thinkingToldAt[item.mood]) thinkingToldAt[item.mood] = Date.now();  // heard from there: a minute from now
     if (item.kind === 'deploy') readLast = null;  // after the news, whoever speaks next is said again
     else if (item.kind !== 'thinking') readLast = { who: item.who, mood: item.mood };  // its answer still says who speaks
     readNow = null;

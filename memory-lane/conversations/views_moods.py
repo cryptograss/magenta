@@ -680,6 +680,8 @@ def api_recent(request):
     out, or they would be all there is. ?oldest=1: the first after `since`
     instead, oldest first -- for reading a stretch through from its start,
     a page at a time (moods.html, reading aloud from a message on).
+    ?progress=1: an agent's words mid-turn too, as they're said -- read aloud as they come, not all at
+    once when its turn ends (Justin, 22 Oct) -- never its thinking or its tool calls.
     """
     from datetime import timedelta
     from django.utils import timezone
@@ -698,7 +700,9 @@ def api_recent(request):
     titles = dict(Mood.objects.values_list('slug', 'title'))
     events = []
 
-    said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since)
+    progress = request.GET.get('progress') == '1'
+    said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since,
+                                   thought__isnull=True, tooluse__isnull=True, toolresult__isnull=True)
             .exclude(sender_id__in=MACHINERY_SENDERS).order_by(order)[:RECENT_SCAN])
     for msg in said:
         if msg.sender_id not in names:
@@ -706,7 +710,7 @@ def api_recent(request):
         text = prose(msg.content)
         if not text or is_wrapper(text) or is_summary(msg) or quiet_reason(text) is not None:
             continue
-        if msg.sender_id in agents and msg.stop_reason != 'end_turn':
+        if msg.sender_id in agents and msg.stop_reason != 'end_turn' and not progress:
             continue
         events.append({'kind': 'answered' if msg.sender_id in agents else 'said', 'at': msg.created_at.isoformat(),
                        'mood': msg.mood_slug, 'who': msg.sender_id, 'id': str(msg.id), 'text': text[:140]})
