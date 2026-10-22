@@ -1135,7 +1135,8 @@ def api_voices(request):
                          **({'note': note} if note else {})})
 
 
-HEARD_OUTCOMES = ('ended', 'failed', 'blocked', 'skipped')
+# paused: stopped by something else (another app's sound) mid-clip; resumed: going on again after it.
+HEARD_OUTCOMES = ('ended', 'failed', 'blocked', 'skipped', 'paused', 'resumed')
 
 
 @require_POST

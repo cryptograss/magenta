@@ -5819,6 +5819,25 @@
   }
   function endClip(how) { const done = clipDone; clipDone = null; if (done) done(how); }
   reader.addEventListener('ended', () => endClip('ended'));
+  // Paused mid-clip, but not by us or by them -- Android hands the sound to a navigation app's directions and
+  // doesn't hand it back (Justin, 22 Oct: "at Jus--", then three minutes of nothing). It goes on a few
+  // seconds later, once the directions have had their say, tried for a minute; and again when the page is
+  // looked at. Told to the server as clips are, so the record says when it happens. (Their own pause, on the
+  // page, a headset or the lock screen, holds the reading first, so it's never taken for this.)
+  let pausedAt = 0;
+  reader.addEventListener('pause', () => {
+    if (reader.ended || !clipDone || !readNow || readNow.skipped || readHeld || readRecording || readMode === 'off') return;
+    pausedAt = Date.now();
+    readReport(readNow.item, 'message', 'paused');
+    setTimeout(goOn, 3000);
+  });
+  function goOn() {
+    if (!pausedAt || !reader.paused || !clipDone || !readNow || readHeld || readRecording || readMode === 'off') { pausedAt = 0; return; }
+    const item = readNow.item;
+    atSpeed(reader).play().then(() => { readReport(item, 'message', 'resumed'); pausedAt = 0; })
+      .catch(() => { if (Date.now() - pausedAt < 60000) setTimeout(goOn, 5000); });
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && pausedAt) goOn(); });
   reader.addEventListener('error', () => {
     clipError = `media error ${reader.error && reader.error.code}: ${(reader.error && reader.error.message) || ''}`.slice(0, 200);
     endClip('failed');
