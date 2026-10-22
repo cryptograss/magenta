@@ -194,8 +194,65 @@ Given a manifest and whatever chunk files have survived:
 3. Compute the root from the manifest's chunk entries and compare with the
    manifest and the chain.
 
+A key is not part of its leaf's hash; the record is. So a checker also
+confirms that each disclosed record is the one its key names: a key is
+`<table>/<value>`, and the record's own column below must hold that value
+(a number written in decimal):
+
+| table | column |
+|---|---|
+| `motion` | `slug` |
+| `motion_session` | `session_id` |
+| `participant` | `name` |
+| `block_anchor` | `number` |
+| `media` | `sha256` |
+| every other table | `id` |
+
 A chunk that is missing does not affect the others. `verify_memory.py`
 does all of this.
+
+## The proof of one leaf
+
+One disclosed leaf can be checked without the rest of the record. Its
+**proof** is a JSON object:
+
+```
+{"spec":"cryptograss-memory-commitment/1", "subject":"magent", "epoch":1, "sealed":true,
+ "key":"message/...", "salt":"64 hex digits", "record":"the record text",
+ "chunk":"messages/2026-10", "leaf_index":i, "chunk_size":n,
+ "chunk_path":{"sha256":["hex", ...],"sha3_256":[...]},
+ "chunk_index":j, "chunk_count":c,
+ "root_path":{"sha256":["hex", ...],"sha3_256":[...]},
+ "root":{"sha256":"hex","sha3_256":"hex"}}
+```
+
+`leaf_index` is the leaf's place in its chunk, counting from 0, and
+`chunk_size` the number of leaves in the chunk. `chunk_index` is the
+chunk's place among all the chunks in order of name, and `chunk_count`
+their number. `chunk_path` and `root_path` are inclusion paths as defined
+in RFC 6962 section 2.1.1, listed from the leaf upward.
+
+To check it, for each hash function:
+
+1. Confirm the record is the one the key names, as under Checking.
+2. Compute the leaf hash from the salt and the record.
+3. Follow `chunk_path` from the leaf hash at `leaf_index` in a tree of
+   `chunk_size` leaves, by RFC 9162 section 2.1.3.2, to reach the chunk
+   root.
+4. Hash the chunk's entry, `H(0x00 || chunk || 0x00 || chunk root)`, and
+   follow `root_path` from it at `chunk_index` in a tree of `chunk_count`
+   leaves to reach the root.
+5. The root reached must equal `root` in the proof, and `root` must equal
+   what is on the chain.
+
+What a proof shows is that the leaf hash is one of the leaves under the
+root. The sizes and places in it only steer which side each hash goes on;
+they are not themselves committed, and a wrong size can sometimes still
+reach the right root without the proof showing any less.
+
+The proof names its root, but only the chain says which root was
+committed. `prove_memory.py` makes a proof from any copy of a bundle, and
+`verify_memory.py --one` checks one.
 
 ## Epochs
 

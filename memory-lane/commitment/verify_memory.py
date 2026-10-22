@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Check a memory commitment bundle against its manifest.
+"""Check a memory commitment bundle against its manifest, or one leaf against its root.
 
     python3 verify_memory.py BUNDLE_DIR
+    python3 verify_memory.py --one PROOF.json
 
 Needs only Python's standard library, and nothing else from wherever this
 file was found. SPEC.md beside it says what is being checked and why.
@@ -21,6 +22,15 @@ from pathlib import Path
 
 ALGS = ('sha256', 'sha3_256')
 LEAF, NODE = b'\x00', b'\x01'
+SPEC_ID = 'cryptograss-memory-commitment/1'
+
+# The column of each table's record that its key names: a key is <table>/<that value>.
+KEY_COLUMNS = {
+    'message': 'id', 'raw': 'id', 'heap': 'id', 'era': 'id', 'compacting_action': 'id', 'summary': 'id',
+    'note': 'id', 'motion': 'slug', 'motion_session': 'session_id', 'participant': 'name', 'topic': 'id',
+    'message_topic': 'id', 'conversation_file': 'id', 'block_anchor': 'number', 'setting': 'id',
+    'content_type': 'id', 'media': 'sha256',
+}
 
 
 def h(alg, data):
@@ -36,6 +46,39 @@ def tree_hash(alg, hashes):
         return h(alg, NODE + mth(lo, lo + k) + mth(lo + k, hi))
 
     return mth(0, len(hashes)) if hashes else h(alg, b'')
+
+
+def root_from_path(alg, index, size, leaf, path):
+    """The root that an inclusion path leads to (RFC 9162, section 2.1.3.2), or None.
+
+    None means the path does not fit a tree of `size` leaves at `index`.
+    """
+    if not 0 <= index < size:
+        return None
+    fn, sn, r = index, size - 1, leaf
+    for p in path:
+        if sn == 0:
+            return None
+        if fn & 1 or fn == sn:
+            r = h(alg, NODE + p + r)
+            while not fn & 1 and fn != 0:
+                fn, sn = fn >> 1, sn >> 1
+        else:
+            r = h(alg, NODE + r + p)
+        fn, sn = fn >> 1, sn >> 1
+    return r if sn == 0 else None
+
+
+def key_problem(key, record):
+    """Why a record cannot be the one its key names, or None if it can."""
+    table, _, value = key.partition('/')
+    column = KEY_COLUMNS.get(table)
+    if column is None:
+        return f'{key}: no table called {table!r} in version 1'
+    named = json.loads(record).get(column)
+    if isinstance(named, bool) or not isinstance(named, (str, int)) or str(named) != value:
+        return f'{key}: the record\'s {column} is {named!r}'
+    return None
 
 
 def read_chunk(path):
@@ -77,6 +120,9 @@ def check_chunk(path, entry, views):
             withheld += 1
             continue
         disclosed += 1
+        problem = key_problem(key.decode('utf-8'), record)
+        if problem:
+            return problem, disclosed, withheld
         if key.startswith(b'message/'):
             row = json.loads(record)
             for name in (f"mood/{row['motion_id']}" if row.get('motion_id') else None,
@@ -91,14 +137,79 @@ def check_chunk(path, entry, views):
     return None, disclosed, withheld
 
 
+def check_one(path):
+    """Check one leaf's proof, as written by prove_memory.py, against the root it names."""
+    proof = json.loads(Path(path).read_text(encoding='utf-8'))
+    if proof.get('spec') != SPEC_ID:
+        print(f"This script checks version 1 proofs; this one says {proof.get('spec')!r}.")
+        return 2
+    key, record, name = proof['key'], proof['record'].encode('utf-8'), proof['chunk']
+    print(f"One leaf of {proof['subject']!r}, epoch {proof['epoch']}: {key}")
+    if not proof.get('sealed'):
+        print('NOT SEALED: from a rehearsal made with a throwaway key. It proves nothing.')
+
+    failed = False
+    try:
+        problem = key_problem(key, record)
+    except ValueError as e:
+        problem = f'the record is not JSON: {e}'
+    if problem:
+        failed = True
+        print(f'FAILED  {problem}')
+    else:
+        if key.startswith('message/'):
+            row = json.loads(record)
+            print(f"  sent by {row.get('sender_id')}, {row.get('created_at')}")
+        print('ok      the key names this record')
+
+    salt = bytes.fromhex(proof['salt'])
+    if len(salt) != 32:
+        failed = True
+        print('FAILED  the salt is not 32 bytes')
+    steps = f"{len(proof['chunk_path']['sha256'])} + {len(proof['root_path']['sha256'])} steps"
+    for alg in ALGS:
+        reached = None
+        if len(salt) == 32:
+            leaf = h(alg, LEAF + salt + record)
+            chunk_root = root_from_path(alg, proof['leaf_index'], proof['chunk_size'], leaf,
+                                        [bytes.fromhex(p) for p in proof['chunk_path'][alg]])
+            if chunk_root is not None:
+                entry = h(alg, LEAF + name.encode('utf-8') + b'\x00' + chunk_root)
+                reached = root_from_path(alg, proof['chunk_index'], proof['chunk_count'], entry,
+                                         [bytes.fromhex(p) for p in proof['root_path'][alg]])
+        if reached is None:
+            failed = True
+            print(f'FAILED  {alg}: the path does not fit its tree')
+        elif reached.hex() != proof['root'][alg]:
+            failed = True
+            print(f'FAILED  {alg}: the path leads to {reached.hex()}, not the root the proof names')
+        else:
+            print(f'ok      {alg}: leaf -> {name} -> root ({steps})')
+
+    print()
+    if failed:
+        print('This proof does NOT show the leaf is in the commitment.')
+        return 1
+    print('To compare with the chain:')
+    print(f"  root, SHA-256:      {proof['root']['sha256']}")
+    print(f"  root, SHA3-256:     {proof['root']['sha3_256']}")
+    return 0
+
+
 def main(argv):
+    if len(argv) == 3 and argv[1] == '--one':
+        try:
+            return check_one(argv[2])
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
+            print(f'FAILED  the proof is malformed: {e!r}')
+            return 1
     if len(argv) != 2:
         print(__doc__)
         return 2
     bundle = Path(argv[1])
     manifest_bytes = (bundle / 'manifest.json').read_bytes()
     manifest = json.loads(manifest_bytes)
-    if manifest.get('spec') != 'cryptograss-memory-commitment/1':
+    if manifest.get('spec') != SPEC_ID:
         print(f"This script checks version 1 bundles; this one says {manifest.get('spec')!r}.")
         return 2
 

@@ -318,7 +318,7 @@ def export(out, secret, epoch, eth_block, sealed, withhold=(), allow_missing=Fal
         'seconds': round(time.time() - started, 1),
     }
     (out / 'edition.json').write_text(json.dumps(edition, indent=1, sort_keys=True) + '\n')
-    for name in ('SPEC.md', 'verify_memory.py', 'compare_memory.py', 'README.txt'):
+    for name in ('SPEC.md', 'verify_memory.py', 'prove_memory.py', 'compare_memory.py', 'README.txt'):
         if (HERE / name).exists():
             shutil.copy(HERE / name, out / name)
     return manifest, edition

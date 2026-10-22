@@ -30,6 +30,15 @@ needs only the Python language as it stood in 2026, and nothing else. It
 prints three values. Compare them with what is recorded on the chain. If
 they match, every line this program accepted is exactly as it was.
 
+To check a single message without the rest, make its proof from any
+copy of this record, and check the proof alone:
+
+  python3 prove_memory.py . message/<its id> > proof.json
+  python3 verify_memory.py --one proof.json
+
+The proof is a few kilobytes. It can travel with a quotation, and be
+checked wherever the quotation turns up.
+
 Parts of the record may be missing; what remains can still be checked.
 Some lines may be marked withheld: their content was not published in this
 copy, but their fingerprints were, so the whole can still be verified and
@@ -38,6 +47,7 @@ the content can be confirmed if it is ever released.
 SPEC.md explains every step precisely enough to do by other means, should
 Python itself be forgotten.
 
+prove_memory.py makes the proof of a single message
 manifest.json   the fingerprints
 chunks/         the record, in parts
 media/          images and recordings referred to by the record

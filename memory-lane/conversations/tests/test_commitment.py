@@ -16,7 +16,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase, TestCase
 
-from commitment import compare_memory, export, merkle, verify_memory
+from commitment import compare_memory, export, merkle, prove_memory, verify_memory
 from conversations.models import (
     BlockAnchor, ContextHeap, ConversationParticipant, Era, Media, Message, Motion, Note,
     RawImportedContent, Setting, ThinkingEntity, Thought, ToolResult, ToolUse,
@@ -59,6 +59,24 @@ class TreeHashTest(SimpleTestCase):
             hashes = [rng.randbytes(32) for _ in range(n)]
             for alg in merkle.ALGS:
                 self.assertEqual(merkle.tree_hash(alg, hashes), verify_memory.tree_hash(alg, hashes))
+
+    def test_every_inclusion_path_leads_to_the_root_and_no_other(self):
+        rng = random.Random(9162)
+        for n in list(range(1, 41)) + [63, 64, 65, 100]:
+            hashes = [rng.randbytes(32) for _ in range(n)]
+            for alg in merkle.ALGS:
+                root = merkle.tree_hash(alg, hashes)
+                self.assertEqual(prove_memory.tree_hash(alg, hashes), root)
+                for m in range(n):
+                    path = prove_memory.audit_path(alg, hashes, m)
+                    self.assertEqual(verify_memory.root_from_path(alg, m, n, hashes[m], path), root, (n, m))
+                    self.assertLessEqual(len(path), (n - 1).bit_length())
+                    # The same path claimed for another place, or one hash longer, fails. (A wrong size
+                    # can still reach the root: SPEC.md says why that proves no less.)
+                    if n > 1:
+                        self.assertNotEqual(verify_memory.root_from_path(alg, (m + 1) % n, n, hashes[m], path), root)
+                    self.assertIsNone(verify_memory.root_from_path(alg, m, n, hashes[m], path + [root]))
+                self.assertIsNone(verify_memory.root_from_path(alg, n, n, hashes[0], []))
 
     def test_a_leaf_cannot_pass_for_a_node(self):
         a, b = b'a' * 32, b'b' * 32
@@ -134,7 +152,7 @@ class CommitmentTest(TestCase):
         self.assertEqual(manifest['views']['sender/fibonacci']['leaves'], 1)
         self.assertEqual(edition['withheld'], {})
         # The bundle carries what a stranger needs to check it.
-        for name in ('SPEC.md', 'verify_memory.py', 'compare_memory.py', 'README.txt'):
+        for name in ('SPEC.md', 'verify_memory.py', 'prove_memory.py', 'compare_memory.py', 'README.txt'):
             self.assertTrue((out / name).exists(), name)
 
     def test_records_follow_the_rules_in_the_spec(self):
@@ -231,6 +249,89 @@ class CommitmentTest(TestCase):
         self.assertEqual(run(verify_memory, out)[0], 1)
         path.write_bytes(first)
         self.assertEqual(run(verify_memory, out)[0], 1)
+
+    def test_a_relabelled_key_is_caught(self):
+        # The key is not in the leaf hash, so the roots alone would not notice; the record's own id does.
+        out, _, _ = self.bundle('a')
+        path = out / 'chunks' / 'messages' / '2025-10.tsv'
+        first, second = path.read_bytes().splitlines(keepends=True)
+        kind, key, rest = first.split(b'\t', 2)
+        path.write_bytes(b'\t'.join([kind, b'message/00000000-0000-0000-0000-000000000000', rest]) + second)
+        status, printed = run(verify_memory, out)
+        self.assertEqual(status, 1)
+        self.assertIn("FAILED  messages/2025-10: message/00000000-0000-0000-0000-000000000000: the record's id is", printed)
+
+    def prove(self, out, key):
+        status, printed = run(prove_memory, out, key)
+        self.assertEqual(status, 0, printed)
+        return json.loads(printed)
+
+    def check_one(self, proof):
+        path = Path(self.tmp.name) / 'elsewhere' / 'proof.json'
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(json.dumps(proof, ensure_ascii=False), encoding='utf-8')
+        return run(verify_memory, '--one', path)
+
+    def test_any_leaf_is_proved_and_checked_alone(self):
+        out, manifest, _ = self.bundle('a')
+        keys = [key.decode() for p in sorted((out / 'chunks').rglob('*.tsv'))
+                for kind, key, _, _ in (line.split(b'\t', 3) for line in p.read_bytes().splitlines())]
+        self.assertEqual(len(keys), manifest['totals']['leaves'])
+        for key in keys:
+            proof = self.prove(out, key)
+            self.assertEqual(proof['root'], manifest['root'])
+            status, printed = self.check_one(proof)
+            self.assertEqual(status, 0, printed)
+            self.assertIn(manifest['root']['sha3_256'], printed)
+
+        proof = self.prove(out, f'message/{self.hello.id}')
+        self.assertEqual(proof['chunk'], 'messages/2025-10')
+        self.assertEqual(json.loads(proof['record'])['content'], 'Hey there — do you have a name?')
+        status, printed = self.check_one(proof)
+        self.assertIn('sent by justin', printed)
+        self.assertIn('ok      the key names this record', printed)
+        self.assertIn('ok      sha3_256: leaf -> messages/2025-10 -> root', printed)
+        self.assertNotIn('NOT SEALED', printed)
+
+    def test_a_proof_with_anything_changed_fails(self):
+        out, _, _ = self.bundle('a')
+        proof = self.prove(out, f'message/{self.reply.id}')
+        self.assertEqual(self.check_one(proof)[0], 0)
+        other = self.prove(out, f'message/{self.hello.id}')
+
+        def changed(**fields):
+            return {**json.loads(json.dumps(proof)), **fields}
+
+        flipped = proof['chunk_path']['sha256'][0][:-1] + ('0' if proof['chunk_path']['sha256'][0][-1] != '0' else '1')
+        for name, bad in [
+            ('words', changed(record=proof['record'].replace('call me Claude', 'call me Magent'))),
+            ('salt', changed(salt=other['salt'])),
+            ('a path hash', changed(chunk_path={**proof['chunk_path'], 'sha256': [flipped]})),
+            ('place', changed(leaf_index=1 - proof['leaf_index'])),
+            ('chunk', changed(chunk='messages/2025-11')),
+            ('chunk place', changed(chunk_index=proof['chunk_index'] + 1)),
+            ('root', changed(root=other['root'] | {'sha256': '00' * 32})),
+            ('key', changed(key=other['key'])),
+            ('another record', changed(record=other['record'], key=other['key'])),
+        ]:
+            status, printed = self.check_one(bad)
+            self.assertEqual(status, 1, f'{name}: {printed}')
+            self.assertIn('does NOT show', printed, name)
+
+        del proof['salt']
+        status, printed = self.check_one(proof)
+        self.assertEqual(status, 1)
+        self.assertIn('the proof is malformed', printed)
+
+    def test_a_withheld_leaf_has_no_proof_and_a_rehearsal_says_so(self):
+        out, _, _ = self.bundle('edition', withhold=['sender:fibonacci'])
+        self.assertEqual(run(prove_memory, out, f'message/{self.games.id}')[0], 1)
+        self.assertEqual(run(prove_memory, out, 'message/not-there')[0], 1)
+
+        rehearsal, _, _ = self.bundle('rehearsal', sealed=False)
+        status, printed = self.check_one(self.prove(rehearsal, f'message/{self.hello.id}'))
+        self.assertEqual(status, 0, printed)
+        self.assertIn('NOT SEALED', printed)
 
     def test_comparing_two_epochs_shows_what_changed_underneath(self):
         before, _, _ = self.bundle('before', epoch=1)
