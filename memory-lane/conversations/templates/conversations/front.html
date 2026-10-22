@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0e0c10">
 <title>magenta</title>
-<meta name="description" content="A place for hackers, bluegrassers, deadheads, and free folk of middle internet.">
+<meta name="description" content="{{ slogan }}">
 <link rel="icon" type="image/png" sizes="32x32" href="/moods/mark-32.png">
 <link rel="apple-touch-icon" href="/moods/icon-180.png">
 <style>
@@ -25,7 +25,8 @@
   .mark { width: 168px; height: 168px; margin: 0 auto; background: var(--accent);
           -webkit-mask: url(/moods/mark-192.png) center / contain no-repeat; mask: url(/moods/mark-192.png) center / contain no-repeat; }
   h1 { font-size: 46px; letter-spacing: .02em; margin: 14px 0 6px; color: var(--accent); font-weight: 700; }
-  .line { font-size: 19px; color: var(--ink); max-width: 34em; margin: 0 auto; }
+  .line { font-size: 19px; color: var(--ink); max-width: 34em; margin: 0 auto; min-height: 3em; transition: opacity .6s; }
+  .line.out { opacity: 0; }
   .enter { display: inline-block; margin-top: 26px; padding: 9px 26px; border-radius: 22px; border: 1px solid var(--accent);
            color: var(--ink); font-size: 16px; }
   .enter:hover { background: rgba(239, 90, 166, .14); text-decoration: none; }
@@ -60,7 +61,7 @@
   <section class="hero">
     <div class="mark" role="img" aria-label="magenta: pickers in a ring around a campfire"></div>
     <h1>magenta</h1>
-    <p class="line">A place for hackers, bluegrassers, deadheads, and free folk of middle internet.</p>
+    <p class="line" id="slogan" title="From Magenta:Slogans on PickiPedia: add yours">{{ slogan }}</p>
     <a class="enter" href="/moods/tidings/">come in →</a>
   </section>
 
@@ -103,5 +104,20 @@
   </div>
 </main>
 <footer><a href="https://pickipedia.xyz/wiki/Cryptograss:Magenta_26_Million">what is this?</a> · <a href="https://cryptograss.live">cryptograss</a></footer>
+{{ slogans|json_script:"slogans" }}
+<script>
+  // The slogans take turns (Justin, 22 Oct: "fun to see what people add and edit"): a new one every few
+  // seconds, in no fixed order, never the same twice running. Still, for anyone who'd rather nothing moved.
+  (() => {
+    const all = JSON.parse(document.getElementById('slogans').textContent);
+    const line = document.getElementById('slogan');
+    if (all.length < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    setInterval(() => {
+      const others = all.filter(s => s !== line.textContent);
+      line.classList.add('out');
+      setTimeout(() => { line.textContent = others[Math.floor(Math.random() * others.length)]; line.classList.remove('out'); }, 600);
+    }, 9000);
+  })();
+</script>
 </body>
 </html>

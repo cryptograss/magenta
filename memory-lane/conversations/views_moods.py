@@ -407,8 +407,11 @@ def _in_a_mood(message_id):
 @require_GET
 def front_page(request):
     """magenta's front page (services/front.py): anyone may read it, signed in or not."""
+    import random
     from .services import front
-    return render(request, 'conversations/front.html', {'front': front.state()})
+    slogans = front.slogans()
+    return render(request, 'conversations/front.html', {'front': front.state(), 'slogans': slogans,
+                                                        'slogan': random.choice(slogans)})
 
 
 @require_GET

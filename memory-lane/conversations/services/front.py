@@ -1,9 +1,14 @@
 """magenta's front page (Justin, 22 Oct): the mark, a line about who it's for, the top three links on
 Tidings, and who has spoken lately and where -- their names and the Moods', not what they said.
 
+The line is one of PickiPedia's Magenta:Slogans -- each '*' line there; anyone may add or change one --
+taking turns. Justin's own until that page is there, or when the wiki can't be read.
+
 Read by anyone, signed in or not, so it's kept for a little while rather than asked of the
 database on every visit.
 """
+
+import re
 
 from django.core.cache import cache
 
@@ -11,6 +16,12 @@ TOP = 3       # links from Tidings
 LATELY = 5    # who spoke lately, and where
 KEEP_FOR = 30  # seconds
 _KEY = 'front:state'
+SLOGANS_PAGE = 'Magenta:Slogans'
+SLOGAN = ('a place for hackers, bluegrassers, deadheads, generalists, and all those smartass folk come descended '
+          'from monkeys')
+SLOGANS_FOR = 600      # seconds the page's lines are kept
+SLOGANS_KEPT = 86400   # and the last good ones, should the wiki not answer
+MAX_SLOGANS, MAX_SLOGAN = 60, 240
 # Each agent's own colour, as the Moods page draws them (AGENT_COLORS in moods.html, Justin, 21 Oct).
 AGENT_COLOURS = {'magent': '#ff67fd', 're': '#ff3c00', 'blu': '#1976d2'}
 
@@ -52,6 +63,48 @@ def lately(limit=LATELY, scan=300):
         if len(out) == limit:
             break
     return out
+
+
+def slogans_in(wikitext):
+    """The lines of a slogans page: each '*' line as plain words -- a [[link]] its words, bold and italic
+    marks gone, tags gone -- each once, in the page's order."""
+    out = []
+    for line in (wikitext or '').splitlines():
+        if not line.startswith('*'):
+            continue
+        text = line.lstrip('*').strip()
+        text = re.sub(r'\[\[(?:[^\]|]*\|)?([^\]]*)\]\]', r'\1', text)   # [[Page|words]], [[words]]
+        text = re.sub(r'\[https?://\S+\s+([^\]]*)\]', r'\1', text)        # [url words]
+        text = re.sub(r"'{2,}", '', text)
+        text = re.sub(r'<[^>]*>', '', text)
+        text = ' '.join(text.split())[:MAX_SLOGAN]
+        if text and text not in out:
+            out.append(text)
+    return out[:MAX_SLOGANS]
+
+
+def slogans(http=None):
+    """Magenta:Slogans' lines, kept ten minutes; the last good ones for a day if the wiki won't answer;
+    Justin's line if there have never been any."""
+    found = cache.get('front:slogans')
+    if found is not None:
+        return found
+    import requests
+    from .mood_view import pickipedia_url
+    try:
+        response = (http or requests).get(f'{pickipedia_url()}/index.php',
+                                         params={'title': SLOGANS_PAGE, 'action': 'raw'}, timeout=4,
+                                         headers={'User-Agent': 'memory-lane (magenta; front page)'})
+        if response.status_code not in (200, 404):
+            raise ValueError(f'PickiPedia answered {response.status_code}')
+        found = (slogans_in(response.text) if response.status_code == 200 else []) or [SLOGAN]
+    except Exception:  # noqa: BLE001 -- the wiki away: what it said last, or Justin's line; asked again in a minute
+        found = cache.get('front:slogans:last') or [SLOGAN]
+        cache.set('front:slogans', found, 60)
+        return found
+    cache.set('front:slogans', found, SLOGANS_FOR)
+    cache.set('front:slogans:last', found, SLOGANS_KEPT)
+    return found
 
 
 def forget():
