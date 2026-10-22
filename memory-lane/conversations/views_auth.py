@@ -1321,10 +1321,34 @@ def api_voice_go(request):
         heard = voice.hear(data, mime, here, device.entity_id, budget_minutes=1)['text']
         slug = mood_switch.match(heard, [m for m in Mood.objects.all() if m.slug not in archived])
         there = Mood.by_slug(slug) if slug else here
-        url = voice.narrate_switch(there, device.entity_id, found=bool(slug))
+        from .services import listening
+        others = [who['name'] for who in listening.in_mood(there.slug) if who['name'] != device.entity_id]
+        url = voice.narrate_switch(there, device.entity_id, found=bool(slug), already=slug == here.slug,
+                                   listeners=others)
     except voice.VoiceError as e:
         return JsonResponse({'error': str(e)}, status=e.status)
     return JsonResponse({'slug': slug, 'heard': heard, 'url': url})
+
+
+@require_POST
+def api_voice_listening(request):
+    """{"mode": here|everywhere|off, "mood"?}: this device's person listening by voice, or not now -- said at
+    once when it changes; while it lasts, the reader's asking says it (views_moods.api_recent)."""
+    from .services import listening
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"mode": ..., "mood"?: ...}'}, status=400)
+    mode = body.get('mode')
+    if mode not in ('here', 'everywhere', 'off'):
+        return JsonResponse({'error': 'mode: here, everywhere or off'}, status=400)
+    listening.note(device.entity_id, mode, str(body.get('mood') or '') or None)
+    from django.core.cache import cache
+    cache.delete('moods-live')  # the 🎧 shows (or goes) at the next look, not in a few seconds
+    return JsonResponse({'listening': listening.everyone()})
 
 
 def _uuid_or_none(value):

@@ -317,6 +317,7 @@
   nav a.mood .title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
   nav a.mood .meta { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
   nav a.mood .people-line:empty { display: none; }
+  nav a.mood .people-line .hears { font-size: .85em; margin-left: 1px; }  /* listening by voice (services/listening.py) */
   header .block { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
@@ -1518,14 +1519,19 @@
     const d = liveData[slug] || { speakers: [], typing: [], busy: null };
     const typing = new Set(slug === current ? [...d.typing, ...typingNow] : d.typing);
     const busy = slug === current ? acts.filter(a => a.doing !== 'held').map(a => a.agent) : (d.busy_all || (d.busy ? [d.busy] : []));
-    const names = [...new Set([...busy, ...typing, ...d.speakers])];
-    return { names, active: new Set([...typing, ...busy]) };
+    // Listening by voice (services/listening.py): 🎧 on their name where it's shown; one listening to this Mood
+    // alone is shown here even if they haven't spoken. One listening to every Mood isn't put on every line.
+    const listening = new Map((d.listening || []).map(who => [who.name, who.everywhere]));
+    const names = [...new Set([...busy, ...typing, ...d.speakers,
+                               ...[...listening].filter(([, everywhere]) => !everywhere).map(([name]) => name)])];
+    return { names, active: new Set([...typing, ...busy]), listening };
   }
   function peopleLine(slug) {
-    const { names, active } = aroundIn(slug);
+    const { names, active, listening } = aroundIn(slug);
     // At work, an agent pulses in its own colour (Justin, 21 Oct); a person, typing, as written their way.
     return names.map(n => `<span class="nm${active.has(n) ? ' live' : ''}" data-who="${esc(n)}"`
-      + `${active.has(n) && human[n] === false ? ` style="color: ${agentColor(n)}"` : ''}>${nameHtml(n)}</span>`).join(', ')
+      + `${active.has(n) && human[n] === false ? ` style="color: ${agentColor(n)}"` : ''}>${nameHtml(n)}</span>`
+      + (listening.has(n) ? `<span class="hears" title="${esc(shown(n))} is listening by voice, ${listening.get(n) ? 'to every Mood' : 'to this Mood'}">🎧</span>` : '')).join(', ')
       + watchingIn(slug);
   }
   // Who reads without signing in (services/watchers.py): 👁 and how many, on each
@@ -5719,6 +5725,10 @@
     (place.heard || []).forEach(id => readHeard.add(id));
   }
   function setReadMode(mode) {
+    if (mode !== readMode && viewer) {  // the 🎧 beside them shows, or goes, at once
+      fetch('/api/voice/listening/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                       body: JSON.stringify({ mode, mood: current }) }).catch(() => {});
+    }
     readMode = mode;
     store.set('readAll', mode);
     readSel.value = mode;
@@ -5735,7 +5745,9 @@
     let events;
     try {
       // An agent's words as it says them, mid-turn, not all at once when it's done (Justin, 22 Oct).
-      const r = await fetch('/api/moods/recent/?oldest=1&progress=1&since=' + encodeURIComponent(new Date(readSinceMs).toISOString()));
+      // And says, as it asks, that its person is listening, and where (🎧 beside them, services/listening.py).
+      const r = await fetch('/api/moods/recent/?oldest=1&progress=1&since=' + encodeURIComponent(new Date(readSinceMs).toISOString())
+                            + `&listening=${readMode}&mood=${encodeURIComponent(current || '')}`);
       if (!r.ok) return;
       events = (await r.json()).events || [];
     } catch (e) { return; }

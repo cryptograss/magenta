@@ -357,11 +357,17 @@ def narrate_thinking(mood, agent, by, where=False, still=None, http=requests):
                    http, narrated='thinking', agent=agent)
 
 
-def narrate_switch(mood, by, found=True, http=requests):
+def narrate_switch(mood, by, found=True, already=False, listeners=(), http=requests):
     """The URL of the narrator saying where someone is, having asked by voice to go there ("Now in pound
-    jams.") -- or, the name not caught, where they still are. Made once per wording, and kept."""
-    script = (f'Now in {said_mood(mood.slug)}.' if found else
-              f"I didn't catch which Mood. Still in {said_mood(mood.slug)}.")
+    jams.") -- already there, or the name not caught, where they still are -- and who else is listening
+    there ("Skyler is listening too."). Made once per wording, and kept."""
+    where = said_mood(mood.slug)
+    script = (f'Already in {where}.' if already else f'Now in {where}.' if found
+              else f"I didn't catch which Mood. Still in {where}.")
+    names = [spoken_name(n) for n in listeners]
+    if names:
+        who = names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
+        script += f" {who} {'is' if len(names) == 1 else 'are'} listening too."
     return _spoken(mood, by, voice_of(NARRATOR, http), {'text': script, 'model_id': TTS_MODEL}, script,
                    http, narrated='switch')
 

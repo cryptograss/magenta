@@ -701,6 +701,12 @@ def api_recent(request):
     events = []
 
     progress = request.GET.get('progress') == '1'
+    # A listening page says so as it asks (services/listening.py): its person shows with 🎧 where they listen.
+    if request.GET.get('listening') in ('here', 'everywhere'):
+        device = mood_auth.device_for(request)
+        if device is not None:
+            from .services import listening
+            listening.note(device.entity_id, request.GET['listening'], request.GET.get('mood') or None)
     said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since,
                                    thought__isnull=True, tooluse__isnull=True, toolresult__isnull=True)
             .exclude(sender_id__in=MACHINERY_SENDERS).order_by(order)[:RECENT_SCAN])
@@ -1281,7 +1287,11 @@ def api_moods_live(request):
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list
-    from .services import watchers
+    from .services import listening, watchers
+    for slug in list(live):  # who's listening by voice there, 🎧 beside their names (Justin, 22 Oct)
+        heard_by = listening.in_mood(slug)
+        if heard_by:
+            live[slug]['listening'] = heard_by
     for slug, n in watchers.by_mood().items():  # who's reading without signing in: a count beside the Mood
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['watching'] = n
     body = {'moods': live, 'blocks': AROUND_BLOCKS}
