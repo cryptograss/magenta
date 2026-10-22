@@ -75,6 +75,15 @@ class NoticesTest(TestCase):
         self.assertEqual(texts(), ['Done.'])                                  # as it was: what a turn came to
         self.assertEqual(sorted(texts(progress='1')), ['Done.', 'Working on it:'])  # for the reader: as it's said
 
+    def test_an_agent_named_mid_turn_is_owed_its_wake_at_once(self):
+        # Justin, 22 Oct: "if you wake an agent in a mid-turn message, does it wake right away?" It does:
+        # the mention is there the moment the line is, not when the turn that said it ends.
+        re_agent, _ = ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        self.add(self.magent, [{'type': 'text', 'text': '@re, the branch is ready for your look.'}], seconds=1,
+                 stop_reason='tool_use', session_id=uuid.uuid4())
+        found = self.client.get(f'/api/mentions/{re_agent.name}/').json()['mentions']
+        self.assertEqual([(m['turn']['sender'], m['mood']) for m in found], [('magent', 'm26')])
+
     def test_recent_oldest_first_reads_a_stretch_from_its_start(self):
         # Reading aloud from a message on (moods.html readFrom): the first after `since`, in order,
         # a page at a time -- newest first would give the end of a long stretch, and lose its start.

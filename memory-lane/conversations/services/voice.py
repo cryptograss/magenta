@@ -334,8 +334,16 @@ def _where(mood):
 
 def intro(message, by, where=False, http=requests):
     """The URL of the narrator saying who speaks next -- and, with `where`, in
-    which Mood, first ("Pound general. Justin says:"). Made once per wording, and kept."""
-    script = (_where(message.mood) if where else '') + f'{spoken_name(message.sender_id)} says:'
+    which Mood, first ("Pound general. Justin says:"); for an agent, how it was woken: "Magent, with
+    tools, says:" or "Re, looking only, says:" (Justin, 22 Oct), by the wake before it in its session
+    (mood_view.turn_tools) -- nothing said of it when there's none, as for a terminal's turn.
+    Made once per wording, and kept."""
+    from conversations.models import ThinkingEntity
+    from .mood_view import turn_tools
+    how = ''
+    if ThinkingEntity.objects.filter(name=message.sender_id, is_biological_human=False).exists():
+        how = {'full': ', with tools,', 'look': ', looking only,'}.get(turn_tools([message]).get(str(message.id)), '')
+    script = (_where(message.mood) if where else '') + f'{spoken_name(message.sender_id)}{how} says:'
     return _spoken(message.mood, by, voice_of(NARRATOR, http), {'text': script, 'model_id': TTS_MODEL}, script,
                    http, intro=message.sender_id)
 

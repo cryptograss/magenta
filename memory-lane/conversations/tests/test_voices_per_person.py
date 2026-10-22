@@ -77,6 +77,24 @@ class SpeakersTest(TestCase):
         row = Message.objects.filter(source_file='voice', content__intro='skyler').first()
         self.assertEqual((row.content['type'], row.content['by']), ('spoken', 'justin'))
 
+    def test_an_agent_is_said_with_tools_or_looking_only_as_it_was_woken(self):
+        # Justin, 22 Oct: "Agent name looking only says," or, "Agent name with tools says."
+        from conversations.models import ConversationParticipant
+        poller, _ = ConversationParticipant.objects.get_or_create(name='mood-poller')
+
+        def woken(tail):
+            session = uuid.uuid4()
+            Message.objects.create(id=uuid.uuid4(), sender=poller, mood=self.mood, timestamp=1, session_id=session,
+                                   content=f'<mood-wake mood="magenta-interface">...This turn {tail}...</mood-wake>')
+            return Message.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.mood, timestamp=2,
+                                          session_id=session, content=[{'type': 'text', 'text': 'Done.'}])
+        voice.intro(woken('has your full tools, as in your terminal'), 'justin', http=self.fake)
+        self.assertEqual(self.fake.asked[-1][2]['json']['text'], 'Magent, with tools, says:')
+        voice.intro(woken('you can look but not touch: read, search'), 'justin', http=self.fake)
+        self.assertEqual(self.fake.asked[-1][2]['json']['text'], 'Magent, looking only, says:')
+        voice.intro(self.said(self.magent, 'From a terminal.'), 'justin', http=self.fake)  # no wake: not said
+        self.assertEqual(self.fake.asked[-1][2]['json']['text'], 'Magent says:')
+
     def test_the_narrators_chosen_voice_is_its_own_whatever_magents(self):
         from conversations.services import settings as knobs
         knobs.change('speaker_voice', 'Clyde', agent=self.magent, by=self.justin)
