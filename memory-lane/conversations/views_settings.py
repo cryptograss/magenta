@@ -93,6 +93,7 @@ def _rights(link, device):
     from .services import tiding_links
     link['may_retitle'] = tiding_links.may_retitle(device, link['by'])
     link['may_withdraw'] = tiding_links.may_withdraw(device, link['by'])
+    link['may_pin'] = device is not None and device.tier == 'key'
     return link
 
 
@@ -100,11 +101,13 @@ def _rights(link, device):
 def tidings_page(request):
     from .services import tidings
     device = mood_auth.device_for(request)
-    state = tidings.tidings_state(viewer=device.entity_id if device else None)
+    order = 'new' if request.GET.get('order') == 'new' else 'top'  # top: pinned, then ranked (Justin, 22 Oct)
+    state = tidings.tidings_state(viewer=device.entity_id if device else None, order=order)
     for link in state['links']:
         _rights(link, device)
     return render(request, 'conversations/mood_tidings.html', {
         'tidings': state,
+        'order': order,
         'picture_cap': tidings.PICTURES,
         'viewer': device.entity_id if device else '',
         'embed': True,

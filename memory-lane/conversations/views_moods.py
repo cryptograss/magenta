@@ -405,6 +405,16 @@ def _in_a_mood(message_id):
 
 
 @require_GET
+def front_page(request):
+    """magenta's front page (services/front.py): anyone may read it, signed in or not."""
+    import random
+    from .services import front
+    slogans = front.slogans()
+    return render(request, 'conversations/front.html', {'front': front.state(), 'slogans': slogans,
+                                                        'slogan': random.choice(slogans)})
+
+
+@require_GET
 def message_page(request, message_id):
     """/messages/<id>: a message's own address, wherever it lives. A Mood can be renamed, which moves
     its page; its messages' addresses stay (Justin, 20 Oct). Sent on to it in its Mood, as it is now."""

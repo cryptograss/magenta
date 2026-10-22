@@ -6608,7 +6608,7 @@
   const sectionOf = path => SECTIONS.find(s => path.replace(/\/+$/, '') === '/moods/' + s) || null;
   // A frame, made once: tidings is asked for in the background at the start, so it's ready when wanted
   // (Justin, 21 Oct); the others load the first time they're shown. A plain spinner while one loads.
-  function frameFor(name, keepQuiet) {
+  function frameFor(name, keepQuiet, at) {
     let frame = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
     if (frame) return frame;
     frame = document.createElement('iframe');
@@ -6622,12 +6622,12 @@
     loading.hidden = true;
     frame.addEventListener('load', function arrived() {
       let there = false;
-      try { there = frame.contentWindow.location.pathname === `/moods/${name}/`; } catch (e) { there = true; }
+      try { there = frame.contentWindow.location.pathname.startsWith(`/moods/${name}/`); } catch (e) { there = true; }
       if (!there) return;
       loading.remove();
       frame.removeEventListener('load', arrived);
     });
-    frame.src = `/moods/${name}/?embed=1`;
+    frame.src = at || `/moods/${name}/?embed=1`;
     frame.hidden = keepQuiet;
     sectionFrames.append(frame, loading);
     return frame;
@@ -6700,7 +6700,10 @@
 
   (async function start() {
     try { await loadMoods(); } catch (e) { setStatus('cannot reach memory-lane', 'stale'); return; }
-    frameFor('tidings', true);  // loaded in the background: ready the moment it's wanted
+    // Loaded in the background: ready the moment it's wanted. Opened at a link's own address (from the
+    // front page, or a #t- link elsewhere), it opens at that link's discussion.
+    const tidingAt = location.pathname.match(/^\/moods\/tidings\/[0-9a-f-]{36}\/?$/);
+    frameFor('tidings', true, tidingAt ? tidingAt[0].replace(/\/?$/, '/') + '?embed=1' : undefined);
     loadTokens();  // not awaited: badges fill in when they come
     fetchBadges();
     await pullSeen();  // where you've read up to, on every device, before anything is counted
