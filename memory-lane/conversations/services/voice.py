@@ -357,6 +357,15 @@ def narrate_thinking(mood, agent, by, where=False, still=None, http=requests):
                    http, narrated='thinking', agent=agent)
 
 
+def narrate_switch(mood, by, found=True, http=requests):
+    """The URL of the narrator saying where someone is, having asked by voice to go there ("Now in pound
+    jams.") -- or, the name not caught, where they still are. Made once per wording, and kept."""
+    script = (f'Now in {said_mood(mood.slug)}.' if found else
+              f"I didn't catch which Mood. Still in {said_mood(mood.slug)}.")
+    return _spoken(mood, by, voice_of(NARRATOR, http), {'text': script, 'model_id': TTS_MODEL}, script,
+                   http, narrated='switch')
+
+
 DEPLOY_SAID = {'finished': '{server} redeployed{who}.', 'failed': "{server}'s redeploy failed{who}."}
 
 
@@ -551,13 +560,20 @@ def keyterms():
 
 def transcribe(media, mood, by, http=requests):
     """{'text', 'seconds', 'language'} for a stored memo; VoiceError if it can't be."""
-    check_budget(STT_USD_PER_HOUR * 10 / 60)  # room for ten minutes, at least
-    ext = media.EXTENSIONS[media.mime]
+    return hear(bytes(media.data), media.mime, mood, by, http=http, sha=media.sha256)
+
+
+def hear(data, mime, mood, by, http=requests, sha='', budget_minutes=10):
+    """{'text', 'seconds', 'language'} for some audio, kept or not (a memo; "go to jams", heard and let go).
+    VoiceError if it can't be."""
+    from conversations.models import Media
+    check_budget(STT_USD_PER_HOUR * budget_minutes / 60)  # room for that long, at least
+    ext = Media.EXTENSIONS.get(mime, 'webm')
 
     def ask(terms):
         form = {'model_id': STT_MODEL, 'tag_audio_events': 'true', **({'keyterms': terms} if terms else {})}
         return http.post(f'{API}/speech-to-text', headers=_headers(), timeout=110, data=form,
-                         files={'file': (f'memo.{ext}', bytes(media.data), media.mime)})
+                         files={'file': (f'memo.{ext}', data, mime)})
     response = ask(keyterms())
     if response.status_code in (400, 422):  # the words it should expect, refused: ask plainly
         response = ask(None)
@@ -566,7 +582,7 @@ def transcribe(media, mood, by, http=requests):
     result = response.json()
     seconds = float(result.get('audio_duration_secs') or 0)
     usd = round(seconds / 3600 * STT_USD_PER_HOUR, 4)
-    record(mood, 'transcribed', by, media=media.sha256, seconds=seconds, usd=usd)
+    record(mood, 'transcribed', by, media=sha, seconds=seconds, usd=usd)
     return {'text': (result.get('text') or '').strip(), 'seconds': seconds,
             'language': result.get('language_code') or ''}
 

@@ -509,6 +509,14 @@
   #searchBtn { border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 14px;
                padding: 1px 10px; font: inherit; font-size: 13px; cursor: pointer; }
   #searchBtn:hover { color: var(--accent); border-color: var(--accent); }
+  #goBtn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 14px;
+           padding: 1px 9px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  #goBtn[hidden] { display: none; }
+  #goBtn:hover { border-color: var(--accent); }
+  #goBtn.listening { background: var(--accent); color: #fff; border-color: transparent; animation: listening 1.2s ease-in-out infinite; }
+  @keyframes listening { 0%, 100% { opacity: 1; } 50% { opacity: .65; } }
+  @media (pointer: coarse) { #goBtn { font-size: 19px; padding: 3px 13px; } }  /* found by thumb, not by eye */
+  #goBtn.busy { opacity: .7; cursor: progress; }
   #search { position: fixed; top: 41px; right: 0; bottom: 0; width: min(440px, 100vw); background: var(--panel);
             border-left: 1px solid var(--line); box-shadow: -4px 0 18px rgba(0,0,0,.12); z-index: 20;
             display: flex; flex-direction: column; }
@@ -1161,6 +1169,7 @@
   <span class="servers" id="servers" title="Servers"></span>
   <button id="reloadNudge" type="button" title="This page changed since you opened it: reload for the new one" hidden>↻ new version</button>
   <button id="searchBtn" type="button" title="Search what was said (/)">⌕</button>
+  <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
   <span class="status" id="status" title="connecting…"></span>
   <span class="account">
     <button id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"></button>
@@ -6832,6 +6841,77 @@
       }
     } catch (e) { /* the badges wait for the next poll */ }
   }
+  // --- Going to a Mood by voice (Justin, 22 Oct: switching while moving, never looking) -------------------
+  // 🧭, one tap: a rising chime, and it listens for "go to jams". It stops itself a moment after they stop
+  // talking -- or at five seconds, or at a second tap -- with a falling chime; the narrator says where
+  // they'll be ("Now in pound jams.") and the page goes there. A name not caught leaves them where they
+  // are, and says so. Nothing is ever posted (views_auth.api_voice_go). Reading aloud waits meanwhile.
+  const goBtn = document.getElementById('goBtn');
+  if (voiceOn && viewer && window.MediaRecorder && navigator.mediaDevices) goBtn.hidden = false;
+  let going = null;  // {stop}, while it listens
+  const playThrough = src => new Promise(done => {
+    const a = atSpeed(new Audio(src));
+    a.onended = done; a.onerror = done; a.play().catch(done);
+  });
+  goBtn.addEventListener('click', async () => {
+    if (going) { going.stop(); return; }
+    if (goBtn.classList.contains('busy')) return;
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { showError('microphone: ' + e.message); return; }
+    const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/webm']
+      .find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+    recordingHold(true);
+    goBtn.classList.add('listening'); goBtn.title = 'Listening: say “go to” and a Mood';
+    await playThrough(chimeUrl('in'));  // before listening: the chime isn't taken for words
+    const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks = [];
+    recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
+    // When they've stopped talking: loud enough to be speech, then a moment's quiet.
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    const level = new Uint8Array(analyser.fftSize);
+    const began = Date.now();
+    let spoke = false, quietSince = began;
+    const stop = () => { if (recorder.state !== 'inactive') recorder.stop(); };
+    const watch = setInterval(() => {
+      analyser.getByteTimeDomainData(level);
+      let peak = 0;
+      for (const v of level) peak = Math.max(peak, Math.abs(v - 128));
+      const now = Date.now();
+      if (peak > 18) { spoke = true; quietSince = now; }
+      if ((spoke && now - quietSince > 1200) || now - began > 5000) stop();
+    }, 100);
+    going = { stop };
+    recorder.addEventListener('stop', async () => {
+      clearInterval(watch);
+      ctx.close().catch(() => {});
+      stream.getTracks().forEach(t => t.stop());
+      going = null;
+      goBtn.classList.remove('listening'); goBtn.classList.add('busy');
+      playThrough(chimeUrl('end'));
+      try {
+        const kind = chunks[0]?.type || type || 'audio/webm';
+        const r = await fetch('/api/voice/go/?mood=' + encodeURIComponent(current || ''), { method: 'POST',
+          headers: { 'Content-Type': kind, 'X-CSRFToken': csrf() }, body: new Blob(chunks, { type: kind }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || r.status);
+        if (d.slug && d.slug !== current) {
+          if (sectionNow !== 'moods') showSection('moods', true);
+          open(d.slug, true);
+        }
+        showNote(d.slug ? `🧭 Now in #${d.slug}` : `🧭 Didn't catch which Mood${d.heard ? ` (heard “${d.heard}”)` : ''}: still here.`, 6000);
+        if (d.url) await playThrough(d.url);
+      } catch (err) { showError('go by voice: ' + err.message); }
+      finally {
+        goBtn.classList.remove('busy'); goBtn.title = 'Go to a Mood by voice: tap, then say “go to” and its name';
+        recordingHold(false);
+      }
+    });
+    recorder.start();
+  });
   // Installable as an app: the browser wants a service worker (it keeps nothing).
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/moods/sw.js', { scope: '/moods/' }).catch(() => {});
 })();

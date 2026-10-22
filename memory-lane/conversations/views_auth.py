@@ -1291,6 +1291,41 @@ def api_narrate(request):
         return JsonResponse({'error': str(e)}, status=e.status)
 
 
+GO_MAX_BYTES = 600_000  # a few seconds said: "go to jams"
+
+
+@require_POST
+def api_voice_go(request):
+    """The audio of someone saying where they want to be ("go to jams"), ?mood= where they are: heard, matched
+    against the Moods' names (services/mood_switch.py), and the narrator saying where they'll be, or that it
+    didn't catch it. {"slug" (or null), "heard", "url"}. Nothing is posted (Justin, 22 Oct)."""
+    from .services import mood_switch, settings as knobs, voice
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to go by voice'}, status=401)
+    if not voice.enabled():
+        return JsonResponse({'error': 'no voice here'}, status=503)
+    if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    data = request.body
+    if not data or len(data) > GO_MAX_BYTES:
+        return JsonResponse({'error': 'a few seconds of audio, saying where to go'}, status=400)
+    mime = (request.content_type or 'audio/webm').split(';')[0].strip()
+    here = Mood.by_slug(request.GET.get('mood') or '') or Mood.by_slug('general')
+    archived = knobs.archived_slugs()
+    try:
+        heard = voice.hear(data, mime, here, device.entity_id, budget_minutes=1)['text']
+        slug = mood_switch.match(heard, [m for m in Mood.objects.all() if m.slug not in archived])
+        there = Mood.by_slug(slug) if slug else here
+        url = voice.narrate_switch(there, device.entity_id, found=bool(slug))
+    except voice.VoiceError as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'slug': slug, 'heard': heard, 'url': url})
+
+
 def _uuid_or_none(value):
     try:
         return uuid.UUID(str(value))
