@@ -7,6 +7,7 @@ from . import views_settings
 from . import views_admin
 
 urlpatterns = [
+    path('', views_moods.front_page, name='front'),
     path('moods/', views_moods.moods_page, name='moods'),
     path('messages/<str:message_id>', views_moods.message_page, name='message'),
     path('messages/<str:message_id>/', views_moods.message_page),
