@@ -31,7 +31,11 @@ The tables, and the name each is given in a key:
 | `era` | a phase of the relationship |
 | `compacting_action` | the moment a context window was summarised and a new one begun |
 | `summary`, `note` | summaries of branches, and notes left on messages, heaps and eras |
-| `motion`, `motion_session` | a subject of conversation (a "Mood"), and the sessions it claimed |
+| `mood`, `mood_alias`, `mood_session` | a subject of conversation (a "Mood"), the names it went by before, and the sessions it claimed |
+| `message_change` | that a message was edited or deleted, by whom and when; never what it said before |
+| `tiding`, `tiding_comment`, `tiding_vote` | a link from a message put on Tidings, what was said about it there, and who upvoted what |
+| `face_name` | whose face is in a picture, as someone said |
+| `yarn_clip` | a film clip from Yarn, kept as media |
 | `participant` | everyone and everything that sends or receives messages |
 | `topic`, `message_topic`, `conversation_file` | tagging and import bookkeeping |
 | `block_anchor` | real Ethereum blocks and their timestamps, from which block heights in the record are interpolated |
@@ -39,8 +43,12 @@ The tables, and the name each is given in a key:
 | `content_type` | the lookup table that notes and raw lines use to say what they are attached to |
 | `media` | an image or recording, identified by the SHA-256 of its bytes; the bytes themselves travel as separate files |
 
-Sign-in devices, login codes, sessions and administrator accounts are not
-part of the record and are not committed.
+Not part of the record, and not committed: sign-in devices, login codes,
+push subscriptions, sessions and administrator accounts; how far each
+person has read; what an agent's harness reports it can run; a
+face-finding model's guesses; and the words an edit or deletion took out,
+which are kept only sealed to a recovery key. What was taken out of the
+record is not committed with it.
 
 ### The record text
 
@@ -60,8 +68,8 @@ A `message` record is the row of the message table together with the
 columns of its kind (`kind` is one of `message`, `thought`, `tool_use`,
 `tool_result`) and `recipients`, the sorted names of who it was addressed
 to. A `participant` record carries `is_thinking_entity` and, for thinking
-entities, `is_biological_human`. A `media` record carries the SHA-256, type
-and size of the bytes, not the bytes.
+entities, `is_biological_human`. A `media` record carries the SHA-256, type,
+size and license of the bytes, not the bytes.
 
 **A verifier never has to reproduce these rules.** It hashes the record text
 exactly as it finds it. The rules exist so that two honest exports of the
@@ -107,8 +115,10 @@ not prevent checking the rest.
   in `messages/undated`.
 - A `raw` leaf goes in `raw/YYYY-MM`, by the UTC month it was imported.
 - Every other table is one chunk, named for the table in the plural:
-  `heaps`, `eras`, `compacting_actions`, `summaries`, `notes`, `motions`,
-  `motion_sessions`, `participants`, `topics`, `message_topics`,
+  `heaps`, `eras`, `compacting_actions`, `summaries`, `notes`, `moods`,
+  `mood_aliases`, `mood_sessions`, `message_changes`, `tidings`,
+  `tiding_comments`, `tiding_votes`, `face_names`, `yarn_clips`,
+  `participants`, `topics`, `message_topics`,
   `conversation_files`, `block_anchors`, `settings`, `content_types`,
   `media`.
 
@@ -125,7 +135,8 @@ UTF-8.
 
 A **view** is a root over a subset of the `message` leaves, in key order:
 
-- `mood/<slug>`: the messages of one Mood (`motion_id`);
+- `mood/<id>`: the messages of one Mood (`mood_id`; the `moods` chunk
+  gives each id its slug);
 - `sender/<name>`: everything one participant sent (`sender_id`).
 
 Views let a statement be made about part of the record: a person can attest
@@ -180,7 +191,9 @@ edition to edition, and a later edition may disclose what an earlier one
 withheld.
 
 Media bytes are published as `media/<sha256>.<extension>`; the file's
-SHA-256 is its name and is in its leaf's record.
+SHA-256 is its name and is in its leaf's record. Only media whose record
+carries a license are published: a clip kept from elsewhere, whose license
+is empty, is committed by its hash, and its bytes are not ours to publish.
 
 ## Checking
 
@@ -201,8 +214,9 @@ confirms that each disclosed record is the one its key names: a key is
 
 | table | column |
 |---|---|
-| `motion` | `slug` |
-| `motion_session` | `session_id` |
+| `mood_session` | `session_id` |
+| `message_change` | `message_id` |
+| `yarn_clip` | `clip` |
 | `participant` | `name` |
 | `block_anchor` | `number` |
 | `media` | `sha256` |

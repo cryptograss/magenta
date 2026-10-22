@@ -18,7 +18,7 @@ from django.test import SimpleTestCase, TestCase
 
 from commitment import compare_memory, export, merkle, prove_memory, verify_memory
 from conversations.models import (
-    BlockAnchor, ContextHeap, ConversationParticipant, Era, Media, Message, Motion, Note,
+    BlockAnchor, ContextHeap, ConversationParticipant, Era, Media, Message, Mood, Note,
     RawImportedContent, Setting, ThinkingEntity, Thought, ToolResult, ToolUse,
 )
 
@@ -91,7 +91,7 @@ class CommitmentTest(TestCase):
         self.kid = ThinkingEntity.objects.create(name='fibonacci', participant_type='human')
         self.tool = ConversationParticipant.objects.create(name='tool-result', participant_type='tool')
         self.heap = ContextHeap.objects.create(era=Era.objects.create(name='Foundation'), type='fresh')
-        self.motion = Motion.objects.create(slug='porch', title='The porch')
+        self.mood = Mood.objects.create(slug='porch', title='The porch')
 
         def say(cls, sender, content, timestamp, to=(), **extra):
             message = cls.objects.create(id=uuid.uuid4(), sender=sender, content=content, timestamp=timestamp,
@@ -100,9 +100,9 @@ class CommitmentTest(TestCase):
             return message
 
         self.hello = say(Message, self.justin, 'Hey there — do you have a name?', OCT,
-                         to=[self.magent], motion=self.motion)
+                         to=[self.magent], mood=self.mood)
         self.reply = say(Message, self.magent, 'You can call me Claude.', OCT + 1000, to=[self.justin, self.kid],
-                         motion=self.motion, model_backend='gpt-4o')
+                         mood=self.mood, model_backend='gpt-4o')
         self.thought = say(Thought, self.magent, 'They want a name.', NOV, signature='sig')
         self.call = say(ToolUse, self.magent, {'command': 'date'}, NOV + 1, tool_name='Bash', tool_id='toolu_1')
         self.result = say(ToolResult, self.tool, {'stdout': 'a\ttab\nand a newline', 'seconds': 1.5}, NOV + 2,
@@ -144,10 +144,10 @@ class CommitmentTest(TestCase):
         names = [c['name'] for c in manifest['chunks']]
         self.assertEqual(names, sorted(names))
         for expected in ('messages/2025-10', 'messages/2025-11', 'messages/undated', 'heaps', 'eras', 'notes',
-                         'participants', 'motions', 'block_anchors', 'settings', 'media', 'content_types'):
+                         'participants', 'moods', 'block_anchors', 'settings', 'media', 'content_types'):
             self.assertIn(expected, names)
         self.assertEqual(manifest['totals']['leaves'], sum(c['leaves'] for c in manifest['chunks']))
-        self.assertEqual(manifest['views']['mood/porch']['leaves'], 2)
+        self.assertEqual(manifest['views'][f'mood/{self.mood.id}']['leaves'], 2)
         self.assertEqual(manifest['views']['sender/magent']['leaves'], 3)
         self.assertEqual(manifest['views']['sender/fibonacci']['leaves'], 1)
         self.assertEqual(edition['withheld'], {})
@@ -196,8 +196,8 @@ class CommitmentTest(TestCase):
         self.assertEqual(manifest['root'], whole['root'])
         self.assertEqual(manifest['chunks'], whole['chunks'])
         self.assertEqual(manifest['views'], whole['views'])
-        self.assertEqual(edition['withheld'],
-                         {'table:raw': 1, 'table:media': 1, 'kind:tool_result': 1, 'sender:fibonacci': 1})
+        self.assertEqual(edition['withheld'], {'table:raw': 1, 'table:media': Media.objects.count(),
+                                               'kind:tool_result': 1, 'sender:fibonacci': 1})
 
         everything = b''.join(p.read_bytes() for p in out.rglob('*') if p.is_file() and p.suffix in ('.tsv', '.json'))
         for secret in (b'hunter2', b'musik', b'and a newline'):
@@ -206,7 +206,7 @@ class CommitmentTest(TestCase):
 
         status, printed = run(verify_memory, out)
         self.assertEqual(status, 0, printed)
-        self.assertIn('4 withheld', printed)
+        self.assertIn(f'{3 + Media.objects.count()} withheld', printed)
         self.assertIn('partial sender/fibonacci  0 of 1', printed)
         self.assertIn('ok      sender/justin', printed)
 
@@ -227,7 +227,7 @@ class CommitmentTest(TestCase):
         self.assertIn('FAILED  messages/2025-10', printed)
         # The chunk, and both views the altered message belongs to; nothing else.
         self.assertEqual(printed.count('FAILED'), 3)
-        self.assertIn('FAILED  mood/porch', printed)
+        self.assertIn(f'FAILED  mood/{self.mood.id}', printed)
         self.assertIn('FAILED  sender/magent', printed)
         self.assertIn('ok      sender/justin', printed)
         self.assertIn('ok      messages/2025-11', printed)
@@ -389,5 +389,47 @@ class CommitmentTest(TestCase):
 
     def test_sign_in_state_is_not_part_of_the_record(self):
         committed = {t for table in export.TABLES for t in table.needs}
-        for private in ('devices', 'login_codes', 'django_session', 'auth_user'):
+        for private in ('devices', 'login_codes', 'django_session', 'auth_user', 'sealed_copies'):
             self.assertNotIn(private, committed)
+            self.assertIn(private, export.NOT_COMMITTED)
+
+    def test_every_table_is_committed_or_said_not_to_be(self):
+        committed = {t for table in export.TABLES for t in table.needs}
+        self.assertEqual(committed & set(export.NOT_COMMITTED), set())
+        self.assertEqual(export.existing_tables() - committed - set(export.NOT_COMMITTED), set(),
+                         'a table that is neither committed nor in export.NOT_COMMITTED')
+
+    def test_every_table_of_the_record_has_keys_that_name_its_records(self):
+        from django.utils import timezone
+        from conversations.models import (FaceName, MessageChange, MoodAlias, Tiding, TidingComment,
+                                          TidingVote, YarnClip)
+        picture = Media.objects.get(sha256=hashlib.sha256(self.picture).hexdigest())
+        MoodAlias.objects.create(slug='old-porch', mood=self.mood)
+        MessageChange.objects.create(message=self.reply, mood=self.mood, kind='edited', by='magent')
+        tiding = Tiding.objects.create(message=self.hello, url='https://pickipedia.xyz/', by=self.justin)
+        comment = TidingComment.objects.create(tiding=tiding, by=self.magent, text='A good link.')
+        TidingVote.objects.create(tiding=tiding, by=self.justin)
+        FaceName.objects.create(media=picture, box=[0, 0, 1, 1], person='Justin Holmes', by=self.justin,
+                                at=timezone.now())
+        YarnClip.objects.create(clip=uuid.uuid4(), media=picture)
+        out, manifest, _ = self.bundle('a')
+        names = {c['name'] for c in manifest['chunks']}
+        for chunk in ('mood_aliases', 'message_changes', 'tidings', 'tiding_comments', 'tiding_votes',
+                      'face_names', 'yarn_clips'):
+            self.assertIn(chunk, names)
+        status, printed = run(verify_memory, out)
+        self.assertEqual(status, 0, printed)
+        status, printed = self.check_one(self.prove(out, f'tiding_comment/{comment.id}'))
+        self.assertEqual(status, 0, printed)
+
+    def test_a_clip_that_is_not_ours_is_committed_and_not_published(self):
+        clip = b'\x00\x00\x00\x18ftypmp42 a film'
+        sha = hashlib.sha256(clip).hexdigest()
+        Media.objects.create(sha256=sha, mime='video/mp4', data=clip, size=len(clip), license='')
+        out, manifest, edition = self.bundle('a')
+        media = {key.decode(): json.loads(record) for _, key, _, record in self.lines(out, 'media')}
+        self.assertEqual(media[f'media/{sha}']['license'], '')
+        self.assertFalse((out / 'media' / f'{sha}.mp4').exists())
+        self.assertTrue((out / 'media' / f'{hashlib.sha256(self.picture).hexdigest()}.png').exists())
+        self.assertEqual(edition['media_files'], Media.objects.exclude(license='').count())
+        self.assertEqual(run(verify_memory, out)[0], 0)

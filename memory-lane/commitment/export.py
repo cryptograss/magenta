@@ -83,8 +83,15 @@ TABLES = (
     whole('compacting_action', 'compacting_actions', 'compacting_actions'),
     whole('summary', 'summaries', 'summaries'),
     whole('note', 'notes', 'notes'),
-    whole('motion', 'motions', 'motions', key='slug'),
-    whole('motion_session', 'motion_sessions', 'motion_sessions', key='session_id'),
+    whole('mood', 'moods', 'moods'),
+    whole('mood_alias', 'mood_aliases', 'mood_aliases'),
+    whole('mood_session', 'mood_sessions', 'mood_sessions', key='session_id'),
+    whole('message_change', 'message_changes', 'message_changes', key='message_id'),
+    whole('tiding', 'tidings', 'tidings'),
+    whole('tiding_comment', 'tiding_comments', 'tiding_comments'),
+    whole('tiding_vote', 'tiding_votes', 'tiding_votes'),
+    whole('face_name', 'face_names', 'face_names'),
+    whole('yarn_clip', 'yarn_clips', 'yarn_clips', key='clip'),
     Table('participant', PARTICIPANT_SQL, 'name', 'participants',
           ('conversation_participants', 'thinking_entities')),
     whole('topic', 'topics', 'topics'),
@@ -93,12 +100,28 @@ TABLES = (
     whole('block_anchor', 'block_anchors', 'block_anchors', key='number'),
     whole('setting', 'settings', 'settings'),
     whole('content_type', 'django_content_type', 'content_types'),
-    Table('media', 'SELECT sha256, mime, size, added_by_id, created_at FROM media', 'sha256', 'media', ('media',)),
+    Table('media', 'SELECT sha256, mime, size, added_by_id, created_at, license, original_id FROM media',
+          'sha256', 'media', ('media',)),
 )
 
+# Every other table, and why it is not part of the record. A table in neither list fails the tests,
+# so a new one is a decision rather than an omission.
+NOT_COMMITTED = {
+    'devices': 'sign-in', 'login_codes': 'sign-in', 'push_subscriptions': 'sign-in',
+    'django_session': 'sign-in', 'auth_user': 'administrator accounts',
+    'auth_group': 'administrator accounts', 'auth_group_permissions': 'administrator accounts',
+    'auth_permission': 'administrator accounts', 'auth_user_groups': 'administrator accounts',
+    'auth_user_user_permissions': 'administrator accounts', 'django_admin_log': 'administrator accounts',
+    'django_migrations': 'the database\'s own bookkeeping',
+    'read_marks': 'how far each person has read',
+    'harness_models': 'what an agent\'s harness reports it can run',
+    'face_looks': 'a face-finding model\'s guesses, not anything said',
+    'sealed_copies': 'the words an edit or deletion took out, sealed to a recovery key: taken out is taken out',
+}
+
 MEDIA_EXTENSIONS = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp',
-                    'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3',
-                    'audio/wav': 'wav'}
+                    'image/heic': 'heic', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a',
+                    'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'video/mp4': 'mp4', 'video/webm': 'webm'}
 
 
 class ExportError(Exception):
@@ -259,16 +282,18 @@ def export(out, secret, epoch, eth_block, sealed, withhold=(), allow_missing=Fal
                                       withheld_reason(table.name, row))
                 per_table[table.name] += 1
                 if table.name == 'message':
-                    for view in (f"mood/{row['motion_id']}" if row.get('motion_id') else None,
+                    for view in (f"mood/{row['mood_id']}" if row.get('mood_id') else None,
                                  f"sender/{row['sender_id']}" if row.get('sender_id') else None):
                         if view:
                             for alg in merkle.ALGS:
                                 views[view][alg].append(hashes[alg])
             log(f'  {table.name}: {per_table[table.name]} leaves')
 
-        # Media bytes travel beside the chunks, named by their own hash.
+        # Media bytes travel beside the chunks, named by their own hash: those whose sharer gave them
+        # a license. A clip kept from Yarn carries none ('') and is not ours to publish; its leaf, with
+        # its hash, is committed all the same.
         if 'media' in present and not withheld_reason('media', {}):
-            for row in rows('SELECT sha256, mime, data FROM media ORDER BY sha256', stream=True):
+            for row in rows("SELECT sha256, mime, data FROM media WHERE license <> '' ORDER BY sha256", stream=True):
                 data = bytes(row['data'])
                 if hashlib.sha256(data).hexdigest() != row['sha256']:
                     raise ExportError(f"media {row['sha256']}: the stored bytes do not have that hash")

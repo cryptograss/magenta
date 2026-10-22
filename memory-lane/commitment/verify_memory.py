@@ -27,9 +27,10 @@ SPEC_ID = 'cryptograss-memory-commitment/1'
 # The column of each table's record that its key names: a key is <table>/<that value>.
 KEY_COLUMNS = {
     'message': 'id', 'raw': 'id', 'heap': 'id', 'era': 'id', 'compacting_action': 'id', 'summary': 'id',
-    'note': 'id', 'motion': 'slug', 'motion_session': 'session_id', 'participant': 'name', 'topic': 'id',
-    'message_topic': 'id', 'conversation_file': 'id', 'block_anchor': 'number', 'setting': 'id',
-    'content_type': 'id', 'media': 'sha256',
+    'note': 'id', 'mood': 'id', 'mood_alias': 'id', 'mood_session': 'session_id', 'message_change': 'message_id',
+    'tiding': 'id', 'tiding_comment': 'id', 'tiding_vote': 'id', 'face_name': 'id', 'yarn_clip': 'clip',
+    'participant': 'name', 'topic': 'id', 'message_topic': 'id', 'conversation_file': 'id',
+    'block_anchor': 'number', 'setting': 'id', 'content_type': 'id', 'media': 'sha256',
 }
 
 
@@ -125,7 +126,7 @@ def check_chunk(path, entry, views):
             return problem, disclosed, withheld
         if key.startswith(b'message/'):
             row = json.loads(record)
-            for name in (f"mood/{row['motion_id']}" if row.get('motion_id') else None,
+            for name in (f"mood/{row['mood_id']}" if row.get('mood_id') else None,
                          f"sender/{row['sender_id']}" if row.get('sender_id') else None):
                 if name in views:
                     views[name].append((key, hashes))
