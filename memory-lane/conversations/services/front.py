@@ -12,16 +12,17 @@ import re
 
 from django.core.cache import cache
 
-TOP = 3       # links from Tidings
+TOP = 5       # links from Tidings (Justin, 23 Oct: five)
 LATELY = 5    # who spoke lately, and where
 KEEP_FOR = 30  # seconds
 _KEY = 'front:state'
 SLOGANS_PAGE = 'Magenta:Slogans'
-SLOGAN = ('a place for hackers, bluegrassers, deadheads, generalists, and all those smartass folk come descended '
-          'from monkeys')
+SLOGAN = ('a place for hackers, bluegrassers, deadheads, cyclists, generalists, and all those smartass folk come '
+          'descended from monkeys')
 SLOGANS_FOR = 600      # seconds the page's lines are kept
 SLOGANS_KEPT = 86400   # and the last good ones, should the wiki not answer
 MAX_SLOGANS, MAX_SLOGAN = 60, 240
+HEX = set('0123456789abcdef')
 # Each agent's own colour, as the Moods page draws them (AGENT_COLORS in moods.html, Justin, 21 Oct).
 AGENT_COLOURS = {'magent': '#ff67fd', 're': '#ff3c00', 'blu': '#1976d2'}
 
@@ -34,16 +35,42 @@ def top_tidings(limit=TOP):
             for link in tiding_links.listed(limit=limit)]
 
 
+def name_html(name, wiki_names, looks):
+    """A person's name as the Moods page writes it (Justin, 23 Oct): their PickiPedia name (JMyles, not
+    justin), and in their own art and colours if they've set any (settings.looks); an agent without art,
+    in its colour. Safe HTML."""
+    from django.utils.html import escape
+    look = looks.get(name) or {}
+    art = look.get('art') or ''
+    if art:
+        fg, bg = look.get('colours') or '', look.get('backs') or ''
+        cells = []
+        for i, ch in enumerate(art):  # a code each for its letter and its background: 0-f, ANSI's sixteen
+            codes = []
+            if i < len(fg) and fg[i] in HEX:
+                codes.append(f'a{fg[i]}')
+            if i < len(bg) and bg[i] in HEX:
+                codes.append(f'b{bg[i]}')
+            cells.append(f'<span class="{" ".join(codes)}">{escape(ch)}</span>' if codes else escape(ch))
+        return f'<span class="art" title="{escape(wiki_names.get(name, name))}">{"".join(cells)}</span>'
+    colour = AGENT_COLOURS.get(name, '')
+    shown = escape(wiki_names.get(name, name))
+    return f'<span class="agent" style="--agent: {colour}">{shown}</span>' if colour else shown
+
+
 def lately(limit=LATELY, scan=300):
-    """Who spoke last, and in which Mood, newest first: [{'who', 'mood', 'title', 'at', 'ago', 'colour'}]. What
-    was said (a person's post, an agent speaking), not an agent's thinking or tool calls, its silences,
+    """Who spoke last, and in which Mood, newest first: [{'who', 'name', 'mood', 'title', 'said', 'at', 'ago'}].
+    What was said (a person's post, an agent speaking), not an agent's thinking or tool calls, its silences,
     the poller's wakes or the system's lines. Each person in each Mood once, at their latest (Justin,
-    22 Oct: "the five most recent user-mood combos"). Archived Moods aren't shown."""
+    22 Oct: "the five most recent user-mood combos"), with its first 80 characters (23 Oct). Archived Moods
+    aren't shown."""
     from django.utils.timesince import timesince
     from conversations.models import Message, ThinkingEntity
     from . import settings as knobs
-    from .mood_view import is_wrapper, prose, quiet_reason
+    from . import wiki_auth
+    from .mood_view import is_wrapper, prose, quiet_reason, reply_to, snippet_of
     archived = knobs.archived_slugs()
+    wiki_names, looks = wiki_auth.names(), knobs.looks()
     people = set(ThinkingEntity.objects.values_list('name', flat=True))
     rows = (Message.objects.filter(mood__isnull=False, is_sidechain=False, thought__isnull=True, tooluse__isnull=True,
                                    toolresult__isnull=True, sender_id__in=people)
@@ -57,9 +84,11 @@ def lately(limit=LATELY, scan=300):
             continue
         if any((said['who'], said['mood']) == (msg.sender_id, msg.mood.slug) for said in out):
             continue  # this voice in this Mood is here already, at its latest
-        out.append({'who': msg.sender_id, 'mood': msg.mood.slug, 'title': msg.mood.title or msg.mood.slug,
-                    'at': msg.created_at, 'ago': timesince(msg.created_at).split(',')[0],  # "1 day", not "1 day, 9 hours"
-                    'colour': AGENT_COLOURS.get(msg.sender_id, '')})
+        words = snippet_of(reply_to(text)[1])
+        out.append({'who': msg.sender_id, 'name': name_html(msg.sender_id, wiki_names, looks),
+                    'mood': msg.mood.slug, 'title': msg.mood.title or msg.mood.slug,
+                    'said': words[:80] + ('…' if len(words) > 80 else ''),
+                    'at': msg.created_at, 'ago': timesince(msg.created_at).split(',')[0]})  # "1 day", not "1 day, 9 hours"
         if len(out) == limit:
             break
     return out
@@ -67,12 +96,17 @@ def lately(limit=LATELY, scan=300):
 
 def slogans_in(wikitext):
     """The lines of a slogans page: each '*' line as plain words -- a [[link]] its words, bold and italic
-    marks gone, tags gone -- each once, in the page's order."""
+    marks gone, tags and templates gone -- each once, in the page's order. A line an agent wrote waits,
+    wrapped in {{Bot_proposes|...}}, until a person has verified it (Special:VerifyBotEdits): only then is it
+    shown, as the wiki asks of what bots write."""
     out = []
     for line in (wikitext or '').splitlines():
         if not line.startswith('*'):
             continue
         text = line.lstrip('*').strip()
+        if re.search(r'\{\{\s*Bot[ _]proposes', text, re.I):
+            continue
+        text = re.sub(r'\{\{[^{}]*\}\}', '', text)                        # any other template
         text = re.sub(r'\[\[(?:[^\]|]*\|)?([^\]]*)\]\]', r'\1', text)   # [[Page|words]], [[words]]
         text = re.sub(r'\[https?://\S+\s+([^\]]*)\]', r'\1', text)        # [url words]
         text = re.sub(r"'{2,}", '', text)
