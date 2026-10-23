@@ -1141,7 +1141,7 @@
 </style>
 </head>
 <body{% if initial_section and initial_section != "moods" %} class="in-section"{% endif %}>
-{% include "conversations/install_prompt.html" %}
+{% include "conversations/install_prompt.html" with nudge_only_asked=True %}
 <header>
   <button id="menu" type="button" aria-label="Moods" aria-expanded="false">☰</button>
   <!-- The mark alone, to the front page (Moods, for now; a landing page in time) (Justin, 21 Oct). -->

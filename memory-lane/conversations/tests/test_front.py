@@ -59,12 +59,14 @@ class FrontPageTest(FrontBase):
         self.assertIn('fill="#ece7e1"', svg)  # light behind dark: every camera reads that way round
         self.assertIs(front.qr_svg('https://example.test/'), svg)  # drawn once
 
-    def test_a_phone_is_offered_the_app_on_both_pages(self):
-        for path in ('/', '/moods/'):
-            with self.subTest(path=path):
-                html = self.client.get(path).content.decode()
-                self.assertIn('id="installNudge"', html)
-                self.assertIn('beforeinstallprompt', html)
+    def test_a_phone_is_offered_the_app_on_the_front_page(self):
+        # Justin, 23 Oct: on the front only. The Moods carry it only to put the browser's own question,
+        # when the front page's button asks (?install=1).
+        front_page = self.client.get('/').content.decode()
+        self.assertIn('id="installNudge" role="dialog" aria-label="Install magenta" hidden', front_page)
+        moods = self.client.get('/moods/').content.decode()
+        self.assertIn('data-only-asked="1"', moods)
+        self.assertIn('beforeinstallprompt', moods)
 
     def test_the_top_links_most_upvoted_first(self):
         made = []
