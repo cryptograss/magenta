@@ -151,9 +151,15 @@ class TidingTalkTests(TidingLinksTest):
         done = self.comment(self.client_for(self.justin), tiding, 'yes, that one')
         self.assertEqual(done.status_code, 201)
         notice = Message.objects.exclude(id=said.id).get()
-        self.assertEqual(notice.content['type'], 'tiding-comment')  # the words aren't in the Mood
+        self.assertEqual(notice.content['type'], 'tiding-comment')  # a line in the Mood, not the comment
         self.assertEqual(notice.content['by'], 'justin')
-        self.assertNotIn('yes, that one', str(notice.content))
+        # Its link's title and its first words, which open it on Tidings (Justin, 23 Oct); the rest stays there.
+        self.assertEqual((notice.content['title'], notice.content['comment']), (tiding.title, 'yes, that one'))
+        self.assertEqual(notice.content['tiding'], str(tiding.id))
+        long = self.comment(self.client_for(self.justin), tiding, 'word ' * 200)
+        self.assertEqual(long.status_code, 201)
+        self.assertLessEqual(len(Message.objects.filter(source_file='tiding-comment').order_by('-created_at')
+                                 .first().content['comment']), 120)
         body = self.client.get(f'/api/tidings/{tiding.id}/').json()
         self.assertEqual((body['comments'][0]['kind'], body['comments'][0]['snippet']), ('comment', 'yes, that one'))
 

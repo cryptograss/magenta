@@ -352,42 +352,7 @@
   header .block { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
-  /* A name written its person's way: monospace, its spaces kept, as a BBS would have it. */
-  .art { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; white-space: pre; font-size: .95em; }
-  /* Each character in one of ANSI's sixteen, CGA's order, as a BBS had them (settings.name_colours). */
-  .art .a0 { color: #000000; }
-  .art .a1 { color: #0000aa; }
-  .art .a2 { color: #00aa00; }
-  .art .a3 { color: #00aaaa; }
-  .art .a4 { color: #aa0000; }
-  .art .a5 { color: #aa00aa; }
-  .art .a6 { color: #aa5500; }
-  .art .a7 { color: #aaaaaa; }
-  .art .a8 { color: #555555; }
-  .art .a9 { color: #5555ff; }
-  .art .aa { color: #55ff55; }
-  .art .ab { color: #55ffff; }
-  .art .ac { color: #ff5555; }
-  .art .ad { color: #ff55ff; }
-  .art .ae { color: #ffff55; }
-  .art .af { color: #ffffff; }
-  /* And behind each, as a BBS's cell had its background (iCE colour: all sixteen). */
-  .art .b0 { background: #000000; }
-  .art .b1 { background: #0000aa; }
-  .art .b2 { background: #00aa00; }
-  .art .b3 { background: #00aaaa; }
-  .art .b4 { background: #aa0000; }
-  .art .b5 { background: #aa00aa; }
-  .art .b6 { background: #aa5500; }
-  .art .b7 { background: #aaaaaa; }
-  .art .b8 { background: #555555; }
-  .art .b9 { background: #5555ff; }
-  .art .ba { background: #55ff55; }
-  .art .bb { background: #55ffff; }
-  .art .bc { background: #ff5555; }
-  .art .bd { background: #ff55ff; }
-  .art .be { background: #ffff55; }
-  .art .bf { background: #ffffff; }
+{% include "conversations/name_art_css.html" %}
   #lookBox .paint { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0 4px; user-select: none; touch-action: none; }
   #lookBox .paint > span { min-width: 1.35em; height: 1.7em; display: inline-flex; align-items: center; justify-content: center;
                          font: 16px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 3px;
@@ -2905,9 +2870,14 @@
     }
     if (e.type === 'tiding-comment') {  // said on Tidings, not here: a line, not the words (services/tiding_links._notice)
       el.className = 'event tiding-comment';
-      const tid = esc(e.tiding || ''), msg = esc(e.message || ''), mood = encodeURIComponent(e.mood || current);
-      el.innerHTML = `💬 <b>${esc(shown(e.by || 'someone'))}</b> commented on <a href="/moods/tidings/${tid}/?embed=1">Tidings</a>`
-        + (msg ? ` · <a href="/moods/${mood}/#m-${msg}" title="the link was posted in this message">what was said</a>` : '')
+      // Its link's title, and the comment's first words, which open it there (Justin, 23 Oct). A line from
+      // before they were kept says what it can.
+      const msg = esc(e.message || ''), mood = encodeURIComponent(e.mood || current);
+      const at = e.tiding ? `/moods/tidings/${encodeURIComponent(e.tiding)}/` : '/moods/tidings/';
+      const words = e.comment ? (e.comment.length > 40 ? e.comment.slice(0, 40).trimEnd() + '…' : e.comment) : '';
+      el.innerHTML = `💬 <b>${nameHtml(e.by || 'someone')}</b> commented on <a href="${at}">${e.title ? '“' + esc(e.title) + '”' : 'Tidings'}</a>`
+        + (words ? `: <a href="${at}${e.comment_id ? '#c-' + encodeURIComponent(e.comment_id) : ''}">“${esc(words)}”</a>`
+           : msg ? ` · <a href="/moods/${mood}/#m-${msg}" title="the link was posted in this message">what was said</a>` : '')
         + ` · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
@@ -6857,6 +6827,19 @@
       ? { sha: pic.sha, message: pic.message, sharer: pic.sharer, mood: pic.mood, tidings: true } : null;
     if (e.data.magentaUpload) { if (upload) offerUploadFor(upload); return; }
     openPicture({ full: pic.full, href: pic.full, onwiki: pic.onwiki, upload });
+  });
+  // A link into one of Tidings' discussions, from the thread (a comment's line, a #t- link): opened in the
+  // Tidings section, at that discussion -- not as a page of its own, nor the one page loaded again.
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href^="/moods/tidings/"]');
+    if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+    const to = new URL(a.href, location.href);
+    const id = (to.pathname.match(/^\/moods\/tidings\/([0-9a-f-]{36})\/?$/) || [])[1];
+    if (!id) return;
+    e.preventDefault();
+    showSection('tidings', true);
+    const frame = sectionFrames.querySelector('iframe[data-section="tidings"]:not([data-fresh])');
+    if (frame) frame.src = `/moods/tidings/${id}/?embed=1${to.hash}`;
   });
   // A link inside a section into magenta: opened here, without loading anything again.
   window.addEventListener('message', async e => {

@@ -93,7 +93,8 @@ def page_version():
     from django.template.loader import get_template
     from .services import embeds, mood_view
     digest = hashlib.sha256()
-    for path in (get_template('conversations/moods.html').origin.name, mood_view.__file__, embeds.__file__):
+    for path in (get_template('conversations/moods.html').origin.name,
+                 get_template('conversations/name_art_css.html').origin.name, mood_view.__file__, embeds.__file__):
         with open(path, 'rb') as f:
             digest.update(f.read())
     return digest.hexdigest()[:12]
@@ -181,7 +182,8 @@ def api_mood_turns(request, slug):
                                                    'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at',
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'about', 'context',
-                                                   'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key')},
+                                                   'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
+                                                   'tiding', 'comment_id')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}

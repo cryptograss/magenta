@@ -45,7 +45,7 @@ class FrontPageTest(FrontBase):
         self.assertIn('/moods/mark-192.png', html)
         self.assertIn('href="/moods/"', html)
 
-    def test_the_top_three_links_most_upvoted_first(self):
+    def test_the_top_links_most_upvoted_first(self):
         made = []
         for i in range(4):
             said = self.say(self.skyler, self.jams, f'https://example.org/{i}')
@@ -53,12 +53,12 @@ class FrontPageTest(FrontBase):
         TidingVote.objects.create(tiding=made[1], by=self.skyler)
         TidingVote.objects.create(tiding=made[1], by=self.justin)
         TidingVote.objects.create(tiding=made[0], by=self.justin)
-        self.assertEqual([t['title'] for t in front.top_tidings()], ['Link 1', 'Link 0', 'Link 3'])
+        self.assertEqual([t['title'] for t in front.top_tidings()], ['Link 1', 'Link 0', 'Link 3', 'Link 2'])  # five at most
         html = self.client.get('/').content.decode()
         self.assertIn(f'/moods/tidings/{made[1].id}/', html)
-        self.assertNotIn('Link 2', html)
+        self.assertIn('Link 2', html)
 
-    def test_who_spoke_lately_and_where_not_what(self):
+    def test_who_spoke_lately_where_and_its_first_words(self):
         self.say(self.justin, self.jams, 'a secret-ish thing said in jams')
         self.say(self.poller, self.dev, '<mood-wake mood="magenta-interface">...</mood-wake>')  # the poller's wake
         self.say(self.magent, self.dev, [{'type': 'thinking', 'thinking': 'hmm'}], model=Thought)  # thinking
@@ -71,8 +71,24 @@ class FrontPageTest(FrontBase):
         html = self.client.get('/').content.decode()
         self.assertIn('#magenta interface', html)
         self.assertIn('--agent: #ff67fd', html)  # magent in its own colour
-        self.assertNotIn('secret-ish', html)
-        self.assertNotIn('Built it', html)
+        self.assertIn('a secret-ish thing said in jams', html)  # its first 80 characters (Justin, 23 Oct)
+        self.assertIn('>latest</h2>', html)
+        self.assertNotIn('what is this?', html)  # no links at the foot, for now
+        self.say(self.justin, self.jams, 'x' * 100)
+        cache.delete('front:state')
+        self.assertEqual(front.lately()[0]['said'], 'x' * 80 + '…')
+
+    def test_a_name_as_pickipedia_has_it_in_its_own_art(self):
+        from conversations.services import settings as knobs
+        knobs.change('name_art', '░ JMyles ░', agent=self.skyler, by=self.skyler)
+        knobs.change('name_colours', '.dddddd', agent=self.skyler, by=self.skyler)
+        with mock.patch('conversations.services.wiki_auth.names', return_value={'justin': 'JMyles', 'skyler': 'SkymanJenkins'}):
+            self.say(self.justin, self.jams, 'hello')
+            self.say(self.skyler, self.dev, 'hi')
+            names = {s['who']: s['name'] for s in front.lately()}
+        self.assertEqual(names['justin'], 'JMyles')  # his PickiPedia name, not the one here
+        self.assertIn('class="art" title="SkymanJenkins"', names['skyler'])
+        self.assertIn('<span class="ad">J</span>', names['skyler'])  # each letter in its colour
 
     def test_an_archived_mood_is_not_shown(self):
         from conversations.services import settings as knobs
