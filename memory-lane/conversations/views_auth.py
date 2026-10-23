@@ -1093,7 +1093,8 @@ def api_voice_sample(request, voice_id):
             listed = {v['voice_id']: v.get('preview_url') for v in voice.voices()}
         except voice.VoiceError:
             listed = {}
-        url = listed.get(voice_id)
+        # Ours, or one from the library a search here has just shown (voice.search_voices kept its sample's address).
+        url = listed.get(voice_id) or cache.get(f'voice:library-sample:{voice_id[:40]}')
         if not url:
             return JsonResponse({'error': 'no sample of that voice'}, status=404)
         import requests
@@ -1221,13 +1222,26 @@ def api_speaker_voice(request):
     if name != device.entity_id and (device.tier != 'key' or not device.entity.is_biological_human):
         return JsonResponse({'error': "only your own voice, from a PickiPedia sign-in; others' take your SSH key"},
                             status=403)
+    owner = str(body.get('owner') or '').strip()
     if chosen:
         try:
             listed = voice.voices()
         except voice.VoiceError:
             listed = []
         known = {v['voice_id'] for v in listed} | {v['name'].lower() for v in listed}
-        if chosen.lower() not in known and not voice._VOICE_ID.match(chosen):
+        if owner and chosen not in known:
+            # From ElevenLabs' library: added to the account first, the only way it will speak in it. That
+            # changes the account (whose plan holds so many voices), so it takes an SSH key.
+            if device.tier != 'key' or not device.entity.is_biological_human:
+                return JsonResponse({'error': "a voice from ElevenLabs' library is added to the account: that takes your SSH key"},
+                                    status=403)
+            if not re.fullmatch(r'[A-Za-z0-9]{8,80}', owner) or not voice._VOICE_ID.match(chosen):
+                return JsonResponse({'error': 'expected a library voice: its id and its owner'}, status=400)
+            try:
+                chosen = voice.add_library_voice(owner, chosen, str(body.get('voice_name') or ''))
+            except voice.VoiceError as e:
+                return JsonResponse({'error': str(e)}, status=e.status)
+        elif chosen.lower() not in known and not voice._VOICE_ID.match(chosen):
             return JsonResponse({'error': f'no voice called {chosen}'}, status=400)
     try:
         if entity is None:  # the narrator: everyone's, so an SSH key's to change
@@ -1237,6 +1251,17 @@ def api_speaker_voice(request):
     except knobs.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse(knobs.describe(row), status=201)
+
+
+@require_GET
+def api_voice_search(request):
+    """?q=: voices to choose from as it's typed -- ours, then ElevenLabs' library (voice.search_voices)."""
+    from .services import voice
+    if mood_auth.device_for(request) is None:
+        return JsonResponse({'error': 'sign in to choose voices'}, status=401)
+    if not voice.enabled():
+        return JsonResponse({'voices': []})
+    return JsonResponse({'voices': voice.search_voices(str(request.GET.get('q') or '')[:80])})
 
 
 @require_POST

@@ -243,6 +243,66 @@ def voices(http=requests):
     return found
 
 
+LIBRARY_PAGE = 20     # voices from ElevenLabs' library, asked at a time
+LIBRARY_FOR = 3600    # seconds a search of it is kept
+
+
+def search_voices(query, http=requests):
+    """Voices to choose from for `query` (Justin, 23 Oct: "elevenlabs has like a zillion ... maybe autocomplete"):
+    ours first -- those in the account, named or described so -- then ElevenLabs' library, which has thousands.
+    [{'name', 'voice_id', 'description', 'preview_url', 'library', 'owner'}]; a library voice is added to the
+    account when it's chosen (add_library_voice). Ours alone if the library can't be asked."""
+    from django.core.cache import cache
+    query = (query or '').strip()
+    words = query.lower().split()
+    try:
+        ours = voices(http)
+    except VoiceError:
+        ours = []
+    def about(v):
+        return ' '.join([v['name'], v.get('description') or '', ' '.join(str(x) for x in (v.get('labels') or {}).values())]).lower()
+    found = [{**{k: v.get(k, '') for k in ('name', 'voice_id', 'description', 'preview_url')}, 'library': False, 'owner': ''}
+             for v in ours if all(w in about(v) for w in words)]
+    if not query:
+        return found
+    have = {v['voice_id'] for v in ours}
+    key = 'voice:library:' + hashlib.sha256(query.lower().encode()).hexdigest()[:24]
+    library = cache.get(key)
+    if library is None:
+        try:
+            response = http.get(f'{API}/shared-voices', headers=_headers(), timeout=20,
+                                params={'search': query, 'page_size': LIBRARY_PAGE})
+            listed = response.json().get('voices', []) if response.status_code == 200 else []
+        except Exception:  # noqa: BLE001 -- the library away: ours will do
+            listed = []
+        library = []
+        for v in listed:
+            if not _VOICE_ID.match(str(v.get('voice_id') or '')) or not v.get('public_owner_id'):
+                continue
+            said = ', '.join(str(v.get(k)) for k in ('gender', 'age', 'accent', 'use_case') if v.get(k))
+            library.append({'name': str(v.get('name') or '')[:80], 'voice_id': v['voice_id'],
+                            'description': (said + (' -- ' if said and v.get('description') else '')
+                                            + str(v.get('description') or ''))[:200],
+                            'preview_url': str(v.get('preview_url') or ''), 'library': True,
+                            'owner': str(v['public_owner_id'])})
+            if library[-1]['preview_url']:  # its sample, if it's asked for (views_auth.api_voice_sample)
+                cache.set(f'voice:library-sample:{v["voice_id"]}', library[-1]['preview_url'], 86400)
+        cache.set(key, library, LIBRARY_FOR)
+    return found + [v for v in library if v['voice_id'] not in have]
+
+
+def add_library_voice(owner, voice_id, name, http=requests):
+    """Add a voice from ElevenLabs' library to the account -- the only way the API will speak in it -- and
+    return its id there. VoiceError if it can't be (a plan's voice slots full, say)."""
+    from django.core.cache import cache
+    response = http.post(f'{API}/voices/add/{owner}/{voice_id}', headers=_headers(), timeout=30,
+                         json={'new_name': (name or voice_id)[:100]})
+    if response.status_code != 200:
+        raise VoiceError(f'ElevenLabs answered {response.status_code} adding that voice: {_why(response)}')
+    cache.delete('voice:voices')  # it's ours now: listed with the rest
+    return str(response.json().get('voice_id') or voice_id)
+
+
 def voice_id_for(name, http=requests):
     """The voice called `name` (or with that id); else the house voice (the
     'voice' knob); else the first there is.
