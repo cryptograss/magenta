@@ -277,6 +277,7 @@ class StreamPoster:
         self.url = f"{base.rstrip('/')}/api/moods/{slug}/stream/"
         self.effort = effort  # what the turn was launched at: stream events don't say
         self.full_tools = None  # whether it was woken with full tools (an agent it mentions may be too)
+        self.answers = None  # the posts that woke it: an answer to one asked on Tidings goes there too
         self.headers = {'Authorization': f'Bearer {key}'}
         self.slug, self.session_id = slug, session_id
         self.http, self.retries, self.pause = http, retries, pause
@@ -313,7 +314,8 @@ class StreamPoster:
     def send(self, events):
         body = {'harness': 'claude-code', 'session_id': self.session_id, 'events': events,
                 **({'effort': self.effort} if self.effort else {}),
-                **({'full_tools': self.full_tools} if self.full_tools is not None else {})}
+                **({'full_tools': self.full_tools} if self.full_tools is not None else {}),
+                **({'answers': self.answers} if self.answers else {})}
         for attempt in range(self.retries):
             try:
                 response = self.http.post(self.url, json=body, headers=self.headers, timeout=30)
@@ -1535,6 +1537,10 @@ class MoodPoller:
         if full and self.knob(slug, 'ultracode'):
             options['ultracode'] = True
         options['new_session'] = flight
+        if not commands:
+            # What it answers: memory-lane puts the answer on Tidings too, under whatever there asked
+            # (a comment, or a reply in a link's discussion) -- routed, not left to the agent to remember.
+            options['answers'] = [t['id'] for t in owed]
         outcome = self.launch(slug, lambda: self.run_turn(slug, session, prompt, **options),
                               after=lambda _: self.land(flight))
         if not self.parallel:
@@ -1630,6 +1636,7 @@ class MoodPoller:
     def run_turn_for(self, slug, session_id, prompt, **options):
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
         new_session = options.pop('new_session', None) or str(uuid.uuid4())
+        answers = options.pop('answers', None)
         if hasattr(self.waker, 'harness_for'):  # two harnesses: settled here, so the poster suits it
             options['harness'] = options.get('harness') or self.waker.harness_for(options.get('model'))
         poster = None
@@ -1645,6 +1652,8 @@ class MoodPoller:
             poster.effort = options['effort']
         if poster is not None:
             poster.full_tools = bool(options.get('full'))
+            if answers:
+                poster.answers = list(answers)
         stop = self.stop_check(slug, options.pop('since', None))
         try:
             new_session, reply = self.waker.wake(session_id, prompt, new_session_id=new_session,

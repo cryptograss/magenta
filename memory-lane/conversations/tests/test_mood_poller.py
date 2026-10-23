@@ -418,6 +418,20 @@ class StreamPosterTest(TestCase):
         poster.close()
         self.assertNotIn('full_tools', unsaid.posts[0][1])
 
+    def test_it_says_what_woke_the_turn(self):
+        # An answer to something asked on Tidings goes there too (tiding_links.answer_asked).
+        http = FakeHTTP(200)
+        poster = self.poster(http)
+        poster.answers = ['m-1', 'm-2']
+        poster.put({'type': 'assistant', 'uuid': 'a'})
+        poster.close()
+        self.assertEqual(http.posts[0][1]['answers'], ['m-1', 'm-2'])
+        unsaid = FakeHTTP(200)
+        poster = self.poster(unsaid)
+        poster.put({'type': 'assistant', 'uuid': 'a'})
+        poster.close()
+        self.assertNotIn('answers', unsaid.posts[0][1])
+
     def test_a_refusal_is_not_retried_and_a_failure_is(self):
         import requests
         refused = FakeHTTP(401)
@@ -455,6 +469,13 @@ class StreamingPollerTest(TestCase):
         events = [e for p in http.posts for e in p[1]['events']]
         self.assertEqual([e['type'] for e in events], ['assistant', 'result'])
         self.assertEqual({p[1]['session_id'] for p in http.posts}, {self.posters[0].session_id})
+
+    def test_the_stream_says_what_the_turn_answers(self):
+        http = FakeHTTP(200)
+        waker = FakeWaker()
+        self.make(waker, http).poll_once()
+        self.assertEqual({tuple(p[1].get('answers') or ()) for p in http.posts}, {('a',)})
+        self.assertNotIn('answers', waker.options)  # memory-lane's to know, not the harness's
 
     def test_a_mention_gets_a_considered_answer(self):
         waker = FakeWaker()
