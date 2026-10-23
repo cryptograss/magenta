@@ -74,6 +74,16 @@
   .say button:disabled { opacity: .45; cursor: default; }
   .say .replying { font-size: 12.5px; color: var(--muted); }
   .say .err { font-size: 12.5px; color: var(--err, #c0392b); }
+  .say.signin { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .say a.button { border-radius: 6px; padding: 6px 18px; background: var(--accent); color: #fff; }
+  .say a.button:hover { text-decoration: none; filter: brightness(1.1); }
+  /* [[ suggests PickiPedia's titles, under the box. */
+  .say .box { position: relative; }
+  .say .suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; max-width: 420px; margin-top: 2px;
+                  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+                  box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
+  .say .suggest div { padding: 5px 10px; cursor: pointer; }
+  .say .suggest div.sel { background: var(--accent-soft); }
 </style>
 {% if embed %}<!-- Inside the one page's Tidings frame: no bar of its own; a link into magenta goes there. -->
 <script>
@@ -82,6 +92,7 @@
     if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
     const to = new URL(a.href, location.href);
     if (to.origin !== location.origin) { a.target = '_top'; return; }
+    if (a.target === '_top') return;  // signing in: the whole page goes, and comes back here
     if (to.pathname.startsWith('/moods/tidings/')) return;  // the listing or another discussion: in this frame
     if (a.matches('.words a.img')) return;  // a picture: the one page's lightbox (mood_tiding_tools.html)
     e.preventDefault();
@@ -138,6 +149,79 @@
   }
 </script>
 {% include "conversations/mood_tiding_tools.html" %}
+{% if viewer %}
+<script>
+  // [[ suggests PickiPedia titles as they're typed, as the Moods' composer does; ↑↓ to choose, Enter or Tab
+  // to take one, Esc to leave it. The wiki's API answers any page, so it's asked directly.
+  document.addEventListener('DOMContentLoaded', function () {
+    const WIKI = "{{ pickipedia_url|escapejs }}" || 'https://pickipedia.xyz';
+    const box = document.getElementById('say'), list = document.getElementById('wikiSuggest');
+    const found = new Map();
+    let titles = [], chosen = 0, timer = null;
+    const titleCase = s => s.replace(/(^|[\s:_(-])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+    async function titlesFor(prefix) {
+      if (found.has(prefix)) return found.get(prefix);
+      const ask = async q => {
+        const r = await fetch(`${WIKI}/api.php?action=query&list=prefixsearch&pslimit=8&format=json&origin=*&pssearch=${encodeURIComponent(q)}`);
+        return ((await r.json()).query || {}).prefixsearch || [];
+      };
+      let hits = [];
+      try {
+        hits = await ask(prefix);
+        if (!hits.length && titleCase(prefix) !== prefix) hits = await ask(titleCase(prefix));  // 'tony r': Tony Rice
+      } catch (e) { hits = []; }
+      found.set(prefix, hits.map(h => h.title));
+      return found.get(prefix);
+    }
+    function typing() {
+      const m = box.value.slice(0, box.selectionStart).match(/\[\[([^\[\]|\n]{1,100})$/);
+      return m ? m[1] : null;
+    }
+    function close() { list.hidden = true; titles = []; }
+    function draw() {
+      list.innerHTML = '';
+      titles.forEach((t, i) => {
+        const row = document.createElement('div');
+        row.textContent = '📖 ' + t;
+        row.className = i === chosen ? 'sel' : '';
+        row.setAttribute('role', 'option');
+        row.addEventListener('mousedown', e => { e.preventDefault(); take(i); });
+        list.append(row);
+      });
+      list.hidden = !titles.length;
+    }
+    function take(i) {
+      const prefix = typing();
+      if (prefix === null || !titles[i]) return close();
+      const caret = box.selectionStart, start = caret - prefix.length;
+      box.value = box.value.slice(0, start) + titles[i] + ']]' + box.value.slice(caret);
+      box.setSelectionRange(start + titles[i].length + 2, start + titles[i].length + 2);
+      close();
+      box.focus();
+    }
+    box.addEventListener('input', () => {
+      const prefix = typing();
+      clearTimeout(timer);
+      if (prefix === null) return close();
+      timer = setTimeout(async () => {
+        const got = await titlesFor(prefix);
+        if (typing() !== prefix) return;  // they've typed on
+        titles = got; chosen = 0; draw();
+      }, found.has(prefix) ? 0 : 150);
+    });
+    box.addEventListener('keydown', e => {
+      if (list.hidden) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        chosen = (chosen + (e.key === 'ArrowDown' ? 1 : titles.length - 1)) % titles.length;
+        draw();
+      } else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); take(chosen); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+    });
+    box.addEventListener('blur', () => setTimeout(close, 150));
+  });
+</script>
+{% endif %}
 </head>
 <body>
 <main>
@@ -166,17 +250,28 @@
     {% endfor %}
   </section>
 
+  {% if viewer %}
   <form class="say" action="/api/tidings/{{ tiding.id }}/comments/" method="post" onsubmit="sayIt(this); return false;">
     <input type="hidden" id="replyTo" name="reply_to" value="">
     <input type="hidden" id="replyKind" name="reply_kind" value="">
-    <textarea id="say" name="text" placeholder="Say something about this…"{% if not viewer %} disabled{% endif %}></textarea>
+    <div class="box">
+      <textarea id="say" name="text" placeholder="Say something about this… [[Page]] links PickiPedia."></textarea>
+      <div class="suggest" id="wikiSuggest" role="listbox" hidden></div>
+    </div>
     <div class="bar">
-      <button type="submit"{% if not viewer %} disabled{% endif %}>say it</button>
+      <button type="submit">say it</button>
       <span class="replying" id="replyToNote"></span>
       <span class="err"></span>
-      {% if not viewer %}<span class="muted"><a href="/moods/auth/wiki/">sign in</a> to comment and upvote</span>{% endif %}
     </div>
   </form>
+  {% else %}
+  <!-- Signed out: no box that can't be typed in (Justin, 23 Oct), but the way in -- and back here after. -->
+  <p class="say signin">
+    {% if wiki_signin %}<a class="button" href="/moods/auth/wiki/?next=/moods/tidings/{{ tiding.id }}/" target="_top">sign in with PickiPedia</a>
+    <span class="muted">to say something here, or upvote</span>
+    {% else %}<span class="muted"><a href="/moods/" target="_top">sign in</a> to say something here, or upvote</span>{% endif %}
+  </p>
+  {% endif %}
 </main>
 </body>
 </html>
