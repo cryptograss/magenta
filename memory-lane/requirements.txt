@@ -22,3 +22,5 @@ PyYAML>=6.0,<7
 # Both ship manylinux wheels with their libraries inside: nothing to apt-get.
 Pillow>=11,<13
 pillow-heif>=1.0,<2
+# The front page's QR code of its own address (conversations/services/front.py). Pure Python, no dependencies.
+segno>=1.6,<2

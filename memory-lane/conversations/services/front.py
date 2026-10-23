@@ -8,6 +8,7 @@ Read by anyone, signed in or not, so it's kept for a little while rather than as
 database on every visit.
 """
 
+import functools
 import re
 
 from django.core.cache import cache
@@ -139,6 +140,15 @@ def slogans(http=None):
     cache.set('front:slogans', found, SLOGANS_FOR)
     cache.set('front:slogans:last', found, SLOGANS_KEPT)
     return found
+
+
+@functools.lru_cache(maxsize=8)
+def qr_svg(url):
+    """A QR code for `url` (the front page's own address: Justin, 23 Oct, to hold up for a phone across the
+    table), as inline SVG: dark squares on light, which every phone's camera reads."""
+    import segno
+    return segno.make(url, error='m').svg_inline(scale=4, border=2, dark='#0e0c10', light='#ece7e1',
+                                                 svgclass='qr', omitsize=True)
 
 
 def forget():
