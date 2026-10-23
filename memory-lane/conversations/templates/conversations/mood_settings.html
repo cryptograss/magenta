@@ -156,7 +156,7 @@
       cards.push(`<div class="card"><h2>${esc(m.title)}</h2><div class="sub">#${esc(m.slug)}'s voice</div>`
         + `<div class="row"><label title="${esc(state.voice_speed_help)}">voice speed</label>`
         + `<span><select data-key="voice_speed" data-mood="${esc(m.slug)}" data-agent="" data-num="1" ${viewer ? '' : 'disabled'}>`
-        + SPEEDS.map(v => `<option value="${v}" ${Math.abs(v - speed) < 1e-9 ? 'selected' : ''}>${v.toFixed(1)}${v === 1.2 ? ' (fast)' : v === 1 ? ' (as voiced)' : ''}</option>`).join('')
+        + SPEEDS.map(v => `<option value="${v}" ${Math.abs(v - speed) < 1e-9 ? 'selected' : ''}>${v.toFixed(1)}${v === 1 ? ' (as voiced)' : ''}</option>`).join('')
         + `</select><span class="status"></span></span></div></div>`);
       for (const a of state.agents) cards.push(card(m.title, `${a} in #${m.slug}`, state.resolved[m.slug][a], m.slug, a));
     }
