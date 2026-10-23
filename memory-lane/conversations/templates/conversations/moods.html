@@ -1496,11 +1496,21 @@
     markLive();
   }
 
-  // Who's around in each Mood: whoever spoke in the last 100 blocks (about 20
-  // minutes), and whoever is typing or at work there now, their name pulsing.
-  let liveData = {};
+  // Who's around in each Mood: each person in the one they last opened, typed or spoke in, for three
+  // minutes (services/presence; Justin, 23 Oct); each agent where it spoke in the last 100 blocks (about
+  // 20 minutes); and whoever is typing or at work there now, their name pulsing. This page's own person
+  // moves the moment they do, not at the next look.
+  let liveData = {}, hereAt = 0;
+  const SHOWN_FOR_MS = 180000;
+  function sayHere(slug) {
+    if (!viewer) return;
+    hereAt = Date.now();
+    fetch('/api/moods/' + encodeURIComponent(slug) + '/here/', { method: 'POST', headers: { 'X-CSRFToken': csrf() } }).catch(() => {});
+  }
   function aroundIn(slug) {
-    const d = liveData[slug] || { speakers: [], typing: [], busy: null };
+    const raw = liveData[slug] || { speakers: [], typing: [], busy: null };
+    const mine = viewer && slug === current && Date.now() - hereAt < SHOWN_FOR_MS;
+    const d = { ...raw, speakers: [...(raw.speakers || []).filter(n => n !== viewer), ...(mine ? [viewer] : [])] };
     const typing = new Set(slug === current ? [...d.typing, ...typingNow] : d.typing);
     const busy = slug === current ? acts.filter(a => a.doing !== 'held').map(a => a.agent) : (d.busy_all || (d.busy ? [d.busy] : []));
     // Listening by voice (services/listening.py): 🎧 on their name where it's shown; one listening to this Mood
@@ -3851,6 +3861,7 @@
     stash();
     gen++;
     current = slug;
+    sayHere(slug);  // shown here to everyone, and gone from where they were
     renderVideoCards();  // the videos waiting for a draft page are per Mood
     renderShare();  // a share waiting says which Mood it would go to
     restoreDraft();
@@ -5025,6 +5036,7 @@
   let typingSent = 0;
   function sendTyping(on) {
     if (!viewer || !current) return;
+    hereAt = Date.now();  // typing, or stopped: three minutes here from now (services/presence)
     fetch('/api/moods/' + encodeURIComponent(current) + '/typing/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ typing: on }),

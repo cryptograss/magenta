@@ -69,6 +69,7 @@ urlpatterns = [
     path('api/moods/<slug:slug>/sessions/', views_moods.api_mood_sessions, name='api_mood_sessions'),
     path('api/moods/<slug:slug>/steps/<str:step_id>/', views_moods.api_mood_step, name='api_mood_step'),
     path('api/moods/<slug:slug>/typing/', views_moods.api_typing, name='api_mood_typing'),
+    path('api/moods/<slug:slug>/here/', views_moods.api_here, name='api_mood_here'),
     path('api/moods/<slug:slug>/interrupt/', views_auth.api_interrupt, name='api_mood_interrupt'),
     path('api/moods/<slug:slug>/archive/', views_auth.api_archive, name='api_mood_archive'),
     path('api/moods/<slug:slug>/pin/', views_auth.api_pin, name='api_mood_pin'),

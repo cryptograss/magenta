@@ -541,7 +541,23 @@ def api_typing(request, slug):
     else:
         state.pop(device.entity_id, None)
     cache.set(_typing_key(slug), state, TYPING_FOR * 2)
+    from .services import presence
+    presence.note(device.entity_id, slug, now)  # typing, or stopped: shown here, three minutes from now
     return JsonResponse({'typing': sorted(state)})
+
+
+@require_POST
+def api_here(request, slug):
+    """This device's person opened a Mood: shown there, and nowhere else, for three minutes (services/presence)."""
+    from django.core.cache import cache
+    from .services import presence
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to be shown'}, status=401)
+    mood = Mood.by_slug_or_404(slug)
+    presence.note(device.entity_id, mood.slug)
+    cache.delete('moods-live')  # seen there at the next look, not three seconds on
+    return JsonResponse({'here': mood.slug})
 
 
 @require_GET
@@ -1258,8 +1274,9 @@ def api_unfurl(request, slug, message_id):
 
 @require_GET
 def api_moods_live(request):
-    """Each Mood's people of the moment: who has spoken in the last 100 blocks
-    (about 20 minutes), who's typing, which agent is working; and when anything
+    """Each Mood's people of the moment: each person in the one Mood they last opened, typed or
+    spoke in, for three minutes (services/presence); each agent where it spoke in the last 100
+    blocks (about 20 minutes); who's typing, which agent is working; and when anything
     was last added there (a page brings the Moods it holds up to date by it,
     before they're opened). Cached for 3 s: every open page asks every few seconds."""
     from datetime import timedelta
@@ -1276,9 +1293,19 @@ def api_moods_live(request):
     spoke = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gte=since,
                                     sender_id__in=names)
              .values('mood__slug', 'sender_id').annotate(last=Max('created_at')).order_by('-last'))
+    # A person is shown in one Mood: where they last opened, typed or spoke, for three minutes after
+    # (services/presence; Justin, 23 Oct). An agent, wherever it's spoken lately, as before.
+    from .services import presence
+    people = set(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True))
+    spoke = list(spoke)
+    where = presence.places(said=[(r['sender_id'], r['mood__slug'], r['last'].timestamp()) for r in spoke
+                                  if r['sender_id'] in people])
     live = {}
     for row in spoke:
-        live.setdefault(row['mood__slug'], {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(row['sender_id'])
+        if row['sender_id'] not in people:
+            live.setdefault(row['mood__slug'], {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(row['sender_id'])
+    for name, slug in sorted(where.items()):
+        live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(name)
     for mood in Mood.objects.all():
         entry = live.setdefault(mood.slug, {'speakers': [], 'typing': [], 'busy': None})
         entry['typing'] = typing_in(mood.slug)
