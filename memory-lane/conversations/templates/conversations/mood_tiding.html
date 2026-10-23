@@ -210,6 +210,10 @@
       }, found.has(prefix) ? 0 : 150);
     });
     box.addEventListener('keydown', e => {
+      // Ctrl+Enter (⌘+Enter) says it; Enter alone is a new line, as a comment runs longer than a chat line.
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) {
+        e.preventDefault(); close(); sayIt(box.form); return;
+      }
       if (list.hidden) return;
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -255,7 +259,7 @@
     <input type="hidden" id="replyTo" name="reply_to" value="">
     <input type="hidden" id="replyKind" name="reply_kind" value="">
     <div class="box">
-      <textarea id="say" name="text" placeholder="Say something about this… [[Page]] links PickiPedia."></textarea>
+      <textarea id="say" name="text" placeholder="Say something about this… [[Page]] links PickiPedia; Ctrl+Enter says it."></textarea>
       <div class="suggest" id="wikiSuggest" role="listbox" hidden></div>
     </div>
     <div class="bar">
