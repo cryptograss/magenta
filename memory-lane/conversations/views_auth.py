@@ -1135,7 +1135,8 @@ def api_voices(request):
                          **({'note': note} if note else {})})
 
 
-HEARD_OUTCOMES = ('ended', 'failed', 'blocked', 'skipped')
+# paused: stopped by something else (another app's sound) mid-clip; resumed: going on again after it.
+HEARD_OUTCOMES = ('ended', 'failed', 'blocked', 'skipped', 'paused', 'resumed')
 
 
 @require_POST
@@ -1271,10 +1272,83 @@ def api_narrate(request):
         return JsonResponse({'error': 'no such Mood, or no such agent'}, status=404)
     if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
+    still = None
+    if body.get('still'):
+        # Still at it: for how long, and how many steps (tool calls) so far. Not words: an agent's thinking
+        # may be kept hidden, and a response's token count is on each of its lines.
+        import time
+        from .models import ToolUse
+        from .services.mood_view import activity
+        doing = activity(mood, only=agent.name)
+        if doing is None or doing['doing'] in ('waking', 'held'):
+            return JsonResponse({'error': f'{agent.name} is not at work there now'}, status=409)
+        steps = ToolUse.objects.filter(mood=mood, sender=agent, is_sidechain=False,
+                                       timestamp__gte=int(doing['since'] * 1000)).count()
+        still = (max(1, int((time.time() - doing['since']) // 60)), steps)
     try:
-        return JsonResponse({'url': voice.narrate_thinking(mood, agent.name, device.entity_id, where=bool(body.get('where')))})
+        return JsonResponse({'url': voice.narrate_thinking(mood, agent.name, device.entity_id,
+                                                           where=bool(body.get('where')), still=still)})
     except voice.VoiceError as e:
         return JsonResponse({'error': str(e)}, status=e.status)
+
+
+GO_MAX_BYTES = 600_000  # a few seconds said: "go to jams"
+
+
+@require_POST
+def api_voice_go(request):
+    """The audio of someone saying where they want to be ("go to jams"), ?mood= where they are: heard, matched
+    against the Moods' names (services/mood_switch.py), and the narrator saying where they'll be, or that it
+    didn't catch it. {"slug" (or null), "heard", "url"}. Nothing is posted (Justin, 22 Oct)."""
+    from .services import mood_switch, settings as knobs, voice
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to go by voice'}, status=401)
+    if not voice.enabled():
+        return JsonResponse({'error': 'no voice here'}, status=503)
+    if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    data = request.body
+    if not data or len(data) > GO_MAX_BYTES:
+        return JsonResponse({'error': 'a few seconds of audio, saying where to go'}, status=400)
+    mime = (request.content_type or 'audio/webm').split(';')[0].strip()
+    here = Mood.by_slug(request.GET.get('mood') or '') or Mood.by_slug('general')
+    archived = knobs.archived_slugs()
+    try:
+        heard = voice.hear(data, mime, here, device.entity_id, budget_minutes=1)['text']
+        slug = mood_switch.match(heard, [m for m in Mood.objects.all() if m.slug not in archived])
+        there = Mood.by_slug(slug) if slug else here
+        from .services import listening
+        others = [who['name'] for who in listening.in_mood(there.slug) if who['name'] != device.entity_id]
+        url = voice.narrate_switch(there, device.entity_id, found=bool(slug), already=slug == here.slug,
+                                   listeners=others)
+    except voice.VoiceError as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'slug': slug, 'heard': heard, 'url': url})
+
+
+@require_POST
+def api_voice_listening(request):
+    """{"mode": here|everywhere|off, "mood"?}: this device's person listening by voice, or not now -- said at
+    once when it changes; while it lasts, the reader's asking says it (views_moods.api_recent)."""
+    from .services import listening
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"mode": ..., "mood"?: ...}'}, status=400)
+    mode = body.get('mode')
+    if mode not in ('here', 'everywhere', 'off'):
+        return JsonResponse({'error': 'mode: here, everywhere or off'}, status=400)
+    listening.note(device.entity_id, mode, str(body.get('mood') or '') or None)
+    from django.core.cache import cache
+    cache.delete('moods-live')  # the 🎧 shows (or goes) at the next look, not in a few seconds
+    return JsonResponse({'listening': listening.everyone()})
 
 
 def _uuid_or_none(value):

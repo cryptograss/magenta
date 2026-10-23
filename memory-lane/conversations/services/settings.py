@@ -106,6 +106,11 @@ def art_name(person):
 MOOD_KEYS = {
     'archived': (False, 'Out of the Moods list, into "Archived"; still readable, and still answers mentions.'),
     'pinned': (False, 'At the top of the Moods list, whatever was said where lately.'),
+    # Justin, 23 Oct: the voice's own pace, asked of ElevenLabs once for the Mood -- most Moods fast, a
+    # conversational one slower -- and each listener's words a minute still brought about in the browser.
+    'voice_speed': (1.2, "How fast this Mood's words are voiced when made (ElevenLabs' speed, 0.7 to 1.2): "
+                         "fast for most, slower for a conversational Mood. Each listener's words a minute still "
+                         "applies on top. A voice block's own speed wins."),
 }
 
 
@@ -172,6 +177,14 @@ def clean(key, value):
         value = str(value or '').strip()
         if len(value) > 4000:
             raise Invalid('rules: at most 4000 characters')
+        return value
+    if key == 'voice_speed':
+        try:
+            value = round(float(value), 2)
+        except (TypeError, ValueError):
+            raise Invalid('voice_speed: a number')
+        if not 0.7 <= value <= 1.2:
+            raise Invalid('voice_speed: from 0.7 to 1.2')
         return value
     if key in ('archived', 'pinned'):
         if isinstance(value, bool):
@@ -306,6 +319,13 @@ def mood_flagged(key):
     from conversations.models import Setting
     rows = Setting.objects.filter(key=key, agent=None, mood__isnull=False)
     return {slug for (slug, _, _), row in latest(rows).items() if row.value}
+
+
+def mood_value(slug, key):
+    """A MOOD_KEYS setting for one Mood, as it stands now (its default if never set)."""
+    from conversations.models import Setting
+    row = Setting.objects.filter(key=key, agent=None, mood__slug=slug).order_by('-created_at').first()
+    return row.value if row is not None else default(key)
 
 
 def archived_slugs():

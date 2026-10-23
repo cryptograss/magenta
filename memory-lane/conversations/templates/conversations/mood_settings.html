@@ -149,7 +149,15 @@
     document.getElementById('scram').innerHTML = scram
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
     const cards = [];
+    const SPEEDS = [0.7, 0.8, 0.9, 1, 1.1, 1.2];
     for (const m of state.moods) {
+      // The Mood's own voice speed: how fast its words are voiced when made, for everyone there.
+      const speed = Number(state.voice_speed[m.slug]);
+      cards.push(`<div class="card"><h2>${esc(m.title)}</h2><div class="sub">#${esc(m.slug)}'s voice</div>`
+        + `<div class="row"><label title="${esc(state.voice_speed_help)}">voice speed</label>`
+        + `<span><select data-key="voice_speed" data-mood="${esc(m.slug)}" data-agent="" data-num="1" ${viewer ? '' : 'disabled'}>`
+        + SPEEDS.map(v => `<option value="${v}" ${Math.abs(v - speed) < 1e-9 ? 'selected' : ''}>${v.toFixed(1)}${v === 1.2 ? ' (fast)' : v === 1 ? ' (as voiced)' : ''}</option>`).join('')
+        + `</select><span class="status"></span></span></div></div>`);
       for (const a of state.agents) cards.push(card(m.title, `${a} in #${m.slug}`, state.resolved[m.slug][a], m.slug, a));
     }
     document.getElementById('cards').innerHTML = cards.join('') || 'No Moods yet.';
@@ -174,7 +182,7 @@
     let value = el.value;
     if (el.dataset.kind === 'listening') value = { mode: el.value, until: null };
     else if (el.dataset.scale) value = Number(el.value) * Number(el.dataset.scale);
-    else if (el.type === 'number') value = Number(el.value);
+    else if (el.type === 'number' || el.dataset.num) value = Number(el.value);
     else if (el.type === 'checkbox') value = el.checked;
     const status = el.closest('span:not(.note)').querySelector('.status');
     const r = await fetch('/api/settings/', {
