@@ -106,13 +106,6 @@ def art_name(person):
 MOOD_KEYS = {
     'archived': (False, 'Out of the Moods list, into "Archived"; still readable, and still answers mentions.'),
     'pinned': (False, 'At the top of the Moods list, whatever was said where lately.'),
-    # Justin, 23 Oct: the voice's own pace, asked of ElevenLabs once for the Mood -- most Moods fast, a
-    # conversational one slower -- and each listener's words a minute still brought about in the browser.
-    # 1.0 (nothing asked) until it's understood: asked for 1.2, magent's voice came back about a fifth
-    # SLOWER (12.0 characters a second against 14.9 without; 23 Oct, the clips' own lengths).
-    'voice_speed': (1.0, "How fast this Mood's words are voiced when made (ElevenLabs' speed, 0.7 to 1.2): "
-                         "fast for most, slower for a conversational Mood. Each listener's words a minute still "
-                         "applies on top. A voice block's own speed wins."),
 }
 
 
@@ -179,14 +172,6 @@ def clean(key, value):
         value = str(value or '').strip()
         if len(value) > 4000:
             raise Invalid('rules: at most 4000 characters')
-        return value
-    if key == 'voice_speed':
-        try:
-            value = round(float(value), 2)
-        except (TypeError, ValueError):
-            raise Invalid('voice_speed: a number')
-        if not 0.7 <= value <= 1.2:
-            raise Invalid('voice_speed: from 0.7 to 1.2')
         return value
     if key in ('archived', 'pinned'):
         if isinstance(value, bool):

@@ -38,9 +38,6 @@ def settings_state():
         # What each agent ends up with in each Mood, after inheritance.
         'resolved': {m['slug']: {a: knobs.resolve(m['slug'], a, rows=rows) for a in agents} for m in moods},
         'global': {k: knobs.global_value(k) for k in knobs.GLOBAL_KNOBS},
-        # Each Mood's voice speed (Justin, 23 Oct), and what it's for.
-        'voice_speed': {m['slug']: knobs.mood_value(m['slug'], 'voice_speed') for m in moods},
-        'voice_speed_help': knobs.MOOD_KEYS['voice_speed'][1],
         'history': [knobs.describe(row) for row in Setting.objects.order_by('-created_at')[:100]],
         'scram': knobs.scram(),
         # Everyone who's read aloud: the Voices section's rows (as the Moods page names them).
