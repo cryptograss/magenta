@@ -28,6 +28,7 @@ from django.core.cache import cache
 from .redaction import redact
 
 LISTED = 30          # links on Tidings
+CANDIDATES = 100     # the newest links ranked for it: an older one has faded from the top anyway
 MAX_TITLE = 300
 _BY_MESSAGE = 'tidings:by-message:all'  # a list per message now: the one-each form, under its old name, is never read
 
@@ -406,10 +407,12 @@ def vote_on_comment(tiding, by, comment_id):
 COMMENT_SOURCE = 'tiding-comment'
 
 
-def _notice(tiding, by):
+def _notice(tiding, by, said=None):
     """A line in the link's Mood: '💬 new comment by …', referring to the message it was posted from.
     The comment's words stay on Tidings (Justin, 21 Oct); the notice is all the Mood gets, and only
-    if the link isn't muted there."""
+    if the link isn't muted there -- with the link's title and the comment's first words, which open it
+    (Justin, 23 Oct)."""
+    from .mood_view import snippet_of
     import time as _time
     from conversations.models import ConversationParticipant, Message
     system, _ = ConversationParticipant.objects.get_or_create(name='system',
@@ -417,7 +420,8 @@ def _notice(tiding, by):
     Message.objects.create(id=uuid.uuid4(), sender=system, mood=tiding.message.mood, source_file=COMMENT_SOURCE,
                            timestamp=int(_time.time() * 1000),
                            content={'type': COMMENT_SOURCE, 'by': by.name, 'message': str(tiding.message_id),
-                                    'tiding': str(tiding.id)})
+                                    'tiding': str(tiding.id), 'title': (tiding.title or tiding.url)[:200],
+                                    **({'comment': snippet_of(said.text)[:120], 'comment_id': str(said.id)} if said else {})})
 
 
 def mute(tiding, device, muted):
@@ -470,7 +474,7 @@ def comment(tiding, by, text, parent=None, client_version=''):
     row = TidingComment.objects.create(tiding=tiding, by=by, parent=comment_parent,
                                        parent_message_id=parent_message_id, text=text)
     if not tiding.muted_in_mood:
-        _notice(tiding, by)
+        _notice(tiding, by, row)
     return {'id': str(row.id), 'kind': 'comment', 'sender': by.name, 'at': row.at,
             'snippet': text, 'html': said_html(text), 'replies': [], 'score': 0, 'mine': False}
 
@@ -589,16 +593,51 @@ def discussion(tiding_id, viewer=None):
     }
 
 
-def listed(limit=LISTED, viewer=None):
-    """The links on Tidings, newest first, as the page shows them: numbered there, each with its
-    score and whether `viewer` voted."""
+def rank(score, comments, at, now, weights):
+    """How high a link stands on Tidings (Justin, 22 Oct): HN's gravity on our clock --
+    (1 + upvotes + weight x comments) / (1 + age in units) ** gravity. The 1 lets a new link with no votes
+    start on the board; talk counts for something; and nothing stays on top long without more."""
+    age = max((now - at).total_seconds() / 3600, 0) / weights['tidings_age_hours']
+    return (1 + score + weights['tidings_comment_weight'] * comments) / (1 + age) ** weights['tidings_gravity']
+
+
+def pinned_ids():
+    """The links pinned to the top, last pinned first."""
+    from . import settings as knobs
+    return list(knobs.global_value(knobs.TIDINGS_PINNED) or [])
+
+
+def pin(tiding, device, on):
+    """Pin a link to the top of Tidings, or let it go: anyone signed in with an SSH key (Justin, 22 Oct).
+    The ids pinned now, last pinned first."""
+    from . import settings as knobs
+    if device is None or device.tier != 'key':
+        raise Refused('pinning is for someone signed in with an SSH key', status=403)
+    ids = [i for i in pinned_ids() if i != str(tiding.id)]
+    ids = [str(tiding.id)] + ids if on else ids
+    knobs.change(knobs.TIDINGS_PINNED, ids, by=device.entity, note=('pinned ' if on else 'unpinned ') + str(tiding.id))
+    from . import front
+    front.forget()
+    return knobs.clean(knobs.TIDINGS_PINNED, ids)
+
+
+def listed(limit=LISTED, viewer=None, order='top'):
+    """The links on Tidings as the page shows them: numbered there, each with its score and whether
+    `viewer` voted. `order` 'top': pinned first, then by rank (Justin, 22 Oct); 'new': newest first."""
+    from django.utils import timezone
     from conversations.models import Tiding
+    from . import settings as knobs
     from .links import current
     from .mood_view import prose, snippet_of
     from .retract import DELETED
     index = current()
+    knob = knobs.global_values([knobs.TIDINGS_PINNED, 'tidings_age_hours', 'tidings_gravity', 'tidings_comment_weight'])
+    pins = list(knob[knobs.TIDINGS_PINNED] or [])
+    found = list(Tiding.objects.select_related('message', 'by').order_by('-at')[:CANDIDATES if order == 'top' else limit])
+    have = {str(t.id) for t in found}
+    found += [t for t in Tiding.objects.select_related('message', 'by').filter(id__in=[p for p in pins if p not in have])]
     rows = []
-    for tiding in Tiding.objects.select_related('message', 'by').order_by('-at')[:limit]:
+    for tiding in found:
         message = tiding.message
         text = prose(message.content) or ''
         if text == DELETED or message.mood_id is None:
@@ -631,5 +670,15 @@ def listed(limit=LISTED, viewer=None):
             'muted': tiding.muted_in_mood,
             'score': scored.get(str(tiding.id), 0),
             'mine': str(tiding.id) in mines,
+            'pinned': str(tiding.id) in pins,
         })
-    return out
+    if order != 'top':
+        out.sort(key=lambda link: link['at'], reverse=True)
+        return out[:limit]
+    now = timezone.now()
+    weights = {k: float(knob[k]) for k in ('tidings_age_hours', 'tidings_gravity', 'tidings_comment_weight')}
+    for link in out:
+        link['rank'] = rank(link['score'], link['comments'], link['at'], now, weights)
+    out.sort(key=lambda link: link['rank'], reverse=True)
+    out.sort(key=lambda link: pins.index(link['id']) if link['pinned'] else len(pins))  # pinned first, as pinned
+    return out[:limit]

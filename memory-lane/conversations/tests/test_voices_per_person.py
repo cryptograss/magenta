@@ -77,6 +77,24 @@ class SpeakersTest(TestCase):
         row = Message.objects.filter(source_file='voice', content__intro='skyler').first()
         self.assertEqual((row.content['type'], row.content['by']), ('spoken', 'justin'))
 
+    def test_an_agent_is_said_with_tools_or_looking_only_as_it_was_woken(self):
+        # Justin, 22 Oct: "Agent name looking only says," or, "Agent name with tools says."
+        from conversations.models import ConversationParticipant
+        poller, _ = ConversationParticipant.objects.get_or_create(name='mood-poller')
+
+        def woken(tail):
+            session = uuid.uuid4()
+            Message.objects.create(id=uuid.uuid4(), sender=poller, mood=self.mood, timestamp=1, session_id=session,
+                                   content=f'<mood-wake mood="magenta-interface">...This turn {tail}...</mood-wake>')
+            return Message.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.mood, timestamp=2,
+                                          session_id=session, content=[{'type': 'text', 'text': 'Done.'}])
+        voice.intro(woken('has your full tools, as in your terminal'), 'justin', http=self.fake)
+        self.assertEqual(self.fake.asked[-1][2]['json']['text'], 'Magent, with tools, says:')
+        voice.intro(woken('you can look but not touch: read, search'), 'justin', http=self.fake)
+        self.assertEqual(self.fake.asked[-1][2]['json']['text'], 'Magent, looking only, says:')
+        voice.intro(self.said(self.magent, 'From a terminal.'), 'justin', http=self.fake)  # no wake: not said
+        self.assertEqual(self.fake.asked[-1][2]['json']['text'], 'Magent says:')
+
     def test_the_narrators_chosen_voice_is_its_own_whatever_magents(self):
         from conversations.services import settings as knobs
         knobs.change('speaker_voice', 'Clyde', agent=self.magent, by=self.justin)
@@ -159,8 +177,28 @@ class SpeakerEndpointsTest(TestCase):
             self.assertEqual(ask(Client(), 'magent').status_code, 401)
             self.assertEqual(ask(client, 'skyler').status_code, 404)  # a person: never "thinking", by this
             said = ask(client, 'magent')
-        self.assertTrue(said.json()['url'].endswith('.mp3'))
+        self.assertTrue(said.json()['url'].split('#')[0].endswith('.mp3'))
         self.assertEqual(fake.asked[-1][2]['json']['text'], 'Pound general. Magent is thinking.')
+
+    def test_still_thinking_says_how_long_and_how_far(self):
+        # Justin, 22 Oct: a minute on, with nothing else to hear, "are they still thinking?"
+        import time
+        from conversations.models import ToolUse
+        fake = FakeQuartet()
+        client = self.client_for(self.justin)
+        ask = lambda: client.post('/api/voice/narrate/', json.dumps({'mood': 'general', 'agent': 'magent', 'still': True}),  # noqa: E731
+                                  content_type='application/json')
+        with mock.patch('requests.get', fake.get), mock.patch('requests.post', fake.post):
+            self.assertEqual(ask().status_code, 409)  # not at work: nothing to say
+            now = int(time.time() * 1000)
+            Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, timestamp=now - 190_000,
+                                   content='@magent have a look', source_file='mood-web')
+            for i in range(3):
+                ToolUse.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.mood, timestamp=now - 185_000 + 60_000 * i,
+                                       stop_reason='tool_use', content={}, tool_name='Bash', tool_id=f't{i}')
+            said = ask()
+        self.assertEqual(said.status_code, 200)
+        self.assertEqual(fake.asked[-1][2]['json']['text'], 'Magent is still thinking: 3 minutes in, 3 steps so far.')
 
     def test_speak_can_say_who_speaks_first_or_only_that(self):
         fake = FakeQuartet()
@@ -253,6 +291,16 @@ class ReaderReportsTest(TestCase):
         self.assertEqual(client.post('/api/voice/heard/', json.dumps({'mood': 'general', 'outcome': 'exploded'}),
                                      content_type='application/json').status_code, 400)
         self.assertEqual(Client().post('/api/voice/heard/', '{}', content_type='application/json').status_code, 401)
+        # How fast it played and the pace it was taken at (Justin, 23 Oct: "they were different speeds").
+        client.post('/api/voice/heard/', json.dumps({'mood': 'general', 'message': 'b1', 'clip': 'intro', 'outcome': 'ended',
+                                                     'rate': 2.06, 'pace': 165, 'error': ''}), content_type='application/json')
+        row = Message.objects.filter(source_file='voice', content__message='b1').get().content
+        self.assertEqual((row['rate'], row['pace']), (2.06, 165))
+        # Paused by another app's sound mid-clip, and going on again (Justin, 22 Oct: "at Jus--", then nothing).
+        for outcome in ('paused', 'resumed'):
+            self.assertEqual(client.post('/api/voice/heard/', json.dumps({'mood': 'general', 'message': 'a947485f',
+                                                                          'clip': 'message', 'outcome': outcome}),
+                                         content_type='application/json').status_code, 201)
 
 
 @override_settings(ELEVENLABS_API_KEY='test-eleven-key')
@@ -317,7 +365,7 @@ class NarratorSaysTheMoodAndRedeploysTest(TestCase):
         with mock.patch('requests.get', fake.get), mock.patch('requests.post', fake.post), \
                 mock.patch.object(wiki_auth, 'aliases', return_value={'jmyles': 'justin'}):
             said = ask(done['row'])
-            self.assertTrue(said.json()['url'].endswith('.mp3'))
+            self.assertTrue(said.json()['url'].split('#')[0].endswith('.mp3'))
             self.assertEqual(fake.asked[-1][2]['json']['text'], 'Maybelle redeployed, by Justin.')
             started = next(e for e in events if e['state'] == 'started')
             self.assertEqual(ask(started['row']).status_code, 400)  # only started: news when it's done

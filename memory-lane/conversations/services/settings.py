@@ -57,7 +57,15 @@ GLOBAL_KNOBS = {
                   "Empty: the first ElevenLabs offers."),
     'narrator_voice': ('', "The narrator's voice (services/voice.py): who speaks next, and who's thinking, "
                            "when Moods are read as they come. Empty: given one at its first word, nobody else's."),
+    # How Tidings ranks its links (services/tiding_links.rank): (1 + upvotes + weight x comments), over
+    # (1 + age in units) to the gravity (Justin, 22 Oct: HN's, on our clock; "pretty dynamic").
+    'tidings_age_hours': (12.0, 'Tidings ranking: the hours one unit of a link\'s age is. Fewer: links fade faster.'),
+    'tidings_gravity': (1.5, 'Tidings ranking: how hard age pulls a link down. More: it fades faster.'),
+    'tidings_comment_weight': (0.5, 'Tidings ranking: what one comment counts for, beside one upvote (1).'),
 }
+# Links pinned to the top of Tidings by someone signed in with an SSH key: their ids, last pinned first.
+# Set from Tidings itself (tiding_links.pin), not the settings page.
+TIDINGS_PINNED = 'tidings_pinned'
 MODERATION_KEYS = ('scram', 'banned')
 # About one person or agent, wherever they are: set with `agent` naming them
 # (human or not) and no Mood. Changed from the voices list on the Moods page
@@ -98,6 +106,13 @@ def art_name(person):
 MOOD_KEYS = {
     'archived': (False, 'Out of the Moods list, into "Archived"; still readable, and still answers mentions.'),
     'pinned': (False, 'At the top of the Moods list, whatever was said where lately.'),
+    # Justin, 23 Oct: the voice's own pace, asked of ElevenLabs once for the Mood -- most Moods fast, a
+    # conversational one slower -- and each listener's words a minute still brought about in the browser.
+    # 1.0 (nothing asked) until it's understood: asked for 1.2, magent's voice came back about a fifth
+    # SLOWER (12.0 characters a second against 14.9 without; 23 Oct, the clips' own lengths).
+    'voice_speed': (1.0, "How fast this Mood's words are voiced when made (ElevenLabs' speed, 0.7 to 1.2): "
+                         "fast for most, slower for a conversational Mood. Each listener's words a minute still "
+                         "applies on top. A voice block's own speed wins."),
 }
 
 
@@ -165,6 +180,14 @@ def clean(key, value):
         if len(value) > 4000:
             raise Invalid('rules: at most 4000 characters')
         return value
+    if key == 'voice_speed':
+        try:
+            value = round(float(value), 2)
+        except (TypeError, ValueError):
+            raise Invalid('voice_speed: a number')
+        if not 0.7 <= value <= 1.2:
+            raise Invalid('voice_speed: from 0.7 to 1.2')
+        return value
     if key in ('archived', 'pinned'):
         if isinstance(value, bool):
             return value
@@ -197,6 +220,22 @@ def clean(key, value):
         if not 0 <= value <= 500:
             raise Invalid('voice_usd_per_day: from 0 to 500')
         return value
+    if key in ('tidings_age_hours', 'tidings_gravity', 'tidings_comment_weight'):
+        low, high = {'tidings_age_hours': (1, 168), 'tidings_gravity': (0.5, 3), 'tidings_comment_weight': (0, 3)}[key]
+        try:
+            value = round(float(value), 2)
+        except (TypeError, ValueError):
+            raise Invalid(f'{key}: a number')
+        if not low <= value <= high:
+            raise Invalid(f'{key}: from {low} to {high}')
+        return value
+    if key == TIDINGS_PINNED:
+        import uuid
+        try:
+            value = list(dict.fromkeys(str(uuid.UUID(str(v))) for v in (value or [])))
+        except (TypeError, ValueError):
+            raise Invalid(f'{key}: links\' ids')
+        return value[:20]
     if key == 'consider_usd_per_day':
         try:
             value = round(float(value), 2)
@@ -284,8 +323,24 @@ def mood_flagged(key):
     return {slug for (slug, _, _), row in latest(rows).items() if row.value}
 
 
+def mood_value(slug, key):
+    """A MOOD_KEYS setting for one Mood, as it stands now (its default if never set)."""
+    from conversations.models import Setting
+    row = Setting.objects.filter(key=key, agent=None, mood__slug=slug).order_by('-created_at').first()
+    return row.value if row is not None else default(key)
+
+
 def archived_slugs():
     return mood_flagged('archived')
+
+
+def global_values(keys):
+    """{key: its value now} for several settings at once: one question of the database, not one each."""
+    from conversations.models import Setting
+    found = {}
+    for row in Setting.objects.filter(key__in=keys, mood=None, agent=None).order_by('-created_at'):
+        found.setdefault(row.key, row.value)
+    return {key: found[key] if key in found else default(key) for key in keys}
 
 
 def global_value(key):

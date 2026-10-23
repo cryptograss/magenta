@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0e0c10">
+<title>magenta</title>
+<meta name="description" content="{{ slogan }}">
+<link rel="icon" type="image/png" sizes="32x32" href="/moods/mark-32.png">
+<link rel="apple-touch-icon" href="/moods/icon-180.png">
+<style>
+  /* magenta's front page (Justin, 22 Oct): dark, the mark, who it's for; the top of Tidings, and who's
+     been talking where (services/front.py). Dark whatever the visitor's own setting is. */
+  :root { --bg: #0e0c10; --panel: #18151a; --ink: #ece7e1; --muted: #9d958d; --line: #2e2931; --accent: #ef5aa6; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 15px; line-height: 1.5; min-height: 100vh; display: flex; flex-direction: column; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  main { flex: 1; width: min(860px, 100%); margin: 0 auto; padding: 9vh 22px 40px; }
+  .hero { text-align: center; }
+  /* The mark (services/app_icon.py) as a mask, in the accent: the ring of pickers around the fire. */
+  .mark { width: 168px; height: 168px; margin: 0 auto; background: var(--accent);
+          -webkit-mask: url(/moods/mark-192.png) center / contain no-repeat; mask: url(/moods/mark-192.png) center / contain no-repeat; }
+  h1 { font-size: 46px; letter-spacing: .02em; margin: 14px 0 6px; color: var(--accent); font-weight: 700; }
+  .line { font-size: 19px; color: var(--ink); max-width: 34em; margin: 0 auto; min-height: 3em; transition: opacity .6s; }
+  .line.out { opacity: 0; }
+  .enter { display: inline-block; margin-top: 26px; padding: 9px 26px; border-radius: 22px; border: 1px solid var(--accent);
+           color: var(--ink); font-size: 16px; }
+  .enter:hover { background: rgba(239, 90, 166, .14); text-decoration: none; }
+  .now { display: grid; grid-template-columns: 1.4fr 1fr; gap: 26px; }
+  @media (max-width: 680px) { .now { grid-template-columns: 1fr; } h1 { font-size: 38px; } .mark { width: 132px; height: 132px; } }
+  /* "latest" over both, then each column's own: tidings, moods (Justin, 23 Oct). */
+  h2.latest { font-size: 13px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); font-weight: 600;
+              text-align: center; margin: 8vh 0 14px; }
+  h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); font-weight: 600;
+       margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  h3 a { color: inherit; }
+  ol, ul { list-style: none; margin: 0; padding: 0; }
+  .tidings li { display: flex; gap: 12px; padding: 7px 0; }
+  .tidings .score { flex: none; width: 30px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.3; padding-top: 2px; }
+  .tidings .score b { display: block; color: var(--ink); font-size: 14px; }
+  .tidings .title { color: var(--ink); font-weight: 600; }
+  .tidings .meta { font-size: 12.5px; color: var(--muted); }
+  .tidings a.it { color: inherit; display: block; }
+  .tidings a.it:hover { text-decoration: none; }
+  .tidings a.it:hover .title { color: var(--accent); }
+  .lately li a { padding: 6px 0; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; color: var(--muted); }
+  .lately li a:hover { text-decoration: none; }
+  .lately li a:hover .where { text-decoration: underline; }
+  .lately .who { font-weight: 600; color: var(--ink); }
+  .lately .who .agent { color: var(--agent, var(--accent)); }
+  .lately .said { flex-basis: 100%; color: var(--ink); opacity: .85; font-size: 13.5px; overflow-wrap: anywhere; }
+{% include "conversations/name_art_css.html" %}
+  .lately .where { color: var(--accent); }
+  .lately .when { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+  .none { color: var(--muted); font-size: 13.5px; }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="mark" role="img" aria-label="magenta: pickers in a ring around a campfire"></div>
+    <h1>magenta</h1>
+    <p class="line" id="slogan" title="From Magenta:Slogans on PickiPedia: add yours">{{ slogan }}</p>
+    <a class="enter" href="/moods/tidings/">come in →</a>
+  </section>
+
+  <h2 class="latest">latest</h2>
+  <div class="now">
+    <section class="tidings">
+      <h3><a href="/moods/tidings/">tidings</a></h3>
+      {% if front.tidings %}
+      <ol>
+        {% for link in front.tidings %}
+        <li>
+          <span class="score" title="upvotes"><b>{{ link.score }}</b>▲</span>
+          <a class="it" href="/moods/tidings/{{ link.id }}/">
+            <span class="title">{{ link.title }}</span>{% if link.pinned %} <span title="Pinned to the top">📌</span>{% endif %}
+            <div class="meta">{{ link.host }} · {{ link.comments }} comment{{ link.comments|pluralize }}</div>
+          </a>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="none">Nothing on Tidings yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="lately">
+      <h3><a href="/moods/">moods</a></h3>
+      {% if front.lately %}
+      <ul>
+        {% for said in front.lately %}
+        <li><a href="/moods/{{ said.mood }}/">
+          <span class="who">{{ said.name|safe }}</span>
+          <span class="in">in <span class="where">#{{ said.title }}</span></span>
+          <span class="when" title="{{ said.at|date:'M j, H:i' }} UTC">{{ said.ago }} ago</span>
+          {% if said.said %}<span class="said">{{ said.said }}</span>{% endif %}
+        </a></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="none">Quiet, for now.</p>
+      {% endif %}
+    </section>
+  </div>
+</main>
+{{ slogans|json_script:"slogans" }}
+<script>
+  // The slogans take turns (Justin, 22 Oct: "fun to see what people add and edit"): a new one every few
+  // seconds, in no fixed order, never the same twice running. Still, for anyone who'd rather nothing moved.
+  (() => {
+    const all = JSON.parse(document.getElementById('slogans').textContent);
+    const line = document.getElementById('slogan');
+    if (all.length < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    setInterval(() => {
+      const others = all.filter(s => s !== line.textContent);
+      line.classList.add('out');
+      setTimeout(() => { line.textContent = others[Math.floor(Math.random() * others.length)]; line.classList.remove('out'); }, 600);
+    }, 9000);
+  })();
+</script>
+</body>
+</html>

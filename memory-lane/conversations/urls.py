@@ -7,6 +7,7 @@ from . import views_settings
 from . import views_admin
 
 urlpatterns = [
+    path('', views_moods.front_page, name='front'),
     path('moods/', views_moods.moods_page, name='moods'),
     path('messages/<str:message_id>', views_moods.message_page, name='message'),
     path('messages/<str:message_id>/', views_moods.message_page),
@@ -76,8 +77,11 @@ urlpatterns = [
     path('api/moods/<slug:slug>/speak/<str:message_id>/', views_auth.api_speak, name='api_mood_speak'),
     path('api/moods/<slug:slug>/verify/<str:message_id>/', views_auth.api_verify, name='api_mood_verify'),
     path('api/voice/voices/', views_auth.api_voices, name='api_voices'),
+    path('api/voice/search/', views_auth.api_voice_search, name='api_voice_search'),
     path('api/voice/sample/<str:voice_id>/', views_auth.api_voice_sample, name='api_voice_sample'),
     path('api/voice/speaker/', views_auth.api_speaker_voice, name='api_speaker_voice'),
+    path('api/voice/go/', views_auth.api_voice_go, name='api_voice_go'),
+    path('api/voice/listening/', views_auth.api_voice_listening, name='api_voice_listening'),
     path('api/voice/narrate/', views_auth.api_narrate, name='api_voice_narrate'),
     path('api/voice/heard/', views_auth.api_voice_heard, name='api_voice_heard'),
     path('api/me/look/', views_auth.api_my_look, name='api_my_look'),

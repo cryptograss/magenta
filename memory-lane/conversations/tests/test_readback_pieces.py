@@ -95,7 +95,7 @@ class StitchedTest(TestCase):
         self.assertEqual(fake.made[2]['previous_request_ids'], ['req-1', 'req-2'])
         again = voice.speak_piece(self.message, 'justin', http=fake, piece=1)
         self.assertEqual(len(fake.made), 3)  # kept: never paid twice
-        self.assertTrue(again['url'].endswith('.mp3'))
+        self.assertTrue(again['url'].split('#')[0].endswith('.mp3'))
 
     def test_the_endpoint_says_how_many_and_paces_only_a_start(self):
         _, token = mood_auth.enrol_device(self.justin, 'phone', tier='key')

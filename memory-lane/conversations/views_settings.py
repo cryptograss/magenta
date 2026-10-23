@@ -22,6 +22,8 @@ def settings_state():
     agents = list(ThinkingEntity.objects.filter(is_biological_human=False).order_by('name')
                   .values_list('name', flat=True))
     moods = [{'slug': m.slug, 'title': m.title or m.slug} for m in Mood.objects.order_by('slug')]
+    from .services import wiki_auth
+    wiki_names = wiki_auth.names()
     rows = list(Setting.objects.exclude(key__in=knobs.MODERATION_KEYS))
     current = knobs.latest(rows)
     return {
@@ -36,8 +38,14 @@ def settings_state():
         # What each agent ends up with in each Mood, after inheritance.
         'resolved': {m['slug']: {a: knobs.resolve(m['slug'], a, rows=rows) for a in agents} for m in moods},
         'global': {k: knobs.global_value(k) for k in knobs.GLOBAL_KNOBS},
+        # Each Mood's voice speed (Justin, 23 Oct), and what it's for.
+        'voice_speed': {m['slug']: knobs.mood_value(m['slug'], 'voice_speed') for m in moods},
+        'voice_speed_help': knobs.MOOD_KEYS['voice_speed'][1],
         'history': [knobs.describe(row) for row in Setting.objects.order_by('-created_at')[:100]],
         'scram': knobs.scram(),
+        # Everyone who's read aloud: the Voices section's rows (as the Moods page names them).
+        'people': [{'name': n, 'human': h, 'shown': wiki_names.get(n, n)}
+                   for n, h in ThinkingEntity.objects.order_by('name').values_list('name', 'is_biological_human')],
     }
 
 
@@ -66,7 +74,10 @@ def section(name):
 @section('settings')
 def settings_page(request):
     device = mood_auth.device_for(request)
-    return render(request, 'conversations/mood_settings.html', {'viewer': device.entity_id if device else '', 'embed': True})
+    return render(request, 'conversations/mood_settings.html', {
+        'viewer': device.entity_id if device else '', 'embed': True,
+        # Anyone's voice is chosen with an SSH key; your own from any sign-in (views_auth.api_speaker_voice).
+        'key_holder': bool(device and device.tier == 'key' and device.entity.is_biological_human)})
 
 
 @section('status')
@@ -94,6 +105,7 @@ def _rights(link, device):
     from .services import tiding_links
     link['may_retitle'] = tiding_links.may_retitle(device, link['by'])
     link['may_withdraw'] = tiding_links.may_withdraw(device, link['by'])
+    link['may_pin'] = device is not None and device.tier == 'key'
     comments = link.get('comments')
     for node in tiding_links._walk(comments if isinstance(comments, list) else []):  # the list says how many: no tree
         node['may_edit'], node['may_delete'] = tiding_links.may_change_said(node, device)
@@ -104,11 +116,13 @@ def _rights(link, device):
 def tidings_page(request):
     from .services import tidings
     device = mood_auth.device_for(request)
-    state = tidings.tidings_state(viewer=device.entity_id if device else None)
+    order = 'new' if request.GET.get('order') == 'new' else 'top'  # top: pinned, then ranked (Justin, 22 Oct)
+    state = tidings.tidings_state(viewer=device.entity_id if device else None, order=order)
     for link in state['links']:
         _rights(link, device)
     return render(request, 'conversations/mood_tidings.html', {
         'tidings': state,
+        'order': order,
         'picture_cap': tidings.PICTURES,
         'viewer': device.entity_id if device else '',
         'embed': True,

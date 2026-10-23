@@ -153,9 +153,15 @@ class TidingTalkTests(TidingLinksTest):
         done = self.comment(self.client_for(self.justin), tiding, 'yes, that one')
         self.assertEqual(done.status_code, 201)
         notice = Message.objects.exclude(id=said.id).get()
-        self.assertEqual(notice.content['type'], 'tiding-comment')  # the words aren't in the Mood
+        self.assertEqual(notice.content['type'], 'tiding-comment')  # a line in the Mood, not the comment
         self.assertEqual(notice.content['by'], 'justin')
-        self.assertNotIn('yes, that one', str(notice.content))
+        # Its link's title and its first words, which open it on Tidings (Justin, 23 Oct); the rest stays there.
+        self.assertEqual((notice.content['title'], notice.content['comment']), (tiding.title, 'yes, that one'))
+        self.assertEqual(notice.content['tiding'], str(tiding.id))
+        long = self.comment(self.client_for(self.justin), tiding, 'word ' * 200)
+        self.assertEqual(long.status_code, 201)
+        self.assertLessEqual(len(Message.objects.filter(source_file='tiding-comment').order_by('-created_at')
+                                 .first().content['comment']), 120)
         body = self.client.get(f'/api/tidings/{tiding.id}/').json()
         self.assertEqual((body['comments'][0]['kind'], body['comments'][0]['snippet']), ('comment', 'yes, that one'))
 
@@ -319,7 +325,7 @@ class TidingTalkTests(TidingLinksTest):
             tiding_links.promote(said, self.justin)
             self.say(self.justin, f'↩ #m-{said.id}\nnice {n}')
         tiding_links.listed()  # the links index, built once
-        with self.assertNumQueries(3):  # the links, their scores, their comments: nothing per link
+        with self.assertNumQueries(4):  # its settings (pins, ranking), the links, their votes, their comments: nothing per link
             self.assertEqual([link['comments'] for link in tiding_links.listed()], [1, 1, 1])
 
     def test_the_pencil_shows_to_whoever_may_retitle(self):

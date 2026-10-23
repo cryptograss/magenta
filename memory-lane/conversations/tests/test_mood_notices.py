@@ -62,6 +62,28 @@ class NoticesTest(TestCase):
         self.assertNotIn('Working on it:', [e.get('text') for e in events])  # progress lines are left out
         self.assertEqual(next(e for e in events if e['kind'] == 'said')['title'], 'Magenta 26 Million')
 
+    def test_reading_aloud_hears_an_agents_words_mid_turn_never_its_thinking_or_tools(self):
+        # Justin, 22 Oct: a long turn's words, read as they're said, not all at once when it ends.
+        from conversations.models import Thought, ToolUse
+        self.add(self.magent, [{'type': 'text', 'text': 'Working on it:'}], seconds=1, stop_reason='tool_use')
+        Thought.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.m26, timestamp=2, stop_reason='tool_use',
+                               content=[{'type': 'thinking', 'thinking': 'hmm, private'}])
+        ToolUse.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.m26, timestamp=3, stop_reason='tool_use',
+                               content={'command': 'ls'}, tool_name='Bash', tool_id='t1')
+        self.add(self.magent, [{'type': 'text', 'text': 'Done.'}], seconds=4, stop_reason='end_turn')
+        texts = lambda **q: [e['text'] for e in self.client.get('/api/moods/recent/', q).json()['events'] if e['kind'] == 'answered']  # noqa: E731
+        self.assertEqual(texts(), ['Done.'])                                  # as it was: what a turn came to
+        self.assertEqual(sorted(texts(progress='1')), ['Done.', 'Working on it:'])  # for the reader: as it's said
+
+    def test_an_agent_named_mid_turn_is_owed_its_wake_at_once(self):
+        # Justin, 22 Oct: "if you wake an agent in a mid-turn message, does it wake right away?" It does:
+        # the mention is there the moment the line is, not when the turn that said it ends.
+        re_agent, _ = ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        self.add(self.magent, [{'type': 'text', 'text': '@re, the branch is ready for your look.'}], seconds=1,
+                 stop_reason='tool_use', session_id=uuid.uuid4())
+        found = self.client.get(f'/api/mentions/{re_agent.name}/').json()['mentions']
+        self.assertEqual([(m['turn']['sender'], m['mood']) for m in found], [('magent', 'm26')])
+
     def test_recent_oldest_first_reads_a_stretch_from_its_start(self):
         # Reading aloud from a message on (moods.html readFrom): the first after `since`, in order,
         # a page at a time -- newest first would give the end of a long stretch, and lose its start.

@@ -31,6 +31,23 @@
   .card .sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
   .row { display: grid; grid-template-columns: 128px 1fr; gap: 8px; align-items: center; margin: 5px 0; }
   .row label { font-size: 12.5px; color: var(--muted); }
+  /* Voices: a row each -- who, the voice they're read in, and a box that finds another as it's typed. */
+  .voices { display: flex; flex-direction: column; gap: 2px; }
+  .vrow { display: grid; grid-template-columns: 150px minmax(140px, 1fr) minmax(220px, 1.4fr); gap: 10px; align-items: start;
+          padding: 7px 0; border-top: 1px solid var(--line); }
+  @media (max-width: 700px) { .vrow { grid-template-columns: 1fr; gap: 4px; } }
+  .vrow .who { font-weight: 600; }
+  .vrow .now button, .vrow .found .hear { font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 5px;
+                                          background: var(--panel); color: var(--ink); cursor: pointer; padding: 0 6px; }
+  .vrow .pick { position: relative; display: flex; flex-direction: column; gap: 4px; }
+  .vrow .pick input { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+  .vrow .found { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 6px; max-height: 280px; overflow-y: auto; }
+  .vrow .found[hidden] { display: none; }
+  .vrow .found .optrow { display: flex; align-items: flex-start; gap: 6px; border-bottom: 1px solid var(--line); padding: 4px 6px; }
+  .vrow .found .opt { flex: 1; text-align: left; font: inherit; font-size: 13px; border: 0; background: none; color: var(--ink); cursor: pointer; padding: 0; }
+  .vrow .found .opt:hover { color: var(--accent); }
+  .vrow .found .opt small { display: block; color: var(--muted); font-size: 11.5px; }
+  .vrow .found .lib { font-size: 10.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 8px; padding: 0 5px; margin-left: 4px; }
   .row .inherited select, .row .inherited input, .row .inherited textarea { color: var(--muted); font-style: italic; }
   select, input, textarea { font: inherit; font-size: 13px; padding: 3px 6px; border: 1px solid var(--line);
                             border-radius: 5px; background: var(--panel); color: var(--ink); max-width: 100%; }
@@ -75,6 +92,8 @@
   <div class="cards" id="cards">Loading…</div>
   <h3>Every Mood, every agent</h3>
   <div class="cards" id="global"></div>
+  <h3 id="voices">Voices: who is read in which</h3>
+  <div id="voicesList" class="voices">Loading…</div>
   <h3>History</h3>
   <table class="history"><thead><tr><th>when</th><th>who</th><th>where</th><th>what</th><th>value</th><th>why</th></tr></thead>
     <tbody id="history"></tbody></table>
@@ -149,7 +168,15 @@
     document.getElementById('scram').innerHTML = scram
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
     const cards = [];
+    const SPEEDS = [0.7, 0.8, 0.9, 1, 1.1, 1.2];
     for (const m of state.moods) {
+      // The Mood's own voice speed: how fast its words are voiced when made, for everyone there.
+      const speed = Number(state.voice_speed[m.slug]);
+      cards.push(`<div class="card"><h2>${esc(m.title)}</h2><div class="sub">#${esc(m.slug)}'s voice</div>`
+        + `<div class="row"><label title="${esc(state.voice_speed_help)}">voice speed</label>`
+        + `<span><select data-key="voice_speed" data-mood="${esc(m.slug)}" data-agent="" data-num="1" ${viewer ? '' : 'disabled'}>`
+        + SPEEDS.map(v => `<option value="${v}" ${Math.abs(v - speed) < 1e-9 ? 'selected' : ''}>${v.toFixed(1)}${v === 1 ? ' (as voiced)' : ''}</option>`).join('')
+        + `</select><span class="status"></span></span></div></div>`);
       for (const a of state.agents) cards.push(card(m.title, `${a} in #${m.slug}`, state.resolved[m.slug][a], m.slug, a));
     }
     document.getElementById('cards').innerHTML = cards.join('') || 'No Moods yet.';
@@ -164,9 +191,102 @@
       || '<tr><td colspan="6">Nothing changed yet: everything is at its default.</td></tr>';
   }
 
+
+  // --- Voices: who is read in which (Justin, 23 Oct: here, not a floating menu; found by typing, from
+  // ElevenLabs' whole library, or an id pasted -- not picked from the account's short list). Your own
+  // from any sign-in; anyone's, the narrator's too, with your SSH key. A voice from the library is added
+  // to the account when it's chosen (voice.add_library_voice): that takes a key as well.
+  const keyHolder = "{{ key_holder|yesno:'1,' }}" === '1';
+  const voicesEl = document.getElementById('voicesList');
+  const sample = new Audio();
+  let voiceData = null;
+  const VOICE_ID = /^[A-Za-z0-9]{20}$/;
+  function voiceName(id) {
+    if (!id) return '';
+    const v = (voiceData.voices || []).find(o => o.voice_id === id || o.name.toLowerCase() === String(id).toLowerCase());
+    return v ? v.name : id;
+  }
+  async function loadVoices() {
+    let r;
+    try { r = await fetch('/api/voice/voices/'); voiceData = await r.json(); }
+    catch (e) { voicesEl.textContent = 'Could not ask for the voices.'; return; }
+    if (!voiceData.enabled) { voicesEl.innerHTML = '<p class="note">No voice here.</p>'; return; }
+    const narrator = voiceData.narrator || 'narrator';
+    const people = [{ name: narrator, shown: 'Narrator', narrator: true },
+                    ...state.people.slice().sort((a, b) => (b.name === viewer) - (a.name === viewer) || a.shown.localeCompare(b.shown))];
+    voicesEl.innerHTML = (voiceData.note ? `<p class="note">${esc(voiceData.note)}</p>` : '')
+      + people.map(p => {
+        const has = (voiceData.speakers || {})[p.name] || '';
+        const may = p.narrator ? keyHolder : (p.name === viewer || keyHolder);
+        const unset = p.narrator ? 'given at its first word' : p.name === 'magent' ? 'the house voice' : 'given at their first reading';
+        return `<div class="vrow" data-name="${esc(p.name)}"><span class="who">${esc(p.shown)}${p.narrator || p.human ? '' : ' <span class="note">agent</span>'}</span>`
+          + `<span class="now">${has ? esc(voiceName(has)) : `<i>${unset}</i>`}`
+          + (has ? ` <button type="button" class="hear" data-id="${esc(VOICE_ID.test(has) ? has : (voiceData.voices || []).find(o => o.name === voiceName(has))?.voice_id || '')}" title="Hear this voice">▷</button>` : '')
+          + (has && may ? ` <button type="button" class="unset" title="Back to ${esc(unset)}">×</button>` : '') + '</span>'
+          + (may ? `<span class="pick"><input type="text" placeholder="type to find a voice, or paste its id" aria-label="${esc(p.shown)}'s voice" autocomplete="off"><span class="found" hidden></span><span class="status"></span></span>` : '<span class="note">your own, from any sign-in; anyone\'s with your SSH key</span>')
+          + '</div>';
+      }).join('');
+  }
+  async function choose(row, voice, owner, name) {
+    const status = row.querySelector('.status');
+    status.className = 'status'; status.textContent = owner ? 'adding it to the account…' : 'saving…';
+    try {
+      const r = await fetch('/api/voice/speaker/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ name: row.dataset.name, voice, ...(owner ? { owner, voice_name: name } : {}) }) });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || r.status);
+      await loadVoices();
+    } catch (err) { status.className = 'status err'; status.textContent = err.message; }
+  }
+  let searching = 0;
+  voicesEl.addEventListener('input', e => {
+    const input = e.target.closest('.pick input');
+    if (!input) return;
+    const found = input.parentElement.querySelector('.found');
+    const q = input.value.trim();
+    clearTimeout(input._wait);
+    if (q.length < 2 || VOICE_ID.test(q)) {  // an id: Enter takes it as it is
+      found.hidden = !VOICE_ID.test(q);
+      found.innerHTML = VOICE_ID.test(q) ? `<button type="button" class="opt" data-id="${esc(q)}">use the voice with this id</button>` : '';
+      return;
+    }
+    input._wait = setTimeout(async () => {
+      const ask = ++searching;
+      found.hidden = false; found.innerHTML = '<span class="note">looking…</span>';
+      const r = await fetch('/api/voice/search/?q=' + encodeURIComponent(q)).catch(() => null);
+      const d = r && r.ok ? await r.json() : { voices: [] };
+      if (ask !== searching) return;
+      found.innerHTML = (d.voices || []).slice(0, 14).map(v =>
+        `<span class="optrow"><button type="button" class="opt" data-id="${esc(v.voice_id)}" data-owner="${esc(v.owner || '')}" data-name="${esc(v.name)}">`
+        + `${esc(v.name)}${v.library ? ' <span class="lib">library</span>' : ''}<small>${esc(v.description || '')}</small></button>`
+        + (v.preview_url ? `<button type="button" class="hear" data-id="${esc(v.voice_id)}" title="Hear it">▷</button>` : '') + '</span>').join('')
+        || '<span class="note">nothing by that name: an id can be pasted</span>';
+    }, 300);
+  });
+  voicesEl.addEventListener('keydown', e => {
+    const input = e.target.closest('.pick input');
+    if (!input || e.key !== 'Enter') return;
+    e.preventDefault();
+    const q = input.value.trim();
+    if (VOICE_ID.test(q)) choose(input.closest('.vrow'), q);
+    else input.parentElement.querySelector('.opt')?.click();
+  });
+  voicesEl.addEventListener('click', e => {
+    const hear = e.target.closest('.hear');
+    if (hear && hear.dataset.id) {
+      sample.src = `/api/voice/sample/${encodeURIComponent(hear.dataset.id)}/`;
+      sample.play().catch(() => {});
+      return;
+    }
+    const opt = e.target.closest('.opt');
+    if (opt) { choose(opt.closest('.vrow'), opt.dataset.id, opt.dataset.owner, opt.dataset.name); return; }
+    if (e.target.closest('.unset')) choose(e.target.closest('.vrow'), '');
+  });
+
   async function load() {
     state = await (await fetch('/api/settings/')).json();
     render();
+    loadVoices();
   }
 
   async function save(el) {
@@ -174,7 +294,7 @@
     let value = el.value;
     if (el.dataset.kind === 'listening') value = { mode: el.value, until: null };
     else if (el.dataset.scale) value = Number(el.value) * Number(el.dataset.scale);
-    else if (el.type === 'number') value = Number(el.value);
+    else if (el.type === 'number' || el.dataset.num) value = Number(el.value);
     else if (el.type === 'checkbox') value = el.checked;
     const status = el.closest('span:not(.note)').querySelector('.status');
     const r = await fetch('/api/settings/', {
