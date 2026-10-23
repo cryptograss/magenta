@@ -51,11 +51,14 @@ The key comes from settings.ELEVENLABS_API_KEY; unset, there is no voice.
 
 import hashlib
 import json
+import logging
 import re
 import time
 
 import requests
 from django.conf import settings as django_settings
+
+logger = logging.getLogger(__name__)
 
 API = 'https://api.elevenlabs.io/v1'
 TTS_MODEL = 'eleven_v4'
@@ -491,7 +494,7 @@ def speak_piece(message, by, http=requests, part=0, piece=0):
         if voice_settings:
             names = {'similarity': 'similarity_boost'}
             body['voice_settings'] = {names.get(k, k): v for k, v in voice_settings.items()}
-        return body
+        return _at_mood_speed(message.mood, body)  # as _spoken_file will ask it: the pieces before are found by it
     before = [_request_id(_key(voice_id, body_for(text))) for text in parts[max(0, piece - 3):piece]]
     stitch = {'previous_request_ids': [r for r in before if r]} if any(before) else {}
     url = _spoken(message.mood, by, voice_id, body_for(parts[piece]), parts[piece], http, extra=stitch,
@@ -524,8 +527,36 @@ def _spoken(mood, by, voice_id, body, script, http, extra=None, who='agent', **d
         f"#words={len((script or '').split())}&who={'person' if who == 'person' else 'agent'}"
 
 
+SPEED_REFUSED = 'voice:speed-refused'  # ElevenLabs' answer to a speed it won't take: asked without, a day
+
+
+def mood_speed(mood):
+    """The speed this Mood's words are voiced at (its voice_speed setting), kept a minute; 1.0 if ElevenLabs
+    has lately refused a speed."""
+    from django.core.cache import cache
+    from . import settings as knobs
+    if mood is None or cache.get(SPEED_REFUSED):
+        return 1.0
+    found = cache.get(f'voice:speed:{mood.slug}')
+    if found is None:
+        found = float(knobs.mood_value(mood.slug, 'voice_speed'))
+        cache.set(f'voice:speed:{mood.slug}', found, 60)
+    return found
+
+
+def _at_mood_speed(mood, body):
+    """`body` asking for the Mood's speed (Justin, 23 Oct): one pass, made once for everyone there. A voice
+    block's own speed stays; at 1.0 nothing is added, so what was made before is found as it was."""
+    speed = mood_speed(mood)
+    settings_given = body.get('voice_settings') or {}
+    if 'speed' in settings_given or abs(speed - 1.0) < 1e-9:
+        return body
+    return {**body, 'voice_settings': {**settings_given, 'speed': speed}}
+
+
 def _spoken_file(mood, by, voice_id, body, script, http, extra=None, **details):
     from conversations.models import Media, Message
+    body = _at_mood_speed(mood, body)
     key = _key(voice_id, body)
 
     def made():
@@ -557,15 +588,30 @@ def _make(mood, by, key, voice_id, body, script, http, details):
     from conversations.services import media as media_store
     usd = round(len(script) / 1000 * TTS_USD_PER_KCHAR, 4)
     check_budget(usd)
-    response = http.post(f'{API}/text-to-speech/{voice_id}', params={'output_format': 'mp3_44100_128'},
+    def ask(body):
+        return http.post(f'{API}/text-to-speech/{voice_id}', params={'output_format': 'mp3_44100_128'},
                          headers=_headers(), json=body, timeout=110)
+    response = ask(body)
+    speed = (body.get('voice_settings') or {}).get('speed')
+    if response.status_code in (400, 422) and speed is not None:
+        # A speed the model won't take: never a reading lost to it. Asked without, and without for a day.
+        from django.core.cache import cache
+        cache.set(SPEED_REFUSED, 1, 86400)
+        logger.warning(f'ElevenLabs refused speed {speed}: {_why(response)}')
+        body = {**body, 'voice_settings': {k: v for k, v in body['voice_settings'].items() if k != 'speed'}}
+        if not body['voice_settings']:
+            del body['voice_settings']
+        speed, response = None, ask(body)
     if response.status_code != 200:
         raise VoiceError(f'ElevenLabs answered {response.status_code}: {_why(response)}')
     stored = media_store.store(response.content, audio=True)
     if stored is None:
         raise VoiceError('ElevenLabs sent back something that is not audio')
     request_id = (getattr(response, 'headers', None) or {}).get('request-id')
+    # How long it runs (128 kbps: 16,000 bytes a second) and the speed it was asked at: so whether a speed
+    # changes a voice's pace can be read from the record.
     record(mood, 'spoken', by, **details, key=key, media=stored.sha256, voice=voice_id, chars=len(script), usd=usd,
+           seconds=round(len(response.content) / 16000, 2), **({'speed': speed} if speed is not None else {}),
            **({'request_id': request_id} if request_id else {}))
     return stored.url
 
