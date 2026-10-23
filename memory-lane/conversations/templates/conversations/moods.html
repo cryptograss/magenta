@@ -6764,9 +6764,10 @@
     if (at && what) at.textContent = what;
   }
   composer.addEventListener('submit', e => { e.preventDefault(); say(); });
-  // Enter sends; Ctrl+Enter (or Shift+Enter) makes a new line. On a touch
-  // screen there is no Ctrl, so Enter makes the new line and Send sends.
-  const touchScreen = matchMedia('(pointer: coarse)').matches;
+  // Enter sends; Ctrl+Enter (or Shift+Enter) makes a new line (Justin, 1 Oct). On a touch
+  // screen there is no Ctrl, so Enter makes the new line and Send sends. Only a touch screen with
+  // nothing finer: a laptop with a touch screen has a trackpad and a keyboard, and Enter sends there.
+  const touchScreen = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
   sayBox.addEventListener('keydown', e => {
     if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;  // mid-composition (IME)
     if (e.ctrlKey || e.metaKey) {
