@@ -45,6 +45,27 @@ class FrontPageTest(FrontBase):
         self.assertIn('/moods/mark-192.png', html)
         self.assertIn('href="/moods/"', html)
 
+    def test_its_own_address_as_a_qr_code_at_the_foot(self):
+        # Justin, 23 Oct: held up for a phone across the table. The address is whatever served it.
+        html = self.client.get('/', secure=True).content.decode()
+        self.assertIn('<svg viewBox=', html)
+        self.assertIn('class="qr"', html)
+        self.assertIn('https://testserver/', html)
+        self.assertNotIn('<svg viewBox=', html.split('<footer')[0])  # at the foot, not before
+
+    def test_a_qr_code_says_its_address(self):
+        svg = front.qr_svg('https://example.test/')
+        self.assertTrue(svg.startswith('<svg viewBox="0 0 '))
+        self.assertIn('fill="#ece7e1"', svg)  # light behind dark: every camera reads that way round
+        self.assertIs(front.qr_svg('https://example.test/'), svg)  # drawn once
+
+    def test_a_phone_is_offered_the_app_on_both_pages(self):
+        for path in ('/', '/moods/'):
+            with self.subTest(path=path):
+                html = self.client.get(path).content.decode()
+                self.assertIn('id="installNudge"', html)
+                self.assertIn('beforeinstallprompt', html)
+
     def test_the_top_links_most_upvoted_first(self):
         made = []
         for i in range(4):

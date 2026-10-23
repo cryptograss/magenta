@@ -1,0 +1,75 @@
+<!-- "Install magenta" on a phone, at the top (Justin, 23 Oct: as Harvest Hosts' page does): only on a phone, only
+     in a browser (not the app already), and not again for a month once closed. Where the browser offers its own
+     install (Chrome, Edge, Samsung: beforeinstallprompt), the button asks it; Firefox and iPhones have no such
+     question, so it says where their menu keeps it. The app is the Moods (the manifest's scope, /moods/): from
+     anywhere else, the button goes there first, to be offered (?install=1). -->
+<style>
+  #installNudge { position: fixed; top: 8px; left: 8px; right: 8px; z-index: 1000; display: flex; gap: 12px; align-items: center;
+                  padding: 10px 12px; border-radius: 12px; background: #1f1c20; color: #ece7e1; border: 1px solid #ef5aa6;
+                  box-shadow: 0 6px 24px rgba(0, 0, 0, .35); font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #installNudge[hidden] { display: none; }
+  #installNudge img { width: 40px; height: 40px; border-radius: 9px; flex: none; }
+  #installNudge .words { flex: 1; min-width: 0; }
+  #installNudge .words b { display: block; }
+  #installNudge .how { color: #b9b1a9; font-size: 13px; }
+  #installNudge .go { flex: none; border: 0; border-radius: 18px; padding: 8px 16px; background: #ef5aa6; color: #fff; font: inherit;
+                      font-weight: 600; cursor: pointer; text-decoration: none; }
+  #installNudge .go[hidden] { display: none; }
+  #installNudge .shut { flex: none; border: 0; background: none; color: #b9b1a9; font-size: 20px; line-height: 1; padding: 4px; cursor: pointer; }
+</style>
+<div id="installNudge" role="dialog" aria-label="Install magenta" hidden>
+  <img src="/moods/icon-192.png" alt="">
+  <div class="words"><b>magenta, as an app</b><span class="how">On your home screen, and notifications when someone answers.</span></div>
+  <a class="go" href="/moods/?install=1">Install</a>
+  <button class="shut" type="button" aria-label="Not now">×</button>
+</div>
+<script>
+  (() => {
+    const box = document.getElementById('installNudge');
+    const go = box.querySelector('.go'), how = box.querySelector('.how');
+    const KEY = 'magenta.installNudgeShut', AWAY_DAYS = 30;
+    const asked = new URLSearchParams(location.search).get('install') === '1';
+    const phone = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+    const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    let shut = 0;
+    try { shut = Number(localStorage.getItem(KEY)) || 0; } catch (e) {}
+    const resting = Date.now() - shut < AWAY_DAYS * 86400000;
+    if (installed || !phone || (resting && !asked)) return;
+    const inApp = location.pathname.startsWith('/moods/');
+    const ua = navigator.userAgent;
+    const iPhone = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // Where there's no install question to ask, the menu that has it.
+    const menuSays = iPhone ? 'Tap Share, then “Add to Home Screen”.'
+      : /Firefox/.test(ua) ? 'Tap ⋮ (the menu), then “Install”.'
+      : 'Tap ⋮ (the menu), then “Install app” or “Add to Home screen”.';
+    let offer = null;
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();  // ours, at the top, rather than the browser's own bar
+      offer = e;
+      how.textContent = 'On your home screen, and notifications when someone answers.';
+      go.hidden = false;
+      box.hidden = false;
+    });
+    window.addEventListener('appinstalled', () => { box.hidden = true; });
+    if (inApp) {
+      // Shown at once with the way in by menu; the browser's own question, if it has one, swaps it for the button.
+      go.hidden = true;
+      how.textContent = menuSays;
+    }
+    box.hidden = false;
+    go.addEventListener('click', async e => {
+      if (!inApp) return;  // from the front page: to the Moods, where it's offered
+      e.preventDefault();
+      if (!offer) return;
+      offer.prompt();
+      const { outcome } = await offer.userChoice.catch(() => ({ outcome: 'dismissed' }));
+      offer = null;
+      if (outcome === 'accepted') box.hidden = true;
+      else { go.hidden = true; how.textContent = menuSays; }
+    });
+    box.querySelector('.shut').addEventListener('click', () => {
+      box.hidden = true;
+      try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {}
+    });
+  })();
+</script>

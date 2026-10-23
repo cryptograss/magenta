@@ -412,8 +412,10 @@ def front_page(request):
     import random
     from .services import front
     slogans = front.slogans()
+    here = request.build_absolute_uri('/')
     return render(request, 'conversations/front.html', {'front': front.state(), 'slogans': slogans,
-                                                        'slogan': random.choice(slogans)})
+                                                        'slogan': random.choice(slogans),
+                                                        'here': here, 'qr': front.qr_svg(here)})
 
 
 @require_GET
