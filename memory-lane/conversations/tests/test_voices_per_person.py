@@ -291,6 +291,11 @@ class ReaderReportsTest(TestCase):
         self.assertEqual(client.post('/api/voice/heard/', json.dumps({'mood': 'general', 'outcome': 'exploded'}),
                                      content_type='application/json').status_code, 400)
         self.assertEqual(Client().post('/api/voice/heard/', '{}', content_type='application/json').status_code, 401)
+        # How fast it played and the pace it was taken at (Justin, 23 Oct: "they were different speeds").
+        client.post('/api/voice/heard/', json.dumps({'mood': 'general', 'message': 'b1', 'clip': 'intro', 'outcome': 'ended',
+                                                     'rate': 2.06, 'pace': 165, 'error': ''}), content_type='application/json')
+        row = Message.objects.filter(source_file='voice', content__message='b1').get().content
+        self.assertEqual((row['rate'], row['pace']), (2.06, 165))
         # Paused by another app's sound mid-clip, and going on again (Justin, 22 Oct: "at Jus--", then nothing).
         for outcome in ('paused', 'resumed'):
             self.assertEqual(client.post('/api/voice/heard/', json.dumps({'mood': 'general', 'message': 'a947485f',

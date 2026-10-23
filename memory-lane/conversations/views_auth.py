@@ -1160,7 +1160,7 @@ def api_voice_heard(request):
         return JsonResponse({'error': f'a Mood, and an outcome of {", ".join(HEARD_OUTCOMES)}'}, status=400)
     voice.record(mood, 'heard', device.entity_id, message=str(body.get('message') or '')[:40], clip=clip,
                  outcome=outcome, error=redact(str(body.get('error') or ''))[0][:200], hidden=bool(body.get('hidden')),
-                 device=device.label[:60])
+                 device=device.label[:60], **_heard_how(body))
     return JsonResponse({'kept': True}, status=201)
 
 
@@ -1349,6 +1349,19 @@ def api_voice_listening(request):
     from django.core.cache import cache
     cache.delete('moods-live')  # the 🎧 shows (or goes) at the next look, not in a few seconds
     return JsonResponse({'listening': listening.everyone()})
+
+
+def _heard_how(body):
+    """How fast a clip was played and the pace it was taken to have, if the page said: numbers, or nothing."""
+    out = {}
+    for key, low, high in (('rate', 0.25, 4.0), ('pace', 0, 600)):
+        try:
+            value = float(body.get(key))
+        except (TypeError, ValueError):
+            continue
+        if low <= value <= high:
+            out[key] = round(value, 2)
+    return out
 
 
 def _uuid_or_none(value):

@@ -1838,12 +1838,22 @@
     const f = new URLSearchParams((src.split('#')[1] || ''));
     return { who: f.get('who') === 'agent' ? 'agent' : 'person', words: Number(f.get('words')) || 0 };
   }
+  // Its own pace: a short clip -- the narrator's "Magent, with tools, says:" -- is mostly the quiet at its
+  // ends, and measured it ran at 94 words a minute and was played at the cap, faster than what followed
+  // (Justin, 23 Oct: "they were different speeds"). So a clip of a few words is taken at its kind's usual
+  // pace; a longer one is measured with its ends' quiet left out, and believed only within a speaker's range.
+  const SHORT_CLIP = 10, EDGE_QUIET = 0.35, PACE_RANGE = [110, 240];
+  function paceOf(audio) {
+    const says = clipSays(audio);
+    if (!says) return null;
+    if (says.words < SHORT_CLIP || !isFinite(audio.duration) || audio.duration < 2) return NATURAL[says.who];
+    const measured = says.words / (Math.max(audio.duration - EDGE_QUIET, 1) / 60);
+    return Math.min(PACE_RANGE[1], Math.max(PACE_RANGE[0], measured));
+  }
   function rateFor(audio) {
     const says = clipSays(audio);
     if (!says) return 1;
-    const natural = says.words && isFinite(audio.duration) && audio.duration > 0.5
-      ? says.words / (audio.duration / 60) : NATURAL[says.who];
-    return Math.min(3.5, Math.max(0.5, pace[says.who] / Math.max(natural, 60)));
+    return Math.min(3.5, Math.max(0.5, pace[says.who] / paceOf(audio)));
   }
   function atSpeed(audio) {
     const set = () => { const r = rateFor(audio); audio.defaultPlaybackRate = r; audio.playbackRate = r; };
@@ -5968,8 +5978,9 @@
   // record): a phone's player can't be watched from here otherwise.
   function readReport(item, clip, outcome) {
     fetch('/api/voice/heard/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ mood: item.mood, message: item.id, clip, outcome, error: clipError,
-                             hidden: document.hidden }) }).catch(() => {});
+      body: JSON.stringify({ mood: item.mood, message: item.id, clip, outcome, error: clipError, hidden: document.hidden,
+                             // how fast it was played, and the pace it was taken to have: what the listener heard
+                             rate: Math.round(reader.playbackRate * 100) / 100, pace: Math.round(paceOf(reader) || 0) }) }).catch(() => {});
   }
 
   async function readNext() {
