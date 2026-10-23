@@ -143,10 +143,14 @@ def tiding_page(request, tiding_id):
         from django.http import HttpResponse
         response = HttpResponse(str(e), status=e.status)
     else:
+        from .services import wiki_auth
         response = render(request, 'conversations/mood_tiding.html', {
             'tiding': _rights(state, device),
             'viewer': viewer,
             'embed': True,
+            'wiki_signin': wiki_auth.enabled(),
+            # [[ in the box suggests PickiPedia titles, asked of the wiki itself (as the Moods' composer does).
+            'pickipedia_url': getattr(settings, 'PICKIPEDIA_URL', 'https://pickipedia.xyz').rstrip('/'),
         })
     response['X-Frame-Options'] = 'SAMEORIGIN'  # drawn in the one page's Tidings frame, as section() allows
     return response

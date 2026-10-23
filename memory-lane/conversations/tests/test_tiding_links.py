@@ -256,8 +256,18 @@ class TidingTalkTests(TidingLinksTest):
         self.assertEqual(page['X-Frame-Options'], 'SAMEORIGIN')  # else the frame stays blank
         html = page.content.decode()
         self.assertIn('looking forward', html)
+        # Nobody signed in here: no box that can't be typed in, but the way in -- and back to this discussion.
+        self.assertNotIn('>say it</button>', html)
+        self.assertNotIn('<textarea', html)
+        self.assertIn('sign in', html)
+        with override_settings(PICKIPEDIA_OAUTH_CLIENT_ID='client-1', PICKIPEDIA_OAUTH_CLIENT_SECRET='secret-1'):
+            html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        self.assertIn(f'href="/moods/auth/wiki/?next=/moods/tidings/{tiding.id}/" target="_top"', html)
+        # Signed in: the box, and [[ suggesting PickiPedia's titles.
+        html = self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
         self.assertIn('say it', html)
-        self.assertIn('sign in', html)  # nobody signed in here: the box is closed but says so
+        self.assertIn('id="wikiSuggest"', html)
+        self.assertIn('list=prefixsearch', html)
         gone = self.client.get(f'/moods/tidings/{uuid.uuid4()}/?embed=1')
         self.assertEqual(gone.status_code, 404)
 

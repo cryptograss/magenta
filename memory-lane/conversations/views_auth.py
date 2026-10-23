@@ -1420,6 +1420,10 @@ def wiki_signin(request):
     response = HttpResponseRedirect(wiki_auth.authorize_url(_wiki_return(request), state))
     response.set_cookie(wiki_auth.STATE_COOKIE, state, max_age=wiki_auth.STATE_AGE, httponly=True,
                         secure=not settings.DEBUG, samesite='Lax')
+    back = _back_to(request.GET.get('next'))
+    if back:  # back where they were -- a link's discussion, say -- once signed in
+        response.set_cookie(WIKI_NEXT_COOKIE, back, max_age=wiki_auth.STATE_AGE, httponly=True,
+                            secure=not settings.DEBUG, samesite='Lax')
     return response
 
 
@@ -1449,11 +1453,25 @@ def wiki_signin_return(request):
     device, token = mood_auth.enrol_device(entity, f"PickiPedia sign-in ({profile['username']}, {where})", tier='wiki')
     from .services import access
     access.signed_in(device)  # said in #general: who, and with what
-    response = HttpResponseRedirect('/moods/')
+    response = HttpResponseRedirect(_back_to(request.COOKIES.get(WIKI_NEXT_COOKIE)) or '/moods/')
     response.set_cookie(mood_auth.COOKIE, token, max_age=mood_auth.COOKIE_AGE,
                         httponly=True, secure=not settings.DEBUG, samesite='Lax')
     response.delete_cookie(wiki_auth.STATE_COOKIE)
+    response.delete_cookie(WIKI_NEXT_COOKIE)
     return response
+
+
+WIKI_NEXT_COOKIE = 'mood_wiki_next'
+
+
+def _back_to(path):
+    """Where to go once signed in, if it's somewhere in magenta: a path of ours, never another site."""
+    path = (path or '').strip()
+    if not path.startswith('/') or path.startswith('//') or '\\' in path or len(path) > 300:
+        return ''
+    if any(ord(ch) < 32 for ch in path):
+        return ''
+    return path
 
 
 def _wiki_return(request):
