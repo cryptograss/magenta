@@ -180,6 +180,17 @@ class MoodPollerTest(TestCase):
         self.assertEqual(poller.poll_once(), ['m26'])
         self.assertIn('another agent handed this over to you here', self.waker.woken[0][1])
 
+    def test_a_task_wakes_at_once_with_the_tools_its_page_gives(self):
+        # Started by its schedule or a person's call (memory-lane services/tasks.py): its page says
+        # full tools or look-only, whoever called it.
+        for full, says in ((True, 'This turn has your full tools'), (False, 'This turn can look but not touch')):
+            started = dict(turn('a', 'task', 0, '@magent: your task Weekly, on its schedule:\n\nLook over the week.'),
+                           via='task', is_human=False, full_tools=full)
+            poller = self.make(FakeAPI([mention('m26', started)], sessions={'m26': ['s-local']}), minutes_now=0)
+            self.assertEqual(poller.poll_once(), ['m26'])
+            self.assertIn('one of your tasks was started here', self.waker.woken[0][1])
+            self.assertIn(says, self.waker.woken[0][1])
+
     def test_a_handoff_it_sent_itself_wakes_it_but_its_own_words_never_do(self):
         mine = dict(turn('a', 'magent', 0, '@magent: you handed this over from #m25: the docs'), via='handoff',
                     is_human=False)

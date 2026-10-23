@@ -877,6 +877,47 @@ def api_interrupt(request, slug):
 
 
 @require_POST
+def api_task(request, name, task):
+    """Start one of an agent's tasks, as the device's person (signed in with their key):
+    POST {"params": {"names": [...]}, "mood": "connectome"} -- mood only to run it somewhere
+    other than its page says.
+
+    The task is its PickiPedia page, Cryptograss:Agents/<Name>/Tasks/<Task>, at its newest
+    trusted revision (services/tasks.py). Started, it is a line in the Mood that wakes the
+    agent there; refused there (over its cap, a blank unfilled), a line that says why. 201
+    with the line either way; 400 if it can't be put anywhere.
+    """
+    from .services import tasks
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device, refused = mood_auth.key_device(request, "start an agent's task")
+    if refused:
+        return refused
+    agent = name.lower()
+    if not ThinkingEntity.objects.filter(name=agent, is_biological_human=False).exists():
+        return JsonResponse({'error': f'no agent named {agent}'}, status=400)
+    try:
+        body = json.loads(request.body or b'{}')
+        params = body.get('params') or {}
+        mood = str(body.get('mood') or '').lstrip('#').strip().lower() or None
+        if not isinstance(params, dict):
+            raise ValueError
+    except (ValueError, AttributeError):
+        return JsonResponse({'error': 'expected {"params": {...}, "mood": "<slug>"}'}, status=400)
+    try:
+        line = tasks.start(tasks.read(agent, task), device.entity_id, params=params, mood=mood)
+    except tasks.Refused as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except OSError as e:
+        return JsonResponse({'error': f"couldn't read the task from PickiPedia: {e}"}, status=502)
+    c = line.content
+    return JsonResponse({'state': c['state'], 'reason': c.get('reason'), 'mood': line.mood_slug,
+                         'page': c['page'], 'revision': c['revision'],
+                         'url': request.build_absolute_uri(f'/moods/{line.mood_slug}/#m-{line.id}')}, status=201)
+
+
+@require_POST
 def api_new_mood(request):
     """Start a Mood, as the device's person: POST {"title", "description"}.
 
