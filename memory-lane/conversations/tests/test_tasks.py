@@ -61,15 +61,36 @@ class TaskPageTest(TestCase):
         self.assertEqual(tasks.parse('blu', 'X', 1, 'JMyles', 'See {{Src|a}} and {x}.').blanks, ['x'])
 
     def test_schedules(self):
-        self.assertEqual(tasks.last_slot('mondays 09:00', MONDAY + timedelta(minutes=5)), MONDAY)
-        self.assertEqual(tasks.last_slot('mondays 09:00', MONDAY - timedelta(minutes=1)), MONDAY - timedelta(days=7))
-        self.assertEqual(tasks.last_slot('mondays 09:00, daily 18:30', MONDAY + timedelta(hours=10)),
+        at = lambda schedule, now: tasks.last_slot(schedule, now)[1]
+        self.assertEqual(at('mondays 09:00', MONDAY + timedelta(minutes=5)), MONDAY)
+        self.assertEqual(tasks.last_slot('mondays 09:00', MONDAY)[0], MONDAY.isoformat())
+        self.assertEqual(at('mondays 09:00', MONDAY - timedelta(minutes=1)), MONDAY - timedelta(days=7))
+        self.assertEqual(at('mondays 09:00, daily 18:30', MONDAY + timedelta(hours=10)),
                          MONDAY.replace(hour=18, minute=30))
-        self.assertEqual(tasks.last_slot('weekdays 08:00', MONDAY - timedelta(hours=2)),  # Sunday 07:00
+        self.assertEqual(at('weekdays 08:00', MONDAY - timedelta(hours=2)),  # Sunday 07:00
                          MONDAY - timedelta(days=3, hours=1))  # Friday 08:00
-        for bad in ('someday 09:00', 'mondays 9am', 'daily 25:00'):
+        for bad in ('someday 09:00', 'mondays 9am', 'daily 25:00', 'every 3 blocks', 'every blocks'):
             with self.assertRaises(tasks.Refused):
                 tasks.slots(bad)
+
+    def test_every_n_blocks(self):
+        # At height 24_007_210 the last multiple of 7200 is 24_004_800: 2410 blocks, 8h02m ago.
+        key, when = tasks.last_slot('every 7_200 blocks', MONDAY, block=24_007_210)
+        self.assertEqual(key, 'block 24004800')
+        self.assertEqual(when, MONDAY - timedelta(seconds=2410 * 12))
+        self.assertEqual(tasks.last_slot('every 7200 blocks', MONDAY, block=24_004_810)[0], 'block 24004800')
+        # Mixed with a time, the newer slot wins.
+        self.assertEqual(tasks.last_slot('every 7200 blocks, mondays 09:00', MONDAY, block=24_007_210)[0],
+                         MONDAY.isoformat())
+        with self.assertRaisesRegex(tasks.Refused, 'block clock here is more than an hour stale'):
+            tasks.last_slot('every 7200 blocks', MONDAY)
+
+    def test_the_height_now_from_the_newest_anchor(self):
+        ts = int(MONDAY.timestamp())
+        anchors = [(24_000_000, ts - 600), (24_000_025, ts - 300)]
+        self.assertEqual(tasks.head(MONDAY, anchors), 24_000_050)  # five minutes of 12-second slots on
+        self.assertIsNone(tasks.head(MONDAY + timedelta(hours=2), anchors))  # the anchors stopped
+        self.assertIsNone(tasks.head(MONDAY, []))
 
 
 class StartingTest(TestCase):
@@ -142,6 +163,20 @@ class StartingTest(TestCase):
         self.assertEqual((weekly.content['by'], weekly.content['slot']), ('schedule', MONDAY.isoformat()))
         self.assertIn('on its schedule', tasks.mention(weekly, 'blu')['text'])
         self.assertFalse(tasks.mention(weekly, 'blu')['full_tools'])  # its page says nothing: look-only
+
+    def test_a_schedule_in_blocks_runs_once_a_slot_and_says_so_when_the_clock_is_stale(self):
+        pages = {tasks.title('blu', 'Daily'): [(45, 'JMyles', WEEKLY.replace('mondays 09:00, daily 18:30',
+                                                                                'every 7200 blocks'))]}
+        search = lambda prefix: list(pages)
+        ts = int(MONDAY.timestamp())
+        anchors = [(24_004_790, ts - 300)]  # the head now: 24_004_815, 15 blocks past a slot
+        [(_, _, line)] = tasks.due(['blu'], now=MONDAY, get=wiki(pages), search=search, anchors=anchors)
+        self.assertEqual((line.content['state'], line.content['slot']), ('asked', 'block 24004800'))
+        self.assertEqual(tasks.due(['blu'], now=MONDAY + timedelta(minutes=1), get=wiki(pages), search=search,
+                                   anchors=anchors), [])
+        [(_, _, why)] = tasks.due(['blu'], now=MONDAY + timedelta(hours=3), get=wiki(pages), search=search,
+                                  anchors=anchors)
+        self.assertIn('block clock here is more than an hour stale', why)
 
 
 class TaskApiTest(TestCase):

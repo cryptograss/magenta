@@ -13,8 +13,9 @@ Only a revision by a trusted editor counts (poller/wiki_rules.EDITORS): an
 agent can edit pages, so it can propose a task but not set one going.
 
     mood      the Mood the agent is woken in, and where it answers
-    schedule  when it runs by itself, in UTC: "daily 09:00", "mondays 09:00",
-              "weekdays 18:30", several joined by commas; none: only on call
+    schedule  when it runs by itself: "daily 09:00", "mondays 09:00", "weekdays
+              18:30" (UTC), or "every 7200 blocks" (at Ethereum heights that are
+              multiples of it); several joined by commas; none: only on call
     cap       the most the agent may spend in that Mood in a day, in dollars:
               past it, the task doesn't start, and says so
     tools     full (it may change things: edit the wiki, push a branch) or
@@ -48,6 +49,8 @@ NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 _-]{0,60}$')
 MAX_PARAM = 2000
 MAX_PROMPT = 20_000
 LATE = timedelta(hours=1)  # a slot missed by more than this (the cron down) is skipped, not run late
+MIN_BLOCKS = 5             # every n blocks, n at least this: a minute, the cron's own step
+STALE_CLOCK = timedelta(hours=1)  # newest block anchor older than this: no height to schedule by
 DAYS = ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')
 GROUPS = {'daily': set(range(7)), 'weekdays': set(range(5)), 'weekends': {5, 6}}
 
@@ -196,12 +199,21 @@ def fill(task, params):
 # --- when ---------------------------------------------------------------------------
 
 def slots(schedule):
-    """[(weekdays, hour, minute)] for a schedule such as 'mondays 09:00, daily 18:30'."""
+    """The schedule's entries, joined by commas: ('days', {weekdays}, hour, minute) for
+    'mondays 09:00' (UTC), or ('blocks', n) for 'every 7200 blocks' (Ethereum mainnet heights
+    that are multiples of n)."""
     out = []
     for part in [p.strip().lower() for p in (schedule or '').split(',') if p.strip()]:
+        every = re.fullmatch(r'every\s+(\d[\d_]*)\s+blocks?', part)
+        if every:
+            n = int(every.group(1).replace('_', ''))
+            if n < MIN_BLOCKS:
+                raise Refused(f"its schedule, '{part}', is more often than every {MIN_BLOCKS} blocks")
+            out.append(('blocks', n))
+            continue
         m = re.fullmatch(r'([a-z]+)\s+(\d{1,2}):(\d{2})(?:\s*utc)?', part)
         if not m or int(m.group(2)) > 23 or int(m.group(3)) > 59:
-            raise Refused(f"its schedule, '{part}', isn't '<day> HH:MM' (UTC)")
+            raise Refused(f"its schedule, '{part}', isn't '<day> HH:MM' (UTC) or 'every <n> blocks'")
         day = m.group(1)
         if day in GROUPS:
             days = GROUPS[day]
@@ -209,20 +221,46 @@ def slots(schedule):
             days = {DAYS.index(day.rstrip('s'))}
         else:
             raise Refused(f"its schedule names '{day}': a weekday, daily, weekdays or weekends")
-        out.append((days, int(m.group(2)), int(m.group(3))))
+        out.append(('days', days, int(m.group(2)), int(m.group(3))))
     return out
 
 
-def last_slot(schedule, now):
-    """The latest time at or before `now` the schedule names, or None (within the past week)."""
+def head(now, anchors=None):
+    """The chain's height at `now`, from the newest block anchor (eth_blocks, synced every five
+    minutes with the head) and 12-second slots after it; None if the newest is over an hour old."""
+    from .eth_blocks import SECONDS_PER_SLOT, BlockClock
+    clock = BlockClock(anchors)
+    if not clock.numbers:
+        return None
+    ts = int(now.timestamp())
+    number, at = clock.numbers[-1], clock.timestamps[-1]
+    if ts < at:
+        return clock.block_at(ts)
+    if ts - at > STALE_CLOCK.total_seconds():
+        return None
+    return number + (ts - at) // SECONDS_PER_SLOT
+
+
+def last_slot(schedule, now, block=None):
+    """(key, when) for the latest slot at or before `now` the schedule names, or None: key is what
+    the slot is remembered by -- its time, ISO, or 'block <height>' -- and when, its time. A
+    schedule in blocks needs the chain's height now (head()); without one, Refused."""
+    from .eth_blocks import SECONDS_PER_SLOT
     found = []
-    for days, hour, minute in slots(schedule):
+    for entry in slots(schedule):
+        if entry[0] == 'blocks':
+            if block is None:
+                raise Refused("its schedule is in blocks, and the block clock here is more than an hour stale")
+            height = block // entry[1] * entry[1]
+            found.append((f'block {height}', now - timedelta(seconds=(block - height) * SECONDS_PER_SLOT)))
+            continue
+        _, days, hour, minute = entry
         for back in range(8):
             day = (now - timedelta(days=back)).replace(hour=hour, minute=minute, second=0, microsecond=0)
             if day.weekday() in days and day <= now:
-                found.append(day)
+                found.append((day.isoformat(), day))
                 break
-    return max(found) if found else None
+    return max(found, key=lambda slot: slot[1]) if found else None
 
 
 # --- what it has cost --------------------------------------------------------------
@@ -249,7 +287,7 @@ def start(task, by, params=None, mood=None, slot=None, now=None):
                       else f'{task.title} names no mood, and none was given')
     content = {'type': 'task', 'for': task.agent, 'task': task.name, 'page': task.title,
                'revision': task.revision, 'by': by, 'tools': task.tools, 'params': params or {},
-               **({'slot': slot.isoformat()} if slot else {})}
+               **({'slot': slot} if slot else {})}
     try:
         content['text'] = fill(task, params)
         if task.cap is not None:
@@ -264,12 +302,15 @@ def start(task, by, params=None, mood=None, slot=None, now=None):
                                   content=content, timestamp=int(time.time() * 1000))
 
 
-def due(agents, now=None, get=None, search=None):
+NOT_YET = object()
+
+
+def due(agents, now=None, get=None, search=None, anchors=None):
     """Start every task whose schedule has come round since its last run (once per slot; a slot
     missed by more than LATE is let go). Returns [(agent, task, the line or the reason)]."""
     from conversations.models import Message
     now = now or datetime.now(timezone.utc)
-    done = []
+    done, block = [], NOT_YET  # the chain's height, looked up once, and only if a schedule is in blocks
     for agent in agents:
         try:
             names = listed(agent, search)
@@ -287,11 +328,18 @@ def due(agents, now=None, get=None, search=None):
                 continue
             if not task.schedule:
                 continue
-            slot = last_slot(task.schedule, now)
-            if slot is None or now - slot > LATE:
+            try:
+                if block is NOT_YET and any(e[0] == 'blocks' for e in slots(task.schedule)):
+                    block = head(now, anchors)
+                found = last_slot(task.schedule, now, None if block is NOT_YET else block)
+            except Refused as e:
+                done.append((agent, name, str(e)))
                 continue
+            if found is None or now - found[1] > LATE:
+                continue
+            slot = found[0]
             if Message.objects.filter(source_file=SOURCE, content__for=agent, content__task=name,
-                                      content__slot=slot.isoformat()).exists():
+                                      content__slot=slot).exists():
                 continue
             try:
                 done.append((agent, name, start(task, 'schedule', slot=slot, now=now)))
