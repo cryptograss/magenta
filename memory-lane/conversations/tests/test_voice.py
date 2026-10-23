@@ -103,7 +103,7 @@ class SpeakAndTranscribeTest(TestCase):
         _, where, sent = fake.asked[-1]
         self.assertTrue(where.endswith('/text-to-speech/v-george'))  # "george" matched "George - warm storyteller"
         self.assertEqual(sent['json'], {'text': '[warmly] Hello there.', 'model_id': 'eleven_v4',
-                                        'voice_settings': {'style': 0.3, 'speed': 1.2}})  # the Mood's speed, by default
+                                        'voice_settings': {'style': 0.3}})  # no speed asked: 1.0 by default
         self.assertEqual(sent['headers'], {'xi-api-key': 'test-eleven-key'})
         asked = len(fake.asked)
         self.assertEqual(voice.speak(message, 'justin', http=fake), url)  # the same again: not paid twice
@@ -223,6 +223,10 @@ class SpeakAndTranscribeTest(TestCase):
         from django.core.cache import cache
         from conversations.services import settings as knobs
         fake = FakeEleven()
+        voice.speak(self.say('As voiced.'), 'justin', http=fake)
+        self.assertNotIn('voice_settings', fake.asked[-1][2]['json'])  # 1.0 by default: nothing asked
+        knobs.change('voice_speed', 1.2, mood=self.mood, by=None)
+        cache.delete(f'voice:speed:{self.mood.slug}')
         voice.speak(self.say('Plain words.'), 'justin', http=fake)
         self.assertEqual(fake.asked[-1][2]['json']['voice_settings'], {'speed': 1.2})
         voice.speak(self.say('Hi.\n```voice\nspeed: 0.9\n---\nHi there.\n```'), 'justin', http=fake)
@@ -244,6 +248,9 @@ class SpeakAndTranscribeTest(TestCase):
                     self.asked.append(('POST', url, kw))
                     return Answer(400, {'detail': {'message': 'speed is not supported for this model'}})
                 return super().post(url, **kw)
+        from conversations.services import settings as knobs
+        knobs.change('voice_speed', 1.2, mood=self.mood, by=None)  # a speed asked for
+        cache.delete(f'voice:speed:{self.mood.slug}')
         fake = NoSpeed()
         self.addCleanup(cache.delete, voice.SPEED_REFUSED)  # the cache isn't rolled back with the test
         url = voice.speak(self.say('Read me anyway.'), 'justin', http=fake)
