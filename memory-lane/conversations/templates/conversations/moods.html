@@ -177,16 +177,6 @@
   #serverPop .note { color: var(--muted); font-size: 12px; }
   .deploynote { font-style: italic; }  /* a deploy's note that isn't its log: why there isn't one */
   /* Who is read aloud in which voice (services/voice.py), styled as the devices box. */
-  #voicesBox { position: fixed; z-index: 30; top: 44px; right: 12px; width: min(460px, 94vw); max-height: 75vh; overflow-y: auto;
-               background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.18);
-               padding: 10px 14px; font-size: 13px; }
-  #voicesBox[hidden] { display: none; }
-  #voicesBox .head { display: flex; justify-content: space-between; margin-bottom: 6px; }
-  #voicesBox .meta, #voicesBox .tier { color: var(--muted); font-size: 12px; }
-  #voicesBox .spk { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--line); padding: 6px 0; }
-  #voicesBox .spk .nm { flex: 1; }
-  #voicesBox select { font: inherit; font-size: 12px; max-width: 55%; }
-  #voicesBox button { font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel);
                       color: var(--ink); cursor: pointer; }
   /* "→ PickiPedia" under a picture sent here, and its form (services/wiki_upload.py). */
   .turn .body .topp { display: block; margin: 2px 0 6px; font: inherit; font-size: 12px; color: var(--muted); background: none;
@@ -1224,7 +1214,7 @@
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
       <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
       <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: agents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
-      <a href="#" id="voicesLink" hidden>voices</a>
+      <a href="/moods/settings/#voices" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
@@ -1239,10 +1229,6 @@
 <div id="lightbox" hidden role="dialog" aria-label="Picture"><button type="button" class="close" aria-label="Close">✕</button>
   <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
 <datalist id="facePeople"></datalist>
-<div id="voicesBox" hidden role="dialog" aria-label="Voices">
-  <div class="head"><b>Who is read in which voice</b> <button type="button" id="voicesClose">close</button></div>
-  <div id="voicesList"></div>
-</div>
 <div id="devicesBox" hidden role="dialog" aria-label="Your devices">
   <div class="head"><b id="devicesTitle">Your devices</b> <button type="button" id="devicesClose">close</button></div>
   <div id="devicesList"></div>
@@ -5663,70 +5649,15 @@
     }, 1500);
   }
 
-  // --- voices: who is read in which ---------------------------------------------
-  // Each speaker has a voice (services/voice.py, voice_of): chosen here, or
-  // given at their first reading. Yours from any sign-in; anyone's -- an
-  // agent's too -- with your SSH key. ▷ plays ElevenLabs' sample, free.
-  const voicesBox = document.getElementById('voicesBox');
-  const voicesList = document.getElementById('voicesList');
-  const voiceSample = new Audio();
-  let voiceData = null;
+  // --- voices: who is read in which -- on the settings page now (Justin, 23 Oct: "that probably belongs in
+  // settings rather than as its own floating menu"), where a voice is found by typing, from ElevenLabs' library.
   if (voiceOn && viewer) document.getElementById('voicesLink').hidden = false;
-  function voiceFor(data, name) {
-    const has = (data.speakers || {})[name];
-    if (!has) return null;
-    return (data.voices || []).find(v => v.voice_id === has || v.name.toLowerCase() === has.toLowerCase()) || { voice_id: has, name: has };
-  }
-  async function showVoices() {
-    voicesBox.hidden = false;
-    voicesList.textContent = 'Loading…';
-    try {
-      const r = await fetch('/api/voice/voices/');
-      voiceData = await r.json();
-    } catch (e) { voicesList.textContent = 'Could not ask for the voices.'; return; }
-    const data = voiceData;
-    const narrator = data.narrator || 'narrator';
-    const everyone = [{ name: narrator, narrator: true },
-                      ...[...people].sort((a, b) => (b.name === viewer) - (a.name === viewer) || a.name.localeCompare(b.name))];
-    voicesList.innerHTML = (data.note ? `<p class="meta">${esc(data.note)}</p>` : '')
-      + `<p class="meta">Reading as they come, the narrator says who speaks next, when an agent starts thinking, and when a server redeploys.</p>`
-      + everyone.map(p => {
-        const v = voiceFor(data, p.name);
-        const may = p.name === viewer || keyHolder;
-        const unset = p.narrator ? 'given at its first word' : p.name === 'magent' ? 'the house voice' : 'given at their first reading';
-        const options = (data.voices || []).map(o =>
-          `<option value="${esc(o.voice_id)}"${v && v.voice_id === o.voice_id ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
-        const other = v && !(data.voices || []).some(o => o.voice_id === v.voice_id)
-          ? `<option value="${esc(v.voice_id)}" selected>${esc(v.name)}</option>` : '';
-        return `<div class="spk" data-name="${esc(p.name)}"><span class="nm">${p.narrator ? 'Narrator' : esc(shown(p.name))}${p.is_human || p.narrator ? '' : ' <span class="tier">agent</span>'}</span>`
-          + `<select ${may ? '' : 'disabled title="Only your own, from a PickiPedia sign-in"'} aria-label="${esc(shown(p.name))}'s voice">`
-          + `<option value="">${unset}</option>${other}${options}</select>`
-          + `<button type="button" class="sample" title="Hear this voice">▷</button></div>`;
-      }).join('');
-  }
-  document.getElementById('voicesLink').addEventListener('click', e => { e.preventDefault(); userMenu.hidden = true; showVoices(); });
-  document.getElementById('voicesClose').addEventListener('click', () => { voicesBox.hidden = true; voiceSample.pause(); });
-  voicesBox.addEventListener('click', e => {
-    const b = e.target.closest('.sample');
-    if (!b || !voiceData) return;
-    const chosen = b.closest('.spk').querySelector('select').value;
-    const v = (voiceData.voices || []).find(o => o.voice_id === chosen) || voiceFor(voiceData, b.closest('.spk').dataset.name);
-    if (!v || !v.preview_url) { showError('no sample of that voice to play'); return; }
-    voiceSample.src = `/api/voice/sample/${encodeURIComponent(v.voice_id)}/`;  // served as audio (views_auth.api_voice_sample)
-    voiceSample.play().catch(err => showError('sample: ' + err.message));
-  });
-  voicesBox.addEventListener('change', async e => {
-    const sel = e.target.closest('.spk select');
-    if (!sel) return;
-    const name = sel.closest('.spk').dataset.name;
-    sel.disabled = true;
-    try {
-      const r = await fetch('/api/voice/speaker/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-                                                    body: JSON.stringify({ name, voice: sel.value }) });
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(body.error || r.status);
-    } catch (err) { showError('voice: ' + err.message); showVoices(); return; }
-    finally { sel.disabled = false; }
+  document.getElementById('voicesLink').addEventListener('click', e => {
+    e.preventDefault();
+    userMenu.hidden = true;
+    showSection('settings', true);
+    const frame = sectionFrames.querySelector('iframe[data-section="settings"]:not([data-fresh])');
+    if (frame) frame.src = '/moods/settings/?embed=1#voices';
   });
 
   // --- reading aloud as they come ------------------------------------------------
