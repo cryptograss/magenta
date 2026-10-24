@@ -12,9 +12,9 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from conversations.models import BundleRecord
 from conversations.tests.test_mood_poller import FakeAPI, FakeWaker
-from conversations.tests.test_rules_bundle import GREETING_PAGE, T0, agent_page, wiki
+from conversations.tests.test_instructions import GREETING_PAGE, T0, agent_page, wiki
 from poller.mood_poller import MoodPoller
-from poller.rules_bundle import bundle, identity_title, rebuild, rebuilt
+from poller.instructions import bundle, identity_title, rebuild, rebuilt
 
 KEYS = {'re': 're-key', 'magent': 'magent-key'}
 
@@ -51,7 +51,7 @@ class PartsTest(SimpleTestCase):
         self.gather(w, state=state)
         w.down = True
         b = self.gather(w, state=state)
-        self.assertIn('<rules-degraded', b.text)
+        self.assertIn('<instructions-degraded', b.text)
         again = rebuilt(b.record(), texts=every_revision(w))
         self.assertTrue(again['matches'])
         self.assertEqual(again['text'], b.text)
@@ -114,13 +114,13 @@ class PollerRecordsTest(SimpleTestCase):
         state = Path(tempfile.mkdtemp()) / 'state.json'
         state.write_text(json.dumps({'since': '2026-10-21T00:00:00+00:00', 'handled': [], 'wakes': []}))
         api = RecordingAPI()
-        return MoodPoller(api, waker, agent='magent', state_path=state, consider=False, rules_bundle=True), api
+        return MoodPoller(api, waker, agent='magent', state_path=state, consider=False, instructions=True), api
 
     def test_each_turn_records_its_bundle_asked_for_made_and_delivered(self):
         w = wiki()
         poller, api = self.poller(FakeWaker())
         gather = lambda *a, **k: bundle(*a, get=w.get, state_dir=None, now=T0, **k)  # noqa: E731
-        with mock.patch('poller.rules_bundle.bundle', side_effect=gather):
+        with mock.patch('poller.instructions.bundle', side_effect=gather):
             poller.run_turn_for('magent-self', 's-local', 'You were woken')
         [record] = api.recorded
         given = poller.waker.options['system']
@@ -132,7 +132,7 @@ class PollerRecordsTest(SimpleTestCase):
 
     def test_a_harness_that_never_started_has_no_delivery(self):
         poller, api = self.poller(SilentWaker())
-        with mock.patch('poller.rules_bundle.bundle', side_effect=RuntimeError('cache unreadable')):
+        with mock.patch('poller.instructions.bundle', side_effect=RuntimeError('cache unreadable')):
             outcome = poller.run_turn_for('magent-self', 's-local', 'You were woken')
         self.assertEqual(outcome[0], 'failed')
         [record] = api.recorded
@@ -180,7 +180,7 @@ class BundleAPITest(TestCase):
     def test_rebuilt_to_read_and_checked(self):
         record, texts = a_record()
         self.post(record)
-        with mock.patch('poller.rules_bundle.revision_texts', return_value=texts) as fetched:
+        with mock.patch('poller.instructions.revision_texts', return_value=texts) as fetched:
             again = self.client.get(f'/api/bundles/{record["id"]}/text/').json()
             plain = self.client.get(f'/api/bundles/{record["id"]}/text/', {'format': 'text'})
         self.assertTrue(again['matches'])
@@ -193,7 +193,7 @@ class BundleAPITest(TestCase):
         record, texts = a_record()
         self.post(record)
         del texts[104]
-        with mock.patch('poller.rules_bundle.revision_texts', return_value=texts):
+        with mock.patch('poller.instructions.revision_texts', return_value=texts):
             plain = self.client.get(f'/api/bundles/{record["id"]}/text/', {'format': 'text'})
         self.assertEqual(plain.status_code, 409)
         self.assertIn('104', plain.content.decode())

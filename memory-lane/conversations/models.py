@@ -1699,16 +1699,16 @@ class HarnessModels(models.Model):
 
 class BundleRecord(models.Model):
     """
-    The rules a turn was given (poller/rules_bundle.py), as its runner sent
+    The instructions a turn was given (poller/instructions.py), as its runner sent
     them: not the text but its parts -- the bundle's own words, and in each
     layer's place a PickiPedia page and revision -- and the text's sha256.
-    Joining the revisions' texts back in rebuilds it (rules_bundle.rebuilt),
+    Joining the revisions' texts back in rebuilds it (instructions.rebuilt),
     and the sha256 proves the rebuild. Each is one bundle action: asked for,
     made, and handed to a harness that started with it (delivered_at; none,
     it never did). Justin, magent-self, 2026-10-24.
     """
 
-    id = models.UUIDField(primary_key=True)  # the runner's, in the bundle's <rules bundle="..."> tag
+    id = models.UUIDField(primary_key=True)  # the runner's, in the bundle's <instructions bundle="..."> tag
     agent = models.CharField(max_length=60, db_index=True)
     mood = models.CharField(max_length=120, blank=True, default='', db_index=True)
     session_id = models.CharField(max_length=80, blank=True, default='')
