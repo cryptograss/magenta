@@ -16,6 +16,11 @@ who-saved-what come with it. '/clips tony' posts the clip itself, as
 '/clips tony <link>' -- shown as just the clip; the name stays in the record --
 so saving the name again later never changes what was already said.
 
+Agents play clips too: a reply of theirs that is only '/clips <name>' (or
+'/clip <name>') is stored as the composer would post it (played_by, from the
+runner). Only playing: an agent's '/clips save' or 'forget' is just words,
+since the library is read back from people's posts alone.
+
 A name is first come, first served: only whoever saved it can save over it or
 forget it. That rule is applied when the library is read back, so it holds
 even for a post that never went through command().
@@ -36,8 +41,19 @@ COMMANDS = ('/clips', '/yarn')  # /yarn: what it was first called
 USAGE = '/clips <name> posts a saved clip; /clips save <name> <yarn link>; /clips forget <name>; /clips lists them'
 
 
+AGENT_PLAY = re.compile(r'^/clips? ([a-z0-9][a-z0-9_-]{0,34})$', re.I)
+
+
 class Refused(ValueError):
     pass
+
+
+def played_by(text):
+    """An agent's reply that is only '/clips <name>' (or '/clip <name>'): the clip, as the
+    composer posts it ('/clips <name> <link>'). None for anything else, or a name not saved."""
+    played = AGENT_PLAY.match(text.strip()) if isinstance(text, str) else None
+    found = library().get(played[1].lower()) if played else None
+    return f'/clips {played[1].lower()} {clip_link(found["clip"])}' if found else None
 
 
 def clip_link(clip):
