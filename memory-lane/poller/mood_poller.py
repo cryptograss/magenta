@@ -1751,7 +1751,7 @@ class MoodPoller:
                                      'until': (now + WAIT_FOR).isoformat(), 'first': first}
         self.state['waited'] = (self.state['waited'] + ids)[-200:]
         logger.info(f'{slug}: waiting for {", ".join(names)}')
-        self.hold(slug, f'waiting for {", ".join(names)} to answer', now + WAIT_FOR)
+        self.hold(slug, f'waiting for {", ".join(names)}', now + WAIT_FOR)
         self.save()
 
     def check_waits(self):
@@ -1779,7 +1779,7 @@ class MoodPoller:
             elif waiting_on_me and wait.get('first') == self.agent:
                 note = f'You chose to wait for {who}, and {who} is waiting for you; you were named first.'
             else:
-                self.hold(slug, f'waiting for {who} to answer', wait['until'])
+                self.hold(slug, f'waiting for {who}', wait['until'])
                 continue
             del self.state['waits'][slug]
             self.wait_notes[slug] = note + ' Answer now: you can wait only once on a question.'

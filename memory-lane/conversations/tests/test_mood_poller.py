@@ -2069,7 +2069,7 @@ class WaitingTest(TestCase):
         first = self.waker.woken[0][1]
         self.assertIn('reply with only <wait for="re"/>', first)   # offered, where another was asked
         self.assertIn('m26', poller.state['waits'])
-        self.assertIn(('m26', 'waiting for re to answer'), [(h[0], h[1]) for h in self.api.holds])
+        self.assertIn(('m26', 'waiting for re'), [(h[0], h[1]) for h in self.api.holds])
         self.page['activities'] = [{'agent': 're', 'doing': 'thinking'}]
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), [])                   # re at work: still waiting
@@ -2094,7 +2094,7 @@ class WaitingTest(TestCase):
     def test_waiting_on_each_other_the_first_named_answers(self):
         poller = self.make(['<wait for="re"/>'])                    # magent named first
         poller.poll_once()
-        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for magent to answer'}]
+        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for magent'}]
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), ['m26'])
         self.assertIn('re is waiting for you; you were named first', self.waker.woken[1][1])
@@ -2102,7 +2102,7 @@ class WaitingTest(TestCase):
     def test_named_second_it_keeps_waiting_for_the_first(self):
         poller = self.make(['<wait for="re"/>'], mentions=('re', 'magent'))
         poller.poll_once()
-        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for magent to answer'}]
+        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for magent'}]
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), [])                    # re goes first
 
