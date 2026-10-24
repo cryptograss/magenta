@@ -1,7 +1,24 @@
 """An agent's rules for one Mood, gathered without a model: Artificial Dumb
 (https://pickipedia.xyz/wiki/PickiPedia:Artificial_Dumb).
 
-Three layers, broadest first, each a page on PickiPedia:
+First, one line naming the agent (Justin, magent-self, 2026-10-24: "you are
+<name>, the <color> agent. <greeting>"), so the "you" of everything after it
+is already someone. Its wording, and each agent's colour and greeting, are on
+Cryptograss:Agents/Greeting: the line, with blanks, and one row per agent,
+
+    You are {name}, the {colour} agent of cryptograss. {greeting}
+    {{Agent greeting|agent=re|colour=red|greeting=...}}
+
+{name}, {mood} and {block} are data, filled here: the name from --agent only
+(the row is looked up by it, so no page can rename an agent), the Mood from
+the wake, the block only if one was fetched and handed in. {colour} and
+{greeting} are authored, one field each, on that page only (re, 04:15Z). A
+sentence with a blank that can't be filled is left out, never guessed at.
+Without a trusted revision, or a row for this agent, the line is
+greeting_fallback.md, the name alone, and the stamps say why. That is not
+all-hands: an agent missing its greeting still has its rules.
+
+Then three layers, broadest first, each a page on PickiPedia:
 
     standing   Cryptograss:Agents/GeneralOrders   what every agent keeps
     identity   Cryptograss:Agents/<Name>/Rules    who this agent is, how it works
@@ -53,6 +70,11 @@ except ImportError:  # run as a script from its own directory, as deployed
     from wiki_rules import EDITORS, WikiTexts, page_url
 
 STANDING = 'Cryptograss:Agents/GeneralOrders'
+GREETING = 'Cryptograss:Agents/Greeting'
+GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
+GREETING_ROW = 'Agent greeting'
+BLANK = re.compile(r'(?<!\{)\{([a-z]+)\}(?!\})')
+SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 RECOVERY = Path(__file__).with_name('recovery_rules.md')
 DEGRADED = Path(__file__).with_name('rules_degraded.md')
 COMMENTS = re.compile(r'<!--.*?-->', re.S)
@@ -98,6 +120,8 @@ class Bundle:
     gathered: str
     recovery: str = ''      # the recovery rules, when a layer was never read here
     text: str = field(default='', repr=False)
+    greeting: Layer = None  # its page, read like a layer; greeting_line, the line made from it
+    greeting_line: str = ''
 
     @property
     def degraded(self):
@@ -114,6 +138,7 @@ class Bundle:
     def stamps(self):
         """What the journal records: every layer's page and revision, and what was wrong."""
         return {'agent': self.agent, 'mood': self.mood, 'gathered': self.gathered,
+                'greeting': {**self.greeting.stamp(), 'line': self.greeting_line} if self.greeting else None,
                 'layers': {layer.name: layer.stamp() for layer in self.layers},
                 'degraded': self.degraded, 'recovery': bool(self.recovery)}
 
@@ -191,6 +216,57 @@ def attrs(layer):
     return ' '.join(found)
 
 
+def greeting_rows(text):
+    """({agent: {field: value}} from its {{Agent greeting|...}} rows, the page's text without them)."""
+    rows, rest, head, i = {}, [], '{{' + GREETING_ROW, 0
+    while True:
+        at = text.find(head, i)
+        if at < 0:
+            rest.append(text[i:])
+            break
+        depth, j = 0, at
+        while j < len(text):
+            two = text[j:j + 2]
+            if two == '{{':
+                depth, j = depth + 1, j + 2
+            elif two == '}}':
+                depth, j = depth - 1, j + 2
+                if not depth:
+                    break
+            else:
+                j += 1
+        rest.append(text[i:at])
+        fields = {}
+        for part in text[at + len(head):j - 2].split('|')[1:]:
+            key, eq, value = part.partition('=')
+            if eq:
+                fields[key.strip().lower()] = value.strip()
+        if fields.get('agent'):
+            rows[fields['agent'].lower()] = fields
+        i = j
+    return rows, '\n'.join(r.strip() for r in rest if r.strip())
+
+
+def greeting_line(layer, agent, mood=None, block=None, fallback_path=GREETING_FALLBACK):
+    """(the line, why it is the fallback or None): the page's line with its blanks filled for `agent`."""
+    data = {'name': agent, 'mood': mood or '', 'block': f'{block:,}' if isinstance(block, int) else ''}
+    why = layer.problem or ('no trusted revision of the page yet' if layer.absent else None)
+    template, row = '', {}
+    if layer.text:
+        rows, template = greeting_rows(layer.text)
+        row = rows.get(agent.lower())
+        if row is None:
+            why = why or f'no {{{{{GREETING_ROW}}}}} row for {agent}'
+    if not template or row is None:
+        template, row = file_text(fallback_path), {}
+        why = why or 'its line is empty'
+    values = {**{k: v for k, v in row.items() if k not in ('agent', 'name', 'mood', 'block')}, **data}
+    # Fill what can be filled, then leave out each sentence a blank is still in.
+    filled = BLANK.sub(lambda m: values.get(m.group(1)) or m.group(0), ' '.join(template.split()))
+    kept = [sentence for sentence in SENTENCE_END.split(filled) if not BLANK.search(sentence)]
+    return ' '.join(kept).strip(), why
+
+
 def file_text(path):
     try:
         return Path(path).read_text().strip()
@@ -200,6 +276,10 @@ def file_text(path):
 
 def render(b, degraded_path=DEGRADED):
     out = [f'<rules agent="{b.agent}"' + (f' mood="{b.mood}"' if b.mood else '') + f' gathered="{b.gathered}">']
+    if b.greeting_line:
+        g = b.greeting
+        where = f' {attrs(g)}' if g and g.revision is not None and not g.problem else ''
+        out += [f'<greeting{where}>{b.greeting_line}</greeting>', '']
     if b.degraded:
         since = min(layer.since for layer in b.layers if layer.problem)
         out += [f'<rules-degraded since="{since}">', *[f'- {line}' for line in b.degraded], '',
@@ -218,11 +298,12 @@ def render(b, degraded_path=DEGRADED):
 
 
 def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITORS, recovery_path=RECOVERY,
-           degraded_path=DEGRADED):
+           degraded_path=DEGRADED, block=None, fallback_path=GREETING_FALLBACK):
     """The agent's rules for `mood` (or with no Mood: standing and identity alone, as a terminal gets)."""
     get = get or WikiTexts().get
     cache = Cache(Path(state_dir).expanduser() / CACHE_FILE if state_dir else None)
     stamp = now_iso(now)
+    greeting = read_layer('greeting', GREETING, get, cache, stamp, editors, optional=True)
     layers = [read_layer('standing', STANDING, get, cache, stamp, editors),
               read_layer('identity', identity_title(agent), get, cache, stamp, editors)]
     if mood:
@@ -232,6 +313,10 @@ def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITOR
     if any(layer.problem and not layer.text for layer in layers):
         recovery = file_text(recovery_path)
     b = Bundle(agent, mood, layers, stamp, recovery)
+    b.greeting = greeting
+    b.greeting_line, why = greeting_line(greeting, agent, mood, block, fallback_path)
+    if why and not greeting.problem:
+        greeting.problem = why  # in its stamps; not all-hands (the layers above say that)
     b.text = render(b, degraded_path)
     return b
 
