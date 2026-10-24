@@ -429,6 +429,9 @@
   /* Signed in with PickiPedia rather than an SSH key. */
   .turn .who .tier { font-size: 10.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; border-radius: 6px;
                      padding: 0 5px; margin-left: -2px; border: 1px solid var(--line); color: var(--muted); }
+  /* Signed in with an SSH key: smaller, and in magenta -- an outline, not a fill, so it doesn't shout. */
+  .turn .who .tier.ssh { font-size: 9px; font-weight: 600; text-transform: none; letter-spacing: .02em; padding: 0 4px; vertical-align: 1px;
+                         color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); opacity: .85; }
   #userMenu .wikiin { display: inline-block; margin: 6px 0 2px; font-weight: 600; color: var(--accent); }
   .turn .who .how, .work .who .how { font-size: 11px; color: var(--muted); background: var(--code); border-radius: 8px; padding: 0 7px; }
   .turn .body > :first-child { margin-top: 0; }
@@ -2508,7 +2511,10 @@
     const phone = t.mobile ? '<span class="from-phone" title="sent from a phone" aria-label="sent from a phone">📱</span>' : '';
     const page = userPage(t.sender);
     const named = page ? `<a href="${esc(page)}" target="_blank" rel="noopener" title="${esc(shown(t.sender))} on PickiPedia">${nameHtml(t.sender)}</a>` : nameHtml(t.sender);
-    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; @agents from here wake nobody">wiki</span>' : '';
+    // Who's signed in how: PickiPedia ("wiki"), or an SSH key -- from the web, or a terminal on hunter itself
+    // (Justin, 24 Oct: "ssh@hunter", small, in magenta).
+    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; @agents from here wake nobody">wiki</span>'
+      : t.is_human ? `<span class="tier ssh" title="${t.via === 'web' ? 'Signed in with an SSH key: may wake agents with their full tools' : 'Written in a terminal on hunter, over SSH'}">ssh@hunter</span>` : '';
     // ↩ for anyone signed in. A reply addresses a person, never an agent (only an @mention wakes one).
     const replyBtn = viewer && !t.deleted ? `<button type="button" class="replybtn" data-reply="${esc(t.id)}" title="Reply" aria-label="Reply">↩</button>` : '';
     // ✎ what you wrote here yourself; 🗑 what you wrote, or anything as an admin (services/retract.py).
