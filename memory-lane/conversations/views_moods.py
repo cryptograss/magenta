@@ -93,7 +93,8 @@ def page_version():
     from django.template.loader import get_template
     from .services import embeds, mood_view
     digest = hashlib.sha256()
-    for path in (get_template('conversations/moods.html').origin.name, mood_view.__file__, embeds.__file__):
+    for path in (get_template('conversations/moods.html').origin.name,
+                 get_template('conversations/name_art_css.html').origin.name, mood_view.__file__, embeds.__file__):
         with open(path, 'rb') as f:
             digest.update(f.read())
     return digest.hexdigest()[:12]
@@ -181,13 +182,16 @@ def api_mood_turns(request, slug):
                                                    'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at',
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'about', 'context',
-                                                   'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key')},
+                                                   'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
+                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
                                   if text.get('type') == 'release' and text.get('cid') else {}),
                                # A handoff's context, as a message is shown (services/handoff.py).
-                               **({'html': render_html(text.get('context') or '')} if text.get('type') == 'handoff' else {})})
+                               **({'html': render_html(text.get('context') or '')} if text.get('type') == 'handoff' else {}),
+                               # A task's prompt, filled in, as it was sent (services/tasks.py).
+                               **({'html': render_html(text.get('text') or '')} if text.get('type') == 'task' else {})})
         elif kind == 'compaction':
             compactions_out.append({'id': str(msg.id), 'session_id': str(msg.session_id or ''),
                                     'created_at': msg.created_at.isoformat(), 'html': render_html(text)})
@@ -278,6 +282,8 @@ def agents_in(mood):
     agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
     shown = ('listening', 'model', 'mention_effort', 'ultracode', 'catch_up_tokens', 'discretion', 'verbosity')
     rows = list(Setting.objects.filter(key__in=shown))
+    from .services import agent_settings
+    every = agent_settings._rows()
     # Which harness reported what it can run (the menu fetches the list itself, from api_agent_models).
     from .models import HarnessModels
     catalogs = dict(HarnessModels.objects.values_list('agent_id', 'harness'))
@@ -292,6 +298,10 @@ def agents_in(mood):
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
                      'context': context_in(mood, name),
                      'catalog': catalogs.get(name)}
+        # What's changed in its settings here since its last word: told at its next wake (agent_settings).
+        changes, by, note = agent_settings.changed_since(mood.slug, name, rows=every)
+        if changes:
+            out[name]['changed'] = {'changes': changes, 'by': by, 'note': note}
     return out
 
 
@@ -402,6 +412,18 @@ def _in_a_mood(message_id):
     from .views_auth import _uuid_or_none
     return (Message.objects.filter(id=_uuid_or_none(message_id), mood__isnull=False, is_sidechain=False)
             .select_related('mood').first())
+
+
+@require_GET
+def front_page(request):
+    """magenta's front page (services/front.py): anyone may read it, signed in or not."""
+    import random
+    from .services import front
+    slogans = front.slogans()
+    here = request.build_absolute_uri('/')
+    return render(request, 'conversations/front.html', {'front': front.state(), 'slogans': slogans,
+                                                        'slogan': random.choice(slogans),
+                                                        'here': here, 'qr': front.qr_svg(here)})
 
 
 @require_GET
@@ -529,7 +551,23 @@ def api_typing(request, slug):
     else:
         state.pop(device.entity_id, None)
     cache.set(_typing_key(slug), state, TYPING_FOR * 2)
+    from .services import presence
+    presence.note(device.entity_id, slug, now)  # typing, or stopped: shown here, three minutes from now
     return JsonResponse({'typing': sorted(state)})
+
+
+@require_POST
+def api_here(request, slug):
+    """This device's person opened a Mood: shown there, and nowhere else, for three minutes (services/presence)."""
+    from django.core.cache import cache
+    from .services import presence
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to be shown'}, status=401)
+    mood = Mood.by_slug_or_404(slug)
+    presence.note(device.entity_id, mood.slug)
+    cache.delete('moods-live')  # seen there at the next look, not three seconds on
+    return JsonResponse({'here': mood.slug})
 
 
 @require_GET
@@ -670,6 +708,8 @@ def api_recent(request):
     out, or they would be all there is. ?oldest=1: the first after `since`
     instead, oldest first -- for reading a stretch through from its start,
     a page at a time (moods.html, reading aloud from a message on).
+    ?progress=1: an agent's words mid-turn too, as they're said -- read aloud as they come, not all at
+    once when its turn ends (Justin, 22 Oct) -- never its thinking or its tool calls.
     """
     from datetime import timedelta
     from django.utils import timezone
@@ -688,7 +728,15 @@ def api_recent(request):
     titles = dict(Mood.objects.values_list('slug', 'title'))
     events = []
 
-    said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since)
+    progress = request.GET.get('progress') == '1'
+    # A listening page says so as it asks (services/listening.py): its person shows with 🎧 where they listen.
+    if request.GET.get('listening') in ('here', 'everywhere'):
+        device = mood_auth.device_for(request)
+        if device is not None:
+            from .services import listening
+            listening.note(device.entity_id, request.GET['listening'], request.GET.get('mood') or None)
+    said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since,
+                                   thought__isnull=True, tooluse__isnull=True, toolresult__isnull=True)
             .exclude(sender_id__in=MACHINERY_SENDERS).order_by(order)[:RECENT_SCAN])
     for msg in said:
         if msg.sender_id not in names:
@@ -696,7 +744,7 @@ def api_recent(request):
         text = prose(msg.content)
         if not text or is_wrapper(text) or is_summary(msg) or quiet_reason(text) is not None:
             continue
-        if msg.sender_id in agents and msg.stop_reason != 'end_turn':
+        if msg.sender_id in agents and msg.stop_reason != 'end_turn' and not progress:
             continue
         events.append({'kind': 'answered' if msg.sender_id in agents else 'said', 'at': msg.created_at.isoformat(),
                        'mood': msg.mood_slug, 'who': msg.sender_id, 'id': str(msg.id), 'text': text[:140]})
@@ -889,15 +937,18 @@ def api_mentions(request, name):
         limit = 50
 
     from django.db.models import Q
-    from .services import handoff
+    from .services import handoff, tasks, tiding_links
 
     names = known_names()
     is_agent = not ThinkingEntity.objects.get(name=name).is_biological_human
     messages = (
         Message.objects.filter(mood__isnull=False, is_sidechain=False)
         # A handoff into a Mood "for" an agent is the system's line, but it
-        # addresses that agent: it wakes it there (handoff_mention).
-        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file=handoff.SOURCE))
+        # addresses that agent: it wakes it there (handoff_mention). So does
+        # a task started for it (services/tasks.py).
+        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file__in=(handoff.SOURCE, tasks.SOURCE))
+                # So is a comment on Tidings that asks an agent by name: its line in the link's Mood wakes it.
+                | Q(source_file=tiding_links.COMMENT_SOURCE))
         .select_related('sender')
         .order_by('-created_at')
     )
@@ -908,6 +959,20 @@ def api_mentions(request, name):
     for msg in messages.iterator():
         if msg.source_file == handoff.SOURCE:
             turn = handoff_mention(msg, name, names) if is_agent else None
+            if turn:
+                found.append({'mood': msg.mood_slug, 'turn': turn})
+                if len(found) >= limit:
+                    break
+            continue
+        if msg.source_file == tasks.SOURCE:
+            turn = tasks.mention(msg, name) if is_agent else None
+            if turn:
+                found.append({'mood': msg.mood_slug, 'turn': turn})
+                if len(found) >= limit:
+                    break
+            continue
+        if msg.source_file == tiding_links.COMMENT_SOURCE:
+            turn = tiding_links.mention_of(msg, name) if is_agent else None
             if turn:
                 found.append({'mood': msg.mood_slug, 'turn': turn})
                 if len(found) >= limit:
@@ -1236,8 +1301,9 @@ def api_unfurl(request, slug, message_id):
 
 @require_GET
 def api_moods_live(request):
-    """Each Mood's people of the moment: who has spoken in the last 100 blocks
-    (about 20 minutes), who's typing, which agent is working; and when anything
+    """Each Mood's people of the moment: each person in the one Mood they last opened, typed or
+    spoke in, for three minutes (services/presence); each agent where it spoke in the last 100
+    blocks (about 20 minutes); who's typing, which agent is working; and when anything
     was last added there (a page brings the Moods it holds up to date by it,
     before they're opened). Cached for 3 s: every open page asks every few seconds."""
     from datetime import timedelta
@@ -1254,20 +1320,40 @@ def api_moods_live(request):
     spoke = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gte=since,
                                     sender_id__in=names)
              .values('mood__slug', 'sender_id').annotate(last=Max('created_at')).order_by('-last'))
+    # A person is shown in one Mood: where they last opened, typed or spoke, for three minutes after
+    # (services/presence; Justin, 23 Oct). An agent, wherever it's spoken lately, as before.
+    from .services import presence
+    people = set(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True))
+    spoke = list(spoke)
+    where = presence.places(said=[(r['sender_id'], r['mood__slug'], r['last'].timestamp()) for r in spoke
+                                  if r['sender_id'] in people])
     live = {}
     for row in spoke:
-        live.setdefault(row['mood__slug'], {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(row['sender_id'])
+        if row['sender_id'] not in people:
+            live.setdefault(row['mood__slug'], {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(row['sender_id'])
+    for name, slug in sorted(where.items()):
+        live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(name)
     for mood in Mood.objects.all():
         entry = live.setdefault(mood.slug, {'speakers': [], 'typing': [], 'busy': None})
         entry['typing'] = typing_in(mood.slug)
         last = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at) index
         entry['last'] = last.isoformat() if last else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way
-            working = [a['agent'] for a in activities(mood) if a.get('doing') != 'held']
+            doing = activities(mood)
+            working = [a['agent'] for a in doing if a.get('doing') != 'held']
+            # An agent waiting for another asked too (poller's _WAIT_REPLY): read aloud as thinking is.
+            waiting = [{'agent': a['agent'], 'for': a['why'][len('waiting for '):]} for a in doing
+                       if a.get('doing') == 'held' and str(a.get('why') or '').startswith('waiting for ')]
+            if waiting:
+                entry['waiting'] = waiting
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list
-    from .services import watchers
+    from .services import listening, watchers
+    for slug in list(live):  # who's listening by voice there, 🎧 beside their names (Justin, 22 Oct)
+        heard_by = listening.in_mood(slug)
+        if heard_by:
+            live[slug]['listening'] = heard_by
     for slug, n in watchers.by_mood().items():  # who's reading without signing in: a count beside the Mood
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['watching'] = n
     body = {'moods': live, 'blocks': AROUND_BLOCKS}

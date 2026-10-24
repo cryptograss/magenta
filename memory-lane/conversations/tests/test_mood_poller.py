@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import TestCase
 
-from poller.mood_poller import SILENT, ClaudeCodeWaker, Harnesses, MoodPoller, project_dir_name
+from poller.mood_poller import SILENT, WAIT_FOR, ClaudeCodeWaker, Harnesses, MoodPoller, project_dir_name
 
 T0 = datetime(2026, 9, 29, 18, 0, tzinfo=timezone.utc)
 
@@ -179,6 +179,17 @@ class MoodPollerTest(TestCase):
         poller = self.make(api, minutes_now=0)
         self.assertEqual(poller.poll_once(), ['m26'])
         self.assertIn('another agent handed this over to you here', self.waker.woken[0][1])
+
+    def test_a_task_wakes_at_once_with_the_tools_its_page_gives(self):
+        # Started by its schedule or a person's call (memory-lane services/tasks.py): its page says
+        # full tools or look-only, whoever called it.
+        for full, says in ((True, 'This turn has your full tools'), (False, 'This turn can look but not touch')):
+            started = dict(turn('a', 'task', 0, '@magent: your task Weekly, on its schedule:\n\nLook over the week.'),
+                           via='task', is_human=False, full_tools=full)
+            poller = self.make(FakeAPI([mention('m26', started)], sessions={'m26': ['s-local']}), minutes_now=0)
+            self.assertEqual(poller.poll_once(), ['m26'])
+            self.assertIn('one of your tasks was started here', self.waker.woken[0][1])
+            self.assertIn(says, self.waker.woken[0][1])
 
     def test_a_handoff_it_sent_itself_wakes_it_but_its_own_words_never_do(self):
         mine = dict(turn('a', 'magent', 0, '@magent: you handed this over from #m25: the docs'), via='handoff',
@@ -418,6 +429,20 @@ class StreamPosterTest(TestCase):
         poster.close()
         self.assertNotIn('full_tools', unsaid.posts[0][1])
 
+    def test_it_says_what_woke_the_turn(self):
+        # An answer to something asked on Tidings goes there too (tiding_links.answer_asked).
+        http = FakeHTTP(200)
+        poster = self.poster(http)
+        poster.answers = ['m-1', 'm-2']
+        poster.put({'type': 'assistant', 'uuid': 'a'})
+        poster.close()
+        self.assertEqual(http.posts[0][1]['answers'], ['m-1', 'm-2'])
+        unsaid = FakeHTTP(200)
+        poster = self.poster(unsaid)
+        poster.put({'type': 'assistant', 'uuid': 'a'})
+        poster.close()
+        self.assertNotIn('answers', unsaid.posts[0][1])
+
     def test_a_refusal_is_not_retried_and_a_failure_is(self):
         import requests
         refused = FakeHTTP(401)
@@ -455,6 +480,13 @@ class StreamingPollerTest(TestCase):
         events = [e for p in http.posts for e in p[1]['events']]
         self.assertEqual([e['type'] for e in events], ['assistant', 'result'])
         self.assertEqual({p[1]['session_id'] for p in http.posts}, {self.posters[0].session_id})
+
+    def test_the_stream_says_what_the_turn_answers(self):
+        http = FakeHTTP(200)
+        waker = FakeWaker()
+        self.make(waker, http).poll_once()
+        self.assertEqual({tuple(p[1].get('answers') or ()) for p in http.posts}, {('a',)})
+        self.assertNotIn('answers', waker.options)  # memory-lane's to know, not the harness's
 
     def test_a_mention_gets_a_considered_answer(self):
         waker = FakeWaker()
@@ -765,6 +797,35 @@ class MentionContextTest(TestCase):
         poller.settings = {'m26': settings or {}}
         poller.poll_once()
         return api, waker.woken[0][1]
+
+    def test_told_who_else_was_asked_and_whether_they_are_at_work(self):
+        # Justin, 24 Oct: two agents answering one question blind. Now each knows the other was asked.
+        from poller.mood_poller import also_asked
+        owed = [dict(turn('ask', 'justin', 100, '@magent @re @blu and @skyler, thoughts?'),
+                     mentions=['magent', 're', 'blu', 'skyler'])]
+        page = {'agents': {'magent': {}, 're': {}, 'blu': {}},
+                'activities': [{'agent': 're', 'doing': 'thinking'}, {'agent': 'blu', 'doing': 'held'}]}
+        lines = also_asked(owed, 'magent', page)
+        self.assertIn('Others mentioned, and likely woken, by what woke you: re, at work here now; blu, not at work here yet.', lines[1])
+        self.assertIn('read_mood', lines[1])
+        self.assertEqual(also_asked([dict(owed[0], mentions=['magent', 'skyler'])], 'magent', page), [])  # a person isn't
+        self.assertEqual(also_asked(owed, 'magent', None), [])  # nothing known: nothing said
+        # re writing to magent, naming itself ("when your @re landed"): re isn't asked, it's asking.
+        from_re = [dict(turn('r1', 're', 101, '@magent, when your @re landed...'), mentions=['magent', 're'])]
+        self.assertEqual(also_asked(from_re, 'magent', page), [])
+
+    def test_the_wake_says_who_else_was_asked_after_what_was_asked(self):
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                return {'turns': [], 'agents': {'magent': {}, 're': {}}, 'activities': [{'agent': 're', 'doing': 'thinking'}]}
+        owed = dict(turn('ask', 'justin', 100, '@magent @re which first?'), via='web', mentions=['magent', 're'])
+        api = API([mention('m26', owed)], sessions={'m26': ['s-local']})
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        waker = FakeWaker()
+        MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=101), consider=False).poll_once()
+        prompt = waker.woken[0][1]
+        self.assertLess(prompt.index('which first?'), prompt.index('Others mentioned, and likely woken, by what woke you: re, at work here now.'))
 
     def test_everything_since_its_last_word_and_long_posts_whole(self):
         said = [turn(f's{i}', 'skyler' if i % 2 else 'justin', 1 + i, f'point {i}: are you sure?') for i in range(40)]
@@ -1984,3 +2045,96 @@ class HarnessesTest(TestCase):
     def test_the_newest_session_elsewhere_is_still_not_ours(self):
         self.poller(['remote', 'p-2'], model='opus').poll_once()
         self.assertEqual((self.code.woken, self.pi.woken), ([], []))
+
+
+class WaitingTest(TestCase):
+    """Waiting for another agent asked the same thing (Justin and re, 24 Oct): a state, shown as a hold, that
+    always ends in an answer -- theirs came, the time ran out, or they were waiting too and this one was first."""
+
+    def make(self, replies, mentions=('magent', 're')):
+        clock = self.clock = [T0 + timedelta(minutes=1)]
+        self.page = {'turns': [], 'activities': [], 'agents': {'magent': {}, 're': {}}}
+        test = self
+
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                return test.page
+
+            def turns_after(inner, slug, message_id):
+                return []
+        ask = dict(turn('ask', 'justin', 0, '@magent @re which first?'), via='web', mentions=list(mentions))
+        self.api = API([mention('m26', ask)], sessions={'m26': ['s-local']})
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+
+        class Waker(FakeWaker):
+            def wake(inner, session_id, prompt, **options):
+                inner.reply = replies.pop(0) if replies else 'answered'
+                return FakeWaker.wake(inner, session_id, prompt, **options)
+        self.waker = Waker()
+        return MoodPoller(self.api, self.waker, state_path=state, now=lambda: clock[0], consider=False)
+
+    def test_it_waits_held_and_shown_then_answers_with_theirs_in_view(self):
+        poller = self.make(['<wait for="re"/>'])
+        self.assertEqual(poller.poll_once(), ['m26'])
+        first = self.waker.woken[0][1]
+        self.assertIn('reply with only <wait for="re"/>', first)   # offered, where another was asked
+        self.assertIn('m26', poller.state['waits'])
+        self.assertIn(('m26', 'waiting for re'), [(h[0], h[1]) for h in self.api.holds])
+        self.page['activities'] = [{'agent': 're', 'doing': 'thinking'}]
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), [])                   # re at work: still waiting
+        self.page['activities'] = []
+        self.page['turns'] = [turn('r1', 're', 2, 'Start with the settings block.')]
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), ['m26'])               # re has answered: its turn now
+        again = self.waker.woken[1][1]
+        self.assertIn('You chose to wait for re. re has answered', again)
+        self.assertNotIn('reply with only <wait', again)            # once a question
+        self.assertIn('re, has answered, below', again)              # not "not at work here yet"
+        self.assertNotIn('m26', poller.state['waits'])
+
+    def test_a_second_wait_on_the_same_question_is_not_taken(self):
+        poller = self.make(['<wait for="re"/>', '<wait for="re"/>'])
+        poller.poll_once()
+        self.clock[0] += WAIT_FOR + timedelta(seconds=1)            # re never answers
+        self.assertEqual(poller.poll_once(), ['m26'])
+        self.assertIn('5 minutes on, re has not answered', self.waker.woken[1][1])
+        self.assertNotIn('m26', poller.state['waits'])              # it waits no more
+
+    def test_waiting_on_each_other_the_first_named_answers(self):
+        poller = self.make(['<wait for="re"/>'])                    # magent named first
+        poller.poll_once()
+        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for magent'}]
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), ['m26'])
+        self.assertIn('re is waiting for you; you were named first', self.waker.woken[1][1])
+
+    def test_named_second_it_keeps_waiting_for_the_first(self):
+        poller = self.make(['<wait for="re"/>'], mentions=('re', 'magent'))
+        poller.poll_once()
+        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for magent'}]
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), [])                    # re goes first
+
+    def test_only_for_an_agent_asked_here(self):
+        poller = self.make(['<wait for="blu"/>'])
+        poller.poll_once()
+        self.assertNotIn('m26', poller.state['waits'])
+
+    def test_a_wait_is_quiet_never_a_turn_or_a_mention(self):
+        from conversations.services.mood_view import is_wrapper, quiet_reason
+        self.assertEqual(quiet_reason('<wait for="re"/>'), {'reason': 'waiting for re', 'by': ''})
+        self.assertTrue(is_wrapper('<wait for="re"/>'))             # so the mentions endpoint passes it by
+
+    def test_something_new_for_it_ends_the_wait(self):
+        poller = self.make(['<wait for="re"/>'])
+        poller.poll_once()
+        self.api._mentions.append(mention('m26', dict(turn('more', 'justin', 2, '@magent and the other thing?'),
+                                                     via='web', mentions=['magent'])))
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), ['m26'])
+        prompt = self.waker.woken[1][1]
+        self.assertIn('more was said to you meanwhile', prompt)
+        self.assertIn('which first?', prompt)                       # the question it waited on, still answered
+        self.assertIn('and the other thing?', prompt)

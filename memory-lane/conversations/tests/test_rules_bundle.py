@@ -174,3 +174,84 @@ class RulesBundleTest(TestCase):
         w.down = True
         b = bundle('magent', 'magent-self', get=w.get, state_dir=None, now=T1)
         self.assertIn('<recovery', b.text)
+
+
+GREETING_PAGE = """<!-- for people: the line every agent reads first -->
+You are {name}, the {colour} agent of cryptograss. {greeting} You are in #{mood}. It's block {block}.
+"""
+
+
+def agent_page(colour, greeting, **more):
+    extra = ''.join(f'|{k}={v}' for k, v in more.items())
+    return f'{{{{Agent|colour={colour}|greeting={greeting}{extra}}}}}\nSome words for people.'
+
+
+class GreetingTest(TestCase):
+    """The first line: the name from --agent, colour and greeting from the agent's own page, nothing guessed."""
+
+    def setUp(self):
+        self.state = tempfile.mkdtemp()
+
+    def pages(self, **extra):
+        return {'Cryptograss:Agents/Greeting': [(200, 'JMyles', GREETING_PAGE)],
+                'Cryptograss:Agents/Magent': [(210, 'JMyles', agent_page('magenta', 'Welcome back.'))],
+                identity_title('blu'): [(104, 'JMyles', 'You are for the connectome.')], **extra}
+
+    def gather(self, pages, agent='magent', mood='magent-self', block=None):
+        return bundle(agent, mood, get=wiki(**pages).get, state_dir=self.state, now=T0, block=block)
+
+    def test_the_line_comes_first_with_its_blanks_filled(self):
+        b = self.gather(self.pages(), block=24_004_815)
+        first = b.text.split('\n')[1]
+        self.assertEqual(first, '<greeting page="Cryptograss:Agents/Greeting" revision="200" by="JMyles">You are magent, '
+                                'the magenta agent of cryptograss. Welcome back. You are in #magent-self. '
+                                "It's block 24,004,815.</greeting>")
+        self.assertLess(b.text.index('<greeting'), b.text.index('<standing'))
+        self.assertIsNone(b.stamps()['greeting']['problem'])
+        self.assertEqual(b.stamps()['greeting']['agent_page']['revision'], 210)
+        self.assertNotIn('for people', b.text)
+
+    def test_a_blank_that_cant_be_filled_drops_its_sentence_never_a_guess(self):
+        b = self.gather(self.pages(), mood=None)
+        self.assertIn('Welcome back.</greeting>', b.text)  # no Mood, no block: those sentences go
+        self.assertNotIn('block', b.text.split('</greeting>')[0])
+
+    def test_the_agents_page_cannot_rename_it(self):
+        pages = self.pages(**{'Cryptograss:Agents/Blu': [(220, 'JMyles', agent_page('blue', 'Hi.', name='magent'))]})
+        self.assertIn('You are blu, the blue agent of cryptograss. Hi.', self.gather(pages, agent='blu').text)
+
+    def test_an_untrusted_repaint_waits(self):
+        pages = self.pages(**{'Cryptograss:Agents/Magent': [(230, 'Magent', agent_page('gold', 'I chose this.')),
+                                                             (210, 'JMyles', agent_page('magenta', 'Welcome back.'))]})
+        b = self.gather(pages)
+        self.assertIn('the magenta agent', b.text)
+        self.assertNotIn('gold', b.text)
+
+    def test_without_a_line_or_the_agents_page_the_name_alone_and_not_all_hands(self):
+        cases = (({'Cryptograss:Agents/Greeting': []}, 'no trusted revision of the line yet'),
+                 ({'Cryptograss:Agents/Greeting': [(201, 'Magent', GREETING_PAGE)]}, 'no trusted revision of the line yet'),
+                 ({}, 'no trusted revision of Cryptograss:Agents/Blu yet'),
+                 ({'Cryptograss:Agents/Blu': [(220, 'JMyles', 'No template here.')]}, 'no {{Agent}} on Cryptograss:Agents/Blu'))
+        for extra, why in cases:
+            with self.subTest(why=why):
+                pages = self.pages()
+                pages.update(extra)
+                b = self.gather(pages, agent='blu')
+                self.assertIn('<greeting>You are blu.</greeting>', b.text)
+                self.assertIn(why, b.stamps()['greeting']['problem'])
+                self.assertNotIn('<rules-degraded', b.text)
+                self.assertNotIn('<recovery', b.text)
+
+    def test_its_hex_and_picture_each_a_sentence_left_out_when_unset(self):
+        line = 'You are {name}, the {colour} agent of cryptograss. Your colour is {hex}. Your picture is {image}.'
+        pages = self.pages(**{'Cryptograss:Agents/Greeting': [(200, 'JMyles', line)],
+                              'Cryptograss:Agents/Magent': [(210, 'JMyles', agent_page('magenta', 'Hi.', hex='#ff67fd'))]})
+        self.assertIn('the magenta agent of cryptograss. Your colour is #ff67fd.</greeting>', self.gather(pages).text)
+        pages['Cryptograss:Agents/Magent'] = [(211, 'JMyles', agent_page('magenta', 'Hi.', hex='#ff67fd',
+                                                                          image='File:Magent.png'))]
+        self.assertIn('Your colour is #ff67fd. Your picture is File:Magent.png.</greeting>', self.gather(pages).text)
+
+    def test_an_agent_greeting_template_is_not_the_agent_template(self):
+        from poller.rules_bundle import template_fields
+        self.assertEqual(template_fields('{{Agent greeting|agent=re|colour=red}}'), {})
+        self.assertEqual(template_fields('{{Agent\n|colour=red}}'), {'colour': 'red'})

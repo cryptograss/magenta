@@ -350,6 +350,8 @@ def api_tiding(request, tiding_id):
         if body.get('withdraw'):
             tiding_links.withdraw(tiding, device)
             return JsonResponse({'id': tiding_id, 'withdrawn': True})
+        if isinstance(body.get('pin'), bool):
+            return JsonResponse({'id': str(tiding.id), 'pinned': tiding_links.pin(tiding, device, body['pin'])})
         if body.get('mute') is not None:
             return JsonResponse({'id': str(tiding.id), 'muted': tiding_links.mute(tiding, device, body['mute']).muted_in_mood})
         tiding = tiding_links.retitle(tiding, device, body.get('title'))
@@ -446,6 +448,44 @@ def api_tiding_comment_vote(request, tiding_id, message_id):
     except tiding_links.Refused as e:
         return JsonResponse({'error': str(e)}, status=e.status)
     return JsonResponse(state)
+
+
+@require_POST
+def api_tiding_said(request, tiding_id, kind, node_id):
+    """{"text"} to edit, {"delete": true} to delete, something said about a link: a comment said on Tidings
+    (kind 'comment') or a reply in the Mood showing there (kind 'mood'), by the Mood's own rules
+    (services/tiding_links.change_said)."""
+    from .models import Tiding
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    tiding = Tiding.objects.select_related('message').filter(id=_uuid_or_none(tiding_id)).first()
+    if tiding is None:
+        return JsonResponse({'error': 'no such link on Tidings'}, status=404)
+    if not _under_limit(f'retract:{device.pk}', 20):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"text": ...} or {"delete": true}'}, status=400)
+    delete, text = body.get('delete') is True, body.get('text')
+    if not delete:
+        if not isinstance(text, str):
+            return JsonResponse({'error': 'expected {"text": ...} or {"delete": true}'}, status=400)
+        if len(text) > MAX_CHARS:
+            return JsonResponse({'error': f'longer than {MAX_CHARS} characters'}, status=400)
+        refused = _say_checks(text.strip(), device)  # as when it was said: a wiki sign-in doesn't address agents
+        if refused:
+            return refused
+    try:
+        done = tiding_links.change_said(tiding, device, kind, _uuid_or_none(node_id), text=text, delete=delete)
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse(done)
 
 
 @require_POST
@@ -875,6 +915,47 @@ def api_interrupt(request, slug):
 
 
 @require_POST
+def api_task(request, name, task):
+    """Start one of an agent's tasks, as the device's person (signed in with their key):
+    POST {"params": {"names": [...]}, "mood": "connectome"} -- mood only to run it somewhere
+    other than its page says.
+
+    The task is its PickiPedia page, Cryptograss:Agents/<Name>/Tasks/<Task>, at its newest
+    trusted revision (services/tasks.py). Started, it is a line in the Mood that wakes the
+    agent there; refused there (over its cap, a blank unfilled), a line that says why. 201
+    with the line either way; 400 if it can't be put anywhere.
+    """
+    from .services import tasks
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device, refused = mood_auth.key_device(request, "start an agent's task")
+    if refused:
+        return refused
+    agent = name.lower()
+    if not ThinkingEntity.objects.filter(name=agent, is_biological_human=False).exists():
+        return JsonResponse({'error': f'no agent named {agent}'}, status=400)
+    try:
+        body = json.loads(request.body or b'{}')
+        params = body.get('params') or {}
+        mood = str(body.get('mood') or '').lstrip('#').strip().lower() or None
+        if not isinstance(params, dict):
+            raise ValueError
+    except (ValueError, AttributeError):
+        return JsonResponse({'error': 'expected {"params": {...}, "mood": "<slug>"}'}, status=400)
+    try:
+        line = tasks.start(tasks.read(agent, task), device.entity_id, params=params, mood=mood)
+    except tasks.Refused as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except OSError as e:
+        return JsonResponse({'error': f"couldn't read the task from PickiPedia: {e}"}, status=502)
+    c = line.content
+    return JsonResponse({'state': c['state'], 'reason': c.get('reason'), 'mood': line.mood_slug,
+                         'page': c['page'], 'revision': c['revision'],
+                         'url': request.build_absolute_uri(f'/moods/{line.mood_slug}/#m-{line.id}')}, status=201)
+
+
+@require_POST
 def api_new_mood(request):
     """Start a Mood, as the device's person: POST {"title", "description"}.
 
@@ -1091,7 +1172,8 @@ def api_voice_sample(request, voice_id):
             listed = {v['voice_id']: v.get('preview_url') for v in voice.voices()}
         except voice.VoiceError:
             listed = {}
-        url = listed.get(voice_id)
+        # Ours, or one from the library a search here has just shown (voice.search_voices kept its sample's address).
+        url = listed.get(voice_id) or cache.get(f'voice:library-sample:{voice_id[:40]}')
         if not url:
             return JsonResponse({'error': 'no sample of that voice'}, status=404)
         import requests
@@ -1133,7 +1215,8 @@ def api_voices(request):
                          **({'note': note} if note else {})})
 
 
-HEARD_OUTCOMES = ('ended', 'failed', 'blocked', 'skipped')
+# paused: stopped by something else (another app's sound) mid-clip; resumed: going on again after it.
+HEARD_OUTCOMES = ('ended', 'failed', 'blocked', 'skipped', 'paused', 'resumed')
 
 
 @require_POST
@@ -1157,7 +1240,7 @@ def api_voice_heard(request):
         return JsonResponse({'error': f'a Mood, and an outcome of {", ".join(HEARD_OUTCOMES)}'}, status=400)
     voice.record(mood, 'heard', device.entity_id, message=str(body.get('message') or '')[:40], clip=clip,
                  outcome=outcome, error=redact(str(body.get('error') or ''))[0][:200], hidden=bool(body.get('hidden')),
-                 device=device.label[:60])
+                 device=device.label[:60], **_heard_how(body))
     return JsonResponse({'kept': True}, status=201)
 
 
@@ -1218,13 +1301,26 @@ def api_speaker_voice(request):
     if name != device.entity_id and (device.tier != 'key' or not device.entity.is_biological_human):
         return JsonResponse({'error': "only your own voice, from a PickiPedia sign-in; others' take your SSH key"},
                             status=403)
+    owner = str(body.get('owner') or '').strip()
     if chosen:
         try:
             listed = voice.voices()
         except voice.VoiceError:
             listed = []
         known = {v['voice_id'] for v in listed} | {v['name'].lower() for v in listed}
-        if chosen.lower() not in known and not voice._VOICE_ID.match(chosen):
+        if owner and chosen not in known:
+            # From ElevenLabs' library: added to the account first, the only way it will speak in it. That
+            # changes the account (whose plan holds so many voices), so it takes an SSH key.
+            if device.tier != 'key' or not device.entity.is_biological_human:
+                return JsonResponse({'error': "a voice from ElevenLabs' library is added to the account: that takes your SSH key"},
+                                    status=403)
+            if not re.fullmatch(r'[A-Za-z0-9]{8,80}', owner) or not voice._VOICE_ID.match(chosen):
+                return JsonResponse({'error': 'expected a library voice: its id and its owner'}, status=400)
+            try:
+                chosen = voice.add_library_voice(owner, chosen, str(body.get('voice_name') or ''))
+            except voice.VoiceError as e:
+                return JsonResponse({'error': str(e)}, status=e.status)
+        elif chosen.lower() not in known and not voice._VOICE_ID.match(chosen):
             return JsonResponse({'error': f'no voice called {chosen}'}, status=400)
     try:
         if entity is None:  # the narrator: everyone's, so an SSH key's to change
@@ -1234,6 +1330,17 @@ def api_speaker_voice(request):
     except knobs.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse(knobs.describe(row), status=201)
+
+
+@require_GET
+def api_voice_search(request):
+    """?q=: voices to choose from as it's typed -- ours, then ElevenLabs' library (voice.search_voices)."""
+    from .services import voice
+    if mood_auth.device_for(request) is None:
+        return JsonResponse({'error': 'sign in to choose voices'}, status=401)
+    if not voice.enabled():
+        return JsonResponse({'voices': []})
+    return JsonResponse({'voices': voice.search_voices(str(request.GET.get('q') or '')[:80])})
 
 
 @require_POST
@@ -1269,10 +1376,100 @@ def api_narrate(request):
         return JsonResponse({'error': 'no such Mood, or no such agent'}, status=404)
     if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
+    still = None
+    if body.get('still'):
+        # Still at it: for how long, and how many steps (tool calls) so far. Not words: an agent's thinking
+        # may be kept hidden, and a response's token count is on each of its lines.
+        import time
+        from .models import ToolUse
+        from .services.mood_view import activity
+        doing = activity(mood, only=agent.name)
+        if doing is None or doing['doing'] in ('waking', 'held'):
+            return JsonResponse({'error': f'{agent.name} is not at work there now'}, status=409)
+        steps = ToolUse.objects.filter(mood=mood, sender=agent, is_sidechain=False,
+                                       timestamp__gte=int(doing['since'] * 1000)).count()
+        still = (max(1, int((time.time() - doing['since']) // 60)), steps)
+    waiting = str(body.get('waiting') or '')
+    if waiting and not re.fullmatch(r'[\w.-]+(?:,\s*[\w.-]+)*', waiting):
+        return JsonResponse({'error': 'waiting: agents\' names'}, status=400)
     try:
-        return JsonResponse({'url': voice.narrate_thinking(mood, agent.name, device.entity_id, where=bool(body.get('where')))})
+        return JsonResponse({'url': voice.narrate_thinking(mood, agent.name, device.entity_id,
+                                                           where=bool(body.get('where')), still=still,
+                                                           waiting=waiting)})
     except voice.VoiceError as e:
         return JsonResponse({'error': str(e)}, status=e.status)
+
+
+GO_MAX_BYTES = 600_000  # a few seconds said: "go to jams"
+
+
+@require_POST
+def api_voice_go(request):
+    """The audio of someone saying where they want to be ("go to jams"), ?mood= where they are: heard, matched
+    against the Moods' names (services/mood_switch.py), and the narrator saying where they'll be, or that it
+    didn't catch it. {"slug" (or null), "heard", "url"}. Nothing is posted (Justin, 22 Oct)."""
+    from .services import mood_switch, settings as knobs, voice
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to go by voice'}, status=401)
+    if not voice.enabled():
+        return JsonResponse({'error': 'no voice here'}, status=503)
+    if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    data = request.body
+    if not data or len(data) > GO_MAX_BYTES:
+        return JsonResponse({'error': 'a few seconds of audio, saying where to go'}, status=400)
+    mime = (request.content_type or 'audio/webm').split(';')[0].strip()
+    here = Mood.by_slug(request.GET.get('mood') or '') or Mood.by_slug('general')
+    archived = knobs.archived_slugs()
+    try:
+        heard = voice.hear(data, mime, here, device.entity_id, budget_minutes=1)['text']
+        slug = mood_switch.match(heard, [m for m in Mood.objects.all() if m.slug not in archived])
+        there = Mood.by_slug(slug) if slug else here
+        from .services import listening
+        others = [who['name'] for who in listening.in_mood(there.slug) if who['name'] != device.entity_id]
+        url = voice.narrate_switch(there, device.entity_id, found=bool(slug), already=slug == here.slug,
+                                   listeners=others)
+    except voice.VoiceError as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'slug': slug, 'heard': heard, 'url': url})
+
+
+@require_POST
+def api_voice_listening(request):
+    """{"mode": here|everywhere|off, "mood"?}: this device's person listening by voice, or not now -- said at
+    once when it changes; while it lasts, the reader's asking says it (views_moods.api_recent)."""
+    from .services import listening
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'error': 'expected {"mode": ..., "mood"?: ...}'}, status=400)
+    mode = body.get('mode')
+    if mode not in ('here', 'everywhere', 'off'):
+        return JsonResponse({'error': 'mode: here, everywhere or off'}, status=400)
+    listening.note(device.entity_id, mode, str(body.get('mood') or '') or None)
+    from django.core.cache import cache
+    cache.delete('moods-live')  # the 🎧 shows (or goes) at the next look, not in a few seconds
+    return JsonResponse({'listening': listening.everyone()})
+
+
+def _heard_how(body):
+    """How fast a clip was played and the pace it was taken to have, if the page said: numbers, or nothing."""
+    out = {}
+    for key, low, high in (('rate', 0.25, 4.0), ('pace', 0, 600)):
+        try:
+            value = float(body.get(key))
+        except (TypeError, ValueError):
+            continue
+        if low <= value <= high:
+            out[key] = round(value, 2)
+    return out
 
 
 def _uuid_or_none(value):
@@ -1306,6 +1503,10 @@ def wiki_signin(request):
     response = HttpResponseRedirect(wiki_auth.authorize_url(_wiki_return(request), state))
     response.set_cookie(wiki_auth.STATE_COOKIE, state, max_age=wiki_auth.STATE_AGE, httponly=True,
                         secure=not settings.DEBUG, samesite='Lax')
+    back = _back_to(request.GET.get('next'))
+    if back:  # back where they were -- a link's discussion, say -- once signed in
+        response.set_cookie(WIKI_NEXT_COOKIE, back, max_age=wiki_auth.STATE_AGE, httponly=True,
+                            secure=not settings.DEBUG, samesite='Lax')
     return response
 
 
@@ -1335,11 +1536,25 @@ def wiki_signin_return(request):
     device, token = mood_auth.enrol_device(entity, f"PickiPedia sign-in ({profile['username']}, {where})", tier='wiki')
     from .services import access
     access.signed_in(device)  # said in #general: who, and with what
-    response = HttpResponseRedirect('/moods/')
+    response = HttpResponseRedirect(_back_to(request.COOKIES.get(WIKI_NEXT_COOKIE)) or '/moods/')
     response.set_cookie(mood_auth.COOKIE, token, max_age=mood_auth.COOKIE_AGE,
                         httponly=True, secure=not settings.DEBUG, samesite='Lax')
     response.delete_cookie(wiki_auth.STATE_COOKIE)
+    response.delete_cookie(WIKI_NEXT_COOKIE)
     return response
+
+
+WIKI_NEXT_COOKIE = 'mood_wiki_next'
+
+
+def _back_to(path):
+    """Where to go once signed in, if it's somewhere in magenta: a path of ours, never another site."""
+    path = (path or '').strip()
+    if not path.startswith('/') or path.startswith('//') or '\\' in path or len(path) > 300:
+        return ''
+    if any(ord(ch) < 32 for ch in path):
+        return ''
+    return path
 
 
 def _wiki_return(request):

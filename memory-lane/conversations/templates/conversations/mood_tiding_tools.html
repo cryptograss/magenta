@@ -1,8 +1,8 @@
 <!-- What Tidings' two pages (the links, and one link's discussion) share: upvotes, retitling and taking a
      link off, and its pictures opened in the one page's lightbox. -->
 <style>
-  .retitle, .withdraw { all: unset; cursor: pointer; color: var(--muted); font-size: 12px; margin-left: 6px; }
-  .retitle:hover, .withdraw:hover { color: var(--accent); }
+  .retitle, .withdraw, .pinit { all: unset; cursor: pointer; color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .retitle:hover, .withdraw:hover, .pinit:hover { color: var(--accent); }
   input.titling { font: inherit; font-weight: 600; width: min(60ch, 100%); padding: 2px 6px; border: 1px solid var(--accent);
                   border-radius: 6px; background: var(--panel); color: var(--ink); }
   .tidingerr { color: var(--err, #c0392b); font-size: 12px; margin-left: 8px; }
@@ -67,6 +67,15 @@
       } catch (err) { tidingSays(input, err.message); }
     });
     input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== input) done(); }, 150));
+  });
+  // 📌: kept at the top of Tidings, or let go -- anyone signed in with an SSH key (Justin, 22 Oct).
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('button.pinit');
+    if (!b) return;
+    try {
+      await tidingPost(`/api/tidings/${b.dataset.tiding}/`, { pin: b.dataset.on === '1' });
+      location.reload();
+    } catch (err) { tidingSays(b, err.message); }
   });
   // Taking a link off Tidings: the message and what's said about it stay in their Mood.
   document.addEventListener('click', async e => {

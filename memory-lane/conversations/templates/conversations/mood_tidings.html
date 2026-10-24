@@ -62,6 +62,11 @@
   .pic .meta .people { margin-bottom: 2px; overflow-wrap: anywhere; }
   .pic a.thumb { cursor: zoom-in; }
   .none { color: var(--muted); font-size: 13px; }
+  /* Top: pinned, then ranked by votes, talk and age (tiding_links.rank); new: newest first (Justin, 22 Oct). */
+  .order { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  .order b { color: var(--ink); }
+  .links li.pinned { background: linear-gradient(90deg, var(--accent-soft), transparent 60%); }
+  .links .pin { margin-left: 6px; font-size: 12px; }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -92,19 +97,20 @@
   </nav>
 </header>
 <main>
+  <nav class="order" aria-label="Order">{% if order == 'new' %}<a href="/moods/tidings/?embed=1">top</a> · <b>new</b>{% else %}<b>top</b> · <a href="/moods/tidings/?embed=1&amp;order=new">new</a>{% endif %}</nav>
   {% if tidings.links %}
   <ol class="links">
   {% for link in tidings.links %}
-    <li id="t-{{ link.id }}">
+    <li id="t-{{ link.id }}"{% if link.pinned %} class="pinned"{% endif %}>
       <span class="rank"><span class="num">{{ forloop.counter }}</span>
         <button type="button" class="vote{% if link.mine %} mine{% endif %}" data-vote="/api/tidings/{{ link.id }}/vote/"
                 title="{% if link.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
         <span class="score">{{ link.score }}</span></span>
       <span class="body">
-        <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a><span class="host">({{ link.host }})</span>{% if link.may_retitle %}<button type="button" class="retitle" data-tiding="{{ link.id }}" title="Give it another title">✎</button>{% endif %}
+        <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a><span class="host">({{ link.host }})</span>{% if link.pinned %}<span class="pin" title="Pinned to the top">📌</span>{% endif %}{% if link.may_retitle %}<button type="button" class="retitle" data-tiding="{{ link.id }}" title="Give it another title">✎</button>{% endif %}
         <div class="meta">{% if link.said_by == link.by %}posted and promoted by {{ link.by|default:"someone" }}{% else %}posted by {{ link.said_by|default:"someone" }} · promoted by {{ link.by|default:"someone" }}{% endif %}
           · <a href="/moods/tidings/{{ link.id }}/?embed=1">{{ link.comments }} comment{{ link.comments|pluralize }}</a>
-          · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}" title="{{ link.said_by }}: “{{ link.snippet }}”">{{ link.at|date:"M j, g:i A" }} in #{{ link.mood }}</a>{% if link.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ link.id }}" title="Take it off Tidings">take it off</button>{% endif %}</div>
+          · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}" title="{{ link.said_by }}: “{{ link.snippet }}”">{{ link.at|date:"M j, g:i A" }} in #{{ link.mood }}</a>{% if link.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ link.id }}" title="Take it off Tidings">take it off</button>{% endif %}{% if link.may_pin %}<button type="button" class="pinit" data-tiding="{{ link.id }}" data-on="{{ link.pinned|yesno:'0,1' }}" title="{% if link.pinned %}Let it go from the top{% else %}Keep it at the top of Tidings{% endif %}">{% if link.pinned %}unpin{% else %}pin{% endif %}</button>{% endif %}</div>
       </span>
     </li>
   {% endfor %}

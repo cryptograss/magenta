@@ -20,3 +20,11 @@ def handoffs_carried(sender, instance, created, **kwargs):
         handoff.from_message(instance)
     except Exception:  # noqa: BLE001
         logger.exception('a handoff in %s could not be made', instance.id)
+    try:
+        # An agent's ```settings block, at a person's ask; and, at an agent's first word on settings other
+        # than its last turn's, a line above it saying so (services/agent_settings.py).
+        from .services import agent_settings
+        agent_settings.from_message(instance)
+        agent_settings.noticed(instance)
+    except Exception:  # noqa: BLE001
+        logger.exception('settings in %s could not be read', instance.id)

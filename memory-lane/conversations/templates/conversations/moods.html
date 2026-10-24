@@ -177,16 +177,6 @@
   #serverPop .note { color: var(--muted); font-size: 12px; }
   .deploynote { font-style: italic; }  /* a deploy's note that isn't its log: why there isn't one */
   /* Who is read aloud in which voice (services/voice.py), styled as the devices box. */
-  #voicesBox { position: fixed; z-index: 30; top: 44px; right: 12px; width: min(460px, 94vw); max-height: 75vh; overflow-y: auto;
-               background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.18);
-               padding: 10px 14px; font-size: 13px; }
-  #voicesBox[hidden] { display: none; }
-  #voicesBox .head { display: flex; justify-content: space-between; margin-bottom: 6px; }
-  #voicesBox .meta, #voicesBox .tier { color: var(--muted); font-size: 12px; }
-  #voicesBox .spk { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--line); padding: 6px 0; }
-  #voicesBox .spk .nm { flex: 1; }
-  #voicesBox select { font: inherit; font-size: 12px; max-width: 55%; }
-  #voicesBox button { font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel);
                       color: var(--ink); cursor: pointer; }
   /* "→ PickiPedia" under a picture sent here, and its form (services/wiki_upload.py). */
   .turn .body .topp { display: block; margin: 2px 0 6px; font: inherit; font-size: 12px; color: var(--muted); background: none;
@@ -205,6 +195,34 @@
   #readBar { display: flex; align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; padding: 6px 16px; font-size: 13px;
              color: var(--muted); }
   #readBar[hidden] { display: none; }
+  /* Voice mode (Justin, 22 Oct: driving, biking, hiking -- "only the things that are voice relevant, and
+     quite a bit bigger"): the thread, the box and the small bar make way for what's being read and what's
+     next, as big bars, and big buttons found by thumb. Where you are stays, one small line (re). */
+  body.voice-mode #main, body.voice-mode #composer, body.voice-mode #readBar, body.voice-mode #readQueue,
+  body.voice-mode .layout > nav { display: none !important; }
+  #voiceMode { position: fixed; inset: 41px 0 0 0; z-index: 30; background: var(--bg); display: none; flex-direction: column;
+               gap: 10px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); overflow-y: auto; }
+  body.voice-mode #voiceMode { display: flex; }
+  #voiceMode .where { font-size: 14px; color: var(--muted); text-align: center; }
+  #voiceMode .where b { color: var(--ink); }
+  #voiceMode .bars { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #voiceMode .bar { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 14px; border-radius: 14px;
+                    background: var(--panel); border: 1px solid var(--line); font-size: 18px; line-height: 1.3; }
+  #voiceMode .bar .when { flex: none; width: 3.4em; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  #voiceMode .bar .say { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #voiceMode .bar.now { border-color: var(--accent); background: var(--accent-soft, var(--panel)); font-size: 20px; }
+  #voiceMode .bar.work { border-style: dashed; }
+  #voiceMode .bar .drop { flex: none; font: inherit; font-size: 20px; border: 0; background: none; color: var(--muted); padding: 8px 12px; cursor: pointer; }
+  #voiceMode .none { color: var(--muted); font-size: 18px; text-align: center; padding: 24px 0; }
+  #voiceMode .pads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  #voiceMode .pads button { font: inherit; font-size: 26px; min-height: 76px; border-radius: 16px; border: 1px solid var(--line);
+                            background: var(--panel); color: var(--ink); cursor: pointer; }
+  #voiceMode .pads button small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  #voiceMode .pads button.hot { background: var(--accent); color: #fff; border-color: transparent; }
+  #voiceMode .pads button.hot small { color: #fff; }
+  #voiceMode .pads button:disabled { opacity: .4; }
+  #voiceMode .leave { font: inherit; font-size: 14px; border: 0; background: none; color: var(--muted); padding: 10px; cursor: pointer; }
+  #readBar #voiceModeBtn { font-size: 14px; }
   #readBar .what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #readBar button { font: inherit; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink);
                     padding: 2px 9px; cursor: pointer; }
@@ -220,6 +238,9 @@
   #readQueue .q .drop:hover { color: var(--err, #c0392b); }
   #readQueue .more { font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px 0 0 3.7em; }
   #userMenu .readall select { font: inherit; }
+  #userMenu button#voiceModeOpen { font: inherit; text-align: left; border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+                                   color: var(--ink); padding: 4px 10px; cursor: pointer; }
+  #userMenu button#voiceModeOpen[hidden] { display: none; }
   /* What was taken back, opened with the recovery key in this tab (services/sealing.py). */
   #sealsBox { position: fixed; z-index: 30; top: 44px; right: 12px; width: min(560px, 94vw); max-height: 80vh; overflow-y: auto;
               background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
@@ -317,45 +338,11 @@
   nav a.mood .title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
   nav a.mood .meta { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
   nav a.mood .people-line:empty { display: none; }
+  nav a.mood .people-line .hears { font-size: .85em; margin-left: 1px; }  /* listening by voice (services/listening.py) */
   header .block { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
-  /* A name written its person's way: monospace, its spaces kept, as a BBS would have it. */
-  .art { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; white-space: pre; font-size: .95em; }
-  /* Each character in one of ANSI's sixteen, CGA's order, as a BBS had them (settings.name_colours). */
-  .art .a0 { color: #000000; }
-  .art .a1 { color: #0000aa; }
-  .art .a2 { color: #00aa00; }
-  .art .a3 { color: #00aaaa; }
-  .art .a4 { color: #aa0000; }
-  .art .a5 { color: #aa00aa; }
-  .art .a6 { color: #aa5500; }
-  .art .a7 { color: #aaaaaa; }
-  .art .a8 { color: #555555; }
-  .art .a9 { color: #5555ff; }
-  .art .aa { color: #55ff55; }
-  .art .ab { color: #55ffff; }
-  .art .ac { color: #ff5555; }
-  .art .ad { color: #ff55ff; }
-  .art .ae { color: #ffff55; }
-  .art .af { color: #ffffff; }
-  /* And behind each, as a BBS's cell had its background (iCE colour: all sixteen). */
-  .art .b0 { background: #000000; }
-  .art .b1 { background: #0000aa; }
-  .art .b2 { background: #00aa00; }
-  .art .b3 { background: #00aaaa; }
-  .art .b4 { background: #aa0000; }
-  .art .b5 { background: #aa00aa; }
-  .art .b6 { background: #aa5500; }
-  .art .b7 { background: #aaaaaa; }
-  .art .b8 { background: #555555; }
-  .art .b9 { background: #5555ff; }
-  .art .ba { background: #55ff55; }
-  .art .bb { background: #55ffff; }
-  .art .bc { background: #ff5555; }
-  .art .bd { background: #ff55ff; }
-  .art .be { background: #ffff55; }
-  .art .bf { background: #ffffff; }
+{% include "conversations/name_art_css.html" %}
   #lookBox .paint { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0 4px; user-select: none; touch-action: none; }
   #lookBox .paint > span { min-width: 1.35em; height: 1.7em; display: inline-flex; align-items: center; justify-content: center;
                          font: 16px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 3px;
@@ -442,6 +429,9 @@
   /* Signed in with PickiPedia rather than an SSH key. */
   .turn .who .tier { font-size: 10.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; border-radius: 6px;
                      padding: 0 5px; margin-left: -2px; border: 1px solid var(--line); color: var(--muted); }
+  /* Signed in with an SSH key: smaller, and in magenta -- an outline, not a fill, so it doesn't shout. */
+  .turn .who .tier.ssh { font-size: 9px; font-weight: 600; text-transform: none; letter-spacing: .02em; padding: 0 4px; vertical-align: 1px;
+                         color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); opacity: .85; }
   #userMenu .wikiin { display: inline-block; margin: 6px 0 2px; font-weight: 600; color: var(--accent); }
   .turn .who .how, .work .who .how { font-size: 11px; color: var(--muted); background: var(--code); border-radius: 8px; padding: 0 7px; }
   .turn .body > :first-child { margin-top: 0; }
@@ -509,6 +499,14 @@
   #searchBtn { border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 14px;
                padding: 1px 10px; font: inherit; font-size: 13px; cursor: pointer; }
   #searchBtn:hover { color: var(--accent); border-color: var(--accent); }
+  #goBtn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 14px;
+           padding: 1px 9px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  #goBtn[hidden] { display: none; }
+  #goBtn:hover { border-color: var(--accent); }
+  #goBtn.listening { background: var(--accent); color: #fff; border-color: transparent; animation: listening 1.2s ease-in-out infinite; }
+  @keyframes listening { 0%, 100% { opacity: 1; } 50% { opacity: .65; } }
+  @media (pointer: coarse) { #goBtn { font-size: 19px; padding: 3px 13px; } }  /* found by thumb, not by eye */
+  #goBtn.busy { opacity: .7; cursor: progress; }
   #search { position: fixed; top: 41px; right: 0; bottom: 0; width: min(440px, 100vw); background: var(--panel);
             border-left: 1px solid var(--line); box-shadow: -4px 0 18px rgba(0,0,0,.12); z-index: 20;
             display: flex; flex-direction: column; }
@@ -568,6 +566,9 @@
   .turn.pending .sending::before { content: '⏳ '; font-style: normal; display: inline-block; animation: pend 1.2s ease-in-out infinite; }
   @keyframes pend { 50% { opacity: .25; } }
   .note.memo-note.busy { color: var(--ink); font-weight: 600; }
+  /* The microphone went quiet partway: said plainly, with the way to record again. */
+  #composer .note.memo-note.quiet { color: var(--ink); }
+  #composer .note.memo-note.quiet .again { display: inline; min-width: 0; height: auto; border-radius: 0; font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
   .turn .editbox { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
                    background: var(--panel); color: var(--ink); resize: vertical; }
   .turn .editbar { margin-top: 4px; }
@@ -976,6 +977,8 @@
   #readFromMenu .head { font-size: 11px; color: var(--muted); padding: 2px 8px; }
   #readFromMenu button { font: inherit; font-size: 14px; text-align: left; border: 0; background: none; color: var(--ink); padding: 6px 8px; border-radius: 6px; cursor: pointer; }
   #readFromMenu button:hover { background: var(--code); }
+  #readFromMenu button.on { color: var(--accent); }
+  #readFromMenu button.on::after { content: ' ✓'; }
   .turn .voices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .turn .voices .speak { font-size: 12px; padding: 3px 9px; }
   .turn .speak.busy { cursor: progress; opacity: .6; }
@@ -1143,7 +1146,8 @@
   /* Signed in, you are who you are: no need to choose whose view to see. */
 </style>
 </head>
-<body>
+<body{% if initial_section and initial_section != "moods" %} class="in-section"{% endif %}>
+{% include "conversations/install_prompt.html" with nudge_only_asked=True %}
 <header>
   <button id="menu" type="button" aria-label="Moods" aria-expanded="false">☰</button>
   <!-- The mark alone, to the front page (Moods, for now; a landing page in time) (Justin, 21 Oct). -->
@@ -1159,6 +1163,7 @@
   <span class="servers" id="servers" title="Servers"></span>
   <button id="reloadNudge" type="button" title="This page changed since you opened it: reload for the new one" hidden>↻ new version</button>
   <button id="searchBtn" type="button" title="Search what was said (/)">⌕</button>
+  <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
   <span class="status" id="status" title="connecting…"></span>
   <span class="account">
     <button id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"></button>
@@ -1179,8 +1184,9 @@
         <label><input type="checkbox" data-tell="agent"> every message from agents</label>
       </div>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
-      <label class="readall" id="readSpeedLabel" hidden title="How fast anything is read aloud here: every voice, the narrator, and voice memos. Your browser's own playback speed, so it costs nothing and changes at once.">reading speed <select id="readSpeed"></select></label>
-      <a href="#" id="voicesLink" hidden>voices</a>
+      <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
+      <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: agents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
+      <a href="/moods/settings/#voices" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
@@ -1195,10 +1201,6 @@
 <div id="lightbox" hidden role="dialog" aria-label="Picture"><button type="button" class="close" aria-label="Close">✕</button>
   <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
 <datalist id="facePeople"></datalist>
-<div id="voicesBox" hidden role="dialog" aria-label="Voices">
-  <div class="head"><b>Who is read in which voice</b> <button type="button" id="voicesClose">close</button></div>
-  <div id="voicesList"></div>
-</div>
 <div id="devicesBox" hidden role="dialog" aria-label="Your devices">
   <div class="head"><b id="devicesTitle">Your devices</b> <button type="button" id="devicesClose">close</button></div>
   <div id="devicesList"></div>
@@ -1278,17 +1280,18 @@
   <div id="qresults"></div>
 </div>
 <!-- Tidings, prompts, status and settings: each its own page, loaded once and kept, beside the Moods. -->
-<div id="sectionFrames" hidden></div>
+<div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"></div>
+  <div id="voiceMode" role="region" aria-label="Voice mode"></div>
   <main id="main"><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
     <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
     <div id="typing"></div>
     <div id="tasks"></div>
-    <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button></div>
+    <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button><button type="button" id="voiceModeBtn" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧</button></div>
     <div id="readQueue" hidden></div>
     <div id="activity"><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
@@ -1500,21 +1503,36 @@
     markLive();
   }
 
-  // Who's around in each Mood: whoever spoke in the last 100 blocks (about 20
-  // minutes), and whoever is typing or at work there now, their name pulsing.
-  let liveData = {};
+  // Who's around in each Mood: each person in the one they last opened, typed or spoke in, for three
+  // minutes (services/presence; Justin, 23 Oct); each agent where it spoke in the last 100 blocks (about
+  // 20 minutes); and whoever is typing or at work there now, their name pulsing. This page's own person
+  // moves the moment they do, not at the next look.
+  let liveData = {}, hereAt = 0;
+  const SHOWN_FOR_MS = 180000;
+  function sayHere(slug) {
+    if (!viewer) return;
+    hereAt = Date.now();
+    fetch('/api/moods/' + encodeURIComponent(slug) + '/here/', { method: 'POST', headers: { 'X-CSRFToken': csrf() } }).catch(() => {});
+  }
   function aroundIn(slug) {
-    const d = liveData[slug] || { speakers: [], typing: [], busy: null };
+    const raw = liveData[slug] || { speakers: [], typing: [], busy: null };
+    const mine = viewer && slug === current && Date.now() - hereAt < SHOWN_FOR_MS;
+    const d = { ...raw, speakers: [...(raw.speakers || []).filter(n => n !== viewer), ...(mine ? [viewer] : [])] };
     const typing = new Set(slug === current ? [...d.typing, ...typingNow] : d.typing);
     const busy = slug === current ? acts.filter(a => a.doing !== 'held').map(a => a.agent) : (d.busy_all || (d.busy ? [d.busy] : []));
-    const names = [...new Set([...busy, ...typing, ...d.speakers])];
-    return { names, active: new Set([...typing, ...busy]) };
+    // Listening by voice (services/listening.py): 🎧 on their name where it's shown; one listening to this Mood
+    // alone is shown here even if they haven't spoken. One listening to every Mood isn't put on every line.
+    const listening = new Map((d.listening || []).map(who => [who.name, who.everywhere]));
+    const names = [...new Set([...busy, ...typing, ...d.speakers,
+                               ...[...listening].filter(([, everywhere]) => !everywhere).map(([name]) => name)])];
+    return { names, active: new Set([...typing, ...busy]), listening };
   }
   function peopleLine(slug) {
-    const { names, active } = aroundIn(slug);
+    const { names, active, listening } = aroundIn(slug);
     // At work, an agent pulses in its own colour (Justin, 21 Oct); a person, typing, as written their way.
     return names.map(n => `<span class="nm${active.has(n) ? ' live' : ''}" data-who="${esc(n)}"`
-      + `${active.has(n) && human[n] === false ? ` style="color: ${agentColor(n)}"` : ''}>${nameHtml(n)}</span>`).join(', ')
+      + `${active.has(n) && human[n] === false ? ` style="color: ${agentColor(n)}"` : ''}>${nameHtml(n)}</span>`
+      + (listening.has(n) ? `<span class="hears" title="${esc(shown(n))} is listening by voice, ${listening.get(n) ? 'to every Mood' : 'to this Mood'}">🎧</span>` : '')).join(', ')
       + watchingIn(slug);
   }
   // Who reads without signing in (services/watchers.py): 👁 and how many, on each
@@ -1552,12 +1570,31 @@
   }
   // An agent starting work where Moods are being read as they come: the narrator
   // says so ("Magent is thinking"), in its own voice, in turn with what's said.
+  // And while it's at work and there's nothing else to hear, a word every minute that it still is, and how
+  // far it's got (Justin, 22 Oct: "Okay, are they still thinking? What's going on?").
+  const STILL_EVERY_MS = 60000;
+  const thinkingToldAt = {};  // Mood -> when its agent's work was last said, or anything of it read
   function noticeThinking(before) {
     if (readMode === 'off') return;  // (after an await: the reader's state is set up by then)
+    const now = Date.now();
     for (const [slug, d] of Object.entries(liveData)) {
-      if (!d.busy || (before[slug] || {}).busy === d.busy) continue;  // not working, or working already
       if (readMode !== 'everywhere' && slug !== current) continue;
-      readQueue.push({ kind: 'thinking', mood: slug, who: d.busy, agent: d.busy });
+      if (!d.busy) { delete thinkingToldAt[slug]; continue; }
+      if ((before[slug] || {}).busy !== d.busy) {  // just started
+        readQueue.push({ kind: 'thinking', mood: slug, who: d.busy, agent: d.busy });
+        thinkingToldAt[slug] = now;
+      } else if (!readNow && !readQueue.length && now - (thinkingToldAt[slug] || now) >= STILL_EVERY_MS) {
+        readQueue.push({ kind: 'thinking', still: true, mood: slug, who: d.busy, agent: d.busy });
+        thinkingToldAt[slug] = now;
+      } else if (!thinkingToldAt[slug]) thinkingToldAt[slug] = now;  // at work when reading began: a minute from now
+    }
+    // Waiting for another agent asked too: said once, as thinking is, when it starts (Justin, 24 Oct).
+    for (const [slug, d] of Object.entries(liveData)) {
+      if (readMode !== 'everywhere' && slug !== current) continue;
+      const was = new Set(((before[slug] || {}).waiting || []).map(w => w.agent));
+      for (const w of d.waiting || []) {
+        if (!was.has(w.agent)) readQueue.push({ kind: 'thinking', waiting: w.for, mood: slug, who: w.agent, agent: w.agent });
+      }
     }
     readNext();
   }
@@ -1759,15 +1796,50 @@
       + ` aria-label="Read from here on" aria-haspopup="menu">⏩</button>`;
   }
   let speaking = null;  // {audio, button}
-  // How fast it's read, for this listener: the browser's playback rate, pitch kept.
-  // Every voice, the narrator and memos alike; nothing is made again, so it costs
-  // nothing. Set on each player before it plays (a new src goes back to
-  // defaultPlaybackRate, so that's set too).
-  const READ_SPEEDS = [1, 1.15, 1.25, 1.5, 1.75, 2];
-  let readSpeed = READ_SPEEDS.includes(store.get('readSpeed', 1)) ? store.get('readSpeed', 1) : 1;
+  // How fast it's read, for this listener: in words a minute, one pace for agents (and the narrator) and
+  // one for people (Justin, 22 Oct: a person's articulation is harder to follow fast, and at one multiplier
+  // re's voice ran faster than magent's). Each clip says how many words it holds (its URL's fragment,
+  // voice._spoken); its length, once the browser knows it, gives its own pace, and it's played at the rate
+  // that brings that to the listener's. The browser's playback rate, pitch kept: nothing is made again.
+  // A clip that can't say (an older memo) is taken at an ordinary pace; a chime is played as it is.
+  const PACES = [130, 160, 190, 220, 250, 280, 310, 340, 370, 400];
+  const NATURAL = { agent: 165, person: 150 };  // words a minute, about, when a clip can't say
+  const nearest = v => PACES.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a);
+  const wasSpeed = Number(store.get('readSpeed', 1)) || 1;  // the multiplier there was: the paces start near it
+  const pace = { agent: PACES.includes(store.get('readPaceAgent')) ? store.get('readPaceAgent') : nearest(NATURAL.agent * wasSpeed),
+                 person: PACES.includes(store.get('readPacePerson')) ? store.get('readPacePerson') : nearest(Math.min(NATURAL.person * wasSpeed, 220)) };
+  function clipSays(audio) {
+    const src = audio.currentSrc || audio.src || '';
+    if (src.startsWith('blob:')) return null;  // a chime
+    const f = new URLSearchParams((src.split('#')[1] || ''));
+    return { who: f.get('who') === 'agent' ? 'agent' : 'person', words: Number(f.get('words')) || 0 };
+  }
+  // Its own pace: a short clip -- the narrator's "Magent, with tools, says:" -- is mostly the quiet at its
+  // ends, and measured it ran at 94 words a minute and was played at the cap, faster than what followed
+  // (Justin, 23 Oct: "they were different speeds"). So a clip of a few words is taken at its kind's usual
+  // pace; a longer one is measured with its ends' quiet left out, and believed only within a speaker's range.
+  const SHORT_CLIP = 10, EDGE_QUIET = 0.35, PACE_RANGE = [110, 240];
+  function paceOf(audio) {
+    const says = clipSays(audio);
+    if (!says) return null;
+    if (says.words < SHORT_CLIP || !isFinite(audio.duration) || audio.duration < 2) return NATURAL[says.who];
+    const measured = says.words / (Math.max(audio.duration - EDGE_QUIET, 1) / 60);
+    return Math.min(PACE_RANGE[1], Math.max(PACE_RANGE[0], measured));
+  }
+  function rateFor(audio) {
+    const says = clipSays(audio);
+    if (!says) return 1;
+    return Math.min(3.5, Math.max(0.5, pace[says.who] / paceOf(audio)));
+  }
   function atSpeed(audio) {
-    audio.defaultPlaybackRate = readSpeed; audio.playbackRate = readSpeed;
+    const set = () => { const r = rateFor(audio); audio.defaultPlaybackRate = r; audio.playbackRate = r; };
+    if (!audio._paced) {  // its length known (or a new clip in it): its own pace, and so its rate
+      audio._paced = true;
+      audio.addEventListener('loadedmetadata', set);
+      audio.addEventListener('durationchange', set);
+    }
     audio.preservesPitch = true;
+    set();
     return audio;
   }
   // A message read aloud comes in pieces (voice.pieces): the first is short, so it
@@ -1815,6 +1887,33 @@
     speaking = null;
     if (speakHeld && !another) { speakHeld = false; holdRead(false); }
   }
+  // Chimes, for listening without looking (Justin, 22 Oct): a quick rising one as a message is about to
+  // be read -- by ▶, ⏩, or reading as they come -- and a falling one when reading aloud has read all
+  // there is and is still listening for more. Made here as WAV, and played through the reader itself,
+  // so they sound wherever reading does, a locked phone too.
+  const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]] };
+  const chimeUrls = {};
+  function chimeUrl(kind) {
+    if (chimeUrls[kind]) return chimeUrls[kind];
+    const rate = 22050, notes = CHIME_NOTES[kind];
+    const pcm = new Int16Array(Math.ceil(rate * notes.reduce((sum, [, len]) => sum + len, 0)));
+    let at = 0;
+    for (const [freq, len] of notes) {
+      const n = Math.floor(rate * len);
+      for (let i = 0; i < n && at + i < pcm.length; i++) {
+        const swell = Math.min(1, i / (rate * .005)) * Math.exp(-4 * i / n);  // a soft start, a bell's fall
+        pcm[at + i] = Math.round(Math.sin(2 * Math.PI * freq * i / rate) * swell * .35 * 32767);
+      }
+      at += n;
+    }
+    const head = new DataView(new ArrayBuffer(44));
+    const word = (o, s) => [...s].forEach((c, i) => head.setUint8(o + i, c.charCodeAt(0)));
+    word(0, 'RIFF'); head.setUint32(4, 36 + pcm.byteLength, true); word(8, 'WAVE'); word(12, 'fmt ');
+    head.setUint32(16, 16, true); head.setUint16(20, 1, true); head.setUint16(22, 1, true);  // PCM, mono
+    head.setUint32(24, rate, true); head.setUint32(28, rate * 2, true); head.setUint16(32, 2, true); head.setUint16(34, 16, true);
+    word(36, 'data'); head.setUint32(40, pcm.byteLength, true);
+    return (chimeUrls[kind] = URL.createObjectURL(new Blob([head, pcm], { type: 'audio/wav' })));
+  }
   let speakAsk = 0;  // the newest ▶ pressed: only it may play, when its audio arrives
   document.addEventListener('click', async e => {
     const b = e.target.closest('.turn .speak, .aturn > .speak.block');
@@ -1824,9 +1923,26 @@
     stopSpeaking(true);
     if (readMode !== 'off' && !readHeld) { holdRead(true); speakHeld = true; }  // one voice at a time: reading waits while this plays
     const ask = ++speakAsk;
+    atSpeed(new Audio(chimeUrl('in'))).play().catch(() => {});  // something's coming: heard, not looked for
+    // The narrator first, saying where and who ("Pound jams. Skyler says:"): ▶ is pressed by someone not
+    // looking, as reading aloud is (Justin, 22 Oct). Not before a second voice block of the same message.
+    const introFirst = !Number(b.dataset.part || 0);
     // A voice memo is heard as it was spoken: ▶ plays the recording, never a voice reading its transcript.
     const memo = b.closest('.turn')?.querySelector('.body audio');
     if (memo) {
+      b.classList.add('busy'); b.textContent = '…';
+      const intro = introFirst ? await fetch(`/api/moods/${encodeURIComponent(current)}/speak/${encodeURIComponent(b.dataset.id)}/?only=intro&intro=where`,
+                                             { method: 'POST', headers: { 'X-CSRFToken': csrf() } })
+        .then(r => r.ok ? r.json() : {}).then(d => d.intro).catch(() => null) : null;
+      b.classList.remove('busy');
+      if (ask !== speakAsk) { b.textContent = '▶'; return; }  // another ▶ meanwhile
+      if (intro) {
+        const said = atSpeed(new Audio(intro));
+        speaking = { audio: said, button: b };
+        b.classList.add('playing'); b.textContent = '■';
+        await new Promise(done => { said.onended = done; said.onerror = done; said.play().catch(done); });
+        if (speaking?.audio !== said) return;  // stopped while it was said
+      }
       speaking = { audio: memo, button: b };
       memo.addEventListener('ended', stopSpeaking, { once: true });
       b.classList.add('playing'); b.textContent = '■';
@@ -1835,16 +1951,22 @@
     }
     b.classList.add('busy'); b.textContent = '…';
     try {
-      const r = await fetch(`/api/moods/${encodeURIComponent(current)}/speak/${encodeURIComponent(b.dataset.id)}/?part=${encodeURIComponent(b.dataset.part || 0)}`, {
+      const r = await fetch(`/api/moods/${encodeURIComponent(current)}/speak/${encodeURIComponent(b.dataset.id)}/?part=${encodeURIComponent(b.dataset.part || 0)}${introFirst ? '&intro=where' : ''}`, {
         method: 'POST', headers: { 'X-CSRFToken': csrf() } });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || r.status);
       if (ask !== speakAsk) { b.textContent = b.dataset.label || '▶'; return; }  // another ▶ was pressed meanwhile: that one plays
-      const audio = atSpeed(new Audio(body.url));
+      const audio = atSpeed(new Audio(body.intro || body.url));
       const more = laterPieces(current, b.dataset.id, b.dataset.part, body.pieces || 1);
-      let at = 0;
+      let at = 0, introSaid = !body.intro;
       speaking = { audio, button: b };
       audio.addEventListener('ended', async () => {
+        if (!introSaid) {  // the narrator's done: now the message
+          introSaid = true;
+          if (speaking?.audio !== audio) return;
+          try { audio.src = body.url; await audio.play(); more(1); } catch (err) { showError('read aloud: ' + err.message); stopSpeaking(); }
+          return;
+        }
         const next = more(++at);
         if (!next || speaking?.audio !== audio) { stopSpeaking(); return; }
         try {
@@ -1857,7 +1979,7 @@
       });
       b.classList.add('playing'); b.textContent = b.dataset.label ? b.dataset.label.replace(/^▶/, '■') : '■';
       await audio.play();
-      more(1);
+      if (introSaid) more(1);
     } catch (err) {
       showError('read aloud: ' + err.message);
       b.textContent = b.dataset.label || '▶';
@@ -2397,7 +2519,10 @@
     const phone = t.mobile ? '<span class="from-phone" title="sent from a phone" aria-label="sent from a phone">📱</span>' : '';
     const page = userPage(t.sender);
     const named = page ? `<a href="${esc(page)}" target="_blank" rel="noopener" title="${esc(shown(t.sender))} on PickiPedia">${nameHtml(t.sender)}</a>` : nameHtml(t.sender);
-    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; @agents from here wake nobody">wiki</span>' : '';
+    // Who's signed in how: PickiPedia ("wiki"), or an SSH key -- from the web, or a terminal on hunter itself
+    // (Justin, 24 Oct: "ssh@hunter", small, in magenta).
+    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; @agents from here wake nobody">wiki</span>'
+      : t.is_human ? `<span class="tier ssh" title="${t.via === 'web' ? 'Signed in with an SSH key: may wake agents with their full tools' : 'Written in a terminal on hunter, over SSH'}">ssh@hunter</span>` : '';
     // ↩ for anyone signed in. A reply addresses a person, never an agent (only an @mention wakes one).
     const replyBtn = viewer && !t.deleted ? `<button type="button" class="replybtn" data-reply="${esc(t.id)}" title="Reply" aria-label="Reply">↩</button>` : '';
     // ✎ what you wrote here yourself; 🗑 what you wrote, or anything as an admin (services/retract.py).
@@ -2769,9 +2894,14 @@
     }
     if (e.type === 'tiding-comment') {  // said on Tidings, not here: a line, not the words (services/tiding_links._notice)
       el.className = 'event tiding-comment';
-      const tid = esc(e.tiding || ''), msg = esc(e.message || ''), mood = encodeURIComponent(e.mood || current);
-      el.innerHTML = `💬 <b>${esc(shown(e.by || 'someone'))}</b> commented on <a href="/moods/tidings/${tid}/?embed=1">Tidings</a>`
-        + (msg ? ` · <a href="/moods/${mood}/#m-${msg}" title="the link was posted in this message">what was said</a>` : '')
+      // Its link's title, and the comment's first words, which open it there (Justin, 23 Oct). A line from
+      // before they were kept says what it can.
+      const msg = esc(e.message || ''), mood = encodeURIComponent(e.mood || current);
+      const at = e.tiding ? `/moods/tidings/${encodeURIComponent(e.tiding)}/` : '/moods/tidings/';
+      const words = e.comment ? (e.comment.length > 40 ? e.comment.slice(0, 40).trimEnd() + '…' : e.comment) : '';
+      el.innerHTML = `💬 <b>${nameHtml(e.by || 'someone')}</b> commented on <a href="${at}">${e.title ? '“' + esc(e.title) + '”' : 'Tidings'}</a>`
+        + (words ? `: <a href="${at}${e.comment_id ? '#c-' + encodeURIComponent(e.comment_id) : ''}">“${esc(words)}”</a>`
+           : msg ? ` · <a href="/moods/${mood}/#m-${msg}" title="the link was posted in this message">what was said</a>` : '')
         + ` · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
@@ -2805,11 +2935,41 @@
       prev = null;
       return;
     }
+    if (e.type === 'task') {  // an agent's task, started by a schedule or a person's call (services/tasks.py)
+      const page = `https://pickipedia.xyz/wiki/${encodeURIComponent((e.page || '').replace(/ /g, '_')).replace(/%2F/g, '/').replace(/%3A/g, ':')}`;
+      const task = `<a href="${esc(page)}${e.revision ? `?oldid=${esc(String(e.revision))}` : ''}" target="_blank" rel="noopener">${esc(e.task || 'a task')}</a>`;
+      const how = e.by === 'schedule' ? 'on its schedule' : `by <b>${esc(shown(e.by || 'someone'))}</b>`;
+      const who = `<b>${esc(shown(e.for || 'an agent'))}</b>`;
+      el.className = 'event task';
+      el.innerHTML = e.state === 'refused'
+        ? `✗ ${who}'s task ${task} didn't start (${how}): ${esc(e.reason || '')} · ${esc(stamp(e.created_at))}`
+        : `<details><summary>▶ ${who}'s task ${task}, started ${how}${e.tools === 'full' ? '' : ' · look-only'}`
+          + ` · ${esc(stamp(e.created_at))}</summary><div class="body">${e.html || ''}</div></details>`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'interrupt' || e.type === 'created') {  // someone pressed stop; someone started this Mood
       el.className = 'event';
       el.innerHTML = e.type === 'created'
         ? `✦ <b>${esc(e.by || 'someone')}</b> started this Mood · ${esc(stamp(e.created_at))}`
         : `■ <b>${esc(e.by || 'someone')}</b> stopped ${esc(e.agent || 'the agent')} · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
+    if (e.type === 'agent-settings' || e.type === 'agent-settings-refused') {  // services/agent_settings.py
+      // Shown when it's used: above an agent's first turn on settings other than its last turn's (Justin, 24 Oct).
+      el.className = 'event';
+      // "at justin's ask, #m-…": the word "ask" goes to the words that asked.
+      const linked = s => esc(s || '').replace(/(\bask, )?#m-([0-9a-f-]{36})/g, (m, ask, id) =>
+        `<a href="#m-${id}" data-reveal="${id}">${ask ? 'ask' : '#m-' + id.slice(0, 8)}</a>`);
+      const word = { model: 'model', mention_effort: 'effort', listening: 'listening', verbosity: 'verbosity', discretion: 'discretion' };
+      el.innerHTML = e.type === 'agent-settings'
+        ? `⚙ <b>${esc(shown(e.agent || 'an agent'))}</b> now on `
+          + (e.changes || []).map(c => `${esc(word[c.key] || c.key)} <b>${esc(c.now || 'default')}</b> <span class="was">(was ${esc(c.was || 'default')})</span>`).join(', ')
+          + (e.by ? ` · set by <b>${esc(shown(e.by))}</b>` : '') + (e.note ? `, ${linked(e.note)}` : '') + ` · ${esc(stamp(e.created_at))}`
+        : `⚙ ${esc(shown(e.by || 'an agent'))}'s settings block wasn't applied: ${esc(e.note || '')} · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
       return;
@@ -3749,6 +3909,7 @@
     stash();
     gen++;
     current = slug;
+    sayHere(slug);  // shown here to everyone, and gone from where they were
     renderVideoCards();  // the videos waiting for a draft page are per Mood
     renderShare();  // a share waiting says which Mood it would go to
     restoreDraft();
@@ -4632,6 +4793,8 @@
     activityText.innerHTML = acts.map(a => `<span class="one${a.doing === 'held' ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
       + (a.doing === 'waking'
         ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${elapsed(a.since)}`
+        : a.doing === 'held' && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
+        ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${esc(a.why)}` + (a.until ? ` · answers by ${esc(hhmm(a.until))} at the latest` : '')
         : a.doing === 'held'
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
           + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
@@ -4923,6 +5086,7 @@
   let typingSent = 0;
   function sendTyping(on) {
     if (!viewer || !current) return;
+    hereAt = Date.now();  // typing, or stopped: three minutes here from now (services/presence)
     fetch('/api/moods/' + encodeURIComponent(current) + '/typing/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ typing: on }),
@@ -5349,6 +5513,82 @@
     if (text) composer.insertAdjacentHTML('beforeend', `<span class="note memo-note busy">${esc(text)}</span>`);
     if (memoPending) pendingSays(memoPending, text.replace(/^🎙 /, ''));
   }
+  // A microphone that goes quiet partway (Justin, 23 Oct: 2:24 of an 8:23 memo had sound, the rest digital
+  // zero -- a phone's screen locking, a call, earbuds dropping). Watched while recording: the browser saying
+  // it's muted or gone, or nothing at all coming from it, for QUIET_STOP_S stops it and says where. And once
+  // stopped, a memo that ends in silence goes without it (quietTail): the person told, the dead air not sent.
+  const QUIET_STOP_S = 10, QUIET_LEVEL = 3e-5, QUIET_TAIL_S = 5;  // 3e-5: under one 16-bit step, -90 dB
+  const TRIM_RATE = 16000, TRIM_MAX_BYTES = 10 * 1024 * 1024;     // what's sent instead: 16 kHz WAV, if not too big
+  function micWatch(stream) {
+    let ctx = null, analyser = null, buf = null;
+    const opened = Date.now();
+    let heard = opened, looked = opened, mutedAt = null, gone = false;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      buf = new Float32Array(analyser.fftSize);
+    } catch (e) { ctx = null; analyser = null; }
+    const track = stream.getAudioTracks()[0];
+    if (track) {
+      track.addEventListener('mute', () => { mutedAt = mutedAt || Date.now(); });
+      track.addEventListener('unmute', () => { mutedAt = null; heard = Date.now(); });
+      track.addEventListener('ended', () => { gone = true; });
+    }
+    return {
+      // When it went quiet (ms), if it's been quiet long enough to stop; else null.
+      quietSince() {
+        const now = Date.now();
+        if (gone) return Math.min(heard, now);
+        if (mutedAt && now - mutedAt >= QUIET_STOP_S * 1000) return mutedAt;
+        // Only what was looked at counts: a page in the background is asked seldom, and a gap says nothing.
+        if (now - looked > 2000 || !analyser || ctx.state !== 'running') heard = now;
+        else {
+          analyser.getFloatTimeDomainData(buf);
+          let peak = 0;
+          for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
+          if (peak > QUIET_LEVEL) heard = now;
+        }
+        looked = now;
+        return now - heard >= QUIET_STOP_S * 1000 ? heard : null;
+      },
+      close() { try { if (ctx) ctx.close(); } catch (e) {} },
+    };
+  }
+  // A recorded memo, decoded: {audio, sound, total} -- seconds with sound in them, then of all of it -- when it
+  // ends in QUIET_TAIL_S or more of silence; else null (or if it can't be decoded here: sent as it is).
+  async function quietTail(blob) {
+    try {
+      const ctx = new OfflineAudioContext(1, 1, TRIM_RATE);  // decoded at 16 kHz: an eight-minute memo is 31 MB, not 90
+      const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+      let last = -1;
+      for (let c = 0; c < audio.numberOfChannels; c++) {
+        const data = audio.getChannelData(c);
+        for (let i = data.length - 1; i > last; i--) if (Math.abs(data[i]) > QUIET_LEVEL) { last = i; break; }
+      }
+      const sound = (last + 1) / audio.sampleRate, total = audio.duration;
+      return total - sound >= QUIET_TAIL_S ? { audio, sound, total } : null;
+    } catch (e) { return null; }
+  }
+  // The first `seconds` of a decoded memo as a WAV: mono, 16-bit.
+  function wavOf(audio, seconds) {
+    const rate = audio.sampleRate, n = Math.min(audio.length, Math.ceil(seconds * rate));
+    const channels = [...Array(audio.numberOfChannels).keys()].map(c => audio.getChannelData(c));
+    const out = new DataView(new ArrayBuffer(44 + n * 2));
+    const text = (at, t) => { for (let i = 0; i < t.length; i++) out.setUint8(at + i, t.charCodeAt(i)); };
+    text(0, 'RIFF'); out.setUint32(4, 36 + n * 2, true); text(8, 'WAVE'); text(12, 'fmt ');
+    out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true); out.setUint32(24, rate, true);
+    out.setUint32(28, rate * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+    text(36, 'data'); out.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) {
+      let v = 0;
+      for (const ch of channels) v += ch[i];
+      v = Math.max(-1, Math.min(1, v / channels.length));
+      out.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    return new Blob([out], { type: 'audio/wav' });
+  }
   if (voiceOn && viewer && window.MediaRecorder && navigator.mediaDevices) memoBtn.hidden = false;
   const clock = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
   memoBtn.addEventListener('click', async () => {
@@ -5361,29 +5601,43 @@
     recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
     const chunks = [], started = Date.now();
     memoStarted = started;
+    const mic = micWatch(stream);
+    let wentQuiet = null;  // seconds in, when the microphone went quiet and the recording was stopped for it
     recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
     recorder.addEventListener('stop', async () => {
       clearInterval(memoTimer);
       recordingHold(false);
+      mic.close();
       stream.getTracks().forEach(t => t.stop());
-      const seconds = (Date.now() - started) / 1000;
+      let seconds = (Date.now() - started) / 1000;
       recorder = null; memoSaving = true;
       memoBtn.classList.remove('recording'); memoBtn.classList.add('busy'); memoBtn.textContent = 'saving…';
       memoStatus(`🎙 Saving your memo (${clock(seconds)})…`);
-      let ready = false;
+      let ready = false, memoLink = '', blob = new Blob(chunks, { type: chunks[0]?.type || type || 'audio/webm' }), quiet = null;
       try {
+        // Ends in silence: what has sound goes, as a WAV, and they're told (unless that would be too big to send).
+        quiet = await quietTail(blob);
+        if (quiet && quiet.sound < 0.5) throw new Error('the microphone sent only silence, so there is nothing to send. Is another app using it?');
+        if (quiet) {
+          const trimmed = wavOf(quiet.audio, quiet.sound + 0.5);
+          if (trimmed.size <= TRIM_MAX_BYTES) { blob = trimmed; seconds = trimmed.size > 44 ? (trimmed.size - 44) / 2 / TRIM_RATE : 0; }
+        }
+        if (quiet || wentQuiet !== null) memoThenSend = false;  // not sent unseen: they choose, below
         // How long it is goes with it: a browser's WebM doesn't say, and a phone can't seek it (media.webm_with_duration).
         const r = await postMemo('/api/moods/' + encodeURIComponent(current) + '/memo/?seconds=' + seconds.toFixed(3),
-          new Blob(chunks, { type: chunks[0]?.type || type || 'audio/webm' }), done => {
+          blob, done => {
             const pct = Math.round(done * 100);
             memoBtn.textContent = pct < 100 ? `saving ${pct}%` : 'saving…';
             memoStatus(pct < 100 ? `🎙 Saving your memo (${clock(seconds)}): ${pct}%` : `🎙 Saving your memo (${clock(seconds)}): almost…`);
           });
         const body = r.body;
         if (!r.ok) throw new Error(body.error || r.status);
-        insertAtCaret(`🎙 [voice memo · ${clock(seconds)}](${body.url})`);
+        memoLink = `🎙 [voice memo · ${clock(seconds)}](${body.url})`;
+        insertAtCaret(memoLink);
         sayBox.dispatchEvent(new Event('input'));
-        sayBox.focus();
+        // Not on a touch screen: there the box's focus brings the keyboard up over everything, and a memo is
+        // sent by touch, not typed after (Justin, 22 Oct, driving).
+        if (!matchMedia('(pointer: coarse)').matches) sayBox.focus();
         ready = true;
       } catch (e) {
         memoThenSend = false; showError('voice memo: ' + e.message);
@@ -5392,6 +5646,21 @@
       finally { memoSaving = false; memoBtn.classList.remove('busy'); memoBtn.textContent = '🎙'; }
       composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
       if (ready && memoThenSend) { memoThenSend = false; say(); }
+      else if (ready && (quiet || wentQuiet !== null)) {
+        // Said, with the choice: send what has sound, or take it out and record again.
+        const at = clock(quiet ? quiet.sound : wentQuiet);
+        const after = quiet ? ` The ${clock(quiet.total - quiet.sound)} of silence after it ${blob.type === 'audio/wav' ? "isn't sent" : 'is still in it'}.` : '';
+        if (memoPending) { memoPending.remove(); memoPending = null; }
+        composer.insertAdjacentHTML('beforeend', `<span class="note memo-note quiet">🎙 The microphone went quiet at ${esc(at)}`
+          + `${wentQuiet !== null ? ', so the recording stopped' : ''}: a locked screen, a call or earbuds dropping can do that.${esc(after)}`
+          + ` Send what's there, or <button type="button" class="again">record again</button></span>`);
+        composer.querySelector('.memo-note.quiet .again').addEventListener('click', () => {
+          sayBox.value = sayBox.value.replace(memoLink, '').replace(/\n{3,}/g, '\n\n');
+          sayBox.dispatchEvent(new Event('input'));
+          composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
+          memoBtn.click();
+        });
+      }
       else if (ready) composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">Ready to send: its words are written in as it goes.</span>');
     });
     try { recorder.start(1000); }
@@ -5408,6 +5677,8 @@
       const s = (Date.now() - started) / 1000;
       memoBtn.textContent = '■ ' + clock(s);
       if (s >= MEMO_MAX_S && recorder) recorder.stop();
+      const since = recorder ? mic.quietSince() : null;
+      if (since !== null && recorder) { wentQuiet = Math.max(0, (since - started) / 1000); recorder.stop(); }
     }, 500);
   });
 
@@ -5525,70 +5796,15 @@
     }, 1500);
   }
 
-  // --- voices: who is read in which ---------------------------------------------
-  // Each speaker has a voice (services/voice.py, voice_of): chosen here, or
-  // given at their first reading. Yours from any sign-in; anyone's -- an
-  // agent's too -- with your SSH key. ▷ plays ElevenLabs' sample, free.
-  const voicesBox = document.getElementById('voicesBox');
-  const voicesList = document.getElementById('voicesList');
-  const voiceSample = new Audio();
-  let voiceData = null;
+  // --- voices: who is read in which -- on the settings page now (Justin, 23 Oct: "that probably belongs in
+  // settings rather than as its own floating menu"), where a voice is found by typing, from ElevenLabs' library.
   if (voiceOn && viewer) document.getElementById('voicesLink').hidden = false;
-  function voiceFor(data, name) {
-    const has = (data.speakers || {})[name];
-    if (!has) return null;
-    return (data.voices || []).find(v => v.voice_id === has || v.name.toLowerCase() === has.toLowerCase()) || { voice_id: has, name: has };
-  }
-  async function showVoices() {
-    voicesBox.hidden = false;
-    voicesList.textContent = 'Loading…';
-    try {
-      const r = await fetch('/api/voice/voices/');
-      voiceData = await r.json();
-    } catch (e) { voicesList.textContent = 'Could not ask for the voices.'; return; }
-    const data = voiceData;
-    const narrator = data.narrator || 'narrator';
-    const everyone = [{ name: narrator, narrator: true },
-                      ...[...people].sort((a, b) => (b.name === viewer) - (a.name === viewer) || a.name.localeCompare(b.name))];
-    voicesList.innerHTML = (data.note ? `<p class="meta">${esc(data.note)}</p>` : '')
-      + `<p class="meta">Reading as they come, the narrator says who speaks next, when an agent starts thinking, and when a server redeploys.</p>`
-      + everyone.map(p => {
-        const v = voiceFor(data, p.name);
-        const may = p.name === viewer || keyHolder;
-        const unset = p.narrator ? 'given at its first word' : p.name === 'magent' ? 'the house voice' : 'given at their first reading';
-        const options = (data.voices || []).map(o =>
-          `<option value="${esc(o.voice_id)}"${v && v.voice_id === o.voice_id ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
-        const other = v && !(data.voices || []).some(o => o.voice_id === v.voice_id)
-          ? `<option value="${esc(v.voice_id)}" selected>${esc(v.name)}</option>` : '';
-        return `<div class="spk" data-name="${esc(p.name)}"><span class="nm">${p.narrator ? 'Narrator' : esc(shown(p.name))}${p.is_human || p.narrator ? '' : ' <span class="tier">agent</span>'}</span>`
-          + `<select ${may ? '' : 'disabled title="Only your own, from a PickiPedia sign-in"'} aria-label="${esc(shown(p.name))}'s voice">`
-          + `<option value="">${unset}</option>${other}${options}</select>`
-          + `<button type="button" class="sample" title="Hear this voice">▷</button></div>`;
-      }).join('');
-  }
-  document.getElementById('voicesLink').addEventListener('click', e => { e.preventDefault(); userMenu.hidden = true; showVoices(); });
-  document.getElementById('voicesClose').addEventListener('click', () => { voicesBox.hidden = true; voiceSample.pause(); });
-  voicesBox.addEventListener('click', e => {
-    const b = e.target.closest('.sample');
-    if (!b || !voiceData) return;
-    const chosen = b.closest('.spk').querySelector('select').value;
-    const v = (voiceData.voices || []).find(o => o.voice_id === chosen) || voiceFor(voiceData, b.closest('.spk').dataset.name);
-    if (!v || !v.preview_url) { showError('no sample of that voice to play'); return; }
-    voiceSample.src = `/api/voice/sample/${encodeURIComponent(v.voice_id)}/`;  // served as audio (views_auth.api_voice_sample)
-    voiceSample.play().catch(err => showError('sample: ' + err.message));
-  });
-  voicesBox.addEventListener('change', async e => {
-    const sel = e.target.closest('.spk select');
-    if (!sel) return;
-    const name = sel.closest('.spk').dataset.name;
-    sel.disabled = true;
-    try {
-      const r = await fetch('/api/voice/speaker/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-                                                    body: JSON.stringify({ name, voice: sel.value }) });
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(body.error || r.status);
-    } catch (err) { showError('voice: ' + err.message); showVoices(); return; }
-    finally { sel.disabled = false; }
+  document.getElementById('voicesLink').addEventListener('click', e => {
+    e.preventDefault();
+    userMenu.hidden = true;
+    showSection('settings', true);
+    const frame = sectionFrames.querySelector('iframe[data-section="settings"]:not([data-fresh])');
+    if (frame) frame.src = '/moods/settings/?embed=1#voices';
   });
 
   // --- reading aloud as they come ------------------------------------------------
@@ -5614,20 +5830,24 @@
   let clipDone = null;
   if (voiceOn && viewer) document.getElementById('readAllLabel').hidden = false;
   const readSpeedSel = document.getElementById('readSpeed');
+  const readSpeedPeople = document.getElementById('readSpeedPeople');
   const readSpeedBtn = document.getElementById('readSpeedBtn');
-  const speedName = v => (v === 1 ? '1' : String(v)) + '×';
-  readSpeedSel.innerHTML = READ_SPEEDS.map(v => `<option value="${v}">${speedName(v)}</option>`).join('');
+  for (const sel of [readSpeedSel, readSpeedPeople]) sel.innerHTML = PACES.map(v => `<option value="${v}">${v}</option>`).join('');
   if (voiceOn) document.getElementById('readSpeedLabel').hidden = false;
-  function setReadSpeed(v) {
-    readSpeed = READ_SPEEDS.includes(v) ? v : 1;
-    store.set('readSpeed', readSpeed);
-    readSpeedSel.value = String(readSpeed);
-    readSpeedBtn.textContent = speedName(readSpeed);
+  function setPace(who, v) {
+    pace[who] = PACES.includes(v) ? v : nearest(v);
+    store.set(who === 'agent' ? 'readPaceAgent' : 'readPacePerson', pace[who]);
+    readSpeedSel.value = String(pace.agent);
+    readSpeedPeople.value = String(pace.person);
+    readSpeedBtn.textContent = String(pace.agent);
+    readSpeedBtn.title = `Agents read at ${pace.agent} words a minute, people at ${pace.person}: press for agents' next`;
     for (const a of [reader, speaking && speaking.audio]) if (a) atSpeed(a);  // what's playing changes at once
   }
-  setReadSpeed(readSpeed);
-  readSpeedSel.addEventListener('change', () => setReadSpeed(+readSpeedSel.value));
-  readSpeedBtn.addEventListener('click', () => setReadSpeed(READ_SPEEDS[(READ_SPEEDS.indexOf(readSpeed) + 1) % READ_SPEEDS.length]));
+  setPace('agent', pace.agent);
+  setPace('person', pace.person);
+  readSpeedSel.addEventListener('change', () => setPace('agent', +readSpeedSel.value));
+  readSpeedPeople.addEventListener('change', () => setPace('person', +readSpeedPeople.value));
+  readSpeedBtn.addEventListener('click', () => setPace('agent', PACES[(PACES.indexOf(pace.agent) + 1) % PACES.length]));
 
   // Where reading has got to, kept in this browser: the moment before the first thing not yet
   // read, and what's been read since. A page reloaded -- a phone discards one in the background --
@@ -5647,6 +5867,10 @@
     (place.heard || []).forEach(id => readHeard.add(id));
   }
   function setReadMode(mode) {
+    if (mode !== readMode && viewer) {  // the 🎧 beside them shows, or goes, at once
+      fetch('/api/voice/listening/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                       body: JSON.stringify({ mode, mood: current }) }).catch(() => {});
+    }
     readMode = mode;
     store.set('readAll', mode);
     readSel.value = mode;
@@ -5662,7 +5886,10 @@
     if (readMode === 'off' || !readSinceMs) return;
     let events;
     try {
-      const r = await fetch('/api/moods/recent/?oldest=1&since=' + encodeURIComponent(new Date(readSinceMs).toISOString()));
+      // An agent's words as it says them, mid-turn, not all at once when it's done (Justin, 22 Oct).
+      // And says, as it asks, that its person is listening, and where (🎧 beside them, services/listening.py).
+      const r = await fetch('/api/moods/recent/?oldest=1&progress=1&since=' + encodeURIComponent(new Date(readSinceMs).toISOString())
+                            + `&listening=${readMode}&mood=${encodeURIComponent(current || '')}`);
       if (!r.ok) return;
       events = (await r.json()).events || [];
     } catch (e) { return; }
@@ -5700,18 +5927,30 @@
   }
   const readFromMenu = document.createElement('div');
   readFromMenu.id = 'readFromMenu'; readFromMenu.hidden = true; readFromMenu.setAttribute('role', 'menu');
-  readFromMenu.innerHTML = '<div class="head">Read from here on</div>'
+  readFromMenu.innerHTML = '<div class="head">Reading from here on</div>'
     + '<button type="button" role="menuitem" data-where="here">in this Mood</button>'
     + '<button type="button" role="menuitem" data-where="everywhere">in every Mood</button>';
+  let readFromMenuFor = 0;
   document.body.appendChild(readFromMenu);
   document.addEventListener('click', e => {
     const open = e.target.closest('.turn .readfrom');
     const pick = e.target.closest('#readFromMenu button');
-    if (pick) { readFromMenu.hidden = true; readFrom(readFromMenu.dataset.id, pick.dataset.where === 'everywhere'); return; }
+    if (pick) {
+      readFromMenu.hidden = true;
+      if (!pick.classList.contains('on')) readFrom(readFromMenu.dataset.id, pick.dataset.where === 'everywhere');  // the other way
+      return;
+    }
     if (!open) { readFromMenu.hidden = true; return; }
+    // One tap reads, at once (Justin, 22 Oct: pressed without looking, it has to do something): here, or
+    // everywhere if that's how they're listening already. The menu, a moment, to read the other way instead.
+    const everywhere = readMode === 'everywhere';
+    readFrom(open.dataset.id, everywhere);
+    readFromMenu.querySelectorAll('button').forEach(b => b.classList.toggle('on', (b.dataset.where === 'everywhere') === everywhere));
     const box = open.getBoundingClientRect();
     readFromMenu.dataset.id = open.dataset.id;
     readFromMenu.hidden = false;
+    const shown = ++readFromMenuFor;
+    setTimeout(() => { if (readFromMenuFor === shown) readFromMenu.hidden = true; }, 6000);
     readFromMenu.style.top = Math.min(box.bottom + 4, innerHeight - readFromMenu.offsetHeight - 8) + 'px';
     readFromMenu.style.left = Math.max(8, Math.min(box.right - readFromMenu.offsetWidth, innerWidth - readFromMenu.offsetWidth - 8)) + 'px';
   });
@@ -5734,6 +5973,25 @@
   }
   function endClip(how) { const done = clipDone; clipDone = null; if (done) done(how); }
   reader.addEventListener('ended', () => endClip('ended'));
+  // Paused mid-clip, but not by us or by them -- Android hands the sound to a navigation app's directions and
+  // doesn't hand it back (Justin, 22 Oct: "at Jus--", then three minutes of nothing). It goes on a few
+  // seconds later, once the directions have had their say, tried for a minute; and again when the page is
+  // looked at. Told to the server as clips are, so the record says when it happens. (Their own pause, on the
+  // page, a headset or the lock screen, holds the reading first, so it's never taken for this.)
+  let pausedAt = 0;
+  reader.addEventListener('pause', () => {
+    if (reader.ended || !clipDone || !readNow || readNow.skipped || readHeld || readRecording || readMode === 'off') return;
+    pausedAt = Date.now();
+    readReport(readNow.item, 'message', 'paused');
+    setTimeout(goOn, 3000);
+  });
+  function goOn() {
+    if (!pausedAt || !reader.paused || !clipDone || !readNow || readHeld || readRecording || readMode === 'off') { pausedAt = 0; return; }
+    const item = readNow.item;
+    atSpeed(reader).play().then(() => { readReport(item, 'message', 'resumed'); pausedAt = 0; })
+      .catch(() => { if (Date.now() - pausedAt < 60000) setTimeout(goOn, 5000); });
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && pausedAt) goOn(); });
   reader.addEventListener('error', () => {
     clipError = `media error ${reader.error && reader.error.code}: ${(reader.error && reader.error.message) || ''}`.slice(0, 200);
     endClip('failed');
@@ -5788,8 +6046,9 @@
   // record): a phone's player can't be watched from here otherwise.
   function readReport(item, clip, outcome) {
     fetch('/api/voice/heard/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ mood: item.mood, message: item.id, clip, outcome, error: clipError,
-                             hidden: document.hidden }) }).catch(() => {});
+      body: JSON.stringify({ mood: item.mood, message: item.id, clip, outcome, error: clipError, hidden: document.hidden,
+                             // how fast it was played, and the pace it was taken to have: what the listener heard
+                             rate: Math.round(reader.playbackRate * 100) / 100, pace: Math.round(paceOf(reader) || 0) }) }).catch(() => {});
   }
 
   async function readNext() {
@@ -5797,9 +6056,13 @@
     const item = readQueue.shift();
     // "X is thinking" only as the latest news: when nothing else is waiting, it says something's
     // coming. With more to hear, or its answer already in, it's left out (Justin, 19 Oct).
-    if (item.kind === 'thinking' && ((liveData[item.mood] || {}).busy !== item.agent || readQueue.length)) { readNext(); return; }
+    if (item.kind === 'thinking' && (readQueue.length || (item.waiting
+        ? !((liveData[item.mood] || {}).waiting || []).some(w => w.agent === item.agent)  // its wait is over
+        : (liveData[item.mood] || {}).busy !== item.agent))) { readNext(); return; }
     const now = readNow = { item, skipped: false };
     renderReadBar();
+    // A message about to be read says so at once, while its words are fetched (a memo's may still be heard).
+    const chimed = item.kind !== 'thinking' && item.kind !== 'deploy' ? playClip(chimeUrl('in')) : null;
     const memo = (item.text || '').match(MEMO_AUDIO);  // heard as recorded: only who's speaking needs saying
     const newMood = !readLast || readLast.mood !== item.mood;
     const intro = newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
@@ -5809,7 +6072,8 @@
         const r = await fetch('/api/voice/narrate/', { method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
           body: JSON.stringify(item.kind === 'deploy' ? { mood: current, deploy: item.row }
-                               : { mood: item.mood, agent: item.agent, where: readMode === 'everywhere' }) });
+                               : { mood: item.mood, agent: item.agent, where: readMode === 'everywhere', still: !!item.still,
+                                   ...(item.waiting ? { waiting: item.waiting } : {}) }) });
         const body = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(body.error || r.status);
         clips.push([item.kind, body.url]);
@@ -5857,6 +6121,7 @@
       keepAwake(false); renderReadBar();
       return;
     }
+    if (chimed) await chimed;  // its chime, done (or stopped) before its first words
     for (const [clip, source, after] of clips.filter(([, src]) => src)) {
       if (now.skipped || readMode === 'off' || readNow !== now) break;
       let src = source;
@@ -5880,10 +6145,13 @@
       }
     }
     if (readNow !== now) return;  // stopped meanwhile
+    if (item.mood && thinkingToldAt[item.mood]) thinkingToldAt[item.mood] = Date.now();  // heard from there: a minute from now
     if (item.kind === 'deploy') readLast = null;  // after the news, whoever speaks next is said again
     else if (item.kind !== 'thinking') readLast = { who: item.who, mood: item.mood };  // its answer still says who speaks
     readNow = null;
     saveReadPlace();
+    // All heard, and still listening: a falling chime says so, and that more will come as it's said.
+    if (!readQueue.length && readMode !== 'off' && !readHeld && !readRecording) playClip(chimeUrl('end'));
     readNext();
   }
 
@@ -5891,7 +6159,7 @@
   function readLabel(item) {
     if (item.kind === 'deploy') return `<b>${esc(item.text || 'a redeploy')}</b>`;
     const where = esc((moods.find(m => m.slug === item.mood) || {}).title || item.mood || '');
-    if (item.kind === 'thinking') return `<b>${esc(shown(item.who))}</b> at work · ${where}`;
+    if (item.kind === 'thinking') return `<b>${esc(shown(item.who))}</b> ${item.waiting ? 'waiting for ' + esc(item.waiting) : 'at work'} · ${where}`;
     const memo = MEMO_AUDIO.test(item.text || '');
     const words = memo ? '🎙 voice memo' : (item.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     return `<b>${esc(shown(item.who))}</b> · ${where}${words ? ' — ' + esc(words) : ''}`;
@@ -5940,6 +6208,7 @@
       : item ? `🔊 ${shown(item.who)}${readMode === 'everywhere' ? ' · ' + where : ''}${more}`
       : `🔊 reading ${readMode === 'everywhere' ? 'every Mood' : 'this Mood'} as it comes`);
     readPause.textContent = readHeld || readBlocked ? '▶' : '⏸';
+    if (typeof renderVoiceMode === 'function') renderVoiceMode();
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = item && readMode !== 'off' ? new MediaMetadata({
         title: shown(item.who), artist: where, album: 'magenta',
@@ -6557,9 +6826,10 @@
     if (at && what) at.textContent = what;
   }
   composer.addEventListener('submit', e => { e.preventDefault(); say(); });
-  // Enter sends; Ctrl+Enter (or Shift+Enter) makes a new line. On a touch
-  // screen there is no Ctrl, so Enter makes the new line and Send sends.
-  const touchScreen = matchMedia('(pointer: coarse)').matches;
+  // Enter sends; Ctrl+Enter (or Shift+Enter) makes a new line (Justin, 1 Oct). On a touch
+  // screen there is no Ctrl, so Enter makes the new line and Send sends. Only a touch screen with
+  // nothing finer: a laptop with a touch screen has a trackpad and a keyboard, and Enter sends there.
+  const touchScreen = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
   sayBox.addEventListener('keydown', e => {
     if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;  // mid-composition (IME)
     if (e.ctrlKey || e.metaKey) {
@@ -6608,7 +6878,7 @@
   const sectionOf = path => SECTIONS.find(s => path.replace(/\/+$/, '') === '/moods/' + s) || null;
   // A frame, made once: tidings is asked for in the background at the start, so it's ready when wanted
   // (Justin, 21 Oct); the others load the first time they're shown. A plain spinner while one loads.
-  function frameFor(name, keepQuiet) {
+  function frameFor(name, keepQuiet, at) {
     let frame = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
     if (frame) return frame;
     frame = document.createElement('iframe');
@@ -6622,12 +6892,12 @@
     loading.hidden = true;
     frame.addEventListener('load', function arrived() {
       let there = false;
-      try { there = frame.contentWindow.location.pathname === `/moods/${name}/`; } catch (e) { there = true; }
+      try { there = frame.contentWindow.location.pathname.startsWith(`/moods/${name}/`); } catch (e) { there = true; }
       if (!there) return;
       loading.remove();
       frame.removeEventListener('load', arrived);
     });
-    frame.src = `/moods/${name}/?embed=1`;
+    frame.src = at || `/moods/${name}/?embed=1`;
     frame.hidden = keepQuiet;
     sectionFrames.append(frame, loading);
     return frame;
@@ -6671,6 +6941,19 @@
     if (e.data.magentaUpload) { if (upload) offerUploadFor(upload); return; }
     openPicture({ full: pic.full, href: pic.full, onwiki: pic.onwiki, upload });
   });
+  // A link into one of Tidings' discussions, from the thread (a comment's line, a #t- link): opened in the
+  // Tidings section, at that discussion -- not as a page of its own, nor the one page loaded again.
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href^="/moods/tidings/"]');
+    if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+    const to = new URL(a.href, location.href);
+    const id = (to.pathname.match(/^\/moods\/tidings\/([0-9a-f-]{36})\/?$/) || [])[1];
+    if (!id) return;
+    e.preventDefault();
+    showSection('tidings', true);
+    const frame = sectionFrames.querySelector('iframe[data-section="tidings"]:not([data-fresh])');
+    if (frame) frame.src = `/moods/tidings/${id}/?embed=1${to.hash}`;
+  });
   // A link inside a section into magenta: opened here, without loading anything again.
   window.addEventListener('message', async e => {
     if (e.origin !== location.origin || !e.data || typeof e.data.magentaGo !== 'string') return;
@@ -6699,15 +6982,20 @@
   });
 
   (async function start() {
+    await null;  // the rest of this script read first: what showSection uses is all there
+    // Loaded in the background: ready the moment it's wanted. Opened at a link's own address (from the
+    // front page, or a #t- link elsewhere), it opens at that link's discussion.
+    const tidingAt = location.pathname.match(/^\/moods\/tidings\/[0-9a-f-]{36}\/?$/);
+    frameFor('tidings', true, tidingAt ? tidingAt[0].replace(/\/?$/, '/') + '?embed=1' : undefined);
+    // Asked for a section: shown at once, before the Moods load behind it -- not a Mood first, then the
+    // section (Justin, 23 Oct: from the front page, a link took "quite a while").
+    if (initialSection !== 'moods') showSection(initialSection, false);
     try { await loadMoods(); } catch (e) { setStatus('cannot reach memory-lane', 'stale'); return; }
-    frameFor('tidings', true);  // loaded in the background: ready the moment it's wanted
     loadTokens();  // not awaited: badges fill in when they come
     fetchBadges();
     await pullSeen();  // where you've read up to, on every device, before anything is counted
     // A share opens where you last were (the Mood opened last in this browser), not at the top of the list.
     const lastOpened = sharing_ && store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived));
-    // Asked for a section: it first, the Moods behind it, ready for when they're wanted.
-    if (initialSection !== 'moods') showSection(initialSection, false);
     const slug = initialSlug || lastOpened || (moods[0] && moods[0].slug);
     if (!slug) { inner.innerHTML = '<div class="empty">No Moods yet.</div>'; setStatus('live', 'live'); return; }
     await open(slug, false);
@@ -6747,6 +7035,144 @@
       }
     } catch (e) { /* the badges wait for the next poll */ }
   }
+  // --- Going to a Mood by voice (Justin, 22 Oct: switching while moving, never looking) -------------------
+  // 🧭, one tap: a rising chime, and it listens for "go to jams". It stops itself a moment after they stop
+  // talking -- or at five seconds, or at a second tap -- with a falling chime; the narrator says where
+  // they'll be ("Now in pound jams.") and the page goes there. A name not caught leaves them where they
+  // are, and says so. Nothing is ever posted (views_auth.api_voice_go). Reading aloud waits meanwhile.
+  const goBtn = document.getElementById('goBtn');
+  if (voiceOn && viewer && window.MediaRecorder && navigator.mediaDevices) goBtn.hidden = false;
+  let going = null;  // {stop}, while it listens
+  const playThrough = src => new Promise(done => {
+    const a = atSpeed(new Audio(src));
+    a.onended = done; a.onerror = done; a.play().catch(done);
+  });
+  goBtn.addEventListener('click', async () => {
+    if (going) { going.stop(); return; }
+    if (goBtn.classList.contains('busy')) return;
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { showError('microphone: ' + e.message); return; }
+    const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/webm']
+      .find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+    recordingHold(true);
+    goBtn.classList.add('listening'); goBtn.title = 'Listening: say “go to” and a Mood';
+    await playThrough(chimeUrl('in'));  // before listening: the chime isn't taken for words
+    const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks = [];
+    recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
+    // When they've stopped talking: loud enough to be speech, then a moment's quiet.
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    const level = new Uint8Array(analyser.fftSize);
+    const began = Date.now();
+    let spoke = false, quietSince = began;
+    const stop = () => { if (recorder.state !== 'inactive') recorder.stop(); };
+    const watch = setInterval(() => {
+      analyser.getByteTimeDomainData(level);
+      let peak = 0;
+      for (const v of level) peak = Math.max(peak, Math.abs(v - 128));
+      const now = Date.now();
+      if (peak > 18) { spoke = true; quietSince = now; }
+      if ((spoke && now - quietSince > 1200) || now - began > 5000) stop();
+    }, 100);
+    going = { stop };
+    recorder.addEventListener('stop', async () => {
+      clearInterval(watch);
+      ctx.close().catch(() => {});
+      stream.getTracks().forEach(t => t.stop());
+      going = null;
+      goBtn.classList.remove('listening'); goBtn.classList.add('busy');
+      playThrough(chimeUrl('end'));
+      try {
+        const kind = chunks[0]?.type || type || 'audio/webm';
+        const r = await fetch('/api/voice/go/?mood=' + encodeURIComponent(current || ''), { method: 'POST',
+          headers: { 'Content-Type': kind, 'X-CSRFToken': csrf() }, body: new Blob(chunks, { type: kind }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || r.status);
+        if (d.slug && d.slug !== current) {
+          if (sectionNow !== 'moods') showSection('moods', true);
+          open(d.slug, true);
+        }
+        showNote(d.slug ? `🧭 Now in #${d.slug}` : `🧭 Didn't catch which Mood${d.heard ? ` (heard “${d.heard}”)` : ''}: still here.`, 6000);
+        if (d.url) await playThrough(d.url);
+      } catch (err) { showError('go by voice: ' + err.message); }
+      finally {
+        goBtn.classList.remove('busy'); goBtn.title = 'Go to a Mood by voice: tap, then say “go to” and its name';
+        recordingHold(false);
+      }
+    });
+    recorder.start();
+  });
+  // --- Voice mode (Justin, 22 Oct) ---------------------------------------------------------------------
+  // On by its own button (re: reading aloud at a desk still wants the thread), remembered on this device.
+  // What it shows is the reader's own state, drawn big: the agents at work, what's playing, what's next.
+  // Its buttons press the page's own -- pause, skip, 🧭, the memo's 🎙, send -- so they do just what those do.
+  const voiceMode = document.getElementById('voiceMode');
+  const voiceModeBtn = document.getElementById('voiceModeBtn');
+  const voiceModeOpen = document.getElementById('voiceModeOpen');
+  if (voiceOn && viewer) { voiceModeBtn.hidden = false; voiceModeOpen.hidden = false; }
+  voiceModeOpen.addEventListener('click', () => setVoiceMode(true));
+  function setVoiceMode(on) {
+    document.body.classList.toggle('voice-mode', on);
+    store.set('voiceMode', on);
+    if (on && readMode === 'off') setReadMode('here');  // voice mode is for listening: it starts listening here
+    renderVoiceMode();
+  }
+  function workBars() {  // the agents at work where one listens: here, or every Mood
+    const out = [];
+    if (readMode === 'everywhere') {
+      for (const [slug, d] of Object.entries(liveData)) {
+        for (const agent of d.busy_all || (d.busy ? [d.busy] : [])) {
+          out.push(`<b>${esc(shown(agent))}</b> at work · ${esc((moods.find(m => m.slug === slug) || {}).title || slug)}`);
+        }
+      }
+    } else {
+      for (const a of acts.filter(a => a.doing !== 'held')) out.push(`<b>${esc(shown(a.agent))}</b> ${esc(a.doing)} · ${esc(elapsed(a.since))}`);
+    }
+    return out;
+  }
+  function renderVoiceMode() {
+    if (!document.body.classList.contains('voice-mode')) return;
+    const here = (moods.find(m => m.slug === current) || {}).title || current || '';
+    const now = readNow && readNow.item;
+    const bar = (cls, when, html, i) => `<div class="bar ${cls}"><span class="when">${when}</span><span class="say">${html}</span>`
+      + (i >= 0 ? `<button type="button" class="drop" data-i="${i}" aria-label="Don't read this one">✕</button>` : '') + '</div>';
+    const bars = workBars().map(w => bar('work', 'at work', w, -1))
+      + (now ? bar('now', readRecording ? 'held' : readHeld ? 'paused' : 'now', readLabel(now), -1) : '')
+      + readQueue.slice(0, 6).map((item, i) => bar('', i === 0 ? 'next' : 'then', readLabel(item), i)).join('')
+      + (readQueue.length > 6 ? `<div class="where">+ ${readQueue.length - 6} more</div>` : '');
+    const recording = memoBtn.classList.contains('recording'), saving = memoBtn.classList.contains('busy');
+    const html = `<div class="where">#<b>${esc(here)}</b> · ${readMode === 'everywhere' ? 'hearing every Mood' : readMode === 'here' ? 'hearing this Mood' : 'not reading aloud'}</div>`
+      + `<div class="bars">${bars || '<div class="none">Nothing to hear yet. It comes as it’s said.</div>'}</div>`
+      + '<div class="pads">'
+      + `<button type="button" data-v="pause">${readHeld || readBlocked ? '▶' : '⏸'}<small>${readHeld || readBlocked ? 'go on' : 'pause'}</small></button>`
+      + `<button type="button" data-v="skip">⏭<small>skip</small></button>`
+      + `<button type="button" data-v="go"${goBtn.classList.contains('listening') ? ' class="hot"' : ''}>🧭<small>go to…</small></button>`
+      + `<button type="button" data-v="memo"${recording ? ' class="hot"' : ''}${saving ? ' disabled' : ''}>🎙<small>${recording ? 'stop' : saving ? 'saving' : 'record'}</small></button>`
+      + `<button type="button" data-v="send"${sayBox.value.trim() && !saving ? '' : ' disabled'}>➤<small>send</small></button>`
+      + `<button type="button" data-v="where">${readMode === 'everywhere' ? '🌐' : '📍'}<small>${readMode === 'everywhere' ? 'every Mood' : 'this Mood'}</small></button>`
+      + '</div><button type="button" class="leave" data-v="leave">leave voice mode</button>';
+    if (voiceMode.innerHTML !== html) voiceMode.innerHTML = html;
+  }
+  voiceMode.addEventListener('click', e => {
+    const drop = e.target.closest('.drop');
+    if (drop) { readQueue.splice(+drop.dataset.i, 1); saveReadPlace(); renderReadBar(); return; }
+    const v = e.target.closest('[data-v]')?.dataset.v;
+    if (v === 'pause') readPause.click();
+    else if (v === 'skip') skipClip();
+    else if (v === 'go') goBtn.click();
+    else if (v === 'memo') memoBtn.click();
+    else if (v === 'send') composer.requestSubmit();
+    else if (v === 'where') { setReadMode(readMode === 'everywhere' ? 'here' : 'everywhere'); readPoll(); }
+    else if (v === 'leave') setVoiceMode(false);
+    setTimeout(renderVoiceMode, 50);
+  });
+  voiceModeBtn.addEventListener('click', () => setVoiceMode(true));
+  setInterval(renderVoiceMode, 1000);  // the clock on an agent's work, the memo's state, what came
+  if (voiceOn && viewer && store.get('voiceMode', false)) setVoiceMode(true);
   // Installable as an app: the browser wants a service worker (it keeps nothing).
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/moods/sw.js', { scope: '/moods/' }).catch(() => {});
 })();

@@ -2,11 +2,13 @@ from django.urls import path
 from . import views
 from . import views_auth
 from . import views_moods
+from . import views_bundles
 from . import views_runner
 from . import views_settings
 from . import views_admin
 
 urlpatterns = [
+    path('', views_moods.front_page, name='front'),
     path('moods/', views_moods.moods_page, name='moods'),
     path('messages/<str:message_id>', views_moods.message_page, name='message'),
     path('messages/<str:message_id>/', views_moods.message_page),
@@ -45,6 +47,7 @@ urlpatterns = [
     path('api/tidings/<str:tiding_id>/comment/<str:comment_id>/vote/', views_auth.api_tiding_comment_vote_row,
          name='api_tiding_comment_vote_row'),
     path('api/tidings/<str:tiding_id>/vote/', views_auth.api_tiding_vote, name='api_tiding_vote'),
+    path('api/tidings/<str:tiding_id>/said/<str:kind>/<str:node_id>/', views_auth.api_tiding_said, name='api_tiding_said'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/hear-again/', views_auth.api_memo_again, name='api_memo_again'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/delete/', views_auth.api_message_delete, name='api_message_delete'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/react/', views_auth.api_react, name='api_message_react'),
@@ -68,6 +71,7 @@ urlpatterns = [
     path('api/moods/<slug:slug>/sessions/', views_moods.api_mood_sessions, name='api_mood_sessions'),
     path('api/moods/<slug:slug>/steps/<str:step_id>/', views_moods.api_mood_step, name='api_mood_step'),
     path('api/moods/<slug:slug>/typing/', views_moods.api_typing, name='api_mood_typing'),
+    path('api/moods/<slug:slug>/here/', views_moods.api_here, name='api_mood_here'),
     path('api/moods/<slug:slug>/interrupt/', views_auth.api_interrupt, name='api_mood_interrupt'),
     path('api/moods/<slug:slug>/archive/', views_auth.api_archive, name='api_mood_archive'),
     path('api/moods/<slug:slug>/pin/', views_auth.api_pin, name='api_mood_pin'),
@@ -75,8 +79,11 @@ urlpatterns = [
     path('api/moods/<slug:slug>/speak/<str:message_id>/', views_auth.api_speak, name='api_mood_speak'),
     path('api/moods/<slug:slug>/verify/<str:message_id>/', views_auth.api_verify, name='api_mood_verify'),
     path('api/voice/voices/', views_auth.api_voices, name='api_voices'),
+    path('api/voice/search/', views_auth.api_voice_search, name='api_voice_search'),
     path('api/voice/sample/<str:voice_id>/', views_auth.api_voice_sample, name='api_voice_sample'),
     path('api/voice/speaker/', views_auth.api_speaker_voice, name='api_speaker_voice'),
+    path('api/voice/go/', views_auth.api_voice_go, name='api_voice_go'),
+    path('api/voice/listening/', views_auth.api_voice_listening, name='api_voice_listening'),
     path('api/voice/narrate/', views_auth.api_narrate, name='api_voice_narrate'),
     path('api/voice/heard/', views_auth.api_voice_heard, name='api_voice_heard'),
     path('api/me/look/', views_auth.api_my_look, name='api_my_look'),
@@ -85,9 +92,13 @@ urlpatterns = [
     path('api/moods/<slug:slug>/quiet/', views_runner.api_quiet, name='api_mood_quiet'),
     path('api/moods/<slug:slug>/held/', views_runner.api_held, name='api_mood_held'),
     path('api/agents/<str:name>/models/', views_runner.api_agent_models, name='api_agent_models'),
+    path('api/agents/<str:name>/tasks/<str:task>/', views_auth.api_task, name='api_task'),
     path('api/deploys/', views_runner.api_deploys, name='api_deploys'),
     path('api/access/ssh/', views_runner.api_ssh, name='api_ssh'),
     path('api/servers/', views_runner.api_servers, name='api_servers'),
+    path('api/bundles/', views_bundles.api_bundles, name='api_bundles'),
+    path('api/bundles/<str:record_id>/', views_bundles.api_bundle, name='api_bundle'),
+    path('api/bundles/<str:record_id>/text/', views_bundles.api_bundle_text, name='api_bundle_text'),
     path('api/tokens/', views_moods.api_tokens, name='api_tokens'),
     path('moods/media/<str:sha256>.<str:ext>', views_moods.media_file, name='mood_media'),
     path('moods/media/<str:sha256>.<str:ext>/preview', views_moods.media_preview, name='mood_media_preview'),

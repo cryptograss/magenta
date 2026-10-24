@@ -29,7 +29,7 @@ INTERRUPT_SOURCE = 'interrupt'
 # System rows shown as a line in the thread.
 NEW_MOOD_SOURCE = 'mood-new'
 EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
-                 'merged', 'release-draft', 'tiding-comment')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
+                 'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).
 POSTED = ('mood-web', 'mood-attest')
@@ -64,12 +64,18 @@ def prose(content):
 _QUIET = re.compile(r'^<silent\s*/>$|^<silent(?:\s+by="(\w+)")?>(.*)</silent>$', re.S)
 
 
+# An agent waiting for another asked the same thing (poller/mood_poller.py _WAIT_REPLY): no answer yet, so a
+# silence -- a dot saying whom it's waiting for -- never a turn, an answer, or a mention.
+_WAIT = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"\s*/>\s*$')
+
+
 def quiet_reason(text):
     """{'reason', 'by'} for a silent reply ('by' is '' when the agent itself
-    chose), or None if the text isn't one."""
+    chose), or None if the text isn't one. A wait for another agent is one."""
     match = _QUIET.match(text)
     if not match:
-        return None
+        wait = _WAIT.match(text or '')
+        return {'reason': f'waiting for {wait.group(1).strip()}', 'by': ''} if wait else None
     return {'reason': (match.group(2) or '').strip(), 'by': match.group(1) or ''}
 
 
@@ -403,6 +409,9 @@ def event_line(content):
         return f"🔑 {c.get('who', 'someone')} {(c.get('kind') or '').replace('-', ' ')}"
     if kind == 'interrupt':
         return f"■ {by or 'someone'} stopped {c.get('agent', 'an agent')}"
+    if kind == 'task':
+        from .tasks import line
+        return line(c)
     return (kind or 'an event').replace('-', ' ')
 
 
@@ -993,10 +1002,10 @@ def turn_tools(messages):
                                                  created_at__lte=max(m.created_at for m in messages))
                           .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL))
                           .order_by('created_at').values_list('session_id', 'created_at', 'tail')):
-        wakes.setdefault(sid, []).append((at, wake_said(tail or '')))
+        wakes.setdefault(str(sid), []).append((at, wake_said(tail or '')))
     found = {}
-    for m in messages:
-        before = [kind for at, kind in wakes.get(m.session_id, []) if m.created_at - reach <= at <= m.created_at]
+    for m in messages:  # as text: a row just made holds its session as it was given, a row read as a UUID
+        before = [kind for at, kind in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]
         if before and before[-1]:
             found[str(m.id)] = before[-1]
     return found
@@ -1316,6 +1325,14 @@ def _activity(mood, now=None, only=None):
     if not recent:
         return None
     newest = recent[0]
+
+    # Waiting for another agent asked the same thing (poller's _WAIT_REPLY): its reply was the newest line, a
+    # silence, and the runner's hold since says whom it waits for (Justin, 24 Oct: "magent is waiting for re").
+    if only:
+        hold = held_in(mood.slug, now).get(only)
+        if hold and hold['at'] >= _when(newest) and str(hold.get('reason') or '').startswith('waiting for'):
+            return {'agent': only, 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
+                    'since': hold['at']}
 
     if newest.source_file in POSTED:
         named = [only] if only else named_in(newest)

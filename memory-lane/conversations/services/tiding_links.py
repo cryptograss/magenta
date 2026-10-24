@@ -28,6 +28,7 @@ from django.core.cache import cache
 from .redaction import redact
 
 LISTED = 30          # links on Tidings
+CANDIDATES = 100     # the newest links ranked for it: an older one has faded from the top anyway
 MAX_TITLE = 300
 _BY_MESSAGE = 'tidings:by-message:all'  # a list per message now: the one-each form, under its old name, is never read
 
@@ -231,7 +232,8 @@ def _snippets_and_votes(tree, viewer=None):
     nodes = list(_walk(tree))
     mood_ids = [n['id'] for n in nodes if n.get('kind', 'mood') == 'mood']
     comment_ids = [n['id'] for n in nodes if n.get('kind') == 'comment']
-    texts = {str(m.id): prose(m.content) for m in Message.objects.filter(id__in=mood_ids)} if mood_ids else {}
+    rows = {str(m.id): m for m in Message.objects.filter(id__in=mood_ids).select_related('change')} if mood_ids else {}
+    texts = {mid: prose(m.content) for mid, m in rows.items()}
     scored, mines = {}, set()
     if mood_ids:
         scored.update({str(i): c for i, c in TidingVote.objects.filter(message_id__in=mood_ids).values('message_id')
@@ -250,6 +252,11 @@ def _snippets_and_votes(tree, viewer=None):
         if node.get('kind', 'mood') == 'mood':
             node['snippet'] = snippet_of(reply_to(texts.get(node['id'], ''))[1])
             node['html'] = said_html(texts.get(node['id'], ''))
+            row = rows.get(node['id'])
+            change = getattr(row, 'change', None) if row is not None else None
+            node['changed'] = change.kind if change else ''
+            node['text'] = '' if node['changed'] == 'deleted' else reply_to(texts.get(node['id'], ''))[1]
+            node['source'], node['said_at'] = (row.source_file, row.created_at) if row is not None else ('', None)
             if isinstance(node['at'], str):
                 node['at'] = datetime.fromisoformat(node['at'])  # the index keeps it ISO (it's cached); the page says it
         node['score'] = scored.get(node['id'], 0)
@@ -278,7 +285,8 @@ def tree_of(tiding, message_id, index=None, viewer=None):
     extras = {}
     for row in TidingComment.objects.filter(tiding=tiding).select_related('by').order_by('at'):
         node = {'kind': 'comment', 'id': str(row.id), 'sender': row.by.name if row.by_id else '',
-                'at': row.at, 'snippet': row.text, 'html': said_html(row.text), 'replies': []}
+                'at': row.at, 'snippet': row.text, 'html': said_html(row.text), 'replies': [],
+                'text': '' if row.changed == 'deleted' else row.text, 'changed': row.changed}
         key = 'c:' + str(row.parent_id) if row.parent_id else 'm:' + str(row.parent_message_id or message_id)
         extras.setdefault(key, []).append(node)
 
@@ -399,10 +407,12 @@ def vote_on_comment(tiding, by, comment_id):
 COMMENT_SOURCE = 'tiding-comment'
 
 
-def _notice(tiding, by):
+def _notice(tiding, by, said=None, asks=()):
     """A line in the link's Mood: '💬 new comment by …', referring to the message it was posted from.
     The comment's words stay on Tidings (Justin, 21 Oct); the notice is all the Mood gets, and only
-    if the link isn't muted there."""
+    if the link isn't muted there -- with the link's title and the comment's first words, which open it
+    (Justin, 23 Oct)."""
+    from .mood_view import snippet_of
     import time as _time
     from conversations.models import ConversationParticipant, Message
     system, _ = ConversationParticipant.objects.get_or_create(name='system',
@@ -410,7 +420,11 @@ def _notice(tiding, by):
     Message.objects.create(id=uuid.uuid4(), sender=system, mood=tiding.message.mood, source_file=COMMENT_SOURCE,
                            timestamp=int(_time.time() * 1000),
                            content={'type': COMMENT_SOURCE, 'by': by.name, 'message': str(tiding.message_id),
-                                    'tiding': str(tiding.id)})
+                                    'tiding': str(tiding.id), 'title': (tiding.title or tiding.url)[:200],
+                                    **({'comment': snippet_of(said.text)[:120], 'comment_id': str(said.id)} if said else {}),
+                                    # The agents it asks by name: each woken in this Mood (mention_of), its
+                                    # answer coming back under the comment (answer_asked).
+                                    **({'asks': list(asks)} if asks else {})})
 
 
 def mute(tiding, device, muted):
@@ -462,10 +476,214 @@ def comment(tiding, by, text, parent=None, client_version=''):
     text, _ = redact(text)  # a secret pasted here is kept out of the record, as in the Mood's own box
     row = TidingComment.objects.create(tiding=tiding, by=by, parent=comment_parent,
                                        parent_message_id=parent_message_id, text=text)
-    if not tiding.muted_in_mood:
-        _notice(tiding, by)
+    asks = asked_in(text, by, client_version)
+    if asks or not tiding.muted_in_mood:  # muted or not, an agent asked by name hears of it in the Mood
+        _notice(tiding, by, row, asks)
     return {'id': str(row.id), 'kind': 'comment', 'sender': by.name, 'at': row.at,
             'snippet': text, 'html': said_html(text), 'replies': [], 'score': 0, 'mine': False}
+
+
+# --- agents, asked on Tidings (Justin, 23 Oct: mention-only; their comments don't count toward points;
+# their answers read aloud, as what they say in the Mood is) -------------------------------------------
+
+ASKED_CONTEXT = 4     # comments above the one that asks, given to the agent with it
+ASKED_EACH = 1500     # characters of each
+
+
+def asked_in(text, by, client_version=''):
+    """The agents a comment on Tidings asks by name (@magent), as in a Mood: only a person's words wake an
+    agent, and not one signed in with PickiPedia (their @agent is just text)."""
+    from .mood_view import agent_names, mentions_in
+    if by is None or not by.is_biological_human or 'wiki' in (client_version or '').split('/')[1:]:
+        return []
+    agents = agent_names()
+    return [name for name in mentions_in(text or '', agents | {by.name}) if name in agents]
+
+
+def mention_of(notice, agent):
+    """A comment on Tidings that asks `agent`, as the mention that wakes it in the link's Mood
+    (views_moods.api_mentions) -- its words, the link, and the comments it answers -- or None."""
+    from conversations.models import TidingComment
+    c = notice.content if isinstance(notice.content, dict) else {}
+    if c.get('type') != COMMENT_SOURCE or agent not in (c.get('asks') or []):
+        return None
+    asked = TidingComment.objects.select_related('tiding', 'by').filter(id=c.get('comment_id')).first()
+    if asked is None or asked.by_id is None or asked.changed == 'deleted':
+        return None  # deleted since: nothing to answer
+    tiding = asked.tiding
+    above, at = [], asked
+    while len(above) < ASKED_CONTEXT and (at.parent_id or at.parent_message_id):
+        if at.parent_id:
+            at = TidingComment.objects.select_related('by').filter(id=at.parent_id).first()
+            if at is None:
+                break
+            above.append(f"[{at.by_id or 'someone'}, on Tidings] {at.text[:ASKED_EACH]}")
+        else:
+            from .mood_view import prose, reply_to
+            said = type(notice).objects.filter(id=at.parent_message_id).first()
+            if said is not None and str(said.id) != str(tiding.message_id):
+                # No #m- link: the poller would read the Mood from there (mood_poller.linked_message).
+                above.append(f"[{said.sender_id}, in #{said.mood_slug}] {(reply_to(prose(said.content) or '')[1])[:ASKED_EACH]}")
+            break
+    where = f"/moods/tidings/{tiding.id}/#c-{asked.id}"
+    text = (f"@{agent}: {asked.by_id} asked you on Tidings, in the discussion of “{tiding.title or tiding.url}” "
+            f"({tiding.url}), {where}:\n\n{asked.text}"
+            + (('\n\nWhat it answers, nearest first:\n' + '\n'.join(above)) if above else '')
+            + '\n\nYour reply goes back there as a comment under theirs, as well as here.')
+    return {'id': str(notice.id), 'sender': asked.by_id, 'is_human': True, 'created_at': notice.created_at.isoformat(),
+            # Typed on Tidings, into no session: owed a wake at once, as a web post is.
+            'via': 'web', 'tier': None, 'text': text, 'mentions': [agent], 'reply': None,
+            'tiding': {'id': str(tiding.id), 'comment': str(asked.id)}}
+
+
+def answer_asked(mood, session_id, agent, asked_ids):
+    """A turn of `agent`'s has ended, woken for `asked_ids` (the runner says which: mood_poller): its last
+    words go to Tidings too -- under each comment there that asked it (mention_of), and under each of the
+    Mood's replies in a link's discussion that did -- so an answer lands where it was asked, magenta routing
+    it rather than the agent remembering to. A silence goes nowhere. The new comments."""
+    from conversations.models import Message, ThinkingEntity, Tiding, TidingComment
+    from .mood_view import is_wrapper, prose, quiet_reason
+    ids = []
+    for i in asked_ids or ():
+        try:
+            ids.append(uuid.UUID(str(i)))
+        except ValueError:
+            continue
+    if not ids:
+        return []
+    asked = list(Message.objects.filter(id__in=ids[:50], mood=mood))
+    if not asked:
+        return []
+    last = (Message.objects.filter(session_id=session_id, sender_id=agent, is_sidechain=False, thought__isnull=True,
+                                   tooluse__isnull=True, toolresult__isnull=True)
+            .order_by('-created_at').first())
+    text = (prose(last.content) or '').strip() if last is not None else ''
+    if not text or is_wrapper(text) or quiet_reason(text) is not None:
+        return []
+    text, _ = redact(text)
+    entity = ThinkingEntity.objects.filter(name=agent, is_biological_human=False).first()
+    if entity is None:
+        return []
+    made = []
+    # Asked on Tidings: under the comment that asked.
+    for notice in asked:
+        c = notice.content if isinstance(notice.content, dict) else {}
+        if notice.source_file != COMMENT_SOURCE or agent not in (c.get('asks') or []):
+            continue
+        comment = TidingComment.objects.filter(id=c.get('comment_id')).first()
+        if comment is not None and not TidingComment.objects.filter(parent=comment, by=entity).exists():
+            made.append(TidingComment.objects.create(tiding_id=comment.tiding_id, by=entity, parent=comment, text=text))
+    # Asked in the Mood, by a reply in a link's discussion (or the link's own message): under that reply.
+    plain = {str(m.id) for m in asked if m.source_file != COMMENT_SOURCE}
+    if plain:
+        for tiding in Tiding.objects.filter(message__mood=mood).order_by('at'):
+            here = {str(tiding.message_id)} | {node['id'] for node in _walk(_tree(tiding.message_id))}
+            for mid in sorted(plain & here):
+                if not TidingComment.objects.filter(tiding=tiding, parent_message_id=mid, by=entity).exists():
+                    made.append(TidingComment.objects.create(tiding=tiding, by=entity, parent_message_id=mid, text=text))
+    return made
+
+
+def people_said(tree, agents):
+    """How much people have said in a reply tree: what an agent says doesn't raise a link (Justin, 23 Oct)."""
+    return sum((node.get('sender') not in agents) + people_said(node.get('replies', []), agents) for node in tree)
+
+
+def post_text(text, url):
+    """What the promoted message says besides its link (Justin, 24 Oct): shown in full at the top of the
+    discussion, as the post's own words -- not a comment: not counted, not voted on, and answered by a
+    top-level comment, as HN shows a text post's text. The link is the title already, so it's left out
+    where it stands apart -- a line of its own, or a line's start or end ("This one: <link>") -- and kept
+    where it's part of a sentence; a [words](link) keeps its words. '' when the link is all there is."""
+    from .mood_view import reply_to
+    text = reply_to(text or '')[1]
+    link = '<?' + re.escape(url) + r'>?(?![\w/#?=&%-])'
+    text = re.sub(r'\[([^\]]*)\]\(' + re.escape(url) + r'\)', r'\1', text)          # [words](link): the words
+    text = re.sub(r'[ \t]*[:\u2013\u2014-]?[ \t]*' + link + r'(?=[.!?]*[ \t]*$)', '', text, flags=re.M)  # ending a line
+    text = re.sub(r'^[ \t]*' + link + r'[ \t]*[:\u2013\u2014-]?[ \t]*', '', text, flags=re.M)              # starting one
+    text = text.strip()
+    return text if re.search(r'\w', text) else ''
+
+
+def may_change_said(node, device):
+    """(may edit, may delete) a node of a link's discussion: change_said's rules, for the page's buttons."""
+    from types import SimpleNamespace
+    from django.utils import timezone
+    from . import retract
+    if device is None or node.get('changed') == 'deleted':
+        return False, False
+    if node.get('kind') == 'comment':
+        age, mine = timezone.now() - node['at'], node['sender'] == device.entity_id
+        return mine and age <= retract.EDIT_OWN_WITHIN, retract.is_admin(device) or (mine and age <= retract.DELETE_OWN_WITHIN)
+    if node.get('said_at') is None:
+        return False, False
+    said = SimpleNamespace(sender_id=node['sender'], source_file=node.get('source', ''), created_at=node['said_at'])
+    return retract.may_edit(said, device), retract.may_delete(said, device)
+
+
+def change_said(tiding, device, kind, node_id, text=None, delete=False):
+    """Edit or delete something said about a link (Justin, 21 Oct: "How about comment editing?"), by the
+    Mood's own rules: yours, within a day to edit and a week to delete, or anyone's deleted by an admin;
+    what goes is sealed to the recovery key first (services/retract.py). `kind` 'comment', said here: its
+    words change in place, a deleted one stays as '[deleted]' so what answered it stays under it. 'mood', a
+    reply in the Mood: changed there, as the Mood changes it, still answering what it answered.
+    {'id', 'changed'}; Refused with why if not."""
+    from types import SimpleNamespace
+    from django.utils import timezone
+    from conversations.models import Message, TidingComment
+    from . import retract
+    from .mood_view import prose, reply_to
+    if device is None:
+        raise Refused('sign in first', status=401)
+    if not delete:
+        text = (text if isinstance(text, str) else '').replace('\x00', '').strip()
+        if not text:
+            raise Refused('nothing left: delete it instead')
+    if kind == 'mood':
+        message = Message.objects.filter(id=node_id, mood_id=tiding.message.mood_id).select_related('mood').first()
+        if message is None or not any(node['id'] == str(node_id) for node in _walk(_tree(tiding.message_id))):
+            raise Refused('no such comment under this link', status=404)
+        try:
+            if delete:
+                if not retract.may_delete(message, device):
+                    raise Refused('only what you wrote, within a week of writing it, can be deleted '
+                                  '(or anything, by an admin with their SSH key)', status=403)
+                retract.delete(message, device.entity_id)
+            else:
+                if not retract.may_edit(message, device):
+                    raise Refused('only what you wrote here yourself, within a day of writing it, can be edited',
+                                  status=403)
+                target, _ = reply_to(prose(message.content))
+                retract.edit(message, f'↩ #m-{target}\n{text}' if target else text, device.entity_id)
+        except retract.Refused as e:
+            raise Refused(str(e), status=e.status)
+        return {'id': str(message.id), 'changed': 'deleted' if delete else 'edited'}
+    if kind != 'comment':
+        raise Refused('expected a comment or a Mood reply')
+    row = TidingComment.objects.filter(id=node_id, tiding=tiding).first()
+    if row is None or row.changed == 'deleted':
+        raise Refused('no such comment under this link', status=404)
+    age, mine = timezone.now() - row.at, row.by_id == device.entity_id
+    if delete and not (retract.is_admin(device) or (mine and age <= retract.DELETE_OWN_WITHIN)):
+        raise Refused('only what you wrote, within a week of writing it, can be deleted '
+                      '(or anything, by an admin with their SSH key)', status=403)
+    if not delete and not (mine and age <= retract.EDIT_OWN_WITHIN):
+        raise Refused('only what you wrote here yourself, within a day of writing it, can be edited', status=403)
+    try:
+        key = retract._ready(device.entity_id)
+    except retract.Refused as e:
+        raise Refused(str(e), status=e.status)
+    # Sealed as a Mood message's words are: the same record (SealedCopy keeps an id, not a key), the same key.
+    said = SimpleNamespace(pk=row.id, content=row.text, source_file=COMMENT_SOURCE, sender_id=row.by_id,
+                           mood=tiding.message.mood, mood_id=tiding.message.mood_id)
+    kind = 'deleted' if delete else 'edited'
+    retract._seal(said, kind, device.entity_id, key, [])
+    if not delete:
+        text, _ = redact(text)
+    TidingComment.objects.filter(pk=row.pk).update(text=retract.DELETED if delete else text, changed=kind,
+                                                   changed_at=timezone.now())
+    retract._say_so(said, device.entity_id, f'a comment on Tidings {kind}')
+    return {'id': str(row.id), 'changed': kind}
 
 
 def discussion(tiding_id, viewer=None):
@@ -492,6 +710,7 @@ def discussion(tiding_id, viewer=None):
         'mood': message.mood_slug,
         'said_by': message.sender_id,
         'snippet': snippet_of(text)[:200],
+        'post': said_html(post_text(text, tiding.url)) if post_text(text, tiding.url) else '',
         'score': scored.get(str(tiding.id), 0),
         'mine': str(tiding.id) in mines,
         'tags': tiding.tags or [],
@@ -501,16 +720,51 @@ def discussion(tiding_id, viewer=None):
     }
 
 
-def listed(limit=LISTED, viewer=None):
-    """The links on Tidings, newest first, as the page shows them: numbered there, each with its
-    score and whether `viewer` voted."""
+def rank(score, comments, at, now, weights):
+    """How high a link stands on Tidings (Justin, 22 Oct): HN's gravity on our clock --
+    (1 + upvotes + weight x comments) / (1 + age in units) ** gravity. The 1 lets a new link with no votes
+    start on the board; talk counts for something; and nothing stays on top long without more."""
+    age = max((now - at).total_seconds() / 3600, 0) / weights['tidings_age_hours']
+    return (1 + score + weights['tidings_comment_weight'] * comments) / (1 + age) ** weights['tidings_gravity']
+
+
+def pinned_ids():
+    """The links pinned to the top, last pinned first."""
+    from . import settings as knobs
+    return list(knobs.global_value(knobs.TIDINGS_PINNED) or [])
+
+
+def pin(tiding, device, on):
+    """Pin a link to the top of Tidings, or let it go: anyone signed in with an SSH key (Justin, 22 Oct).
+    The ids pinned now, last pinned first."""
+    from . import settings as knobs
+    if device is None or device.tier != 'key':
+        raise Refused('pinning is for someone signed in with an SSH key', status=403)
+    ids = [i for i in pinned_ids() if i != str(tiding.id)]
+    ids = [str(tiding.id)] + ids if on else ids
+    knobs.change(knobs.TIDINGS_PINNED, ids, by=device.entity, note=('pinned ' if on else 'unpinned ') + str(tiding.id))
+    from . import front
+    front.forget()
+    return knobs.clean(knobs.TIDINGS_PINNED, ids)
+
+
+def listed(limit=LISTED, viewer=None, order='top'):
+    """The links on Tidings as the page shows them: numbered there, each with its score and whether
+    `viewer` voted. `order` 'top': pinned first, then by rank (Justin, 22 Oct); 'new': newest first."""
+    from django.utils import timezone
     from conversations.models import Tiding
+    from . import settings as knobs
     from .links import current
     from .mood_view import prose, snippet_of
     from .retract import DELETED
     index = current()
+    knob = knobs.global_values([knobs.TIDINGS_PINNED, 'tidings_age_hours', 'tidings_gravity', 'tidings_comment_weight'])
+    pins = list(knob[knobs.TIDINGS_PINNED] or [])
+    found = list(Tiding.objects.select_related('message', 'by').order_by('-at')[:CANDIDATES if order == 'top' else limit])
+    have = {str(t.id) for t in found}
+    found += [t for t in Tiding.objects.select_related('message', 'by').filter(id__in=[p for p in pins if p not in have])]
     rows = []
-    for tiding in Tiding.objects.select_related('message', 'by').order_by('-at')[:limit]:
+    for tiding in found:
         message = tiding.message
         text = prose(message.content) or ''
         if text == DELETED or message.mood_id is None:
@@ -521,8 +775,15 @@ def listed(limit=LISTED, viewer=None):
     # counted in one question of the database -- not read one link at a time.
     from django.db.models import Count
     from conversations.models import TidingComment
-    said = {str(tid): c for tid, c in TidingComment.objects.filter(tiding__in=rows).values('tiding_id')
-            .annotate(c=Count('id')).values_list('tiding_id', 'c')}
+    # And what people said, for ranking: an agent's comments are shown and counted, but don't raise a link.
+    from django.db.models import Q
+    from .mood_view import agent_names
+    said, people = {}, {}
+    for tid, c, by_people in (TidingComment.objects.filter(tiding__in=rows).values('tiding_id')
+                              .annotate(c=Count('id'), p=Count('id', filter=Q(by__is_biological_human=True)))
+                              .values_list('tiding_id', 'c', 'p')):
+        said[str(tid)], people[str(tid)] = c, by_people
+    agents = agent_names()
     out = []
     for tiding in rows:
         message = tiding.message
@@ -539,9 +800,20 @@ def listed(limit=LISTED, viewer=None):
             'said_by': message.sender_id,
             'snippet': snippet_of(text)[:200],
             'comments': count(_tree(message.id, index)) + said.get(str(tiding.id), 0),
+            'talk': people_said(_tree(message.id, index), agents) + people.get(str(tiding.id), 0),
             'tags': tiding.tags or [],
             'muted': tiding.muted_in_mood,
             'score': scored.get(str(tiding.id), 0),
             'mine': str(tiding.id) in mines,
+            'pinned': str(tiding.id) in pins,
         })
-    return out
+    if order != 'top':
+        out.sort(key=lambda link: link['at'], reverse=True)
+        return out[:limit]
+    now = timezone.now()
+    weights = {k: float(knob[k]) for k in ('tidings_age_hours', 'tidings_gravity', 'tidings_comment_weight')}
+    for link in out:
+        link['rank'] = rank(link['score'], link['talk'], link['at'], now, weights)
+    out.sort(key=lambda link: link['rank'], reverse=True)
+    out.sort(key=lambda link: pins.index(link['id']) if link['pinned'] else len(pins))  # pinned first, as pinned
+    return out[:limit]

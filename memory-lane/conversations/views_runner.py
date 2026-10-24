@@ -43,11 +43,8 @@ TURN_ENDS = {'end_turn', 'refusal', 'stop_sequence', 'max_tokens'}
 
 def runner_agent(request):
     """The agent a valid runner key speaks for, or None."""
-    header = request.headers.get('Authorization', '').encode()
-    for agent, key in getattr(settings, 'MOOD_RUNNER_KEYS', {}).items():
-        if key and hmac.compare_digest(header, f'Bearer {key}'.encode()):
-            return agent
-    return None
+    from memory_viewer.runner_keys import agent_for
+    return agent_for(request.headers.get('Authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
 
 
 def stream_line(event, now_iso):
@@ -101,8 +98,9 @@ def task_notice_line(event, now_iso):
                        'content': content})
 
 
-def finish_turn(mood, session_id, agent, result):
-    """The run is over: stamp the turn's last message, and keep what it cost."""
+def finish_turn(mood, session_id, agent, result, asked=()):
+    """The run is over: stamp the turn's last message, and keep what it cost; its answer to Tidings, if
+    something there asked it (`asked`: what woke it)."""
     stop = result.get('stop_reason') if result.get('stop_reason') in TURN_ENDS else 'end_turn'
     last = (Message.objects.filter(session_id=session_id, sender_id=agent, is_sidechain=False)
             .order_by('-created_at').first())
@@ -128,6 +126,9 @@ def finish_turn(mood, session_id, agent, result):
         'sender': system, 'content': summary, 'mood': mood, 'session_id': session_id,
         'source_file': f'ingest-{SOURCE}',
     })
+    if asked and not result.get('is_error'):
+        from .services import tiding_links
+        tiding_links.answer_asked(mood, session_id, agent, asked)
 
 
 @csrf_exempt  # authenticated by the runner's key, not a browser session
@@ -175,8 +176,12 @@ def api_stream(request, slug):
         MoodSession.objects.filter(session_id=session_id).exclude(full_tools=body['full_tools']).update(
             full_tools=body['full_tools'])
 
+    # What woke the turn (the runner says): when it ends, its answer goes to Tidings too, under whatever
+    # there asked it (tiding_links.answer_asked).
+    asked = body.get('answers') if isinstance(body.get('answers'), list) else []
+
     if events_v1:
-        return stream_events(mood, session_id, agent, body)
+        return stream_events(mood, session_id, agent, body, asked)
 
     from django.utils import timezone
     now_iso = timezone.now().isoformat()
@@ -196,7 +201,7 @@ def api_stream(request, slug):
     finished = False
     for event in events:
         if isinstance(event, dict) and event.get('type') == 'result':
-            finish_turn(mood, session_id, agent, event)
+            finish_turn(mood, session_id, agent, event, asked)
             finished = True
 
     return JsonResponse({'imported': imported, 'skipped': skipped, 'errors': errors[:10], 'finished': finished})
@@ -225,7 +230,7 @@ def clips_played(session_id, agent):
             message.save(update_fields=['content'])
 
 
-def stream_events(mood, session_id, agent, body):
+def stream_events(mood, session_id, agent, body, asked=()):
     """A post in memory-lane's own format (docs/RECORD_EVENTS.md)."""
     from importers_and_parsers.events_v1 import Turn
     from .views import scrub_texts
@@ -249,7 +254,7 @@ def stream_events(mood, session_id, agent, body):
     if imported:
         clips_played(session_id, agent)
     if turn.finished:
-        finish_turn(mood, session_id, agent, turn.finished)
+        finish_turn(mood, session_id, agent, turn.finished, asked)
     return JsonResponse({'imported': imported, 'skipped': skipped, 'ignored': ignored, 'errors': errors[:10],
                          'finished': turn.finished is not None})
 

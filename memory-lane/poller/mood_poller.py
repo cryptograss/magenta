@@ -49,6 +49,7 @@ the Mood's model: Anthropic's on Claude Code, other vendors' on Pi.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -79,11 +80,33 @@ ETIQUETTE = 'https://pickipedia.xyz/wiki/Cryptograss:Magenta_26_Million#Speaking
 SILENT = '<silent/>'
 # A silent reply, with or without a reason: <silent/> or <silent>why</silent>.
 _SILENT_REPLY = re.compile(r'^\s*<silent\s*/>\s*$|^\s*<silent>.*</silent>\s*$', re.S)
+# Waiting for another agent asked the same thing (Justin and re, 24 Oct): a reply that is only this. The poller
+# takes it -- it's a state shown in the Mood (a hold), never a mention or a post that wakes anyone -- and wakes
+# the agent again once they've answered, after WAIT_FOR, or at once if they're waiting for it and it was
+# named first. Once a question: its next wake says to answer.
+_WAIT_REPLY = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"\s*/>\s*$')
+WAIT_FOR = timedelta(minutes=5)
 # Linux caps a single argument at 128 KiB; a prompt is an argument.
 MAX_PROMPT_CHARS = 100_000
 # Text that could pass for the wrapper's own tags, so a post can't close
 # <mood-wake> early and write what looks like the poller's instructions.
 _WRAPPER_TAG = re.compile(r'<(/?)(mood-wake)', re.I)
+
+
+def utc_seconds():
+    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+
+def magenta_commit():
+    """The magenta commit this runs from: MAGENTA_COMMIT, else its checkout's; '' if neither says."""
+    found = os.environ.get('MAGENTA_COMMIT', '').strip()
+    if found:
+        return found[:12]
+    try:
+        return subprocess.run(['git', '-C', str(Path(__file__).parent), 'rev-parse', '--short=12', 'HEAD'],
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:  # noqa: BLE001
+        return ''
 
 
 def parse_time(iso):
@@ -140,6 +163,23 @@ class MoodAPI:
             return False
         response = self.http.post(f'{self.base}/api/moods/{slug}/quiet/', json={'reason': reason, 'by': by},
                                   headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
+        return response.status_code == 201
+
+    def block(self):
+        """Ethereum mainnet's newest height, as magenta last heard it, or None."""
+        try:
+            return self._get('/api/block/').get('height')
+        except Exception:  # noqa: BLE001 -- a bundle without its block sentence, not a turn without rules
+            return None
+
+    def bundle(self, record):
+        """Record the rules bundle a turn was given (poller/rules_bundle.py Bundle.record)."""
+        if not self.key:
+            return False
+        response = self.http.post(f'{self.base}/api/bundles/', json=record,
+                                  headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
+        if response.status_code != 201:
+            logger.warning(f'recording bundle {record.get("id")}: {response.status_code} {response.text[:200]}')
         return response.status_code == 201
 
     def report_models(self, agent, catalog):
@@ -277,6 +317,7 @@ class StreamPoster:
         self.url = f"{base.rstrip('/')}/api/moods/{slug}/stream/"
         self.effort = effort  # what the turn was launched at: stream events don't say
         self.full_tools = None  # whether it was woken with full tools (an agent it mentions may be too)
+        self.answers = None  # the posts that woke it: an answer to one asked on Tidings goes there too
         self.headers = {'Authorization': f'Bearer {key}'}
         self.slug, self.session_id = slug, session_id
         self.http, self.retries, self.pause = http, retries, pause
@@ -313,7 +354,8 @@ class StreamPoster:
     def send(self, events):
         body = {'harness': 'claude-code', 'session_id': self.session_id, 'events': events,
                 **({'effort': self.effort} if self.effort else {}),
-                **({'full_tools': self.full_tools} if self.full_tools is not None else {})}
+                **({'full_tools': self.full_tools} if self.full_tools is not None else {}),
+                **({'answers': self.answers} if self.answers else {})}
         for attempt in range(self.retries):
             try:
                 response = self.http.post(self.url, json=body, headers=self.headers, timeout=30)
@@ -515,7 +557,7 @@ class ClaudeCodeWaker:
             return None
 
     def command(self, session_id, new_session_id, prompt, grant=(), budget=None, effort=None, model=None,
-                full=False, ultracode=False):
+                full=False, ultracode=False, system=None):
         # No session to resume (a new Mood's first turn): start one.
         resume = ['--resume', session_id, '--fork-session'] if session_id else []
         cmd = [self.claude, '-p', *resume,
@@ -546,10 +588,12 @@ class ClaudeCodeWaker:
             # session setting, not an effort level. Only with full tools --
             # a look-only turn couldn't run a workflow anyway.
             cmd += ['--settings', json.dumps({'ultracode': True})]
+        if system:  # its rules (MoodPoller.rules_for): after Claude Code's own, never in the history
+            cmd += ['--append-system-prompt', system]
         return cmd + ['--', prompt]
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, grant=(), budget=None, effort=None,
-             model=None, full=False, stop=None, ultracode=False):
+             model=None, full=False, stop=None, ultracode=False, system=None):
         """Run one turn; (new session id, its reply). `on_event` sees every
         stream event as it comes out; `stop()`, if given, is asked now and
         then whether to end the turn. self.last_result keeps the run's
@@ -564,7 +608,7 @@ class ClaudeCodeWaker:
             spent_before = self.session_cost(session_id)
         new_session_id = new_session_id or str(uuid.uuid4())
         cmd = self.command(session_id, new_session_id, prompt, grant=grant, budget=budget, effort=effort, model=model,
-                           full=full, ultracode=ultracode)
+                           full=full, ultracode=ultracode, system=system)
         # Its own process group, so ending it ends everything it started: a
         # child left holding the output pipe would keep the turn open.
         proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -801,11 +845,19 @@ HANDOFF_HOW = ('Asked to take this to another Mood, put in your reply a block: `
                'what bears on this one, read it (read_mood, from a time) and write the same block with '
                '"from: <mood>" instead of "to:", what you found as its context.')
 
+# Setting agents' settings at a person's ask (memory-lane's services/agent_settings.py): said on full-tools
+# wakes only, the only ones it works on; the server checks the grant and refuses, in a line, what it won't do.
+SETTINGS_HOW = ('Asked to change an agent\'s settings in a Mood -- its model, effort, listening, verbosity or '
+                'discretion; yours too -- and the settings_may_set grant names you, put in your reply a block: '
+                '```settings, then a line per agent ("re: model sonnet, effort high"; "blu: listening off for 1h"), '
+                '"in: <mood>" if not this one, and ``` to close. It is set as you reply, noted as at their ask.')
 
-# Mentions with no live session behind them: typed into the web composer, or
-# brought in by another agent's handoff. None is owed a wait, and only a wake
+
+# Mentions with no live session behind them: typed into the web composer,
+# brought in by another agent's handoff, or a task started for the agent
+# (memory-lane services/tasks.py). None is owed a wait, and only a wake
 # that carried one answers it.
-UNLISTENED = ('web', 'handoff')
+UNLISTENED = ('web', 'handoff', 'task')
 
 
 def signed_in_with_key(turn):
@@ -833,6 +885,7 @@ def wake_footer(full=False):
             'the Mood shows it as a small dot, and the words when someone opens it.',
             GREETING,
             HANDOFF_HOW,
+            *([SETTINGS_HOW] if full else []),
             tools,
             '</mood-wake>']
 
@@ -890,6 +943,66 @@ def arrival_opening(slug, arrival, now):
 
 def mention_opening(slug, why):
     return [f'<mood-wake mood="{slug}">', f'You were woken by the Mood poller: {why}', '']
+
+
+def also_asked(owed, agent, page, may_wait=True):
+    """Lines telling a woken agent which other agents the posts that woke it asked too, and whether each was at
+    work here as its wake was written (Justin, 24 Oct: two agents answering one question blind, neither knowing
+    the other was). Nothing waits on anyone: each is woken by its own poller. `page`: the Mood's turns API."""
+    page = page or {}
+    working = {a.get('agent'): a.get('doing') for a in page.get('activities') or [] if a.get('agent')}
+    agents = set(page.get('agents') or {}) | set(working)
+    asked = []
+    for turn in owed:
+        for name in turn.get('mentions') or []:
+            # Not who wrote it: an agent naming itself ("your @re landed") isn't asking itself anything.
+            if name not in (agent, turn.get('sender')) and name in agents and name not in asked:
+                asked.append(name)
+    if not asked:
+        return []
+    # Whether each has answered since what woke this one (after a wait, say), is at work on it, or hasn't started.
+    last = max((t.get('created_at') or '' for t in owed), default='')
+    answered = {t.get('sender') for t in page.get('turns') or [] if (t.get('created_at') or '') > last}
+
+    def state(name):
+        if working.get(name) not in (None, 'held'):
+            return 'at work here now'
+        return 'has answered, below' if name in answered else 'not at work here yet'
+    said = '; '.join(f'{name}, {state(name)}' for name in asked)
+    # Justin's words (24 Oct): "mentioned, and likely woken" -- whether they answer is theirs to say.
+    wait = (f' If you would rather answer after them, reply with only <wait for="{asked[0]}"/>: you are woken '
+            f'again once they have answered, or in {int(WAIT_FOR.total_seconds() // 60)} minutes.') if may_wait else ''
+    return ['', f'Others mentioned, and likely woken, by what woke you: {said}. Each of you is woken on its own and '
+                'answers without waiting for the other; what they say lands in the Mood as they write it (read_mood '
+                f'shows it), if you would rather answer with it in view.{wait}']
+
+
+def others_asked(owed, agent):
+    """The agents named in the posts that woke `agent`, other than it and whoever wrote them, first named first."""
+    out = []
+    for turn in owed:
+        for name in turn.get('mentions') or []:
+            if name not in (agent, turn.get('sender')) and name not in out:
+                out.append(name)
+    return out
+
+
+SETTING_WORDS = {'model': 'model', 'mention_effort': 'effort', 'listening': 'listening', 'verbosity': 'verbosity',
+                 'discretion': 'discretion'}
+
+
+def settings_changed(agent, page):
+    """Lines telling a woken agent its settings here changed since its last word here, and who changed them
+    (re, 24 Oct: told, with a place to object). `page`: the Mood's turns API."""
+    changed = (((page or {}).get('agents') or {}).get(agent) or {}).get('changed')
+    if not changed or not changed.get('changes'):
+        return []
+    said = ', '.join(f"{SETTING_WORDS.get(c['key'], c['key'])} {c.get('was') or 'default'} → {c.get('now') or 'default'}"
+                     for c in changed['changes'])
+    who = f" by {changed['by']}" if changed.get('by') else ''
+    why = f", {changed['note']}" if changed.get('note') else ''
+    return ['', f'Your settings here changed since your last word here: {said} (set{who}{why}). If you think that '
+                'was wrong, say so here; a person can set it back.']
 
 
 def cut_off_note(started):
@@ -1093,8 +1206,12 @@ class MoodPoller:
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
                  letter=None, agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
-                 end_orphans=end_orphans, texts=None):
+                 end_orphans=end_orphans, texts=None, rules_bundle=False):
         self.api = api
+        # Its rules, gathered for each turn and given as system prompt (poller/rules_bundle.py): for an agent
+        # that has them on PickiPedia (blu first), never for one whose rules live elsewhere yet.
+        self.rules_bundle = rules_bundle
+        self.commit = magenta_commit() if rules_bundle else ''
         # The dials' texts, from PickiPedia (poller/wiki_rules.WikiTexts); None: this file's own.
         self.texts = texts
         self.waker = waker
@@ -1173,6 +1290,10 @@ class MoodPoller:
         self.state.setdefault('consider', {})
         self.state.setdefault('spend', {'day': '', 'usd': 0.0})
         self.state.setdefault('agent_wakes', {})
+        self.state.setdefault('waits', {})    # slug -> a wait under way (start_wait)
+        self.state.setdefault('waited', [])   # mention ids already waited on once
+        self.replies = {}      # flight -> what its turn replied, for after it lands
+        self.wait_notes = {}   # slug -> what the next wake there says of the wait that ended
         self.end_orphans = end_orphans
         self.recover_cut_off()
 
@@ -1399,6 +1520,17 @@ class MoodPoller:
             if (turn['sender'] == self.agent and turn.get('via') != 'handoff') or turn['id'] in handled:
                 continue
             pending.setdefault(m['mood'], []).append(turn)
+        # Waits that are over are answered now; one with something new for it ends with that.
+        over = self.check_waits()
+        for slug in [s for s in pending if s in self.state['waits']]:
+            wait = self.state['waits'].pop(slug)
+            self.wait_notes[slug] = (f"You chose to wait for {', '.join(wait['for'])}; more was said to you "
+                                     'meanwhile. Answer now: you can wait only once on a question.')
+            over[slug] = wait['owed']
+        for slug, owed in over.items():
+            have = {t['id'] for t in pending.get(slug, [])}
+            pending[slug] = sorted([t for t in owed if t['id'] not in have] + pending.get(slug, []),
+                                   key=lambda t: t['created_at'])
         self.cut_off_owed(pending)
 
         woken = []
@@ -1535,10 +1667,18 @@ class MoodPoller:
         if full and self.knob(slug, 'ultracode'):
             options['ultracode'] = True
         options['new_session'] = flight
-        outcome = self.launch(slug, lambda: self.run_turn(slug, session, prompt, **options),
-                              after=lambda _: self.land(flight))
-        if not self.parallel:
+        if not commands:
+            options['flight'] = flight
+            # What it answers: memory-lane puts the answer on Tidings too, under whatever there asked
+            # (a comment, or a reply in a link's discussion) -- routed, not left to the agent to remember.
+            options['answers'] = [t['id'] for t in owed]
+
+        def settled_turn(_outcome):
             self.land(flight)
+            self.after_reply(slug, owed, self.replies.pop(flight, None))
+        outcome = self.launch(slug, lambda: self.run_turn(slug, session, prompt, **options), after=settled_turn)
+        if not self.parallel:
+            settled_turn(outcome)
         return settled, outcome
 
     # --- turns side by side ----------------------------------------------------
@@ -1624,12 +1764,114 @@ class MoodPoller:
 
     def run_turn(self, slug, session_id, prompt, **options):
         """Wake one turn from `session_id` for `slug`; 'woken' or 'failed'."""
+        flight = options.pop('flight', None)
         outcome, self.last_reply, _ = self.run_turn_for(slug, session_id, prompt, **options)
+        if flight:
+            self.replies[flight] = self.last_reply
         return outcome
+
+    def rules_for(self, slug):
+        """(text, record): this agent's rules for `slug`, as its harness takes them
+        (--append-system-prompt), gathered fresh for each turn, so a page saved on PickiPedia holds
+        from the next one; and what is recorded of them (rules_bundle.Bundle.record), with when they
+        were asked for and made. If they can't be gathered at all, the recovery rules beside this
+        file -- never a turn with none -- and the record says why."""
+        requested, record_id = utc_seconds(), str(uuid.uuid4())
+        try:
+            try:
+                from poller.rules_bundle import bundle
+            except ImportError:
+                from rules_bundle import bundle
+            block = self.api.block() if hasattr(self.api, 'block') else None
+            b = bundle(self.agent, slug, block=block if isinstance(block, int) else None, record_id=record_id)
+            text, record = b.text, b.record()
+        except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery rules stand
+            logger.error(f'{slug}: rules not gathered ({e}); the recovery rules stand in')
+            recovery = Path(__file__).with_name('recovery_rules.md')
+            words = recovery.read_text() if recovery.exists() else 'Your rules could not be gathered.'
+            text = (f'<rules agent="{self.agent}" mood="{slug}" bundle="{record_id}">\n<recovery>\n{words}\n'
+                    '</recovery>\n</rules>')
+            record = {'id': record_id, 'agent': self.agent, 'mood': slug, 'parts': [text], 'stamps': {},
+                      'sha256': hashlib.sha256(text.encode()).hexdigest(), 'error': f'{type(e).__name__}: {e}'[:300]}
+        record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit)
+        return text, record
+
+    def record_bundle(self, record, session_id, delivered_at, harness=None):
+        """The bundle a turn was given, kept in magenta: delivered_at is when its harness first spoke,
+        so it had started with the bundle in hand; None, it never did."""
+        record.update(session_id=session_id or '', delivered_at=delivered_at, harness=harness or '')
+        try:
+            if hasattr(self.api, 'bundle'):
+                self.api.bundle(record)
+        except Exception as e:  # noqa: BLE001 -- the turn happened; only its record is lost, and said so
+            logger.warning(f'bundle {record.get("id")} not recorded: {e}')
+
+    # --- waiting for another agent -------------------------------------------------
+
+    def after_reply(self, slug, owed, reply):
+        """A mention's turn has ended: if it chose to wait for another agent asked too, it waits."""
+        match = _WAIT_REPLY.match(reply or '')
+        if not match or not owed:
+            return
+        asked = others_asked(owed, self.agent)
+        names = [n for n in re.split(r'[\s,]+', match.group(1).lower()) if n in asked]
+        ids = [t['id'] for t in owed]
+        if not names or any(i in self.state['waited'] for i in ids):
+            logger.info(f'{slug}: a wait for {match.group(1)!r} not taken: '
+                        + ('waited once already' if names else 'nobody asked here by that name'))
+            return
+        now = self.now()
+        # Who was named first, this agent among them: if two wait on each other, that one answers.
+        first = next((n for t in owed for n in t.get('mentions') or []
+                      if n != t.get('sender') and (n == self.agent or n in asked)), self.agent)
+        self.state['waits'][slug] = {'for': names, 'owed': owed, 'since': now.isoformat(),
+                                     'until': (now + WAIT_FOR).isoformat(), 'first': first}
+        self.state['waited'] = (self.state['waited'] + ids)[-200:]
+        logger.info(f'{slug}: waiting for {", ".join(names)}')
+        self.hold(slug, f'waiting for {", ".join(names)}', now + WAIT_FOR)
+        self.save()
+
+    def check_waits(self):
+        """{slug: the mentions to answer now} for each wait that's over -- they answered, the time's up, or
+        they're waiting for this agent and it was named first; the rest are held, and shown so, a while longer."""
+        over = {}
+        for slug, wait in list(self.state['waits'].items()):
+            names, since = wait['for'], parse_time(wait['since'])
+            try:
+                page = self.api.recent(slug, limit=60)
+            except Exception:
+                page = {}
+            doing = {a.get('agent'): a for a in page.get('activities') or [] if a.get('agent')}
+            said = [t for t in page.get('turns') or []
+                    if t.get('sender') in names and parse_time(t['created_at']) > since]
+            busy = [n for n in names if (doing.get(n) or {}).get('doing') not in (None, 'held')]
+            waiting_on_me = [n for n in names if (doing.get(n) or {}).get('doing') == 'held'
+                             and self.agent in str((doing.get(n) or {}).get('why') or '')
+                             and 'waiting for' in str((doing.get(n) or {}).get('why') or '')]
+            who = ', '.join(names)
+            if said and not busy:
+                note = f'You chose to wait for {who}. {who} has answered: it is in what was said here, below.'
+            elif self.now() >= parse_time(wait['until']):
+                note = f'You chose to wait for {who}; {int(WAIT_FOR.total_seconds() // 60)} minutes on, {who} has not answered.'
+            elif waiting_on_me and wait.get('first') == self.agent:
+                note = f'You chose to wait for {who}, and {who} is waiting for you; you were named first.'
+            else:
+                self.hold(slug, f'waiting for {who}', wait['until'])
+                continue
+            del self.state['waits'][slug]
+            self.wait_notes[slug] = note + ' Answer now: you can wait only once on a question.'
+            over[slug] = wait['owed']
+        if over:
+            self.save()
+        return over
 
     def run_turn_for(self, slug, session_id, prompt, **options):
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
         new_session = options.pop('new_session', None) or str(uuid.uuid4())
+        answers = options.pop('answers', None)
+        bundled = None
+        if self.rules_bundle:
+            options['system'], bundled = self.rules_for(slug)
         if hasattr(self.waker, 'harness_for'):  # two harnesses: settled here, so the poster suits it
             options['harness'] = options.get('harness') or self.waker.harness_for(options.get('model'))
         poster = None
@@ -1645,13 +1887,24 @@ class MoodPoller:
             poster.effort = options['effort']
         if poster is not None:
             poster.full_tools = bool(options.get('full'))
+            if answers:
+                poster.answers = list(answers)
         stop = self.stop_check(slug, options.pop('since', None))
+        heard = {}  # when the harness first spoke: it had started, with its rules in hand
+        on_event = poster.put if poster else None
+        if bundled is not None:
+            def on_event(event, put=on_event):
+                heard.setdefault('at', utc_seconds())
+                if put:
+                    put(event)
         try:
             new_session, reply = self.waker.wake(session_id, prompt, new_session_id=new_session,
-                                                 on_event=poster.put if poster else None, stop=stop,
+                                                 on_event=on_event, stop=stop,
                                                  **options)
         except Exception as e:
             logger.error(f'{slug}: wake failed, not retrying: {e}')
+            if bundled is not None:
+                self.record_bundle(bundled, new_session, heard.get('at'), options.get('harness'))
             if poster:  # close the turn in the Mood, or it shows as working until it times out
                 poster.put({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
                             'session_id': new_session, 'uuid': str(uuid.uuid4())})
@@ -1659,6 +1912,8 @@ class MoodPoller:
             return 'failed', None, 0.0
         if poster:
             poster.close()
+        if bundled is not None:
+            self.record_bundle(bundled, new_session, heard.get('at'), options.get('harness'))
         cost = (getattr(self.waker, 'last_result', None) or {}).get('run_cost_usd')
         ending = (getattr(self.waker, 'last_result', None) or {}).get('subtype') or ''
         command = (getattr(self.waker, 'last_result', None) or {}).get('local_command')
@@ -1676,6 +1931,8 @@ class MoodPoller:
     def prompt(self, slug, owed, full=False):
         if all(t.get('via') == 'web' for t in owed):
             why = 'this was posted from the web, where no session is listening.'
+        elif all(t.get('via') == 'task' for t in owed):
+            why = 'one of your tasks was started here (memory-lane services/tasks.py).'
         elif all(t.get('via') in UNLISTENED and t.get('sender') == self.agent for t in owed):
             why = 'you handed this over to yourself here, from another Mood.'
         elif all(t.get('via') in UNLISTENED for t in owed):
@@ -1693,6 +1950,7 @@ class MoodPoller:
                 entry = entry[:max(budget, 0)] + ' [cut: too long to pass on]'
             budget -= len(entry)
             lines.append(entry)
+        owed_end = len(lines)
         # What was said here since the agent last spoke: web posts reach no
         # session, so this is the only way it hears them -- all of it, within
         # its budget, the older part summarized when it doesn't fit. A post
@@ -1724,6 +1982,16 @@ class MoodPoller:
             window, cost = self.fit(said, room)
             self.spend(cost)
             lines += ['', note, *window]
+        # Who else the same posts asked, and whether they're at work here now; and its own settings here,
+        # if someone changed them since it last spoke here.
+        try:
+            info = page or self.api.recent(slug, limit=1)
+            waited = slug in self.wait_notes or any(t['id'] in self.state.get('waited', []) for t in owed)
+            lines[owed_end:owed_end] = also_asked(owed, self.agent, info, may_wait=not waited) + (
+                ['', self.wait_notes.pop(slug)] if slug in self.wait_notes else [])
+            lines += settings_changed(self.agent, info)
+        except Exception:
+            pass
         # Taken here from another Mood for this agent, since it last spoke here.
         try:
             handed = handoffs_for(page or self.api.recent(slug, limit=400), self.agent)
@@ -2254,6 +2522,8 @@ def main(argv=None):
                              "(its home went with its container), so a mention starts it over from the record")
     parser.add_argument('--letter', default=None,
                         help="The letter a new Mood's first session reads (default: poller/letter.md, for magent only)")
+    parser.add_argument('--rules-bundle', action='store_true',
+                        help="Give each turn the agent's rules from PickiPedia as system prompt (poller/rules_bundle.py)")
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--dry-run', action='store_true', help='Log what would be woken; change nothing')
     args = parser.parse_args(argv)
@@ -2315,7 +2585,8 @@ def main(argv=None):
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
                           letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour,
                           only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
-                          texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')))
+                          texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')),
+                          rules_bundle=args.rules_bundle)
     report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on
