@@ -27,7 +27,7 @@ class RulesPromptTest(SimpleTestCase):
         poller, waker = self.poller(rules_bundle=True)
         with mock.patch('poller.rules_bundle.bundle', return_value=mock.Mock(text=RULES)) as gathered:
             poller.run_turn_for('m26', 's-local', 'You were woken')
-        gathered.assert_called_once_with('blu', 'm26')
+        gathered.assert_called_once_with('blu', 'm26', block=None, record_id=mock.ANY)
         self.assertEqual(waker.options['system'], RULES)
 
     def test_without_the_flag_nothing_is_added(self):

@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from . import views_auth
 from . import views_moods
+from . import views_bundles
 from . import views_runner
 from . import views_settings
 from . import views_admin
@@ -91,6 +92,9 @@ urlpatterns = [
     path('api/moods/<slug:slug>/quiet/', views_runner.api_quiet, name='api_mood_quiet'),
     path('api/moods/<slug:slug>/held/', views_runner.api_held, name='api_mood_held'),
     path('api/agents/<str:name>/models/', views_runner.api_agent_models, name='api_agent_models'),
+    path('api/bundles/', views_bundles.api_bundles, name='api_bundles'),
+    path('api/bundles/<str:record_id>/', views_bundles.api_bundle, name='api_bundle'),
+    path('api/bundles/<str:record_id>/text/', views_bundles.api_bundle_text, name='api_bundle_text'),
     path('api/deploys/', views_runner.api_deploys, name='api_deploys'),
     path('api/access/ssh/', views_runner.api_ssh, name='api_ssh'),
     path('api/servers/', views_runner.api_servers, name='api_servers'),
