@@ -183,7 +183,7 @@ def api_mood_turns(request, slug):
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
-                                                   'tiding', 'comment_id', 'task', 'revision', 'reason', 'tools')},
+                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
@@ -282,6 +282,8 @@ def agents_in(mood):
     agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
     shown = ('listening', 'model', 'mention_effort', 'ultracode', 'catch_up_tokens', 'discretion', 'verbosity')
     rows = list(Setting.objects.filter(key__in=shown))
+    from .services import agent_settings
+    every = agent_settings._rows()
     # Which harness reported what it can run (the menu fetches the list itself, from api_agent_models).
     from .models import HarnessModels
     catalogs = dict(HarnessModels.objects.values_list('agent_id', 'harness'))
@@ -296,6 +298,10 @@ def agents_in(mood):
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
                      'context': context_in(mood, name),
                      'catalog': catalogs.get(name)}
+        # What's changed in its settings here since its last word: told at its next wake (agent_settings).
+        changes, by, note = agent_settings.changed_since(mood.slug, name, rows=every)
+        if changes:
+            out[name]['changed'] = {'changes': changes, 'by': by, 'note': note}
     return out
 
 
@@ -931,7 +937,7 @@ def api_mentions(request, name):
         limit = 50
 
     from django.db.models import Q
-    from .services import handoff, tasks
+    from .services import handoff, tasks, tiding_links
 
     names = known_names()
     is_agent = not ThinkingEntity.objects.get(name=name).is_biological_human
@@ -940,7 +946,9 @@ def api_mentions(request, name):
         # A handoff into a Mood "for" an agent is the system's line, but it
         # addresses that agent: it wakes it there (handoff_mention). So does
         # a task started for it (services/tasks.py).
-        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file__in=(handoff.SOURCE, tasks.SOURCE)))
+        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file__in=(handoff.SOURCE, tasks.SOURCE))
+                # So is a comment on Tidings that asks an agent by name: its line in the link's Mood wakes it.
+                | Q(source_file=tiding_links.COMMENT_SOURCE))
         .select_related('sender')
         .order_by('-created_at')
     )
@@ -958,6 +966,13 @@ def api_mentions(request, name):
             continue
         if msg.source_file == tasks.SOURCE:
             turn = tasks.mention(msg, name) if is_agent else None
+            if turn:
+                found.append({'mood': msg.mood_slug, 'turn': turn})
+                if len(found) >= limit:
+                    break
+            continue
+        if msg.source_file == tiding_links.COMMENT_SOURCE:
+            turn = tiding_links.mention_of(msg, name) if is_agent else None
             if turn:
                 found.append({'mood': msg.mood_slug, 'turn': turn})
                 if len(found) >= limit:

@@ -235,7 +235,9 @@ class EndToEndTest(TestCase):
         poster = EventsPoster('http://ml', KEY, 'docs-tests-qa', SESSION, http=Capture)
         poster.thread = None  # read the queue here instead
         poster.queue = __import__('queue').Queue()
+        poster.answers = ['5f0c1a52-0000-4000-8000-000000000001']  # what woke it: said, as Claude Code's poster says it
         poster.put({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True})
         poster.send([poster.queue.get_nowait()])
         self.assertEqual(posted[0]['events'][0]['type'], 'turn_ended')
+        self.assertEqual(posted[0]['answers'], ['5f0c1a52-0000-4000-8000-000000000001'])
         self.assertTrue(Message.objects.filter(session_id=SESSION, content__type='turn-result').exists())

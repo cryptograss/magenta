@@ -62,6 +62,10 @@ GLOBAL_KNOBS = {
     'tidings_age_hours': (12.0, 'Tidings ranking: the hours one unit of a link\'s age is. Fewer: links fade faster.'),
     'tidings_gravity': (1.5, 'Tidings ranking: how hard age pulls a link down. More: it fades faster.'),
     'tidings_comment_weight': (0.5, 'Tidings ranking: what one comment counts for, beside one upvote (1).'),
+    # Who may set agents' per-Mood settings from a reply (services/agent_settings.py), when a person asks: a
+    # grant, so adding an agent is a value a person changes, not code (Justin and re, 24 Oct). magent at first.
+    'settings_may_set': (['magent'], "The agents that may set other agents' settings in a Mood (and their own), "
+                                     "with a ```settings block, when someone signed in with an SSH key asks."),
 }
 # Links pinned to the top of Tidings by someone signed in with an SSH key: their ids, last pinned first.
 # Set from Tidings itself (tiding_links.pin), not the settings page.
@@ -106,13 +110,6 @@ def art_name(person):
 MOOD_KEYS = {
     'archived': (False, 'Out of the Moods list, into "Archived"; still readable, and still answers mentions.'),
     'pinned': (False, 'At the top of the Moods list, whatever was said where lately.'),
-    # Justin, 23 Oct: the voice's own pace, asked of ElevenLabs once for the Mood -- most Moods fast, a
-    # conversational one slower -- and each listener's words a minute still brought about in the browser.
-    # 1.0 (nothing asked) until it's understood: asked for 1.2, magent's voice came back about a fifth
-    # SLOWER (12.0 characters a second against 14.9 without; 23 Oct, the clips' own lengths).
-    'voice_speed': (1.0, "How fast this Mood's words are voiced when made (ElevenLabs' speed, 0.7 to 1.2): "
-                         "fast for most, slower for a conversational Mood. Each listener's words a minute still "
-                         "applies on top. A voice block's own speed wins."),
 }
 
 
@@ -180,14 +177,6 @@ def clean(key, value):
         if len(value) > 4000:
             raise Invalid('rules: at most 4000 characters')
         return value
-    if key == 'voice_speed':
-        try:
-            value = round(float(value), 2)
-        except (TypeError, ValueError):
-            raise Invalid('voice_speed: a number')
-        if not 0.7 <= value <= 1.2:
-            raise Invalid('voice_speed: from 0.7 to 1.2')
-        return value
     if key in ('archived', 'pinned'):
         if isinstance(value, bool):
             return value
@@ -229,6 +218,12 @@ def clean(key, value):
         if not low <= value <= high:
             raise Invalid(f'{key}: from {low} to {high}')
         return value
+    if key == 'settings_may_set':
+        if isinstance(value, str):
+            value = [v for v in re.split(r'[\s,]+', value) if v]
+        if not isinstance(value, list) or not all(isinstance(v, str) and re.fullmatch(r'[\w.-]{1,50}', v) for v in value):
+            raise Invalid('settings_may_set: agents\' names')
+        return list(dict.fromkeys(v.lower() for v in value))[:20]
     if key == TIDINGS_PINNED:
         import uuid
         try:

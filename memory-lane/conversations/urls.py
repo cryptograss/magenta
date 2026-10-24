@@ -46,6 +46,7 @@ urlpatterns = [
     path('api/tidings/<str:tiding_id>/comment/<str:comment_id>/vote/', views_auth.api_tiding_comment_vote_row,
          name='api_tiding_comment_vote_row'),
     path('api/tidings/<str:tiding_id>/vote/', views_auth.api_tiding_vote, name='api_tiding_vote'),
+    path('api/tidings/<str:tiding_id>/said/<str:kind>/<str:node_id>/', views_auth.api_tiding_said, name='api_tiding_said'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/hear-again/', views_auth.api_memo_again, name='api_memo_again'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/delete/', views_auth.api_message_delete, name='api_message_delete'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/react/', views_auth.api_react, name='api_message_react'),

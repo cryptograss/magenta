@@ -29,7 +29,7 @@ INTERRUPT_SOURCE = 'interrupt'
 # System rows shown as a line in the thread.
 NEW_MOOD_SOURCE = 'mood-new'
 EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
-                 'merged', 'release-draft', 'tiding-comment', 'task')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
+                 'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).
 POSTED = ('mood-web', 'mood-attest')
@@ -996,10 +996,10 @@ def turn_tools(messages):
                                                  created_at__lte=max(m.created_at for m in messages))
                           .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL))
                           .order_by('created_at').values_list('session_id', 'created_at', 'tail')):
-        wakes.setdefault(sid, []).append((at, wake_said(tail or '')))
+        wakes.setdefault(str(sid), []).append((at, wake_said(tail or '')))
     found = {}
-    for m in messages:
-        before = [kind for at, kind in wakes.get(m.session_id, []) if m.created_at - reach <= at <= m.created_at]
+    for m in messages:  # as text: a row just made holds its session as it was given, a row read as a UUID
+        before = [kind for at, kind in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]
         if before and before[-1]:
             found[str(m.id)] = before[-1]
     return found
