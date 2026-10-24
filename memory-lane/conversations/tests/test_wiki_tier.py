@@ -112,6 +112,27 @@ class SignInTest(TestCase):
                          [('access', 'signed-in', 'skyler', 'wiki')])
         self.assertIn('SkymanJenkins', events[0]['label'])
 
+    def test_back_where_they_were_once_signed_in(self):
+        # From a link's discussion, say: back there after, not at the top of the Moods (Justin, 23 Oct).
+        client = Client()
+        client.get('/moods/auth/wiki/', {'next': '/moods/tidings/abc/'})
+        state = client.cookies[wiki_auth.STATE_COOKIE].value
+        wiki = FakeWiki('SkymanJenkins')
+        with mock.patch('requests.post', wiki.post), mock.patch('requests.get', wiki.get):
+            back = client.get('/moods/auth/wiki/callback', {'code': 'c', 'state': state})
+        self.assertEqual((back.status_code, back['Location']), (302, '/moods/tidings/abc/'))
+        self.assertEqual(client.cookies['mood_wiki_next'].value, '')  # used once
+
+    def test_never_back_to_another_site(self):
+        from conversations.views_auth import _back_to
+        for away in ('https://evil.test/', '//evil.test/', '/\\evil.test', 'evil', '/moods/\nSet-Cookie: x', ''):
+            with self.subTest(away=away):
+                self.assertEqual(_back_to(away), '')
+                client = Client()
+                client.get('/moods/auth/wiki/', {'next': away})
+                self.assertNotIn('mood_wiki_next', client.cookies)
+        self.assertEqual(_back_to('/moods/tidings/abc/#t-1'), '/moods/tidings/abc/#t-1')
+
     def test_not_set_up_no_wiki_sign_in(self):
         with override_settings(PICKIPEDIA_OAUTH_CLIENT_ID=''):
             self.assertEqual(Client().get('/moods/auth/wiki/').status_code, 404)

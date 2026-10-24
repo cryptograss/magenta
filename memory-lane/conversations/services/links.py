@@ -166,6 +166,16 @@ def current():
     return _memo['index']
 
 
+def note_new(message, refs, reply_target):
+    """A message just said: what it links and replies to goes into the index at once, so a page that reads
+    the index this same second sees it (a comment said on Tidings, and the page drawn again)."""
+    found = cache.get('links:index')
+    if found is not None:
+        _add(found, message, refs, reply_target)
+        cache.set('links:index', found, None)
+        _memo['index'] = found  # this process's copy too: the one a same-second render reads
+
+
 def linked_from(message_id, links=None):
     """Who linked or replied to a message, oldest first; [] if nobody."""
     return sorted((links if links is not None else current()).get(str(message_id), []), key=lambda e: e['at'])

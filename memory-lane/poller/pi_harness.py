@@ -173,6 +173,7 @@ class EventsPoster:
         self.headers = {'Authorization': f'Bearer {key}'}
         self.slug, self.session_id, self.harness, self.forked_from = slug, session_id, harness, forked_from
         self.full_tools = None  # set by the runner: whether this wake has the agent's full tools
+        self.answers = None  # set by the runner: the posts that woke it (an answer asked on Tidings goes there)
         self.http, self.retries, self.pause = http, retries, pause
         self.queue = queue.Queue()
         self.sent = self.failed = 0
@@ -212,6 +213,8 @@ class EventsPoster:
             body['forked_from'] = self.forked_from
         if self.full_tools is not None:
             body['full_tools'] = self.full_tools
+        if self.answers:
+            body['answers'] = self.answers
         for attempt in range(self.retries):
             try:
                 response = self.http.post(self.url, json=body, headers=self.headers, timeout=30)

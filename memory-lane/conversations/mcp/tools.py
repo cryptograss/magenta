@@ -26,15 +26,52 @@ def with_fresh_connection(func):
     return wrapper
 
 
-async def handle_bootstrap_memory():
-    """Complete memory bootstrap for cold starts"""
-    # Call service with fresh connection
-    bootstrap_data = await sync_to_async(with_fresh_connection(BootstrapService.bootstrap_memory))()
+def bootstrap_text(caller=None):
+    """Memory bootstrap for a cold start: the caller's own (services/recall), or, with no key, magent's as before"""
+    if caller:
+        from conversations.services import recall
+        return recall.bootstrap_text(caller)
+    return NO_KEY_BOOTSTRAP + BootstrapService.format_bootstrap_text(BootstrapService.bootstrap_memory())
 
-    # Format as text
-    result_text = BootstrapService.format_bootstrap_text(bootstrap_data)
 
-    return [types.TextContent(type="text", text=result_text)]
+async def handle_bootstrap_memory(arguments=None, caller=None):
+    text = await sync_to_async(with_fresh_connection(lambda: bootstrap_text(caller)))()
+    return [types.TextContent(type="text", text=text)]
+
+
+# --- An agent's own memory, keyed to the caller (services/recall) ------------
+
+NO_KEY = ("This server doesn't know who you are: your MCP client sent no key, or one that is no agent's. "
+          "An agent's memory tools need its runner key, sent as 'Authorization: Bearer <key>' in the "
+          "magenta-memory-v2 server's headers (the deploy writes them). search_messages and read_mood "
+          "work without one.")
+NO_KEY_BOOTSTRAP = ("(No key was sent, so this is magent's bootstrap, as before keys. If you are another agent, "
+                    "this is not your memory: " + NO_KEY + ")\n\n")
+
+
+def keyed(fn):
+    """A tool that needs to know its caller: refuse plainly without one."""
+    async def handler(arguments=None, caller=None):
+        if not caller:
+            return [types.TextContent(type="text", text=NO_KEY)]
+        text = await sync_to_async(with_fresh_connection(lambda: fn(caller, arguments or {})))()
+        return [types.TextContent(type="text", text=text)]
+    return handler
+
+
+def _recall():
+    from conversations.services import recall
+    return recall
+
+
+handle_remember = keyed(lambda me, a: _recall().remember_text(
+    me, a.get('query', ''), limit=a.get('limit', 20), exact=bool(a.get('exact', False))))
+handle_mentions_of_me = keyed(lambda me, a: _recall().mentions_text(
+    me, limit=a.get('limit', 20), named=bool(a.get('named', False)), before=a.get('before')))
+handle_who_i_know = keyed(lambda me, a: _recall().who_i_know_text(me, limit=a.get('limit', 40)))
+handle_my_history_with = keyed(lambda me, a: _recall().history_with_text(
+    me, a.get('name', ''), limit=a.get('limit', 30), before=a.get('before')))
+handle_how_i_speak = keyed(lambda me, a: _recall().how_i_speak_text(me, count=a.get('count', 12)))
 
 
 async def handle_get_latest_continuation():
@@ -341,11 +378,20 @@ async def handle_list_threads(arguments):
     return [types.TextContent(type="text", text='\n'.join(lines))]
 
 
+# Handlers that are given the caller: handler(arguments, caller).
+CALLER_HANDLERS = {
+    "bootstrap_memory": handle_bootstrap_memory,
+    "remember": handle_remember,
+    "mentions_of_me": handle_mentions_of_me,
+    "who_i_know": handle_who_i_know,
+    "my_history_with": handle_my_history_with,
+    "how_i_speak": handle_how_i_speak,
+}
+
 TOOL_HANDLERS = {
     "list_moods": handle_list_moods,
     "read_mood": handle_read_mood,
     "list_threads": handle_list_threads,
-    "bootstrap_memory": handle_bootstrap_memory,
     "get_latest_continuation": handle_get_latest_continuation,
     "get_message_by_id": handle_get_message_by_id,
     "get_message_context": handle_get_message_context,

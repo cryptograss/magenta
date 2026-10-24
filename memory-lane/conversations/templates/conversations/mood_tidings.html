@@ -35,10 +35,17 @@
           border: 1px solid var(--line); margin-right: 6px; color: var(--muted); white-space: nowrap; }
   .chip.yes { border-color: var(--ok); color: var(--ok); font-weight: 600; }
   .chip.no { border-color: var(--err); color: var(--err); }
-  /* Links promoted from the Moods, newest first: a title and its site; who, where, and what's been said. */
+  /* Links promoted from the Moods, newest first: numbered, a title and its site; who said and who
+     promoted it, where, and what's been said. An upvote like HN's (Justin, 21 Oct). */
   .links { list-style: none; margin: 0; padding: 0; }
-  .links li { padding: 6px 0 7px; border-bottom: 1px solid var(--line); }
+  .links li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
   .links li:last-child { border-bottom: 0; }
+  .rank { flex: none; width: 34px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.4; }
+  .rank .num { display: block; font-variant-numeric: tabular-nums; }
+  .rank button.vote { all: unset; cursor: pointer; display: block; font-size: 10px; color: var(--muted); margin: 0 auto; }
+  .rank button.vote:hover { color: var(--accent); }
+  .rank button.vote.mine { color: var(--accent); font-weight: 700; }
+  .rank .score { display: block; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
   .links .title { font-size: 15px; font-weight: 600; color: var(--ink); }
   .links .title:visited { color: var(--muted); }
   .links .host { font-size: 12px; color: var(--muted); margin-left: 6px; }
@@ -50,7 +57,16 @@
   .pic .meta { padding: 5px 7px 6px; font-size: 11px; line-height: 1.35; }
   .pic .meta .marks { margin-bottom: 3px; }
   .pic .meta .chip { font-size: 10.5px; padding: 0 5px; margin-right: 4px; }
+  .pic .meta button.topp { font: inherit; font-size: 10.5px; background: none; cursor: pointer; }
+  .pic .meta button.topp:hover { border-color: var(--accent); color: var(--accent); }
+  .pic .meta .people { margin-bottom: 2px; overflow-wrap: anywhere; }
+  .pic a.thumb { cursor: zoom-in; }
   .none { color: var(--muted); font-size: 13px; }
+  /* Top: pinned, then ranked by votes, talk and age (tiding_links.rank); new: newest first (Justin, 22 Oct). */
+  .order { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  .order b { color: var(--ink); }
+  .links li.pinned { background: linear-gradient(90deg, var(--accent-soft), transparent 60%); }
+  .links .pin { margin-left: 6px; font-size: 12px; }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -62,10 +78,13 @@
     const to = new URL(a.href, location.href);
     if (to.origin !== location.origin) { a.target = '_top'; return; }
     if (to.pathname === location.pathname && to.hash) return;  // within this page
+    if (to.pathname.startsWith('/moods/tidings/')) return;  // a link's discussion: it opens in this frame
+    if (a.classList.contains('thumb')) return;  // a picture: the one page's lightbox (mood_tiding_tools.html)
     e.preventDefault();
     parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
   });
 </script>{% endif %}
+{% include "conversations/mood_tiding_tools.html" %}
 </head>
 <body>
 <header>
@@ -78,17 +97,21 @@
   </nav>
 </header>
 <main>
-  <h1>Tidings</h1>
-
-  <h2>Links</h2>
+  <nav class="order" aria-label="Order">{% if order == 'new' %}<a href="/moods/tidings/?embed=1">top</a> · <b>new</b>{% else %}<b>top</b> · <a href="/moods/tidings/?embed=1&amp;order=new">new</a>{% endif %}</nav>
   {% if tidings.links %}
   <ol class="links">
   {% for link in tidings.links %}
-    <li id="t-{{ link.id }}">
-      <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a><span class="host">({{ link.host }})</span>
-      <div class="meta">promoted by {{ link.by|default:"someone" }}
-        · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}" title="{{ link.said_by }}: “{{ link.snippet }}”">{{ link.at|date:"M j, g:i A" }} in #{{ link.mood }}</a>
-        · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}">{{ link.comments }} comment{{ link.comments|pluralize }}</a></div>
+    <li id="t-{{ link.id }}"{% if link.pinned %} class="pinned"{% endif %}>
+      <span class="rank"><span class="num">{{ forloop.counter }}</span>
+        <button type="button" class="vote{% if link.mine %} mine{% endif %}" data-vote="/api/tidings/{{ link.id }}/vote/"
+                title="{% if link.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
+        <span class="score">{{ link.score }}</span></span>
+      <span class="body">
+        <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a><span class="host">({{ link.host }})</span>{% if link.pinned %}<span class="pin" title="Pinned to the top">📌</span>{% endif %}{% if link.may_retitle %}<button type="button" class="retitle" data-tiding="{{ link.id }}" title="Give it another title">✎</button>{% endif %}
+        <div class="meta">{% if link.said_by == link.by %}posted and promoted by {{ link.by|default:"someone" }}{% else %}posted by {{ link.said_by|default:"someone" }} · promoted by {{ link.by|default:"someone" }}{% endif %}
+          · <a href="/moods/tidings/{{ link.id }}/?embed=1">{{ link.comments }} comment{{ link.comments|pluralize }}</a>
+          · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}" title="{{ link.said_by }}: “{{ link.snippet }}”">{{ link.at|date:"M j, g:i A" }} in #{{ link.mood }}</a>{% if link.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ link.id }}" title="Take it off Tidings">take it off</button>{% endif %}{% if link.may_pin %}<button type="button" class="pinit" data-tiding="{{ link.id }}" data-on="{{ link.pinned|yesno:'0,1' }}" title="{% if link.pinned %}Let it go from the top{% else %}Keep it at the top of Tidings{% endif %}">{% if link.pinned %}unpin{% else %}pin{% endif %}</button>{% endif %}</div>
+      </span>
     </li>
   {% endfor %}
   </ol>
@@ -100,14 +123,14 @@
   <div class="pics">
   {% for pic in tidings.pictures %}
     <div class="pic">
-      <a class="thumb" href="{{ pic.url }}"><img loading="lazy" src="{{ pic.preview }}" alt=""></a>
+      <a class="thumb" href="{{ pic.url }}" data-sha="{{ pic.sha256 }}" data-message="{{ pic.message }}" data-mood="{{ pic.mood }}"
+         data-sharer="{{ pic.shared_by }}" data-onwiki="{{ pic.wiki.page|default:'' }}"><img loading="lazy" src="{{ pic.preview }}" alt=""></a>
       <div class="meta">
         <div class="marks">
-          {% if pic.wiki %}<a class="chip yes" href="{{ pic.wiki.page }}" title="{{ pic.wiki.file }} · by {{ pic.wiki.by }}">wiki</a>
-          {% else %}<span class="chip no">not on wiki</span>{% endif %}
-          {% if pic.faces.looked %}<span class="chip yes" title="{{ pic.faces.model }} · {{ pic.faces.named }} named">faces {{ pic.faces.count }}</span>
-          {% else %}<span class="chip no">no faces</span>{% endif %}
+          {% if pic.wiki %}<a class="chip yes" href="{{ pic.wiki.page }}" title="{{ pic.wiki.file }} · by {{ pic.wiki.by }}">on PickiPedia</a>
+          {% elif viewer %}<button type="button" class="chip topp" title="Put this picture on PickiPedia">→ PickiPedia</button>{% endif %}
         </div>
+        {% if pic.people %}<div class="people">{% for person in pic.people %}<a href="{{ person.page }}" target="_blank" rel="noopener">{{ person.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
         <span class="muted">{{ pic.added_by|default:"unknown" }}<br>
         <a href="/moods/{{ pic.mood }}/#m-{{ pic.message }}" title="the post it appeared in">{{ pic.at|date:"M j, g:i A" }}</a></span>
       </div>

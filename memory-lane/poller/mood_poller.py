@@ -277,6 +277,7 @@ class StreamPoster:
         self.url = f"{base.rstrip('/')}/api/moods/{slug}/stream/"
         self.effort = effort  # what the turn was launched at: stream events don't say
         self.full_tools = None  # whether it was woken with full tools (an agent it mentions may be too)
+        self.answers = None  # the posts that woke it: an answer to one asked on Tidings goes there too
         self.headers = {'Authorization': f'Bearer {key}'}
         self.slug, self.session_id = slug, session_id
         self.http, self.retries, self.pause = http, retries, pause
@@ -313,7 +314,8 @@ class StreamPoster:
     def send(self, events):
         body = {'harness': 'claude-code', 'session_id': self.session_id, 'events': events,
                 **({'effort': self.effort} if self.effort else {}),
-                **({'full_tools': self.full_tools} if self.full_tools is not None else {})}
+                **({'full_tools': self.full_tools} if self.full_tools is not None else {}),
+                **({'answers': self.answers} if self.answers else {})}
         for attempt in range(self.retries):
             try:
                 response = self.http.post(self.url, json=body, headers=self.headers, timeout=30)
@@ -803,6 +805,13 @@ HANDOFF_HOW = ('Asked to take this to another Mood, put in your reply a block: `
                'what bears on this one, read it (read_mood, from a time) and write the same block with '
                '"from: <mood>" instead of "to:", what you found as its context.')
 
+# Setting agents' settings at a person's ask (memory-lane's services/agent_settings.py): said on full-tools
+# wakes only, the only ones it works on; the server checks the grant and refuses, in a line, what it won't do.
+SETTINGS_HOW = ('Asked to change an agent\'s settings in a Mood -- its model, effort, listening, verbosity or '
+                'discretion; yours too -- and the settings_may_set grant names you, put in your reply a block: '
+                '```settings, then a line per agent ("re: model sonnet, effort high"; "blu: listening off for 1h"), '
+                '"in: <mood>" if not this one, and ``` to close. It is set as you reply, noted as at their ask.')
+
 
 # Mentions with no live session behind them: typed into the web composer, or
 # brought in by another agent's handoff. None is owed a wait, and only a wake
@@ -835,6 +844,7 @@ def wake_footer(full=False):
             'the Mood shows it as a small dot, and the words when someone opens it.',
             GREETING,
             HANDOFF_HOW,
+            *([SETTINGS_HOW] if full else []),
             tools,
             '</mood-wake>']
 
@@ -892,6 +902,45 @@ def arrival_opening(slug, arrival, now):
 
 def mention_opening(slug, why):
     return [f'<mood-wake mood="{slug}">', f'You were woken by the Mood poller: {why}', '']
+
+
+def also_asked(owed, agent, page):
+    """Lines telling a woken agent which other agents the posts that woke it asked too, and whether each was at
+    work here as its wake was written (Justin, 24 Oct: two agents answering one question blind, neither knowing
+    the other was). Nothing waits on anyone: each is woken by its own poller. `page`: the Mood's turns API."""
+    page = page or {}
+    working = {a.get('agent'): a.get('doing') for a in page.get('activities') or [] if a.get('agent')}
+    agents = set(page.get('agents') or {}) | set(working)
+    asked = []
+    for turn in owed:
+        for name in turn.get('mentions') or []:
+            if name != agent and name in agents and name not in asked:
+                asked.append(name)
+    if not asked:
+        return []
+    said = '; '.join(f"{name}, {'at work here now' if working.get(name) not in (None, 'held') else 'not at work here yet'}"
+                     for name in asked)
+    return ['', f'Also asked in what woke you: {said}. Each of you is woken on its own and answers without waiting '
+                'for the other; what they say lands in the Mood as they write it (read_mood shows it), if you would '
+                'rather answer with it in view.']
+
+
+SETTING_WORDS = {'model': 'model', 'mention_effort': 'effort', 'listening': 'listening', 'verbosity': 'verbosity',
+                 'discretion': 'discretion'}
+
+
+def settings_changed(agent, page):
+    """Lines telling a woken agent its settings here changed since its last word here, and who changed them
+    (re, 24 Oct: told, with a place to object). `page`: the Mood's turns API."""
+    changed = (((page or {}).get('agents') or {}).get(agent) or {}).get('changed')
+    if not changed or not changed.get('changes'):
+        return []
+    said = ', '.join(f"{SETTING_WORDS.get(c['key'], c['key'])} {c.get('was') or 'default'} → {c.get('now') or 'default'}"
+                     for c in changed['changes'])
+    who = f" by {changed['by']}" if changed.get('by') else ''
+    why = f", {changed['note']}" if changed.get('note') else ''
+    return ['', f'Your settings here changed since your last word here: {said} (set{who}{why}). If you think that '
+                'was wrong, say so here; a person can set it back.']
 
 
 def cut_off_note(started):
@@ -1540,6 +1589,10 @@ class MoodPoller:
         if full and self.knob(slug, 'ultracode'):
             options['ultracode'] = True
         options['new_session'] = flight
+        if not commands:
+            # What it answers: memory-lane puts the answer on Tidings too, under whatever there asked
+            # (a comment, or a reply in a link's discussion) -- routed, not left to the agent to remember.
+            options['answers'] = [t['id'] for t in owed]
         outcome = self.launch(slug, lambda: self.run_turn(slug, session, prompt, **options),
                               after=lambda _: self.land(flight))
         if not self.parallel:
@@ -1651,6 +1704,7 @@ class MoodPoller:
     def run_turn_for(self, slug, session_id, prompt, **options):
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
         new_session = options.pop('new_session', None) or str(uuid.uuid4())
+        answers = options.pop('answers', None)
         if self.rules_bundle:
             options['system'] = self.rules_for(slug)
         if hasattr(self.waker, 'harness_for'):  # two harnesses: settled here, so the poster suits it
@@ -1668,6 +1722,8 @@ class MoodPoller:
             poster.effort = options['effort']
         if poster is not None:
             poster.full_tools = bool(options.get('full'))
+            if answers:
+                poster.answers = list(answers)
         stop = self.stop_check(slug, options.pop('since', None))
         try:
             new_session, reply = self.waker.wake(session_id, prompt, new_session_id=new_session,
@@ -1716,6 +1772,7 @@ class MoodPoller:
                 entry = entry[:max(budget, 0)] + ' [cut: too long to pass on]'
             budget -= len(entry)
             lines.append(entry)
+        owed_end = len(lines)
         # What was said here since the agent last spoke: web posts reach no
         # session, so this is the only way it hears them -- all of it, within
         # its budget, the older part summarized when it doesn't fit. A post
@@ -1747,6 +1804,14 @@ class MoodPoller:
             window, cost = self.fit(said, room)
             self.spend(cost)
             lines += ['', note, *window]
+        # Who else the same posts asked, and whether they're at work here now; and its own settings here,
+        # if someone changed them since it last spoke here.
+        try:
+            info = page or self.api.recent(slug, limit=1)
+            lines[owed_end:owed_end] = also_asked(owed, self.agent, info)
+            lines += settings_changed(self.agent, info)
+        except Exception:
+            pass
         # Taken here from another Mood for this agent, since it last spoke here.
         try:
             handed = handoffs_for(page or self.api.recent(slug, limit=400), self.agent)

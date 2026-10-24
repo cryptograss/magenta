@@ -309,6 +309,29 @@ class SeveralAtOnceTest(TestCase):
         [(agent, since)] = [(a['agent'], a['since']) for a in activities(self.mood, now=NOW)]
         self.assertEqual((agent, since), ('magent', NOW - 120))
 
+    def test_a_wake_prompt_is_its_agents_before_the_agent_has_said_anything(self):
+        # Justin, 21 Oct 09:40: re woken (on deepseek, ~90 s to its first line), and the page said blu
+        # was thinking and not re. The poller's prompt, alone in re's new session, was nobody's: the
+        # alphabetically first agent -- blu, once there was a blu -- got it. It's addressed to re.
+        blu, _ = ThinkingEntity.objects.get_or_create(name='blu', defaults={'is_biological_human': False})
+        poller, _ = ConversationParticipant.objects.get_or_create(name='mood-poller')
+        self.add(self.re, 3000, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn', session_id=uuid.uuid4())
+        self.add(self.justin, 100, "let's have @re take a whack", source_file='mood-web')
+        prompt = self.add(poller, 95, '<mood-wake mood="m26">...</mood-wake>', session_id=uuid.uuid4())
+        prompt.recipients.add(self.re)
+        self.assertEqual(self.now(), [('re', 'thinking')])
+        from conversations.services.mood_view import activities
+        [re_now] = activities(self.mood, now=NOW)
+        self.assertEqual(re_now['since'], NOW - 95)  # since its wake, as for any agent woken
+        self.add(self.justin, 40, '@magent why does it say blu?', source_file='mood-web')
+        self.assertEqual(self.now(), [('re', 'thinking'), ('magent', 'waking')])
+
+    def test_lines_that_are_nobodys_are_never_the_first_agents(self):
+        # A person's lines in a session no agent has spoken in: no agent's turn, whoever sorts first.
+        ThinkingEntity.objects.get_or_create(name='blu', defaults={'is_biological_human': False})
+        self.add(self.justin, 20, 'typed into a terminal', session_id=uuid.uuid4())
+        self.assertEqual(self.now(), [])
+
     def test_the_turns_endpoint_carries_them(self):
         self.add(self.justin, NOW - time.time() + 1, '@magent @re now', source_file='mood-web')
         body = self.client.get('/api/moods/m26/turns/').json()

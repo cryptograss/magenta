@@ -43,7 +43,8 @@ from collections import defaultdict
 from datetime import timedelta
 
 from conversations.models import FaceLook, FaceName, Media, Message, Mood, ThinkingEntity
-from conversations.services.mood_view import addressed_in, from_wiki_tier, how_payload, prose, snippet_of
+from conversations.services.mood_view import (addressed_in, from_wiki_tier, how_payload, pickipedia_url, prose,
+                                               snippet_of)
 
 PICTURES = 20
 PROMPTS_PER_HUMAN = 20
@@ -244,8 +245,11 @@ def picture_tidings(limit=PICTURES):
     shas = [sha for sha in shown if sha in media][:limit]  # newest post first
     looked = {look.pk: look for look in FaceLook.objects.filter(pk__in=shas)}
     named = defaultdict(int)
-    for media_id in FaceName.objects.filter(media_id__in=shas).values_list('media_id', flat=True):
+    people = defaultdict(list)  # sha -> whom people here have named in it, left to right
+    for media_id, person, box in (FaceName.objects.filter(media_id__in=shas)
+                                  .values_list('media_id', 'person', 'box')):
         named[media_id] += 1
+        people[media_id].append((box[0] if isinstance(box, list) and box else 0, person))
     uploads = {}  # sha -> the wiki-upload event line, newest per picture (one is all there is)
     for event in Message.objects.filter(source_file='wiki-upload', content__sha__in=shas) \
                                 .order_by('created_at'):
@@ -272,6 +276,10 @@ def picture_tidings(limit=PICTURES):
             'mood': post.mood_slug,
             'message': str(post.id),
             'faces': faces,
+            # Whom it shows, as people here named them, each once: their PickiPedia pages.
+            'people': [{'name': person, 'page': f'{pickipedia_url()}/wiki/{person.replace(" ", "_")}'}
+                       for person in dict.fromkeys(p for _, p in sorted(people[sha]))],
+            'shared_by': post.sender_id,  # credited if it goes to PickiPedia from here
             'wiki': (None if event is None else {
                 'page': event.content.get('page', ''),
                 'file': event.content.get('file', ''),
@@ -283,11 +291,12 @@ def picture_tidings(limit=PICTURES):
     return out
 
 
-def tidings_state():
+def tidings_state(viewer=None, order='top'):
     """What /moods/tidings/ shows: the links promoted from the Moods (services/tiding_links.py), then the
-    pictures. (Each picture's `preview` is its small form for the gallery; see views_moods.media_preview.)"""
+    pictures. (Each picture's `preview` is its small form for the gallery; see views_moods.media_preview.)
+    `viewer` is who's looking: each link says whether they voted for it. `order`: top (pinned, then ranked) or new."""
     from conversations.services import tiding_links
-    return {'links': tiding_links.listed(), 'pictures': picture_tidings()}
+    return {'links': tiding_links.listed(viewer=viewer, order=order), 'pictures': picture_tidings()}
 
 
 def prompts_state():

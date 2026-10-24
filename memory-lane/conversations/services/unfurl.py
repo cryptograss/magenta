@@ -120,6 +120,31 @@ def read(page, url):
             'site': (tags.get('og:site_name') or urlparse(url).hostname or '')[:80]}
 
 
+# A video page says nothing to a plain fetch (YouTube answers with a consent page), but its site's oEmbed
+# says what it is. Only these, at their own addresses: nothing a reader names is fetched this way.
+OEMBED = {'youtube.com': 'https://www.youtube.com/oembed', 'm.youtube.com': 'https://www.youtube.com/oembed',
+          'youtu.be': 'https://www.youtube.com/oembed', 'vimeo.com': 'https://vimeo.com/api/oembed.json'}
+
+
+def _oembed(url, http):
+    """A video's card from its site's oEmbed, or None."""
+    endpoint = OEMBED.get((urlparse(url).hostname or '').lower().removeprefix('www.'))
+    if not endpoint:
+        return None
+    try:
+        response = http.get(endpoint, params={'url': url, 'format': 'json'}, timeout=TIMEOUT,
+                            headers={'User-Agent': 'memory-lane (magenta; link previews)'})
+        data = response.json() if response.status_code == 200 else {}
+    except Exception:  # noqa: BLE001 -- no answer: no card
+        return None
+    title = ' '.join(str(data.get('title') or '').split())[:200]
+    if not title:
+        return None
+    image = str(data.get('thumbnail_url') or '')
+    return {'url': url, 'title': title, 'description': str(data.get('author_name') or '')[:300],
+            'image': image if image.startswith('https://') else '', 'site': str(data.get('provider_name') or '')[:80]}
+
+
 def card(url, http=None):
     """A link's card, kept a day; None if there isn't one to show."""
     key = 'unfurl:' + url[:400]
@@ -133,6 +158,8 @@ def card(url, http=None):
                 found['url'] = url  # the card goes where the link said
         except Exception:  # noqa: BLE001 -- refused, unreachable, unreadable: no card
             found = {}
+        if not found:
+            found = _oembed(url, http or requests) or {}
         cache.set(key, found, FOUND_FOR if found else MISSED_FOR)
     return found or None
 

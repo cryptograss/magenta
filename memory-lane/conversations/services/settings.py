@@ -57,7 +57,19 @@ GLOBAL_KNOBS = {
                   "Empty: the first ElevenLabs offers."),
     'narrator_voice': ('', "The narrator's voice (services/voice.py): who speaks next, and who's thinking, "
                            "when Moods are read as they come. Empty: given one at its first word, nobody else's."),
+    # How Tidings ranks its links (services/tiding_links.rank): (1 + upvotes + weight x comments), over
+    # (1 + age in units) to the gravity (Justin, 22 Oct: HN's, on our clock; "pretty dynamic").
+    'tidings_age_hours': (12.0, 'Tidings ranking: the hours one unit of a link\'s age is. Fewer: links fade faster.'),
+    'tidings_gravity': (1.5, 'Tidings ranking: how hard age pulls a link down. More: it fades faster.'),
+    'tidings_comment_weight': (0.5, 'Tidings ranking: what one comment counts for, beside one upvote (1).'),
+    # Who may set agents' per-Mood settings from a reply (services/agent_settings.py), when a person asks: a
+    # grant, so adding an agent is a value a person changes, not code (Justin and re, 24 Oct). magent at first.
+    'settings_may_set': (['magent'], "The agents that may set other agents' settings in a Mood (and their own), "
+                                     "with a ```settings block, when someone signed in with an SSH key asks."),
 }
+# Links pinned to the top of Tidings by someone signed in with an SSH key: their ids, last pinned first.
+# Set from Tidings itself (tiding_links.pin), not the settings page.
+TIDINGS_PINNED = 'tidings_pinned'
 MODERATION_KEYS = ('scram', 'banned')
 # About one person or agent, wherever they are: set with `agent` naming them
 # (human or not) and no Mood. Changed from the voices list on the Moods page
@@ -197,6 +209,28 @@ def clean(key, value):
         if not 0 <= value <= 500:
             raise Invalid('voice_usd_per_day: from 0 to 500')
         return value
+    if key in ('tidings_age_hours', 'tidings_gravity', 'tidings_comment_weight'):
+        low, high = {'tidings_age_hours': (1, 168), 'tidings_gravity': (0.5, 3), 'tidings_comment_weight': (0, 3)}[key]
+        try:
+            value = round(float(value), 2)
+        except (TypeError, ValueError):
+            raise Invalid(f'{key}: a number')
+        if not low <= value <= high:
+            raise Invalid(f'{key}: from {low} to {high}')
+        return value
+    if key == 'settings_may_set':
+        if isinstance(value, str):
+            value = [v for v in re.split(r'[\s,]+', value) if v]
+        if not isinstance(value, list) or not all(isinstance(v, str) and re.fullmatch(r'[\w.-]{1,50}', v) for v in value):
+            raise Invalid('settings_may_set: agents\' names')
+        return list(dict.fromkeys(v.lower() for v in value))[:20]
+    if key == TIDINGS_PINNED:
+        import uuid
+        try:
+            value = list(dict.fromkeys(str(uuid.UUID(str(v))) for v in (value or [])))
+        except (TypeError, ValueError):
+            raise Invalid(f'{key}: links\' ids')
+        return value[:20]
     if key == 'consider_usd_per_day':
         try:
             value = round(float(value), 2)
@@ -284,8 +318,24 @@ def mood_flagged(key):
     return {slug for (slug, _, _), row in latest(rows).items() if row.value}
 
 
+def mood_value(slug, key):
+    """A MOOD_KEYS setting for one Mood, as it stands now (its default if never set)."""
+    from conversations.models import Setting
+    row = Setting.objects.filter(key=key, agent=None, mood__slug=slug).order_by('-created_at').first()
+    return row.value if row is not None else default(key)
+
+
 def archived_slugs():
     return mood_flagged('archived')
+
+
+def global_values(keys):
+    """{key: its value now} for several settings at once: one question of the database, not one each."""
+    from conversations.models import Setting
+    found = {}
+    for row in Setting.objects.filter(key__in=keys, mood=None, agent=None).order_by('-created_at'):
+        found.setdefault(row.key, row.value)
+    return {key: found[key] if key in found else default(key) for key in keys}
 
 
 def global_value(key):

@@ -28,7 +28,8 @@ COMPACTION_PREFIX = 'This session is being continued from a previous conversatio
 INTERRUPT_SOURCE = 'interrupt'
 # System rows shown as a line in the thread.
 NEW_MOOD_SOURCE = 'mood-new'
-EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff', 'merged', 'release-draft')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
+EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
+                 'merged', 'release-draft', 'tiding-comment', 'agent-settings')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).
 POSTED = ('mood-web', 'mood-attest')
@@ -539,6 +540,7 @@ _PERMALINK = re.compile(r'^https?://[^/\s]+/(?:messages/|moods/[\w-]+/#m-)([0-9a
 # '#general' (a Mood) or '#m-<id>' (a message, or the id's first 8). Not '&#x27;'
 # (an escaped quote), not 'C#', not a URL's fragment (those are linked already).
 _HASH = re.compile(r'(?<![\w&#/;=])#(m-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})'
+                   r'|t-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})'
                    r'|[a-z0-9][a-z0-9-]{0,79})(?![\w-])', re.I)
 
 
@@ -555,10 +557,39 @@ def _message_link(ref):
             f'“{html.escape(found["snippet"])}”</a>')
 
 
+def _tiding_link(ref):
+    """A '#t-<id or its first 8>' says a link on Tidings: shown as its title, a link to its discussion
+    (Justin, 21 Oct). None if it names no link."""
+    import uuid as _uuid
+    from django.db.models import Q
+    from conversations.models import Tiding
+    ref = ref.lower()
+    if len(ref) == 36:
+        try:
+            found = list(Tiding.objects.filter(id=_uuid.UUID(ref))[:1])
+        except ValueError:
+            return None
+    elif not re.fullmatch(r'[0-9a-f]{8}', ref):
+        return None
+    else:
+        # Its first 8: the id's first group, the same whether the database keeps it with dashes (Postgres)
+        # or without (SQLite) -- so it's asked as a range of ids, not as text.
+        low, high = _uuid.UUID(ref + '0' * 24), _uuid.UUID(ref + 'f' * 24)
+        found = list(Tiding.objects.filter(Q(id__gte=low) & Q(id__lte=high))[:2])
+    if len(found) != 1:
+        return None
+    tiding = found[0]
+    title = tiding.title or tiding.url
+    return (f'<a class="tidinglink" href="/moods/tidings/{tiding.id}/?embed=1" title="{html.escape(title)}">'
+            f'🔗 {html.escape(title[:80])}</a>')
+
+
 def _hash_link(match):
     ref = match.group(1)
     if ref[:2].lower() == 'm-' and re.fullmatch(r'm-[0-9a-f-]{8,36}', ref, re.I):
         return _message_link(ref[2:]) or match.group(0)
+    if ref[:2].lower() == 't-' and re.fullmatch(r't-[0-9a-f-]{8,36}', ref, re.I):
+        return _tiding_link(ref[2:]) or match.group(0)
     from .links import mood_names
     slug = mood_names().get(ref.lower())
     if not slug:
@@ -962,10 +993,10 @@ def turn_tools(messages):
                                                  created_at__lte=max(m.created_at for m in messages))
                           .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL))
                           .order_by('created_at').values_list('session_id', 'created_at', 'tail')):
-        wakes.setdefault(sid, []).append((at, wake_said(tail or '')))
+        wakes.setdefault(str(sid), []).append((at, wake_said(tail or '')))
     found = {}
-    for m in messages:
-        before = [kind for at, kind in wakes.get(m.session_id, []) if m.created_at - reach <= at <= m.created_at]
+    for m in messages:  # as text: a row just made holds its session as it was given, a row read as a UUID
+        before = [kind for at, kind in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]
         if before and before[-1]:
             found[str(m.id)] = before[-1]
     return found
@@ -1248,7 +1279,7 @@ def _activity(mood, now=None, only=None):
     `only`: that agent alone, as if no other were here -- its own lines, people's,
     and only the posts that name it (activities()).
     """
-    from conversations.models import ThinkingEntity
+    from conversations.models import Message, ThinkingEntity
     import time
 
     now = now or time.time()
@@ -1274,7 +1305,14 @@ def _activity(mood, now=None, only=None):
         # A wiki-tier post's @agent is just text: no agent is waking for it.
         return [] if from_wiki_tier(msg) else [n for n in addressed_in(prose(msg.content), agents, by=msg.sender_id)]
     if only:  # a post for someone else neither wakes this agent nor ends its turn
-        recent = [m for m in recent if m.source_file not in POSTED or only in named_in(m)][:RECENT]
+        recent = [m for m in recent if m.source_file not in POSTED or only in named_in(m)]
+        # Nor a wake addressed to another: the poller's prompt opens that agent's new session before the
+        # agent has said a word in it, so no line of its own says the session is its (Justin, 21 Oct).
+        elsewhere = set(Message.recipients.through.objects
+                        .filter(message_id__in=[m.pk for m in recent if m.sender_id not in agents],
+                                conversationparticipant_id__in=agents - {only})
+                        .values_list('message_id', flat=True))
+        recent = [m for m in recent if m.pk not in elsewhere][:RECENT]
     if not recent:
         return None
     newest = recent[0]
@@ -1333,11 +1371,19 @@ def _activity(mood, now=None, only=None):
         streak.append(msg)
     agent = next((m.sender_id for m in streak if m.sender_id in agents), None)
     if agent is None:
+        # Nothing yet from an agent: a wake prompt is the agent's it's addressed to -- re on a slow
+        # model writes its first line a minute and more after the poller's prompt.
+        agent = (Message.recipients.through.objects
+                 .filter(message_id__in=[m.pk for m in streak], conversationparticipant_id__in=agents)
+                 .values_list('conversationparticipant_id', flat=True).first())
+    if agent is None:
         # Only a person's lines (typed into a terminal session): whose session it is.
         owner = (mood.messages.filter(session_id=newest.session_id, sender_id__in=agents)
                  .values_list('sender_id', flat=True).first()) if newest.session_id else None
-        agent = owner or sorted(agents or {'magent'})[0]
-    if only and agent != only:
+        # Asked about one agent, lines nobody can say are its are not its turn. (Once, the first agent
+        # by name took them: magent, then blu -- and re's wake read as blu thinking, Justin, 21 Oct.)
+        agent = owner or (None if only else sorted(agents or {'magent'})[0])
+    if agent is None or (only and agent != only):
         return None
     how = next((how_payload(m) for m in streak if m.sender_id in agents and m.model_backend), {'model': '', 'effort': ''})
     start = streak[-1]

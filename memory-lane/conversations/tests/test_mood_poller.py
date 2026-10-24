@@ -418,6 +418,20 @@ class StreamPosterTest(TestCase):
         poster.close()
         self.assertNotIn('full_tools', unsaid.posts[0][1])
 
+    def test_it_says_what_woke_the_turn(self):
+        # An answer to something asked on Tidings goes there too (tiding_links.answer_asked).
+        http = FakeHTTP(200)
+        poster = self.poster(http)
+        poster.answers = ['m-1', 'm-2']
+        poster.put({'type': 'assistant', 'uuid': 'a'})
+        poster.close()
+        self.assertEqual(http.posts[0][1]['answers'], ['m-1', 'm-2'])
+        unsaid = FakeHTTP(200)
+        poster = self.poster(unsaid)
+        poster.put({'type': 'assistant', 'uuid': 'a'})
+        poster.close()
+        self.assertNotIn('answers', unsaid.posts[0][1])
+
     def test_a_refusal_is_not_retried_and_a_failure_is(self):
         import requests
         refused = FakeHTTP(401)
@@ -455,6 +469,13 @@ class StreamingPollerTest(TestCase):
         events = [e for p in http.posts for e in p[1]['events']]
         self.assertEqual([e['type'] for e in events], ['assistant', 'result'])
         self.assertEqual({p[1]['session_id'] for p in http.posts}, {self.posters[0].session_id})
+
+    def test_the_stream_says_what_the_turn_answers(self):
+        http = FakeHTTP(200)
+        waker = FakeWaker()
+        self.make(waker, http).poll_once()
+        self.assertEqual({tuple(p[1].get('answers') or ()) for p in http.posts}, {('a',)})
+        self.assertNotIn('answers', waker.options)  # memory-lane's to know, not the harness's
 
     def test_a_mention_gets_a_considered_answer(self):
         waker = FakeWaker()
@@ -765,6 +786,32 @@ class MentionContextTest(TestCase):
         poller.settings = {'m26': settings or {}}
         poller.poll_once()
         return api, waker.woken[0][1]
+
+    def test_told_who_else_was_asked_and_whether_they_are_at_work(self):
+        # Justin, 24 Oct: two agents answering one question blind. Now each knows the other was asked.
+        from poller.mood_poller import also_asked
+        owed = [dict(turn('ask', 'justin', 100, '@magent @re @blu and @skyler, thoughts?'),
+                     mentions=['magent', 're', 'blu', 'skyler'])]
+        page = {'agents': {'magent': {}, 're': {}, 'blu': {}},
+                'activities': [{'agent': 're', 'doing': 'thinking'}, {'agent': 'blu', 'doing': 'held'}]}
+        lines = also_asked(owed, 'magent', page)
+        self.assertIn('Also asked in what woke you: re, at work here now; blu, not at work here yet.', lines[1])
+        self.assertIn('read_mood', lines[1])
+        self.assertEqual(also_asked([dict(owed[0], mentions=['magent', 'skyler'])], 'magent', page), [])  # a person isn't
+        self.assertEqual(also_asked(owed, 'magent', None), [])  # nothing known: nothing said
+
+    def test_the_wake_says_who_else_was_asked_after_what_was_asked(self):
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                return {'turns': [], 'agents': {'magent': {}, 're': {}}, 'activities': [{'agent': 're', 'doing': 'thinking'}]}
+        owed = dict(turn('ask', 'justin', 100, '@magent @re which first?'), via='web', mentions=['magent', 're'])
+        api = API([mention('m26', owed)], sessions={'m26': ['s-local']})
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        waker = FakeWaker()
+        MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=101), consider=False).poll_once()
+        prompt = waker.woken[0][1]
+        self.assertLess(prompt.index('which first?'), prompt.index('Also asked in what woke you: re, at work here now.'))
 
     def test_everything_since_its_last_word_and_long_posts_whole(self):
         said = [turn(f's{i}', 'skyler' if i % 2 else 'justin', 1 + i, f'point {i}: are you sure?') for i in range(40)]

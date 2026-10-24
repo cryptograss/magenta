@@ -51,11 +51,14 @@ The key comes from settings.ELEVENLABS_API_KEY; unset, there is no voice.
 
 import hashlib
 import json
+import logging
 import re
 import time
 
 import requests
 from django.conf import settings as django_settings
+
+logger = logging.getLogger(__name__)
 
 API = 'https://api.elevenlabs.io/v1'
 TTS_MODEL = 'eleven_v4'
@@ -240,6 +243,66 @@ def voices(http=requests):
     return found
 
 
+LIBRARY_PAGE = 20     # voices from ElevenLabs' library, asked at a time
+LIBRARY_FOR = 3600    # seconds a search of it is kept
+
+
+def search_voices(query, http=requests):
+    """Voices to choose from for `query` (Justin, 23 Oct: "elevenlabs has like a zillion ... maybe autocomplete"):
+    ours first -- those in the account, named or described so -- then ElevenLabs' library, which has thousands.
+    [{'name', 'voice_id', 'description', 'preview_url', 'library', 'owner'}]; a library voice is added to the
+    account when it's chosen (add_library_voice). Ours alone if the library can't be asked."""
+    from django.core.cache import cache
+    query = (query or '').strip()
+    words = query.lower().split()
+    try:
+        ours = voices(http)
+    except VoiceError:
+        ours = []
+    def about(v):
+        return ' '.join([v['name'], v.get('description') or '', ' '.join(str(x) for x in (v.get('labels') or {}).values())]).lower()
+    found = [{**{k: v.get(k, '') for k in ('name', 'voice_id', 'description', 'preview_url')}, 'library': False, 'owner': ''}
+             for v in ours if all(w in about(v) for w in words)]
+    if not query:
+        return found
+    have = {v['voice_id'] for v in ours}
+    key = 'voice:library:' + hashlib.sha256(query.lower().encode()).hexdigest()[:24]
+    library = cache.get(key)
+    if library is None:
+        try:
+            response = http.get(f'{API}/shared-voices', headers=_headers(), timeout=20,
+                                params={'search': query, 'page_size': LIBRARY_PAGE})
+            listed = response.json().get('voices', []) if response.status_code == 200 else []
+        except Exception:  # noqa: BLE001 -- the library away: ours will do
+            listed = []
+        library = []
+        for v in listed:
+            if not _VOICE_ID.match(str(v.get('voice_id') or '')) or not v.get('public_owner_id'):
+                continue
+            said = ', '.join(str(v.get(k)) for k in ('gender', 'age', 'accent', 'use_case') if v.get(k))
+            library.append({'name': str(v.get('name') or '')[:80], 'voice_id': v['voice_id'],
+                            'description': (said + (' -- ' if said and v.get('description') else '')
+                                            + str(v.get('description') or ''))[:200],
+                            'preview_url': str(v.get('preview_url') or ''), 'library': True,
+                            'owner': str(v['public_owner_id'])})
+            if library[-1]['preview_url']:  # its sample, if it's asked for (views_auth.api_voice_sample)
+                cache.set(f'voice:library-sample:{v["voice_id"]}', library[-1]['preview_url'], 86400)
+        cache.set(key, library, LIBRARY_FOR)
+    return found + [v for v in library if v['voice_id'] not in have]
+
+
+def add_library_voice(owner, voice_id, name, http=requests):
+    """Add a voice from ElevenLabs' library to the account -- the only way the API will speak in it -- and
+    return its id there. VoiceError if it can't be (a plan's voice slots full, say)."""
+    from django.core.cache import cache
+    response = http.post(f'{API}/voices/add/{owner}/{voice_id}', headers=_headers(), timeout=30,
+                         json={'new_name': (name or voice_id)[:100]})
+    if response.status_code != 200:
+        raise VoiceError(f'ElevenLabs answered {response.status_code} adding that voice: {_why(response)}')
+    cache.delete('voice:voices')  # it's ours now: listed with the rest
+    return str(response.json().get('voice_id') or voice_id)
+
+
 def voice_id_for(name, http=requests):
     """The voice called `name` (or with that id); else the house voice (the
     'voice' knob); else the first there is.
@@ -334,18 +397,50 @@ def _where(mood):
 
 def intro(message, by, where=False, http=requests):
     """The URL of the narrator saying who speaks next -- and, with `where`, in
-    which Mood, first ("Pound general. Justin says:"). Made once per wording, and kept."""
-    script = (_where(message.mood) if where else '') + f'{spoken_name(message.sender_id)} says:'
+    which Mood, first ("Pound general. Justin says:"); for an agent, how it was woken: "Magent, with
+    tools, says:" or "Re, looking only, says:" (Justin, 22 Oct), by the wake before it in its session
+    (mood_view.turn_tools) -- nothing said of it when there's none, as for a terminal's turn.
+    Made once per wording, and kept."""
+    from conversations.models import ThinkingEntity
+    from .mood_view import turn_tools
+    how = ''
+    if ThinkingEntity.objects.filter(name=message.sender_id, is_biological_human=False).exists():
+        how = {'full': ', with tools,', 'look': ', looking only,'}.get(turn_tools([message]).get(str(message.id)), '')
+    script = (_where(message.mood) if where else '') + f'{spoken_name(message.sender_id)}{how} says:'
     return _spoken(message.mood, by, voice_of(NARRATOR, http), {'text': script, 'model_id': TTS_MODEL}, script,
                    http, intro=message.sender_id)
 
 
-def narrate_thinking(mood, agent, by, where=False, http=requests):
+def narrate_thinking(mood, agent, by, where=False, still=None, http=requests):
     """The URL of the narrator saying `agent` has started work ("Magent is
-    thinking." -- with `where`, the Mood first: "Pound magenta interface. ..."). Made once per wording, and kept."""
-    script = (_where(mood) if where else '') + f'{spoken_name(agent)} is thinking.'
+    thinking." -- with `where`, the Mood first: "Pound magenta interface. ..."). With `still`, (minutes, steps):
+    that it's still at it, a minute or more on, and how far (Justin, 22 Oct: "are they still thinking?").
+    Made once per wording, and kept."""
+    if still:
+        minutes, steps = still
+        how = [f"{minutes} minute{'s' if minutes != 1 else ''} in"]
+        if steps:
+            how.append(f"{steps} step{'s' if steps != 1 else ''} so far")
+        script = (_where(mood) if where else '') + f"{spoken_name(agent)} is still thinking: {', '.join(how)}."
+    else:
+        script = (_where(mood) if where else '') + f'{spoken_name(agent)} is thinking.'
     return _spoken(mood, by, voice_of(NARRATOR, http), {'text': script, 'model_id': TTS_MODEL}, script,
                    http, narrated='thinking', agent=agent)
+
+
+def narrate_switch(mood, by, found=True, already=False, listeners=(), http=requests):
+    """The URL of the narrator saying where someone is, having asked by voice to go there ("Now in pound
+    jams.") -- already there, or the name not caught, where they still are -- and who else is listening
+    there ("Skyler is listening too."). Made once per wording, and kept."""
+    where = said_mood(mood.slug)
+    script = (f'Already in {where}.' if already else f'Now in {where}.' if found
+              else f"I didn't catch which Mood. Still in {where}.")
+    names = [spoken_name(n) for n in listeners]
+    if names:
+        who = names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
+        script += f" {who} {'is' if len(names) == 1 else 'are'} listening too."
+    return _spoken(mood, by, voice_of(NARRATOR, http), {'text': script, 'model_id': TTS_MODEL}, script,
+                   http, narrated='switch')
 
 
 DEPLOY_SAID = {'finished': '{server} redeployed{who}.', 'failed': "{server}'s redeploy failed{who}."}
@@ -435,6 +530,12 @@ def speak(message, by, http=requests, part=0, piece=0):
     return speak_piece(message, by, http=http, part=part, piece=piece)['url']
 
 
+def _whose(name):
+    """'person' or 'agent': whose words a clip says, for the speed it's heard at."""
+    from conversations.models import ThinkingEntity
+    return 'agent' if ThinkingEntity.objects.filter(name=name, is_biological_human=False).exists() else 'person'
+
+
 def speak_piece(message, by, http=requests, part=0, piece=0):
     """{'url', 'pieces'}: the `piece`th piece of `message` read aloud, and how many
     there are. Made once and kept; made knowing the pieces before it, if they
@@ -457,7 +558,7 @@ def speak_piece(message, by, http=requests, part=0, piece=0):
     before = [_request_id(_key(voice_id, body_for(text))) for text in parts[max(0, piece - 3):piece]]
     stitch = {'previous_request_ids': [r for r in before if r]} if any(before) else {}
     url = _spoken(message.mood, by, voice_id, body_for(parts[piece]), parts[piece], http, extra=stitch,
-                  message=str(message.id), **({'piece': piece} if piece else {}))
+                  who=_whose(message.sender_id), message=str(message.id), **({'piece': piece} if piece else {}))
     return {'url': url, 'pieces': len(parts)}
 
 
@@ -476,9 +577,17 @@ def _request_id(key):
     return (row or {}).get('request_id') or None
 
 
-def _spoken(mood, by, voice_id, body, script, http, extra=None, **details):
-    """The URL of `body` spoken in `voice_id`: the kept one if it's been made, else
-    made now (sent with `extra` too: what it's stitched onto, not part of what it is)."""
+def _spoken(mood, by, voice_id, body, script, http, extra=None, who='agent', **details):
+    """The URL of `body` spoken in `voice_id`: the kept one if it's been made, else made now (sent with
+    `extra` too: what it's stitched onto, not part of what it is). Its fragment says how many words it
+    says, and whose they are (`who`: 'agent', the narrator's too, or 'person'): the page plays each clip
+    at the listener's own words a minute for one or the other, whatever the voice's own pace (Justin,
+    22 Oct). A fragment never reaches the server, so the file and its caching are the same."""
+    return _spoken_file(mood, by, voice_id, body, script, http, extra, **details) + \
+        f"#words={len((script or '').split())}&who={'person' if who == 'person' else 'agent'}"
+
+
+def _spoken_file(mood, by, voice_id, body, script, http, extra=None, **details):
     from conversations.models import Media, Message
     key = _key(voice_id, body)
 
@@ -511,15 +620,29 @@ def _make(mood, by, key, voice_id, body, script, http, details):
     from conversations.services import media as media_store
     usd = round(len(script) / 1000 * TTS_USD_PER_KCHAR, 4)
     check_budget(usd)
-    response = http.post(f'{API}/text-to-speech/{voice_id}', params={'output_format': 'mp3_44100_128'},
+    def ask(body):
+        return http.post(f'{API}/text-to-speech/{voice_id}', params={'output_format': 'mp3_44100_128'},
                          headers=_headers(), json=body, timeout=110)
+    response = ask(body)
+    speed = (body.get('voice_settings') or {}).get('speed')
+    if response.status_code in (400, 422) and speed is not None:
+        # A speed (a voice block's) the model won't take: never a reading lost to it. Asked without.
+        logger.warning(f'ElevenLabs refused speed {speed}: {_why(response)}')
+        body = {**body, 'voice_settings': {k: v for k, v in body['voice_settings'].items() if k != 'speed'}}
+        if not body['voice_settings']:
+            del body['voice_settings']
+        speed, response = None, ask(body)
     if response.status_code != 200:
         raise VoiceError(f'ElevenLabs answered {response.status_code}: {_why(response)}')
     stored = media_store.store(response.content, audio=True)
     if stored is None:
         raise VoiceError('ElevenLabs sent back something that is not audio')
     request_id = (getattr(response, 'headers', None) or {}).get('request-id')
+    # How long it runs (128 kbps: 16,000 bytes a second) and any speed it was asked at: a voice's pace, read
+    # from the record. (Eleven v4 takes a speed and ignores it -- 23 Oct, the same words at 0.8, 1.0 and 1.2
+    # ran within 1% -- so a Mood's speed is gone; each listener's words a minute, in the browser, is the pace.)
     record(mood, 'spoken', by, **details, key=key, media=stored.sha256, voice=voice_id, chars=len(script), usd=usd,
+           seconds=round(len(response.content) / 16000, 2), **({'speed': speed} if speed is not None else {}),
            **({'request_id': request_id} if request_id else {}))
     return stored.url
 
@@ -542,13 +665,20 @@ def keyterms():
 
 def transcribe(media, mood, by, http=requests):
     """{'text', 'seconds', 'language'} for a stored memo; VoiceError if it can't be."""
-    check_budget(STT_USD_PER_HOUR * 10 / 60)  # room for ten minutes, at least
-    ext = media.EXTENSIONS[media.mime]
+    return hear(bytes(media.data), media.mime, mood, by, http=http, sha=media.sha256)
+
+
+def hear(data, mime, mood, by, http=requests, sha='', budget_minutes=10):
+    """{'text', 'seconds', 'language'} for some audio, kept or not (a memo; "go to jams", heard and let go).
+    VoiceError if it can't be."""
+    from conversations.models import Media
+    check_budget(STT_USD_PER_HOUR * budget_minutes / 60)  # room for that long, at least
+    ext = Media.EXTENSIONS.get(mime, 'webm')
 
     def ask(terms):
         form = {'model_id': STT_MODEL, 'tag_audio_events': 'true', **({'keyterms': terms} if terms else {})}
         return http.post(f'{API}/speech-to-text', headers=_headers(), timeout=110, data=form,
-                         files={'file': (f'memo.{ext}', bytes(media.data), media.mime)})
+                         files={'file': (f'memo.{ext}', data, mime)})
     response = ask(keyterms())
     if response.status_code in (400, 422):  # the words it should expect, refused: ask plainly
         response = ask(None)
@@ -557,7 +687,7 @@ def transcribe(media, mood, by, http=requests):
     result = response.json()
     seconds = float(result.get('audio_duration_secs') or 0)
     usd = round(seconds / 3600 * STT_USD_PER_HOUR, 4)
-    record(mood, 'transcribed', by, media=media.sha256, seconds=seconds, usd=usd)
+    record(mood, 'transcribed', by, media=sha, seconds=seconds, usd=usd)
     return {'text': (result.get('text') or '').strip(), 'seconds': seconds,
             'language': result.get('language_code') or ''}
 

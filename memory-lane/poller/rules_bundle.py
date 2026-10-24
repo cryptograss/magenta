@@ -1,7 +1,30 @@
 """An agent's rules for one Mood, gathered without a model: Artificial Dumb
 (https://pickipedia.xyz/wiki/PickiPedia:Artificial_Dumb).
 
-Three layers, broadest first, each a page on PickiPedia:
+First, one line naming the agent (Justin, magent-self, 2026-10-24: "you are
+<name>, the <color> agent. <greeting>"), so the "you" of everything after it
+is already someone. Its wording is Cryptograss:Agents/Greeting, the line with
+blanks; each agent's colour and greeting are on its own page,
+Cryptograss:Agents/<Name>, as Semantic MediaWiki properties (Template:Agent),
+the only place they are written, and queryable from there by anything else
+(a User: page, magenta):
+
+    You are {name}, the {colour} agent of cryptograss. {greeting}    (the Greeting page)
+    {{Agent|colour=red|greeting=...|image=...}}                       (Cryptograss:Agents/Re)
+
+{name}, {mood} and {block} are data, filled here: the name from --agent only
+(the agent's page is found by it, and never names it, so no page can rename
+an agent), the Mood from the wake, the block only if one was fetched and
+handed in. {colour} and {greeting} are authored, one field each (re, 04:15Z
+and 04:33Z). Both pages are read from their newest trusted revisions, as the
+rules are: what SMW shows elsewhere is the newest revision, trusted or not,
+which is why this reads the page and not a query. A sentence with a blank that
+can't be filled is left out, never guessed at. Without the line, or the
+agent's page, the line is greeting_fallback.md, the name alone, and the stamps
+say why. That is not all-hands: an agent missing its greeting still has its
+rules.
+
+Then three layers, broadest first, each a page on PickiPedia:
 
     standing   Cryptograss:Agents/GeneralOrders   what every agent keeps
     identity   Cryptograss:Agents/<Name>/Rules    who this agent is, how it works
@@ -53,12 +76,22 @@ except ImportError:  # run as a script from its own directory, as deployed
     from wiki_rules import EDITORS, WikiTexts, page_url
 
 STANDING = 'Cryptograss:Agents/GeneralOrders'
+GREETING = 'Cryptograss:Agents/Greeting'
+GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
+AGENT_TEMPLATE = 'Agent'
+AGENT_FIELDS = ('colour', 'hex', 'greeting', 'image')  # what an agent's own page may put in its line
+BLANK = re.compile(r'(?<!\{)\{([a-z]+)\}(?!\})')
+SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 RECOVERY = Path(__file__).with_name('recovery_rules.md')
 DEGRADED = Path(__file__).with_name('rules_degraded.md')
 COMMENTS = re.compile(r'<!--.*?-->', re.S)
 STATE = '~/.local/state/magenta'
 CACHE_FILE = 'rules-cache.json'
 
+
+
+def agent_title(agent):
+    return f'Cryptograss:Agents/{agent[:1].upper()}{agent[1:]}'
 
 
 def identity_title(agent):
@@ -98,6 +131,9 @@ class Bundle:
     gathered: str
     recovery: str = ''      # the recovery rules, when a layer was never read here
     text: str = field(default='', repr=False)
+    greeting: Layer = None  # the line's page, and the agent's own (colour, greeting), read like layers
+    agent_page: Layer = None
+    greeting_line: str = ''
 
     @property
     def degraded(self):
@@ -114,6 +150,8 @@ class Bundle:
     def stamps(self):
         """What the journal records: every layer's page and revision, and what was wrong."""
         return {'agent': self.agent, 'mood': self.mood, 'gathered': self.gathered,
+                'greeting': {**self.greeting.stamp(), 'line': self.greeting_line,
+                             'agent_page': self.agent_page.stamp() if self.agent_page else None} if self.greeting else None,
                 'layers': {layer.name: layer.stamp() for layer in self.layers},
                 'degraded': self.degraded, 'recovery': bool(self.recovery)}
 
@@ -191,6 +229,53 @@ def attrs(layer):
     return ' '.join(found)
 
 
+def template_fields(text, name=AGENT_TEMPLATE):
+    """{field: value} from the first {{<name>|...}} in a page's text; {} if there is none."""
+    head = '{{' + name
+    at = next((i for i in range(len(text)) if text.startswith(head, i)
+               and text[i + len(head):i + len(head) + 1] in ('|', '}', '\n')), -1)
+    if at < 0:
+        return {}
+    depth, j = 0, at
+    while j < len(text):
+        two = text[j:j + 2]
+        if two == '{{':
+            depth, j = depth + 1, j + 2
+        elif two == '}}':
+            depth, j = depth - 1, j + 2
+            if not depth:
+                break
+        else:
+            j += 1
+    fields = {}
+    for part in text[at + len(head):j - 2].split('|')[1:]:
+        key, eq, value = part.partition('=')
+        if eq:
+            fields[key.strip().lower()] = value.strip()
+    return fields
+
+
+def greeting_line(line, mine, agent, mood=None, block=None, fallback_path=GREETING_FALLBACK):
+    """(the line, why it is the fallback or None): the Greeting page's line (a Layer) with its blanks filled
+    for `agent`: colour, hex, greeting and image from the agent's own page (a Layer)."""
+    data = {'name': agent, 'mood': mood or '', 'block': f'{block:,}' if isinstance(block, int) else ''}
+    why = None
+    template = ' '.join((line.text or '').split())
+    fields = template_fields(mine.text or '') if mine.text else {}
+    if not template:
+        why = line.problem or 'no trusted revision of the line yet'
+    elif not fields:
+        why = mine.problem or (f'no trusted revision of {mine.title} yet' if not mine.text
+                               else f'no {{{{{AGENT_TEMPLATE}}}}} on {mine.title}')
+    if why:
+        template, fields = ' '.join(file_text(fallback_path).split()), {}
+    values = {**{k: v for k, v in fields.items() if k in AGENT_FIELDS}, **data}
+    # Fill what can be filled, then leave out each sentence a blank is still in.
+    filled = BLANK.sub(lambda m: values.get(m.group(1)) or m.group(0), template)
+    kept = [sentence for sentence in SENTENCE_END.split(filled) if not BLANK.search(sentence)]
+    return ' '.join(kept).strip(), why
+
+
 def file_text(path):
     try:
         return Path(path).read_text().strip()
@@ -200,6 +285,10 @@ def file_text(path):
 
 def render(b, degraded_path=DEGRADED):
     out = [f'<rules agent="{b.agent}"' + (f' mood="{b.mood}"' if b.mood else '') + f' gathered="{b.gathered}">']
+    if b.greeting_line:
+        g = b.greeting
+        where = f' {attrs(g)}' if g and g.revision is not None and not g.problem else ''
+        out += [f'<greeting{where}>{b.greeting_line}</greeting>', '']
     if b.degraded:
         since = min(layer.since for layer in b.layers if layer.problem)
         out += [f'<rules-degraded since="{since}">', *[f'- {line}' for line in b.degraded], '',
@@ -218,11 +307,13 @@ def render(b, degraded_path=DEGRADED):
 
 
 def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITORS, recovery_path=RECOVERY,
-           degraded_path=DEGRADED):
+           degraded_path=DEGRADED, block=None, fallback_path=GREETING_FALLBACK):
     """The agent's rules for `mood` (or with no Mood: standing and identity alone, as a terminal gets)."""
     get = get or WikiTexts().get
     cache = Cache(Path(state_dir).expanduser() / CACHE_FILE if state_dir else None)
     stamp = now_iso(now)
+    greeting = read_layer('greeting', GREETING, get, cache, stamp, editors, optional=True)
+    agent_page = read_layer('agent', agent_title(agent), get, cache, stamp, editors, optional=True)
     layers = [read_layer('standing', STANDING, get, cache, stamp, editors),
               read_layer('identity', identity_title(agent), get, cache, stamp, editors)]
     if mood:
@@ -232,6 +323,10 @@ def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITOR
     if any(layer.problem and not layer.text for layer in layers):
         recovery = file_text(recovery_path)
     b = Bundle(agent, mood, layers, stamp, recovery)
+    b.greeting, b.agent_page = greeting, agent_page
+    b.greeting_line, why = greeting_line(greeting, agent_page, agent, mood, block, fallback_path)
+    if why and not greeting.problem:
+        greeting.problem = why  # in its stamps; not all-hands (the layers above say that)
     b.text = render(b, degraded_path)
     return b
 
