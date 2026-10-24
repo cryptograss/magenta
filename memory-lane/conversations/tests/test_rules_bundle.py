@@ -242,6 +242,15 @@ class GreetingTest(TestCase):
                 self.assertNotIn('<rules-degraded', b.text)
                 self.assertNotIn('<recovery', b.text)
 
+    def test_its_hex_and_picture_each_a_sentence_left_out_when_unset(self):
+        line = 'You are {name}, the {colour} agent of cryptograss. Your colour is {hex}. Your picture is {image}.'
+        pages = self.pages(**{'Cryptograss:Agents/Greeting': [(200, 'JMyles', line)],
+                              'Cryptograss:Agents/Magent': [(210, 'JMyles', agent_page('magenta', 'Hi.', hex='#ff67fd'))]})
+        self.assertIn('the magenta agent of cryptograss. Your colour is #ff67fd.</greeting>', self.gather(pages).text)
+        pages['Cryptograss:Agents/Magent'] = [(211, 'JMyles', agent_page('magenta', 'Hi.', hex='#ff67fd',
+                                                                          image='File:Magent.png'))]
+        self.assertIn('Your colour is #ff67fd. Your picture is File:Magent.png.</greeting>', self.gather(pages).text)
+
     def test_an_agent_greeting_template_is_not_the_agent_template(self):
         from poller.rules_bundle import template_fields
         self.assertEqual(template_fields('{{Agent greeting|agent=re|colour=red}}'), {})

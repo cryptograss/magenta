@@ -79,6 +79,7 @@ STANDING = 'Cryptograss:Agents/GeneralOrders'
 GREETING = 'Cryptograss:Agents/Greeting'
 GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
 AGENT_TEMPLATE = 'Agent'
+AGENT_FIELDS = ('colour', 'hex', 'greeting', 'image')  # what an agent's own page may put in its line
 BLANK = re.compile(r'(?<!\{)\{([a-z]+)\}(?!\})')
 SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 RECOVERY = Path(__file__).with_name('recovery_rules.md')
@@ -256,7 +257,7 @@ def template_fields(text, name=AGENT_TEMPLATE):
 
 def greeting_line(line, mine, agent, mood=None, block=None, fallback_path=GREETING_FALLBACK):
     """(the line, why it is the fallback or None): the Greeting page's line (a Layer) with its blanks filled
-    for `agent`, colour and greeting from the agent's own page (a Layer)."""
+    for `agent`: colour, hex, greeting and image from the agent's own page (a Layer)."""
     data = {'name': agent, 'mood': mood or '', 'block': f'{block:,}' if isinstance(block, int) else ''}
     why = None
     template = ' '.join((line.text or '').split())
@@ -268,7 +269,7 @@ def greeting_line(line, mine, agent, mood=None, block=None, fallback_path=GREETI
                                else f'no {{{{{AGENT_TEMPLATE}}}}} on {mine.title}')
     if why:
         template, fields = ' '.join(file_text(fallback_path).split()), {}
-    values = {**{k: v for k, v in fields.items() if k in ('colour', 'greeting')}, **data}
+    values = {**{k: v for k, v in fields.items() if k in AGENT_FIELDS}, **data}
     # Fill what can be filled, then leave out each sentence a blank is still in.
     filled = BLANK.sub(lambda m: values.get(m.group(1)) or m.group(0), template)
     kept = [sentence for sentence in SENTENCE_END.split(filled) if not BLANK.search(sentence)]
