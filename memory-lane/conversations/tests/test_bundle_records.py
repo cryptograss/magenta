@@ -214,3 +214,39 @@ class BundleAPITest(TestCase):
             plain = self.client.get(f'/api/bundles/{record["id"]}/text/', {'format': 'text'})
         self.assertEqual(plain.status_code, 409)
         self.assertIn('104', plain.content.decode())
+
+
+class EveryMoodTest(SimpleTestCase):
+    """What holds in every Mood moves from the end of each wake into the instructions, once a trusted
+    revision of Cryptograss:Moods/Instructions says it; until then the wake keeps saying it."""
+
+    def run_with(self, pages):
+        from poller.mood_poller import ETIQUETTE, GREETING, HANDOFF_HOW, mention_opening, wake_footer
+        w = wiki(**pages)
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': '2026-10-21T00:00:00+00:00', 'handled': [], 'wakes': []}))
+        api = RecordingAPI()
+        poller = MoodPoller(api, FakeWaker(), agent='magent', state_path=state, consider=False, instructions=True)
+        gather = lambda *a, **k: bundle(*a, get=w.get, state_dir=None, now=T0, **k)  # noqa: E731
+        prompt = '\n'.join(mention_opening('magent-self', 'a post.') + ['[justin] hi'] + wake_footer(full=True))
+        with mock.patch('poller.instructions.bundle', side_effect=gather):
+            poller.run_turn_for('magent-self', 's-local', prompt)
+        return poller.waker.woken[0][1], poller.waker.options['system'], (ETIQUETTE, GREETING, HANDOFF_HOW)
+
+    def test_until_the_page_is_trusted_the_wake_says_it(self):
+        wake, system, said = self.run_with({'Cryptograss:Moods/Instructions': [(400, 'Magent', 'Every Mood.')]})
+        for line in said:
+            self.assertIn(line, wake)
+        self.assertNotIn('<moods', system)
+
+    def test_once_it_is_the_instructions_say_it_and_the_wake_does_not(self):
+        wake, system, said = self.run_with({'Cryptograss:Moods/Instructions': [(401, 'JMyles', 'Every Mood, kept.')]})
+        self.assertIn('<moods page="Cryptograss:Moods/Instructions" revision="401" by="JMyles">\nEvery Mood, kept.\n</moods>',
+                      system)
+        for line in said:
+            self.assertNotIn(line, wake)
+        self.assertNotIn('Cryptograss:Moods/magent-self/todo', wake)
+        self.assertIn('This turn has your full tools', wake)  # what changes turn to turn stays
+        self.assertIn('[justin] hi', wake)
+        self.assertTrue(wake.endswith('(Special:AgentBundles).\n</mood-wake>'))  # inside the wake, last
+        self.assertNotIn('\n\n\n', wake)

@@ -65,7 +65,7 @@ class RulesBundleTest(TestCase):
         self.assertNotIn('<recovery', b.text)
         stamps = b.stamps()
         self.assertEqual({k: v['revision'] for k, v in stamps['layers'].items()},
-                         {'standing': 101, 'identity': 102, 'mood': 103})
+                         {'standing': 101, 'identity': 102, 'moods': None, 'mood': 103})
 
     def test_an_untrusted_edit_after_a_trusted_one_waits(self):
         # An agent can edit wiki pages, its own rules included: that edit is not what it's told.
@@ -102,7 +102,7 @@ class RulesBundleTest(TestCase):
         self.gather(w)  # read once, while it was up
         w.down = True
         b = self.gather(w, now=T1)
-        self.assertEqual(len(b.degraded), 3)
+        self.assertEqual(len(b.degraded), 4)  # the every-Mood page too
         self.assertIn('Never merge a pull request.', b.text)  # the copy read at T0
         self.assertTrue(b.text.index('<instructions-degraded since="2026-10-20T01:05Z">') < b.text.index('<standing'))
         self.assertIn('all-hands problem', b.text)
@@ -128,7 +128,7 @@ class RulesBundleTest(TestCase):
         w = wiki()
         w.down = True
         b = self.gather(w)
-        self.assertEqual(len(b.degraded), 3)
+        self.assertEqual(len(b.degraded), 4)  # the every-Mood page too
         self.assertIn('never read here: the recovery instructions stand in', b.degraded[0])
         self.assertIn('<recovery source="memory-lane/poller/recovery_instructions.md">', b.text)
         self.assertIn(RECOVERY.read_text().strip()[:60], b.text)

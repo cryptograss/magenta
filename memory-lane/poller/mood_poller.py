@@ -873,6 +873,31 @@ def signed_in_with_key(turn):
     return turn.get('via') == 'web' and bool(turn.get('is_human')) and turn.get('tier') != 'wiki'
 
 
+def standing_footer_lines(slug=None):
+    """The lines of a wake that say what holds in every Mood (etiquette, silence, greeting, handoffs,
+    settings, the to-do list): Cryptograss:Moods/Instructions says them now, in the agent's instructions,
+    and a wake given those (MoodPoller.run_turn_for) leaves these out. Until that page has a trusted
+    revision, the wake keeps carrying them, so nothing goes missing in between."""
+    return [f'Etiquette: {ETIQUETTE}',
+            'Answer in the Mood by replying normally; your reply is recorded there, in public.',
+            'If nothing is worth saying, reply with only <silent>a few words on why</silent>; '
+            'the Mood shows it as a small dot, and the words when someone opens it.',
+            GREETING, HANDOFF_HOW, SETTINGS_HOW, *(todo_line(slug) if slug else [])]
+
+
+def without_standing_footer(prompt, slug):
+    """The wake less the lines Cryptograss:Moods/Instructions now says (standing_footer_lines), and the
+    blank lines they leave behind."""
+    drop = set(standing_footer_lines(slug))
+    lines = [line for line in prompt.split('\n') if line not in drop]
+    out = []
+    for line in lines:
+        if line == '' and out and out[-1] == '':
+            continue
+        out.append(line)
+    return '\n'.join(out)
+
+
 def wake_footer(full=False):
     """How a woken turn is to conduct itself; the end of every wake prompt."""
     if full:
@@ -1901,7 +1926,12 @@ class MoodPoller:
         bundled = None
         if self.instructions:
             options['system'], bundled = self.instructions_for(slug)
-            prompt += self.turn_line(bundled)
+            moods = ((bundled.get('stamps') or {}).get('layers') or {}).get('moods') or {}
+            if moods.get('revision'):  # a trusted revision, or the copy of one kept here: in its instructions
+                prompt = without_standing_footer(prompt, slug)
+            line = self.turn_line(bundled)
+            at = prompt.rfind('</mood-wake>')
+            prompt = prompt[:at].rstrip('\n') + line + '\n' + prompt[at:] if at >= 0 else prompt + line
         if hasattr(self.waker, 'harness_for'):  # two harnesses: settled here, so the poster suits it
             options['harness'] = options.get('harness') or self.waker.harness_for(options.get('model'))
         poster = None

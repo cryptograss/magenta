@@ -29,10 +29,11 @@ is much better. More general, more kind, less presumptuous about your role"):
 much of what an agent is told is who it is, what it is for and advice, not
 constraints. Within them, General Orders is the standing layer that binds.
 
-Then three layers, broadest first, each a page on PickiPedia:
+Then its layers, each a page on PickiPedia:
 
-    standing   Cryptograss:Agents/GeneralOrders   what every agent keeps
+    standing   Cryptograss:Agents/GeneralOrders         what every agent keeps
     identity   Cryptograss:Agents/<Name>/Instructions   who this agent is, how it works
+    moods      Cryptograss:Moods/Instructions           what it keeps in every Mood (with a Mood only)
     mood       Cryptograss:Moods/<slug>/Instructions    how it carries itself there
 
 Each page is sent whole, as its wikitext, less <!-- comments -->: what you see
@@ -49,7 +50,7 @@ since when. The words around that come from files beside this one, because
 they are for when the wiki is what's down: instructions_degraded.md, and
 recovery_instructions.md.
 
-bundle() joins the three into one text, each part labelled with its page and
+bundle() joins them into one text, each part labelled with its page and
 revision, for the harness to take as system prompt (--append-system-prompt):
 an agent never searches for its instructions, never gets them wrong by inference, and
 they never enter its context's history, so a compaction can't lose them
@@ -94,6 +95,9 @@ except ImportError:  # run as a script from its own directory, as deployed
     from wiki_rules import API, EDITORS, USER_AGENT, WikiTexts, page_url
 
 STANDING = 'Cryptograss:Agents/GeneralOrders'
+# What every agent keeps in every Mood (etiquette, silence, greeting, handoffs, settings, to-do lists), read when
+# it is woken in one; until a trusted revision is here, the wake goes on carrying the old words.
+MOODS = 'Cryptograss:Moods/Instructions'
 GREETING = 'Cryptograss:Agents/Greeting'
 GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
 AGENT_TEMPLATE = 'Agent'
@@ -144,6 +148,7 @@ class Layer:
     problem: str = None     # why the newest trusted revision couldn't be had now
     since: str = None       # since when it has been failing
     absent: bool = False    # a Mood with no instructions page: nothing of its own
+    optional: bool = False  # a page that may not exist (a Mood's, the every-Mood one): never read, it isn't all-hands
 
     def stamp(self):
         return {'page': self.title, 'revision': self.revision, 'by': self.editor, 'read_at': self.read_at,
@@ -178,6 +183,7 @@ class Bundle:
             if not layer.problem:
                 continue
             kept = (f'the copy read here at {layer.read_at} (revision {layer.revision}) stands' if layer.text
+                    else 'never read here, so left out' if layer.optional
                     else 'never read here: the recovery instructions stand in')
             lines.append(f'{layer.name} ({layer.title}): {layer.problem}, since {layer.since}; {kept}')
         return lines
@@ -257,7 +263,7 @@ def read_layer(name, title, get, cache, now, editors, optional=False):
     since = cache.data['failing'].setdefault(title, now)
     kept = cache.data['pages'].get(title) or {}
     return Layer(name, title, kept.get('text', ''), kept.get('revision'), kept.get('editor'), kept.get('read_at'),
-                 problem=problem, since=since)
+                 problem=problem, since=since, optional=optional)
 
 
 def attrs(layer):
@@ -405,7 +411,8 @@ def render(b, degraded_path=DEGRADED):
                 file_text(degraded_path), '</instructions-degraded>', '']
     for layer in b.layers:
         if layer.absent:
-            out += [f'<mood slug="{b.mood}" page="{layer.title}">This Mood has no instructions of its own.</mood>', '']
+            if layer.name == 'mood':
+                out += [f'<mood slug="{b.mood}" page="{layer.title}">This Mood has no instructions of its own.</mood>', '']
         elif layer.text:
             tag = {'mood': f'mood slug="{b.mood}"', 'identity': f'identity agent="{b.agent}"'}.get(layer.name,
                                                                                                    layer.name)
@@ -433,10 +440,11 @@ def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITOR
     layers = [read_layer('standing', STANDING, get, cache, stamp, editors),
               read_layer('identity', identity_title(agent), get, cache, stamp, editors)]
     if mood:
+        layers.append(read_layer('moods', MOODS, get, cache, stamp, editors, optional=True))
         layers.append(read_layer('mood', mood_title(mood), get, cache, stamp, editors, optional=True))
     cache.save()
     recovery = ''
-    if any(layer.problem and not layer.text for layer in layers):
+    if any(layer.problem and not layer.text and not layer.optional for layer in layers):
         recovery = file_text(recovery_path)
     b = Bundle(agent, mood, layers, stamp, recovery, block=block, id=record_id)
     b.greeting, b.agent_page, b.roster = greeting, agent_page, roster
