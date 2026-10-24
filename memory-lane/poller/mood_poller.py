@@ -892,6 +892,27 @@ def mention_opening(slug, why):
     return [f'<mood-wake mood="{slug}">', f'You were woken by the Mood poller: {why}', '']
 
 
+def also_asked(owed, agent, page):
+    """Lines telling a woken agent which other agents the posts that woke it asked too, and whether each was at
+    work here as its wake was written (Justin, 24 Oct: two agents answering one question blind, neither knowing
+    the other was). Nothing waits on anyone: each is woken by its own poller. `page`: the Mood's turns API."""
+    page = page or {}
+    working = {a.get('agent'): a.get('doing') for a in page.get('activities') or [] if a.get('agent')}
+    agents = set(page.get('agents') or {}) | set(working)
+    asked = []
+    for turn in owed:
+        for name in turn.get('mentions') or []:
+            if name != agent and name in agents and name not in asked:
+                asked.append(name)
+    if not asked:
+        return []
+    said = '; '.join(f"{name}, {'at work here now' if working.get(name) not in (None, 'held') else 'not at work here yet'}"
+                     for name in asked)
+    return ['', f'Also asked in what woke you: {said}. Each of you is woken on its own and answers without waiting '
+                'for the other; what they say lands in the Mood as they write it (read_mood shows it), if you would '
+                'rather answer with it in view.']
+
+
 def cut_off_note(started):
     """For a turn tried again because a restart cut it off (MoodPoller.recover_cut_off)."""
     return (f'<cut-off>Your turn for this, started at {started[11:16]}Z, was cut off before it finished: '
@@ -1693,6 +1714,7 @@ class MoodPoller:
                 entry = entry[:max(budget, 0)] + ' [cut: too long to pass on]'
             budget -= len(entry)
             lines.append(entry)
+        owed_end = len(lines)
         # What was said here since the agent last spoke: web posts reach no
         # session, so this is the only way it hears them -- all of it, within
         # its budget, the older part summarized when it doesn't fit. A post
@@ -1724,6 +1746,11 @@ class MoodPoller:
             window, cost = self.fit(said, room)
             self.spend(cost)
             lines += ['', note, *window]
+        # Who else the same posts asked, and whether they're at work here now.
+        try:
+            lines[owed_end:owed_end] = also_asked(owed, self.agent, page or self.api.recent(slug, limit=1))
+        except Exception:
+            pass
         # Taken here from another Mood for this agent, since it last spoke here.
         try:
             handed = handoffs_for(page or self.api.recent(slug, limit=400), self.agent)
