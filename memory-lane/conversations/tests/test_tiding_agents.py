@@ -125,6 +125,8 @@ class AgentsOnTidingsTest(TestCase):
 
     def test_a_deleted_comment_asks_nothing(self):
         asked = self.comment('@magent hello?')
+        TidingComment.objects.filter(id=asked['id']).update(changed='deleted', text='[deleted]')  # as #112 deletes it
+        self.assertEqual(self.mentions(), [])
         TidingComment.objects.filter(id=asked['id']).delete()
         self.assertEqual(self.mentions(), [])
 

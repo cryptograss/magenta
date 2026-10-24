@@ -429,6 +429,9 @@
   /* Signed in with PickiPedia rather than an SSH key. */
   .turn .who .tier { font-size: 10.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; border-radius: 6px;
                      padding: 0 5px; margin-left: -2px; border: 1px solid var(--line); color: var(--muted); }
+  /* Signed in with an SSH key: smaller, and in magenta -- an outline, not a fill, so it doesn't shout. */
+  .turn .who .tier.ssh { font-size: 9px; font-weight: 600; text-transform: none; letter-spacing: .02em; padding: 0 4px; vertical-align: 1px;
+                         color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); opacity: .85; }
   #userMenu .wikiin { display: inline-block; margin: 6px 0 2px; font-weight: 600; color: var(--accent); }
   .turn .who .how, .work .who .how { font-size: 11px; color: var(--muted); background: var(--code); border-radius: 8px; padding: 0 7px; }
   .turn .body > :first-child { margin-top: 0; }
@@ -563,6 +566,9 @@
   .turn.pending .sending::before { content: '⏳ '; font-style: normal; display: inline-block; animation: pend 1.2s ease-in-out infinite; }
   @keyframes pend { 50% { opacity: .25; } }
   .note.memo-note.busy { color: var(--ink); font-weight: 600; }
+  /* The microphone went quiet partway: said plainly, with the way to record again. */
+  #composer .note.memo-note.quiet { color: var(--ink); }
+  #composer .note.memo-note.quiet .again { display: inline; min-width: 0; height: auto; border-radius: 0; font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
   .turn .editbox { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
                    background: var(--panel); color: var(--ink); resize: vertical; }
   .turn .editbar { margin-top: 4px; }
@@ -1141,6 +1147,7 @@
 </style>
 </head>
 <body{% if initial_section and initial_section != "moods" %} class="in-section"{% endif %}>
+{% include "conversations/install_prompt.html" with nudge_only_asked=True %}
 <header>
   <button id="menu" type="button" aria-label="Moods" aria-expanded="false">☰</button>
   <!-- The mark alone, to the front page (Moods, for now; a landing page in time) (Justin, 21 Oct). -->
@@ -1496,11 +1503,21 @@
     markLive();
   }
 
-  // Who's around in each Mood: whoever spoke in the last 100 blocks (about 20
-  // minutes), and whoever is typing or at work there now, their name pulsing.
-  let liveData = {};
+  // Who's around in each Mood: each person in the one they last opened, typed or spoke in, for three
+  // minutes (services/presence; Justin, 23 Oct); each agent where it spoke in the last 100 blocks (about
+  // 20 minutes); and whoever is typing or at work there now, their name pulsing. This page's own person
+  // moves the moment they do, not at the next look.
+  let liveData = {}, hereAt = 0;
+  const SHOWN_FOR_MS = 180000;
+  function sayHere(slug) {
+    if (!viewer) return;
+    hereAt = Date.now();
+    fetch('/api/moods/' + encodeURIComponent(slug) + '/here/', { method: 'POST', headers: { 'X-CSRFToken': csrf() } }).catch(() => {});
+  }
   function aroundIn(slug) {
-    const d = liveData[slug] || { speakers: [], typing: [], busy: null };
+    const raw = liveData[slug] || { speakers: [], typing: [], busy: null };
+    const mine = viewer && slug === current && Date.now() - hereAt < SHOWN_FOR_MS;
+    const d = { ...raw, speakers: [...(raw.speakers || []).filter(n => n !== viewer), ...(mine ? [viewer] : [])] };
     const typing = new Set(slug === current ? [...d.typing, ...typingNow] : d.typing);
     const busy = slug === current ? acts.filter(a => a.doing !== 'held').map(a => a.agent) : (d.busy_all || (d.busy ? [d.busy] : []));
     // Listening by voice (services/listening.py): 🎧 on their name where it's shown; one listening to this Mood
@@ -2494,7 +2511,10 @@
     const phone = t.mobile ? '<span class="from-phone" title="sent from a phone" aria-label="sent from a phone">📱</span>' : '';
     const page = userPage(t.sender);
     const named = page ? `<a href="${esc(page)}" target="_blank" rel="noopener" title="${esc(shown(t.sender))} on PickiPedia">${nameHtml(t.sender)}</a>` : nameHtml(t.sender);
-    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; @agents from here wake nobody">wiki</span>' : '';
+    // Who's signed in how: PickiPedia ("wiki"), or an SSH key -- from the web, or a terminal on hunter itself
+    // (Justin, 24 Oct: "ssh@hunter", small, in magenta).
+    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; @agents from here wake nobody">wiki</span>'
+      : t.is_human ? `<span class="tier ssh" title="${t.via === 'web' ? 'Signed in with an SSH key: may wake agents with their full tools' : 'Written in a terminal on hunter, over SSH'}">ssh@hunter</span>` : '';
     // ↩ for anyone signed in. A reply addresses a person, never an agent (only an @mention wakes one).
     const replyBtn = viewer && !t.deleted ? `<button type="button" class="replybtn" data-reply="${esc(t.id)}" title="Reply" aria-label="Reply">↩</button>` : '';
     // ✎ what you wrote here yourself; 🗑 what you wrote, or anything as an admin (services/retract.py).
@@ -3851,6 +3871,7 @@
     stash();
     gen++;
     current = slug;
+    sayHere(slug);  // shown here to everyone, and gone from where they were
     renderVideoCards();  // the videos waiting for a draft page are per Mood
     renderShare();  // a share waiting says which Mood it would go to
     restoreDraft();
@@ -5025,6 +5046,7 @@
   let typingSent = 0;
   function sendTyping(on) {
     if (!viewer || !current) return;
+    hereAt = Date.now();  // typing, or stopped: three minutes here from now (services/presence)
     fetch('/api/moods/' + encodeURIComponent(current) + '/typing/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ typing: on }),
@@ -5451,6 +5473,82 @@
     if (text) composer.insertAdjacentHTML('beforeend', `<span class="note memo-note busy">${esc(text)}</span>`);
     if (memoPending) pendingSays(memoPending, text.replace(/^🎙 /, ''));
   }
+  // A microphone that goes quiet partway (Justin, 23 Oct: 2:24 of an 8:23 memo had sound, the rest digital
+  // zero -- a phone's screen locking, a call, earbuds dropping). Watched while recording: the browser saying
+  // it's muted or gone, or nothing at all coming from it, for QUIET_STOP_S stops it and says where. And once
+  // stopped, a memo that ends in silence goes without it (quietTail): the person told, the dead air not sent.
+  const QUIET_STOP_S = 10, QUIET_LEVEL = 3e-5, QUIET_TAIL_S = 5;  // 3e-5: under one 16-bit step, -90 dB
+  const TRIM_RATE = 16000, TRIM_MAX_BYTES = 10 * 1024 * 1024;     // what's sent instead: 16 kHz WAV, if not too big
+  function micWatch(stream) {
+    let ctx = null, analyser = null, buf = null;
+    const opened = Date.now();
+    let heard = opened, looked = opened, mutedAt = null, gone = false;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      buf = new Float32Array(analyser.fftSize);
+    } catch (e) { ctx = null; analyser = null; }
+    const track = stream.getAudioTracks()[0];
+    if (track) {
+      track.addEventListener('mute', () => { mutedAt = mutedAt || Date.now(); });
+      track.addEventListener('unmute', () => { mutedAt = null; heard = Date.now(); });
+      track.addEventListener('ended', () => { gone = true; });
+    }
+    return {
+      // When it went quiet (ms), if it's been quiet long enough to stop; else null.
+      quietSince() {
+        const now = Date.now();
+        if (gone) return Math.min(heard, now);
+        if (mutedAt && now - mutedAt >= QUIET_STOP_S * 1000) return mutedAt;
+        // Only what was looked at counts: a page in the background is asked seldom, and a gap says nothing.
+        if (now - looked > 2000 || !analyser || ctx.state !== 'running') heard = now;
+        else {
+          analyser.getFloatTimeDomainData(buf);
+          let peak = 0;
+          for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
+          if (peak > QUIET_LEVEL) heard = now;
+        }
+        looked = now;
+        return now - heard >= QUIET_STOP_S * 1000 ? heard : null;
+      },
+      close() { try { if (ctx) ctx.close(); } catch (e) {} },
+    };
+  }
+  // A recorded memo, decoded: {audio, sound, total} -- seconds with sound in them, then of all of it -- when it
+  // ends in QUIET_TAIL_S or more of silence; else null (or if it can't be decoded here: sent as it is).
+  async function quietTail(blob) {
+    try {
+      const ctx = new OfflineAudioContext(1, 1, TRIM_RATE);  // decoded at 16 kHz: an eight-minute memo is 31 MB, not 90
+      const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+      let last = -1;
+      for (let c = 0; c < audio.numberOfChannels; c++) {
+        const data = audio.getChannelData(c);
+        for (let i = data.length - 1; i > last; i--) if (Math.abs(data[i]) > QUIET_LEVEL) { last = i; break; }
+      }
+      const sound = (last + 1) / audio.sampleRate, total = audio.duration;
+      return total - sound >= QUIET_TAIL_S ? { audio, sound, total } : null;
+    } catch (e) { return null; }
+  }
+  // The first `seconds` of a decoded memo as a WAV: mono, 16-bit.
+  function wavOf(audio, seconds) {
+    const rate = audio.sampleRate, n = Math.min(audio.length, Math.ceil(seconds * rate));
+    const channels = [...Array(audio.numberOfChannels).keys()].map(c => audio.getChannelData(c));
+    const out = new DataView(new ArrayBuffer(44 + n * 2));
+    const text = (at, t) => { for (let i = 0; i < t.length; i++) out.setUint8(at + i, t.charCodeAt(i)); };
+    text(0, 'RIFF'); out.setUint32(4, 36 + n * 2, true); text(8, 'WAVE'); text(12, 'fmt ');
+    out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true); out.setUint32(24, rate, true);
+    out.setUint32(28, rate * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+    text(36, 'data'); out.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) {
+      let v = 0;
+      for (const ch of channels) v += ch[i];
+      v = Math.max(-1, Math.min(1, v / channels.length));
+      out.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    return new Blob([out], { type: 'audio/wav' });
+  }
   if (voiceOn && viewer && window.MediaRecorder && navigator.mediaDevices) memoBtn.hidden = false;
   const clock = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
   memoBtn.addEventListener('click', async () => {
@@ -5463,27 +5561,39 @@
     recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
     const chunks = [], started = Date.now();
     memoStarted = started;
+    const mic = micWatch(stream);
+    let wentQuiet = null;  // seconds in, when the microphone went quiet and the recording was stopped for it
     recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
     recorder.addEventListener('stop', async () => {
       clearInterval(memoTimer);
       recordingHold(false);
+      mic.close();
       stream.getTracks().forEach(t => t.stop());
-      const seconds = (Date.now() - started) / 1000;
+      let seconds = (Date.now() - started) / 1000;
       recorder = null; memoSaving = true;
       memoBtn.classList.remove('recording'); memoBtn.classList.add('busy'); memoBtn.textContent = 'saving…';
       memoStatus(`🎙 Saving your memo (${clock(seconds)})…`);
-      let ready = false;
+      let ready = false, memoLink = '', blob = new Blob(chunks, { type: chunks[0]?.type || type || 'audio/webm' }), quiet = null;
       try {
+        // Ends in silence: what has sound goes, as a WAV, and they're told (unless that would be too big to send).
+        quiet = await quietTail(blob);
+        if (quiet && quiet.sound < 0.5) throw new Error('the microphone sent only silence, so there is nothing to send. Is another app using it?');
+        if (quiet) {
+          const trimmed = wavOf(quiet.audio, quiet.sound + 0.5);
+          if (trimmed.size <= TRIM_MAX_BYTES) { blob = trimmed; seconds = trimmed.size > 44 ? (trimmed.size - 44) / 2 / TRIM_RATE : 0; }
+        }
+        if (quiet || wentQuiet !== null) memoThenSend = false;  // not sent unseen: they choose, below
         // How long it is goes with it: a browser's WebM doesn't say, and a phone can't seek it (media.webm_with_duration).
         const r = await postMemo('/api/moods/' + encodeURIComponent(current) + '/memo/?seconds=' + seconds.toFixed(3),
-          new Blob(chunks, { type: chunks[0]?.type || type || 'audio/webm' }), done => {
+          blob, done => {
             const pct = Math.round(done * 100);
             memoBtn.textContent = pct < 100 ? `saving ${pct}%` : 'saving…';
             memoStatus(pct < 100 ? `🎙 Saving your memo (${clock(seconds)}): ${pct}%` : `🎙 Saving your memo (${clock(seconds)}): almost…`);
           });
         const body = r.body;
         if (!r.ok) throw new Error(body.error || r.status);
-        insertAtCaret(`🎙 [voice memo · ${clock(seconds)}](${body.url})`);
+        memoLink = `🎙 [voice memo · ${clock(seconds)}](${body.url})`;
+        insertAtCaret(memoLink);
         sayBox.dispatchEvent(new Event('input'));
         // Not on a touch screen: there the box's focus brings the keyboard up over everything, and a memo is
         // sent by touch, not typed after (Justin, 22 Oct, driving).
@@ -5496,6 +5606,21 @@
       finally { memoSaving = false; memoBtn.classList.remove('busy'); memoBtn.textContent = '🎙'; }
       composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
       if (ready && memoThenSend) { memoThenSend = false; say(); }
+      else if (ready && (quiet || wentQuiet !== null)) {
+        // Said, with the choice: send what has sound, or take it out and record again.
+        const at = clock(quiet ? quiet.sound : wentQuiet);
+        const after = quiet ? ` The ${clock(quiet.total - quiet.sound)} of silence after it ${blob.type === 'audio/wav' ? "isn't sent" : 'is still in it'}.` : '';
+        if (memoPending) { memoPending.remove(); memoPending = null; }
+        composer.insertAdjacentHTML('beforeend', `<span class="note memo-note quiet">🎙 The microphone went quiet at ${esc(at)}`
+          + `${wentQuiet !== null ? ', so the recording stopped' : ''}: a locked screen, a call or earbuds dropping can do that.${esc(after)}`
+          + ` Send what's there, or <button type="button" class="again">record again</button></span>`);
+        composer.querySelector('.memo-note.quiet .again').addEventListener('click', () => {
+          sayBox.value = sayBox.value.replace(memoLink, '').replace(/\n{3,}/g, '\n\n');
+          sayBox.dispatchEvent(new Event('input'));
+          composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
+          memoBtn.click();
+        });
+      }
       else if (ready) composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">Ready to send: its words are written in as it goes.</span>');
     });
     try { recorder.start(1000); }
@@ -5512,6 +5637,8 @@
       const s = (Date.now() - started) / 1000;
       memoBtn.textContent = '■ ' + clock(s);
       if (s >= MEMO_MAX_S && recorder) recorder.stop();
+      const since = recorder ? mic.quietSince() : null;
+      if (since !== null && recorder) { wentQuiet = Math.max(0, (since - started) / 1000); recorder.stop(); }
     }, 500);
   });
 
@@ -6656,9 +6783,10 @@
     if (at && what) at.textContent = what;
   }
   composer.addEventListener('submit', e => { e.preventDefault(); say(); });
-  // Enter sends; Ctrl+Enter (or Shift+Enter) makes a new line. On a touch
-  // screen there is no Ctrl, so Enter makes the new line and Send sends.
-  const touchScreen = matchMedia('(pointer: coarse)').matches;
+  // Enter sends; Ctrl+Enter (or Shift+Enter) makes a new line (Justin, 1 Oct). On a touch
+  // screen there is no Ctrl, so Enter makes the new line and Send sends. Only a touch screen with
+  // nothing finer: a laptop with a touch screen has a trackpad and a keyboard, and Enter sends there.
+  const touchScreen = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
   sayBox.addEventListener('keydown', e => {
     if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;  // mid-composition (IME)
     if (e.ctrlKey || e.metaKey) {

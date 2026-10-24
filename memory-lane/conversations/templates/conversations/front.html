@@ -57,9 +57,13 @@
   .lately .where { color: var(--accent); }
   .lately .when { color: var(--muted); font-size: 12.5px; margin-left: auto; }
   .none { color: var(--muted); font-size: 13.5px; }
+  /* At the foot, the page's own address as a QR code (Justin, 23 Oct): held up for a phone across the table. */
+  footer.here { text-align: center; padding: 6vh 0 34px; color: var(--muted); font-size: 12.5px; }
+  footer.here .qr { display: block; width: 132px; height: 132px; margin: 0 auto 8px; border-radius: 8px; }
 </style>
 </head>
 <body>
+{% include "conversations/install_prompt.html" %}
 <main>
   <section class="hero">
     <div class="mark" role="img" aria-label="magenta: pickers in a ring around a campfire"></div>
@@ -108,6 +112,10 @@
     </section>
   </div>
 </main>
+<footer class="here" title="This page's address, for a phone's camera">
+  {{ qr|safe }}
+  {{ here }}
+</footer>
 {{ slogans|json_script:"slogans" }}
 <script>
   // The slogans take turns (Justin, 22 Oct: "fun to see what people add and edit"): a new one every few

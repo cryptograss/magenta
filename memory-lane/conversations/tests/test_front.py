@@ -45,6 +45,29 @@ class FrontPageTest(FrontBase):
         self.assertIn('/moods/mark-192.png', html)
         self.assertIn('href="/moods/"', html)
 
+    def test_its_own_address_as_a_qr_code_at_the_foot(self):
+        # Justin, 23 Oct: held up for a phone across the table. The address is whatever served it.
+        html = self.client.get('/', secure=True).content.decode()
+        self.assertIn('<svg viewBox=', html)
+        self.assertIn('class="qr"', html)
+        self.assertIn('https://testserver/', html)
+        self.assertNotIn('<svg viewBox=', html.split('<footer')[0])  # at the foot, not before
+
+    def test_a_qr_code_says_its_address(self):
+        svg = front.qr_svg('https://example.test/')
+        self.assertTrue(svg.startswith('<svg viewBox="0 0 '))
+        self.assertIn('fill="#ece7e1"', svg)  # light behind dark: every camera reads that way round
+        self.assertIs(front.qr_svg('https://example.test/'), svg)  # drawn once
+
+    def test_a_phone_is_offered_the_app_on_the_front_page(self):
+        # Justin, 23 Oct: on the front only. The Moods carry it only to put the browser's own question,
+        # when the front page's button asks (?install=1).
+        front_page = self.client.get('/').content.decode()
+        self.assertIn('id="installNudge" role="dialog" aria-label="Install magenta" hidden', front_page)
+        moods = self.client.get('/moods/').content.decode()
+        self.assertIn('data-only-asked="1"', moods)
+        self.assertIn('beforeinstallprompt', moods)
+
     def test_the_top_links_most_upvoted_first(self):
         made = []
         for i in range(4):

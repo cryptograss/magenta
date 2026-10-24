@@ -43,11 +43,8 @@ TURN_ENDS = {'end_turn', 'refusal', 'stop_sequence', 'max_tokens'}
 
 def runner_agent(request):
     """The agent a valid runner key speaks for, or None."""
-    header = request.headers.get('Authorization', '').encode()
-    for agent, key in getattr(settings, 'MOOD_RUNNER_KEYS', {}).items():
-        if key and hmac.compare_digest(header, f'Bearer {key}'.encode()):
-            return agent
-    return None
+    from memory_viewer.runner_keys import agent_for
+    return agent_for(request.headers.get('Authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
 
 
 def stream_line(event, now_iso):

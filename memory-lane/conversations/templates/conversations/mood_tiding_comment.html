@@ -6,8 +6,12 @@
   <span class="said">
     <span class="who"><b>{{ comment.sender|default:"someone" }}</b> · {{ comment.at|date:"M j, g:i A" }}
       {% if comment.kind == 'mood' %} · <a href="/moods/{{ comment.mood }}/#m-{{ comment.id }}" title="as said, in #{{ comment.mood }}">in #{{ comment.mood }}</a>{% else %} · <span title="said on Tidings">on tidings</span>{% endif %}
-      {% if viewer %}<button type="button" class="replyto" data-id="{{ comment.id }}" data-kind="{{ comment.kind }}" data-who="{{ comment.sender }}">reply</button>{% endif %}</span>
+      {% if comment.changed == 'edited' %} · <span class="changed" title="Edited since it was said">edited</span>{% endif %}
+      {% if viewer %}<button type="button" class="replyto" data-id="{{ comment.id }}" data-kind="{{ comment.kind }}" data-who="{{ comment.sender }}">reply</button>{% endif %}
+      {% if comment.may_edit %}<button type="button" class="editsaid" data-kind="{{ comment.kind }}" data-id="{{ comment.id }}">edit</button>{% endif %}
+      {% if comment.may_delete %}<button type="button" class="deletesaid" data-kind="{{ comment.kind }}" data-id="{{ comment.id }}">delete</button>{% endif %}</span>
     <div class="words">{{ comment.html|safe }}</div>
+    {% if comment.may_edit %}<textarea class="raw" hidden>{{ comment.text }}</textarea>{% endif %}
     {% if comment.replies %}<div class="replies">
       {% for reply in comment.replies %}{% include "conversations/mood_tiding_comment.html" with comment=reply %}{% endfor %}
     </div>{% endif %}
