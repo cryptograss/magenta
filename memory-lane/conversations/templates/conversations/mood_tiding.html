@@ -63,6 +63,17 @@
   .comment .words td, .comment .words th { border: 1px solid var(--line); padding: 2px 8px; }
   .comment .replyto { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
   .comment .replyto:hover { color: var(--accent); }
+  /* Yours to change, as in the Mood: edit within a day, delete within a week (Justin, 21 Oct). */
+  .comment .editsaid, .comment .deletesaid { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0;
+                                             margin-left: 6px; cursor: pointer; font-family: inherit; }
+  .comment .editsaid:hover, .comment .deletesaid:hover { color: var(--accent); }
+  .comment .changed { font-style: italic; }
+  .comment .editing textarea { width: 100%; min-height: 64px; border: 1px solid var(--accent); border-radius: 8px; padding: 6px 8px;
+                               background: var(--panel); color: var(--ink); font: inherit; resize: vertical; }
+  .comment .editing .bar { display: flex; gap: 8px; align-items: baseline; margin-top: 4px; font-size: 12.5px; }
+  .comment .editing button { font: inherit; border: 0; border-radius: 6px; padding: 3px 12px; cursor: pointer; }
+  .comment .editing .save { background: var(--accent); color: #fff; }
+  .comment .editing .err { color: var(--err, #c0392b); }
   .comments .replies { margin-left: 24px; border-left: 2px solid var(--line); padding-left: 12px; }
   /* The box: say it here, and it's said in the Mood too (one record). */
   .say { margin-top: 18px; }
@@ -130,6 +141,44 @@
     m.disabled = false;
   });
 
+  // Changing what you said: in place, saved, and the page drawn again; or deleted, after asking.
+  const saidUrl = b => `/api/tidings/{{ tiding.id }}/said/${b.dataset.kind}/${b.dataset.id}/`;
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button.editsaid');
+    if (!b) return;
+    const said = b.closest('.said'), words = said.querySelector(':scope > .words');
+    if (said.querySelector(':scope > .editing')) return;
+    const box = document.createElement('div');
+    box.className = 'editing';
+    box.innerHTML = '<textarea aria-label="What you said"></textarea><div class="bar"><button type="button" class="save">save</button>'
+      + '<button type="button" class="cancel">cancel</button><span class="err"></span></div>';
+    const area = box.querySelector('textarea');
+    area.value = said.querySelector(':scope > textarea.raw').value;
+    words.hidden = true;
+    words.after(box);
+    area.focus();
+    box.querySelector('.cancel').onclick = () => { box.remove(); words.hidden = false; };
+    box.querySelector('.save').onclick = async () => {
+      try {
+        const r = await fetch(saidUrl(b), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                            body: JSON.stringify({ text: area.value }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || r.status);
+        location.reload();
+      } catch (err) { box.querySelector('.err').textContent = err.message; }
+    };
+  });
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('button.deletesaid');
+    if (!b || !confirm('Delete this? Its words go; what answered it stays.')) return;
+    try {
+      const r = await fetch(saidUrl(b), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                          body: JSON.stringify({ delete: true }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      location.reload();
+    } catch (err) { alert(err.message); }
+  });
   async function sayIt(form) {
     const button = form.querySelector('button'), err = form.querySelector('.err');
     err.textContent = '';

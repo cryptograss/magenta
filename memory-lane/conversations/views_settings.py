@@ -100,11 +100,15 @@ def api_status(request):
 
 
 def _rights(link, device):
-    """What this device may do to a link on Tidings: retitle it (✎), take it off."""
+    """What this device may do to a link on Tidings: retitle it (✎), take it off; and, on its page, edit or
+    delete each thing said about it."""
     from .services import tiding_links
     link['may_retitle'] = tiding_links.may_retitle(device, link['by'])
     link['may_withdraw'] = tiding_links.may_withdraw(device, link['by'])
     link['may_pin'] = device is not None and device.tier == 'key'
+    comments = link.get('comments')
+    for node in tiding_links._walk(comments if isinstance(comments, list) else []):  # the list says how many: no tree
+        node['may_edit'], node['may_delete'] = tiding_links.may_change_said(node, device)
     return link
 
 

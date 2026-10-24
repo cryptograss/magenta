@@ -232,7 +232,8 @@ def _snippets_and_votes(tree, viewer=None):
     nodes = list(_walk(tree))
     mood_ids = [n['id'] for n in nodes if n.get('kind', 'mood') == 'mood']
     comment_ids = [n['id'] for n in nodes if n.get('kind') == 'comment']
-    texts = {str(m.id): prose(m.content) for m in Message.objects.filter(id__in=mood_ids)} if mood_ids else {}
+    rows = {str(m.id): m for m in Message.objects.filter(id__in=mood_ids).select_related('change')} if mood_ids else {}
+    texts = {mid: prose(m.content) for mid, m in rows.items()}
     scored, mines = {}, set()
     if mood_ids:
         scored.update({str(i): c for i, c in TidingVote.objects.filter(message_id__in=mood_ids).values('message_id')
@@ -251,6 +252,11 @@ def _snippets_and_votes(tree, viewer=None):
         if node.get('kind', 'mood') == 'mood':
             node['snippet'] = snippet_of(reply_to(texts.get(node['id'], ''))[1])
             node['html'] = said_html(texts.get(node['id'], ''))
+            row = rows.get(node['id'])
+            change = getattr(row, 'change', None) if row is not None else None
+            node['changed'] = change.kind if change else ''
+            node['text'] = '' if node['changed'] == 'deleted' else reply_to(texts.get(node['id'], ''))[1]
+            node['source'], node['said_at'] = (row.source_file, row.created_at) if row is not None else ('', None)
             if isinstance(node['at'], str):
                 node['at'] = datetime.fromisoformat(node['at'])  # the index keeps it ISO (it's cached); the page says it
         node['score'] = scored.get(node['id'], 0)
@@ -279,7 +285,8 @@ def tree_of(tiding, message_id, index=None, viewer=None):
     extras = {}
     for row in TidingComment.objects.filter(tiding=tiding).select_related('by').order_by('at'):
         node = {'kind': 'comment', 'id': str(row.id), 'sender': row.by.name if row.by_id else '',
-                'at': row.at, 'snippet': row.text, 'html': said_html(row.text), 'replies': []}
+                'at': row.at, 'snippet': row.text, 'html': said_html(row.text), 'replies': [],
+                'text': '' if row.changed == 'deleted' else row.text, 'changed': row.changed}
         key = 'c:' + str(row.parent_id) if row.parent_id else 'm:' + str(row.parent_message_id or message_id)
         extras.setdefault(key, []).append(node)
 
@@ -470,6 +477,87 @@ def comment(tiding, by, text, parent=None, client_version=''):
         _notice(tiding, by, row)
     return {'id': str(row.id), 'kind': 'comment', 'sender': by.name, 'at': row.at,
             'snippet': text, 'html': said_html(text), 'replies': [], 'score': 0, 'mine': False}
+
+
+def may_change_said(node, device):
+    """(may edit, may delete) a node of a link's discussion: change_said's rules, for the page's buttons."""
+    from types import SimpleNamespace
+    from django.utils import timezone
+    from . import retract
+    if device is None or node.get('changed') == 'deleted':
+        return False, False
+    if node.get('kind') == 'comment':
+        age, mine = timezone.now() - node['at'], node['sender'] == device.entity_id
+        return mine and age <= retract.EDIT_OWN_WITHIN, retract.is_admin(device) or (mine and age <= retract.DELETE_OWN_WITHIN)
+    if node.get('said_at') is None:
+        return False, False
+    said = SimpleNamespace(sender_id=node['sender'], source_file=node.get('source', ''), created_at=node['said_at'])
+    return retract.may_edit(said, device), retract.may_delete(said, device)
+
+
+def change_said(tiding, device, kind, node_id, text=None, delete=False):
+    """Edit or delete something said about a link (Justin, 21 Oct: "How about comment editing?"), by the
+    Mood's own rules: yours, within a day to edit and a week to delete, or anyone's deleted by an admin;
+    what goes is sealed to the recovery key first (services/retract.py). `kind` 'comment', said here: its
+    words change in place, a deleted one stays as '[deleted]' so what answered it stays under it. 'mood', a
+    reply in the Mood: changed there, as the Mood changes it, still answering what it answered.
+    {'id', 'changed'}; Refused with why if not."""
+    from types import SimpleNamespace
+    from django.utils import timezone
+    from conversations.models import Message, TidingComment
+    from . import retract
+    from .mood_view import prose, reply_to
+    if device is None:
+        raise Refused('sign in first', status=401)
+    if not delete:
+        text = (text if isinstance(text, str) else '').replace('\x00', '').strip()
+        if not text:
+            raise Refused('nothing left: delete it instead')
+    if kind == 'mood':
+        message = Message.objects.filter(id=node_id, mood_id=tiding.message.mood_id).select_related('mood').first()
+        if message is None or not any(node['id'] == str(node_id) for node in _walk(_tree(tiding.message_id))):
+            raise Refused('no such comment under this link', status=404)
+        try:
+            if delete:
+                if not retract.may_delete(message, device):
+                    raise Refused('only what you wrote, within a week of writing it, can be deleted '
+                                  '(or anything, by an admin with their SSH key)', status=403)
+                retract.delete(message, device.entity_id)
+            else:
+                if not retract.may_edit(message, device):
+                    raise Refused('only what you wrote here yourself, within a day of writing it, can be edited',
+                                  status=403)
+                target, _ = reply_to(prose(message.content))
+                retract.edit(message, f'↩ #m-{target}\n{text}' if target else text, device.entity_id)
+        except retract.Refused as e:
+            raise Refused(str(e), status=e.status)
+        return {'id': str(message.id), 'changed': 'deleted' if delete else 'edited'}
+    if kind != 'comment':
+        raise Refused('expected a comment or a Mood reply')
+    row = TidingComment.objects.filter(id=node_id, tiding=tiding).first()
+    if row is None or row.changed == 'deleted':
+        raise Refused('no such comment under this link', status=404)
+    age, mine = timezone.now() - row.at, row.by_id == device.entity_id
+    if delete and not (retract.is_admin(device) or (mine and age <= retract.DELETE_OWN_WITHIN)):
+        raise Refused('only what you wrote, within a week of writing it, can be deleted '
+                      '(or anything, by an admin with their SSH key)', status=403)
+    if not delete and not (mine and age <= retract.EDIT_OWN_WITHIN):
+        raise Refused('only what you wrote here yourself, within a day of writing it, can be edited', status=403)
+    try:
+        key = retract._ready(device.entity_id)
+    except retract.Refused as e:
+        raise Refused(str(e), status=e.status)
+    # Sealed as a Mood message's words are: the same record (SealedCopy keeps an id, not a key), the same key.
+    said = SimpleNamespace(pk=row.id, content=row.text, source_file=COMMENT_SOURCE, sender_id=row.by_id,
+                           mood=tiding.message.mood, mood_id=tiding.message.mood_id)
+    kind = 'deleted' if delete else 'edited'
+    retract._seal(said, kind, device.entity_id, key, [])
+    if not delete:
+        text, _ = redact(text)
+    TidingComment.objects.filter(pk=row.pk).update(text=retract.DELETED if delete else text, changed=kind,
+                                                   changed_at=timezone.now())
+    retract._say_so(said, device.entity_id, f'a comment on Tidings {kind}')
+    return {'id': str(row.id), 'changed': kind}
 
 
 def discussion(tiding_id, viewer=None):
