@@ -912,15 +912,17 @@ def also_asked(owed, agent, page):
     asked = []
     for turn in owed:
         for name in turn.get('mentions') or []:
-            if name != agent and name in agents and name not in asked:
+            # Not who wrote it: an agent naming itself ("your @re landed") isn't asking itself anything.
+            if name not in (agent, turn.get('sender')) and name in agents and name not in asked:
                 asked.append(name)
     if not asked:
         return []
     said = '; '.join(f"{name}, {'at work here now' if working.get(name) not in (None, 'held') else 'not at work here yet'}"
                      for name in asked)
-    return ['', f'Also asked in what woke you: {said}. Each of you is woken on its own and answers without waiting '
-                'for the other; what they say lands in the Mood as they write it (read_mood shows it), if you would '
-                'rather answer with it in view.']
+    # Justin's words (24 Oct): "mentioned, and likely woken" -- whether they answer is theirs to say.
+    return ['', f'Others mentioned, and likely woken, by what woke you: {said}. Each of you is woken on its own and '
+                'answers without waiting for the other; what they say lands in the Mood as they write it (read_mood '
+                'shows it), if you would rather answer with it in view.']
 
 
 SETTING_WORDS = {'model': 'model', 'mention_effort': 'effort', 'listening': 'listening', 'verbosity': 'verbosity',
