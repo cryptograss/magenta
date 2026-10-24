@@ -183,7 +183,7 @@ def api_mood_turns(request, slug):
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
-                                                   'tiding', 'comment_id')},
+                                                   'tiding', 'comment_id', 'changes')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
@@ -280,6 +280,8 @@ def agents_in(mood):
     agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
     shown = ('listening', 'model', 'mention_effort', 'ultracode', 'catch_up_tokens', 'discretion', 'verbosity')
     rows = list(Setting.objects.filter(key__in=shown))
+    from .services import agent_settings
+    every = agent_settings._rows()
     # Which harness reported what it can run (the menu fetches the list itself, from api_agent_models).
     from .models import HarnessModels
     catalogs = dict(HarnessModels.objects.values_list('agent_id', 'harness'))
@@ -294,6 +296,10 @@ def agents_in(mood):
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
                      'context': context_in(mood, name),
                      'catalog': catalogs.get(name)}
+        # What's changed in its settings here since its last word: told at its next wake (agent_settings).
+        changes, by, note = agent_settings.changed_since(mood.slug, name, rows=every)
+        if changes:
+            out[name]['changed'] = {'changes': changes, 'by': by, 'note': note}
     return out
 
 
