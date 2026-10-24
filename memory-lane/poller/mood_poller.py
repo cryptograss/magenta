@@ -912,7 +912,8 @@ def also_asked(owed, agent, page):
     asked = []
     for turn in owed:
         for name in turn.get('mentions') or []:
-            if name != agent and name in agents and name not in asked:
+            # Not who wrote it: an agent naming itself ("your @re landed") isn't asking itself anything.
+            if name not in (agent, turn.get('sender')) and name in agents and name not in asked:
                 asked.append(name)
     if not asked:
         return []

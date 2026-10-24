@@ -799,6 +799,9 @@ class MentionContextTest(TestCase):
         self.assertIn('read_mood', lines[1])
         self.assertEqual(also_asked([dict(owed[0], mentions=['magent', 'skyler'])], 'magent', page), [])  # a person isn't
         self.assertEqual(also_asked(owed, 'magent', None), [])  # nothing known: nothing said
+        # re writing to magent, naming itself ("when your @re landed"): re isn't asked, it's asking.
+        from_re = [dict(turn('r1', 're', 101, '@magent, when your @re landed...'), mentions=['magent', 're'])]
+        self.assertEqual(also_asked(from_re, 'magent', page), [])
 
     def test_the_wake_says_who_else_was_asked_after_what_was_asked(self):
         class API(FakeAPI):
