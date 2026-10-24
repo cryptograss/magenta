@@ -38,12 +38,23 @@ class PartsTest(SimpleTestCase):
         self.assertEqual(rebuild(b.parts, every_revision(w).__getitem__), b.text)
         self.assertEqual([p['revision'] for p in b.parts if not isinstance(p, str)], [101, 102, 103])
         self.assertNotIn('Never merge', ''.join(p for p in b.parts if isinstance(p, str)))  # no copies
-        self.assertIn('bundle="b-1"', b.text.split('\n')[0])  # the agent can name the record it was given
-        self.assertIn("It's block 26,260,500.", b.text)
+        self.assertNotIn('b-1', b.text)  # the id is in the wake, not the instructions (render says why)
+        self.assertIn("It's block 26,260,500.", b.text)  # a block handed in still fills its sentence
         record = b.record()
         self.assertEqual(record['sha256'], b.sha256)
         self.assertEqual(record['block'], 26_260_500)
         self.assertEqual(record['stamps']['layers']['standing']['revision'], 101)
+
+    def test_the_same_pages_give_the_same_instructions_turn_after_turn(self):
+        """The system prompt comes first in what a harness sends, and a prompt cache matches it byte for byte:
+        one that changed every turn would make every wake re-read the whole session at full price."""
+        from datetime import timedelta
+        w = wiki(**{'Cryptograss:Agents/Greeting': [(200, 'JMyles', GREETING_PAGE)],
+                    'Cryptograss:Agents/Magent': [(210, 'JMyles', agent_page('magenta', 'Welcome back.'))]})
+        first = bundle('magent', 'magent-self', get=w.get, state_dir=None, now=T0, record_id='one')
+        later = bundle('magent', 'magent-self', get=w.get, state_dir=None, now=T0 + timedelta(hours=5), record_id='two')
+        self.assertEqual(first.text, later.text)
+        self.assertNotEqual(first.record()['gathered'], later.record()['gathered'])  # the record still says when
 
     def test_a_degraded_bundle_rebuilds_from_the_copy_it_stood_on(self):
         state = tempfile.mkdtemp()
@@ -124,7 +135,9 @@ class PollerRecordsTest(SimpleTestCase):
             poller.run_turn_for('magent-self', 's-local', 'You were woken')
         [record] = api.recorded
         given = poller.waker.options['system']
-        self.assertIn(f'bundle="{record["id"]}"', given)
+        self.assertNotIn(record['id'], given)
+        self.assertTrue(poller.waker.woken[0][1].endswith(
+            f"It's block 26,260,600. Your instructions this turn are bundle {record['id']} (Special:AgentBundles)."))
         self.assertTrue(record['session_id'])  # the session the turn ran as
         self.assertTrue(record['requested_at'] <= record['produced_at'] <= record['delivered_at'])
         self.assertEqual(record['block'], 26_260_600)

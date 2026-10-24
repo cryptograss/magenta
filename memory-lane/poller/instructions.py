@@ -161,7 +161,7 @@ class Bundle:
     agent_page: Layer = None
     greeting_line: str = ''
     block: int = None
-    id: str = None          # its record's, when it is recorded: in the <instructions> tag, so the agent can name it
+    id: str = None          # its record's, when it is recorded: named in the wake, so the agent can name it
     parts: list = field(default_factory=list, repr=False)  # the text, as the record keeps it (assemble)
 
     @property
@@ -371,8 +371,11 @@ def rebuilt(record, texts=None, api=API):
 
 def render(b, degraded_path=DEGRADED):
     """(text, parts)."""
-    out = [f'<instructions agent="{b.agent}"' + (f' mood="{b.mood}"' if b.mood else '') + f' gathered="{b.gathered}"'
-           + (f' bundle="{b.id}"' if b.id else '') + '>']
+    # Nothing here changes from turn to turn unless a page does: the system prompt comes first in what a
+    # harness sends, and a provider's prompt cache matches it byte for byte, so a bundle that differed each
+    # turn (its id, when it was gathered, the block) would make every wake re-read the whole session at
+    # full price. Those go in the wake instead (mood_poller.MoodPoller.run_turn_for), and in the record.
+    out = [f'<instructions agent="{b.agent}"' + (f' mood="{b.mood}"' if b.mood else '') + '>']
     if b.greeting_line:
         g = b.greeting
         where = f' {attrs(g)}' if g and g.revision is not None and not g.problem else ''
