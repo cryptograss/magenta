@@ -472,6 +472,22 @@ def comment(tiding, by, text, parent=None, client_version=''):
             'snippet': text, 'html': said_html(text), 'replies': [], 'score': 0, 'mine': False}
 
 
+def post_text(text, url):
+    """What the promoted message says besides its link (Justin, 24 Oct): shown in full at the top of the
+    discussion, as the post's own words -- not a comment: not counted, not voted on, and answered by a
+    top-level comment, as HN shows a text post's text. The link is the title already, so it's left out
+    where it stands apart -- a line of its own, or a line's start or end ("This one: <link>") -- and kept
+    where it's part of a sentence; a [words](link) keeps its words. '' when the link is all there is."""
+    from .mood_view import reply_to
+    text = reply_to(text or '')[1]
+    link = '<?' + re.escape(url) + r'>?(?![\w/#?=&%-])'
+    text = re.sub(r'\[([^\]]*)\]\(' + re.escape(url) + r'\)', r'\1', text)          # [words](link): the words
+    text = re.sub(r'[ \t]*[:\u2013\u2014-]?[ \t]*' + link + r'(?=[.!?]*[ \t]*$)', '', text, flags=re.M)  # ending a line
+    text = re.sub(r'^[ \t]*' + link + r'[ \t]*[:\u2013\u2014-]?[ \t]*', '', text, flags=re.M)              # starting one
+    text = text.strip()
+    return text if re.search(r'\w', text) else ''
+
+
 def discussion(tiding_id, viewer=None):
     """One link's page: itself, then what's been said about it. Missing or deleted: Refused."""
     from conversations.models import Tiding
@@ -496,6 +512,7 @@ def discussion(tiding_id, viewer=None):
         'mood': message.mood_slug,
         'said_by': message.sender_id,
         'snippet': snippet_of(text)[:200],
+        'post': said_html(post_text(text, tiding.url)) if post_text(text, tiding.url) else '',
         'score': scored.get(str(tiding.id), 0),
         'mine': str(tiding.id) in mines,
         'tags': tiding.tags or [],

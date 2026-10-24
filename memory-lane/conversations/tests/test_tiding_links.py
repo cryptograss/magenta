@@ -271,6 +271,41 @@ class TidingTalkTests(TidingLinksTest):
         gone = self.client.get(f'/moods/tidings/{uuid.uuid4()}/?embed=1')
         self.assertEqual(gone.status_code, 404)
 
+    def test_the_posts_own_words_are_at_the_top_but_not_a_comment(self):
+        # Justin, 24 Oct: what the message says besides its link, in full, as the post's own text.
+        said = self.say(self.skyler, 'Molly Tuttle is on the **Saturday** bill https://example.org/lineup\n\n- tent\n- capo')
+        tiding = tiding_links.promote(said, self.justin)
+        html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        post = html.split('<div class="comment post">')[1].split('<section class="comments">')[0]
+        self.assertIn('<strong>Saturday</strong>', post)            # drawn as the Mood draws it
+        self.assertIn('<li>capo</li>', post)                        # all of it, not 200 characters
+        self.assertNotIn('example.org/lineup', post)                # the link is the title already
+        self.assertIn('data-kind="message"', self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1')
+                      .content.decode().split('<div class="comment post">')[1].split('</div>')[0])  # answered at the top level
+        [link] = [l for l in tiding_links.listed() if l['id'] == str(tiding.id)]
+        self.assertEqual(link['comments'], 0)                       # not counted
+        only_link = self.say(self.skyler, 'https://example.org/other')
+        tiding2 = tiding_links.promote(only_link, self.justin)
+        self.assertNotIn('class="comment post"', self.client.get(f'/moods/tidings/{tiding2.id}/?embed=1').content.decode())
+
+    def test_what_a_message_says_besides_its_link(self):
+        url = 'https://example.org/lineup'
+        cases = [
+            (url, ''),
+            (f'{url} !', ''),
+            (f'This one: {url}', 'This one'),
+            (f'Look at this {url}!', 'Look at this!'),
+            (f'{url} — Saturday, both stages', 'Saturday, both stages'),
+            (f'Summer reading: {url} and the rest', f'Summer reading: {url} and the rest'),  # part of a sentence: kept
+            (f'[the lineup]({url}) is out', 'the lineup is out'),
+            (f'<{url}>\nCamping too', 'Camping too'),
+            (f'Not this one: {url}-2027', f'Not this one: {url}-2027'),  # another address that starts the same
+            (f'↩ #m-{uuid.uuid4()}\nnice {url}', 'nice'),
+        ]
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(tiding_links.post_text(text, url), expected)
+
     def test_an_agents_reply_is_a_comment_too(self):
         # An agent's turn is kept as content blocks, not a string: the discussion reads its words.
         said, tiding = self.promoted()

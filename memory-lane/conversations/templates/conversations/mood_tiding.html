@@ -43,6 +43,9 @@
   .thelink .embed video { width: 100%; max-height: 420px; border-radius: 8px; }
   /* What's been said: a tree, HN-style, each comment's score beside it (Justin, 21 Oct). */
   .comments { margin: 14px 0 0 0; }
+  /* The post's own words, above what's said about it. */
+  .comment.post { border-bottom: 1px solid var(--line); padding: 10px 0 12px; }
+  .comment.post .words { font-size: 15px; }
   .comment { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
   .comment .rank { padding-top: 1px; }
   .comment .said { flex: 1; min-width: 0; }
@@ -238,9 +241,21 @@
         {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
       {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
       {% if tiding.embed %}<div class="embed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen></iframe>{% else %}<video src="{{ tiding.embed.src }}" controls preload="none"></video>{% endif %}</div>{% endif %}
-      <div class="snippet">{{ tiding.snippet }}</div>
     </span>
   </div>
+
+  {% if tiding.post %}
+  <!-- What the message said besides its link (Justin, 24 Oct): the post's own words, read as the first thing said,
+       but not a comment -- not counted, not voted on; answering it is a top-level comment. -->
+  <div class="comment post">
+    <span class="rank"></span>
+    <span class="said">
+      <span class="who"><b>{{ tiding.said_by|default:"someone" }}</b> · with the link
+        {% if viewer %}<button type="button" class="replyto" data-id="{{ tiding.message }}" data-kind="message" data-who="{{ tiding.said_by }}">reply</button>{% endif %}</span>
+      <div class="words">{{ tiding.post|safe }}</div>
+    </span>
+  </div>
+  {% endif %}
 
   <section class="comments">
     {% for comment in tiding.comments %}
