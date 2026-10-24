@@ -230,7 +230,7 @@ def api_settings(request):
     return JsonResponse(knobs.describe(row), status=201)
 
 
-# --- how an agent sees a Mood: its rules, as they reach it --------------------
+# --- how an agent sees a Mood: its instructions, as they reach it -------------
 
 STANDING_URL = 'https://raw.githubusercontent.com/cryptograss/magenta/main/agents/magent.md'
 STANDING_SOURCE = 'https://github.com/cryptograss/magenta/blob/main/agents/magent.md'
@@ -255,7 +255,7 @@ _texts = None
 
 
 def _wiki_texts():
-    """One reader for the server's life, so the rules page asks the wiki at most every few minutes."""
+    """One reader for the server's life, so the instructions page asks the wiki at most every few minutes."""
     global _texts
     if _texts is None:
         from poller.wiki_rules import EDITORS, WikiTexts
@@ -263,19 +263,44 @@ def _wiki_texts():
     return _texts
 
 
+def instructions_now(agent, slug):
+    """{'text', 'layers'}: the agent's instructions for the Mood, gathered as its runner gathers them
+    (poller/instructions.py), cached two minutes; None if PickiPedia can't be read at all."""
+    from django.core.cache import cache
+
+    from poller.instructions import bundle
+    from poller.wiki_rules import page_url
+    key = f'instructions-now:{agent}:{slug}'
+    found = cache.get(key)
+    if found is None:
+        try:
+            b = bundle(agent, slug, state_dir=None)
+        except Exception:  # noqa: BLE001 -- the page still shows its settings and wakes
+            return None
+        layers = [b.greeting, b.agent_page, *b.layers]
+        found = {'text': b.text, 'layers': [{'page': layer.title, 'url': page_url(layer.title), 'revision': layer.revision,
+                                             'by': layer.editor, 'problem': layer.problem, 'absent': layer.absent}
+                                            for layer in layers if layer is not None]}
+        cache.set(key, found, 120)
+    return found
+
+
 @require_GET
-def rules_page(request, slug):
-    """What an agent is told in this Mood, as it reaches it: the Mood's own
-    rules, the settings in force, what each kind of wake says, and its standing
-    instructions. Read from the code that sends them (poller/mood_poller.py),
-    so it cannot drift from what is sent."""
-    from django.shortcuts import get_object_or_404
+def instructions_page(request, slug):
+    """What an agent is told in this Mood, as it reaches it: its instructions (gathered now, as its
+    runner gathers them), the settings in force, what each kind of wake says, and what Claude Code
+    adds. Read from the code that sends them (poller/instructions.py, poller/mood_poller.py), so it
+    cannot drift from what is sent."""
+    import urllib.parse
+
     from poller.mood_poller import wake_frames
 
     mood = Mood.by_slug_or_404(slug)
     agent = request.GET.get('agent', 'magent').lower()
+    if not ThinkingEntity.objects.filter(name=agent, is_biological_human=False).exists():
+        agent = 'magent'  # an agent's name only: it names the pages read
     resolved = knobs.resolve(slug, agent)
-    frames = wake_frames(slug, rules=resolved.get('rules') or '', agent=agent,
+    frames = wake_frames(slug, agent=agent,
                          discretion=resolved.get('discretion') or 'normal', verbosity=resolved.get('verbosity') or 'normal',
                          trusted="anyone signed into magenta with an SSH key",
                          # As the runner sends them: PickiPedia's texts, else the code's.
@@ -288,8 +313,16 @@ def rules_page(request, slug):
         if key == 'model' and not value:
             return "(the harness's default)"
         return value
-    shown = [(knobs.KNOBS[k][1], k, plain(k, resolved[k])) for k in knobs.KNOBS if k != 'rules']
-    return render(request, 'conversations/mood_rules.html', {
-        'mood': mood, 'agent': agent, 'rules': resolved.get('rules') or '', 'settings': shown,
-        'frames': frames, 'standing': standing_instructions(), 'standing_source': STANDING_SOURCE,
+    shown = [(knobs.KNOBS[k][1], k, plain(k, resolved[k])) for k in knobs.KNOBS]
+    bundles = 'https://pickipedia.xyz/wiki/Special:AgentBundles?' + urllib.parse.urlencode({'agent': agent, 'mood': slug})
+    return render(request, 'conversations/mood_instructions.html', {
+        'mood': mood, 'agent': agent, 'instructions': instructions_now(agent, slug), 'bundles_url': bundles,
+        'settings': shown, 'frames': frames, 'standing': standing_instructions(), 'standing_source': STANDING_SOURCE,
     })
+
+
+def rules_page(request, slug):
+    """The old address of the instructions page."""
+    from django.shortcuts import redirect
+    return redirect(f'/moods/{slug}/instructions/' + (f'?{request.GET.urlencode()}' if request.GET else ''),
+                    permanent=True)

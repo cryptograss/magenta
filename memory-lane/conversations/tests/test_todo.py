@@ -134,8 +134,8 @@ class ForMoodTest(TestCase):
 class WakeTest(TestCase):
 
     def test_every_wake_points_to_the_moods_list(self):
-        from poller.mood_poller import rules_block, wake_frames
-        self.assertIn('Cryptograss:Moods/general/todo', '\n'.join(rules_block('', 'normal', 'general')))
+        from poller.mood_poller import wake_extras, wake_frames
+        self.assertIn('Cryptograss:Moods/general/todo', '\n'.join(wake_extras('normal', 'general')))
         for frame in wake_frames('general'):
             if frame['kind'] != 'screen':
                 self.assertIn('Cryptograss:Moods/general/todo', frame['text'], frame['kind'])

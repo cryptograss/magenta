@@ -890,8 +890,8 @@ def wake_footer(full=False):
             '</mood-wake>']
 
 
-# What each kind of wake says around its content. One place, so the rules
-# page (memory-lane's /moods/<slug>/rules/) shows exactly what is sent.
+# What each kind of wake says around its content. One place, so the Mood's
+# instructions page (memory-lane's /moods/<slug>/instructions/) shows exactly what is sent.
 CONSIDER_ASK = ('If you have something that would genuinely help -- a fact, a connection, a question, a '
                 'kind word -- say it, briefly. Most of the time the right answer is to stay quiet.')
 # The Mood's discretion dial (memory-lane's settings): how readily the agent
@@ -1031,24 +1031,25 @@ def todo_line(slug):
             "do -- a review, a merge, a deploy, an edit -- add it there; when it's done, mark it done."]
 
 
-def rules_block(rules, verbosity='normal', slug=None, texts=None):
-    """The Mood's own rules for the agent, how long its replies should run
-    there (the verbosity dial: PickiPedia's text, else this file's), and its
-    to-do list, as every wake carries them."""
-    lines = ['', "This Mood's people asked you to keep this in mind here:", rules] if rules else []
+def wake_extras(verbosity='normal', slug=None, texts=None):
+    """How long its replies should run in the Mood (the verbosity dial: PickiPedia's text, else this
+    file's), and its to-do list, as every wake carries them. What the agent is to keep in mind in a
+    Mood is that Mood's instructions page (Cryptograss:Moods/<slug>/Instructions, poller/instructions.py),
+    in its system prompt: a Mood's own "rules" setting, read at every wake, was a second place for the
+    same thing, nobody's Mood used it, and it went (Justin, magent-self, 2026-10-24: "Why special?")."""
     length = VERBOSITY_LINES.get(verbosity) or ''
     if texts:
         length = texts.dial('verbosity', verbosity, length)
-    return lines + (['', length] if length else []) + (['', *todo_line(slug)] if slug else [])
+    return (['', length] if length else []) + (['', *todo_line(slug)] if slug else [])
 
 
-def wake_frames(slug, rules='', agent='magent', trusted='the people its runner trusts with real work',
+def wake_frames(slug, agent='magent', trusted='the people its runner trusts with real work',
                 discretion='normal', verbosity='normal', texts=None):
     """Every kind of wake, as the agent receives it, with its content shown as
-    placeholders. What memory-lane's rules page shows. `texts`: the dials' texts
+    placeholders. What memory-lane's instructions page for the Mood shows. `texts`: the dials' texts
     as PickiPedia has them (poller/wiki_rules.py), as the runner sends them."""
-    def block(r, v, s):
-        return rules_block(r, v, s, texts)
+    def block(v, s):
+        return wake_extras(v, s, texts)
     posts = '[the posts that woke it, each as "[name, time] text"]'
     context = ('[everything said here since it last spoke, word for word up to its catch_up_tokens; older, summarized. '
                'A post that links a message (#m-<id>) has it read from that message instead]')
@@ -1058,20 +1059,20 @@ def wake_frames(slug, rules='', agent='magent', trusted='the people its runner t
          'when': f'Every post that woke it is from someone trusted with real work here ({trusted}).',
          'text': '\n'.join(mention_opening(slug, 'this was posted from the web, where no session is listening.')
                            + [posts, '', 'What was said here since you last spoke (newest last):', context]
-                           + block(rules, verbosity, slug) + wake_footer(full=True))},
+                           + block(verbosity, slug) + wake_footer(full=True))},
         {'kind': 'mention-look', 'title': 'When someone @mentions it: look, not touch',
          'when': 'Any post that woke it is from a PickiPedia sign-in, an agent, or a session.',
          'text': '\n'.join(mention_opening(slug, 'this was posted from the web, where no session is listening.')
                            + [posts, '', 'What was said here since you last spoke (newest last):', context]
-                           + block(rules, verbosity, slug) + wake_footer(full=False))},
+                           + block(verbosity, slug) + wake_footer(full=False))},
         {'kind': 'consider', 'title': 'When people talk and nobody asks it',
          'when': ('New posts from the web, after a quiet moment' + (', straight to it: with discretion chatty, '
                                                                    'there is no screen.' if discretion == 'chatty'
                                                                    else ', if the screen lets them through.')),
-         'text': '\n'.join(consider_opening(slug) + [recent, '', consider_ask(discretion, texts)] + block(rules, verbosity, slug) + wake_footer())},
+         'text': '\n'.join(consider_opening(slug) + [recent, '', consider_ask(discretion, texts)] + block(verbosity, slug) + wake_footer())},
         {'kind': 'quiet', 'title': 'When it has been quiet a long while',
          'when': 'No word for the idle wait (doubling after each silence), and a person spoke in the last 12 hours.',
-         'text': '\n'.join(quiet_opening(slug, '[N]') + ['[its last turns]', '', QUIET_ASK] + block(rules, verbosity, slug)
+         'text': '\n'.join(quiet_opening(slug, '[N]') + ['[its last turns]', '', QUIET_ASK] + block(verbosity, slug)
                            + wake_footer())},
         {'kind': 'arrival', 'title': 'When someone signs in',
          'when': ('A new sign-in announced here, if listening is on, discretion isn\'t reserved, the person hasn\'t '
@@ -1079,7 +1080,7 @@ def wake_frames(slug, rules='', agent='magent', trusted='the people its runner t
          'text': '\n'.join([f'<mood-wake mood="{slug}" reason="arrival">',
                             '[name] just signed in [with PickiPedia | with their SSH key] ("[device]"). '
                             '[When they last said something in a Mood.]', '', 'The Mood lately, newest last:',
-                            '[the last few turns]', '', ARRIVAL_ASK] + block(rules, verbosity, slug) + wake_footer())},
+                            '[the last few turns]', '', ARRIVAL_ASK] + block(verbosity, slug) + wake_footer())},
         {'kind': 'screen', 'title': 'The screen, before a consider (a small model, no tools)',
          'when': ('Not here: with discretion chatty, every consider goes to the agent.' if discretion == 'chatty'
                   else 'Before every consider: it may only let pass what is plainly not for the agent.'),
@@ -1999,7 +2000,7 @@ class MoodPoller:
             handed = []
         if handed:
             lines += ['', HANDED_NOTE, *handed]
-        return '\n'.join(lines + self.rules_lines(slug) + wake_footer(full))
+        return '\n'.join(lines + self.extras_lines(slug) + wake_footer(full))
 
     def catch_up_chars(self, slug):
         """How much a wake reads word for word here, in characters (the knob is in tokens)."""
@@ -2032,8 +2033,8 @@ class MoodPoller:
         lines += transcript_of(kept, set(new_ids), limit=room + 10_000, each=EACH_MAX)
         return lines, cost
 
-    def rules_lines(self, slug):
-        return rules_block(self.knob(slug, 'rules'), self.knob(slug, 'verbosity', 'normal'), slug, self.texts)
+    def extras_lines(self, slug):
+        return wake_extras(self.knob(slug, 'verbosity', 'normal'), slug, self.texts)
 
     # --- the consider loop ------------------------------------------------------
     #
@@ -2217,8 +2218,6 @@ class MoodPoller:
         if self.screen and discretion != 'chatty':
             mood = recent.get('mood') or {}
             prompt = '\n'.join([f"Mood: {mood.get('title', slug)} -- {mood.get('description', '')}",
-                                 *(['', f"Rules for {self.agent} here: {self.knob(slug, 'rules')}"]
-                                   if self.knob(slug, 'rules') else []),
                                  'Recent conversation, newest last; ► marks what is new:', '',
                                  *lines[-60:], '',
                                  f'Should {self.agent} look closely at the new posts?'])
@@ -2232,7 +2231,7 @@ class MoodPoller:
         handed = handoffs_for(recent, self.agent)
         prompt_lines = (consider_opening(slug) + [*lines] + (['', HANDED_NOTE, *handed] if handed else [])
                         + ['', consider_ask(discretion, self.texts)])
-        return self.consider_wake(slug, '\n'.join(prompt_lines + self.rules_lines(slug) + wake_footer()))
+        return self.consider_wake(slug, '\n'.join(prompt_lines + self.extras_lines(slug) + wake_footer()))
 
     def consider_quiet(self, slug, quiet_for, after=None, first=True):
         cost = self.look_usd(slug)
@@ -2256,7 +2255,7 @@ class MoodPoller:
                 logger.info(f'{slug}: quiet screened: {reason}')
                 return 'screened'
         lines = quiet_opening(slug, minutes) + [*transcript_of(recent['turns']), '', QUIET_ASK]
-        return self.consider_wake(slug, '\n'.join(lines + self.rules_lines(slug) + wake_footer()), after=after)
+        return self.consider_wake(slug, '\n'.join(lines + self.extras_lines(slug) + wake_footer()), after=after)
 
     # --- arrivals: someone has just signed in -----------------------------------
     def greet_arrivals(self, pulse):
@@ -2305,7 +2304,7 @@ class MoodPoller:
         recent = self.api.recent(slug, limit=8)
         lines = arrival_opening(slug, a, self.now()) + transcript_of(recent.get('turns', []))
         logger.info(f'{slug}: {who} signed in; looking whether to greet them')
-        return self.consider_wake(slug, '\n'.join(lines + ['', ARRIVAL_ASK] + self.rules_lines(slug) + wake_footer()))
+        return self.consider_wake(slug, '\n'.join(lines + ['', ARRIVAL_ASK] + self.extras_lines(slug) + wake_footer()))
 
     def consider_wake(self, slug, prompt, after=None):
         """Wake the agent itself to consider; 'spoke', 'silent', 'failed' or 'elsewhere'."""

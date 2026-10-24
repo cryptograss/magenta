@@ -46,7 +46,6 @@ KNOBS = {
                              "decision or is plainly for it. normal: when it would genuinely help; mostly quiet. "
                              "chatty: joins in as a teammate would, small talk and kind words included."),
     'verbosity': ('normal', 'How long its replies run here: brief, normal or thorough.'),
-    'rules': ('', 'How it should carry itself here, in a few lines. It reads this at every wake.'),
     'ultracode': (False, "Its full-tools mention wakes here run with Claude Code's ultracode on: standing "
                          "multi-agent workflows, at any effort. Thorough, and costly."),
 }
@@ -172,11 +171,6 @@ def clean(key, value):
         if str(value).lower() in ('false', 'off', '0', 'no', ''):
             return False
         raise Invalid('ultracode: on or off')
-    if key == 'rules':
-        value = str(value or '').strip()
-        if len(value) > 4000:
-            raise Invalid('rules: at most 4000 characters')
-        return value
     if key in ('archived', 'pinned'):
         if isinstance(value, bool):
             return value
