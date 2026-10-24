@@ -1379,6 +1379,11 @@
   // Brighter, to tell apart in the thought and quiet dots (Justin, 21 Oct); blu's as its own PR gives it (#89).
   const AGENT_COLORS = { magent: '#ff67fd', re: '#ff3c00', blu: '#1976d2' };
   const AGENT_PALETTE = ['#1f8a70', '#c77c02', '#5b5bd6', '#0b7fab', '#8e5a2b', '#6b8e23'];
+  // "waiting for re, blu": each it waits for in its own colour (Justin, 24 Oct).
+  function waitedFor(why) {
+    const names = String(why || '').replace(/^waiting for /, '');
+    return 'waiting for ' + names.split(/,\s*/).map(n => `<b style="color: ${agentColor(n)}">${esc(n)}</b>`).join(', ');
+  }
   function agentColor(name) {
     if (AGENT_COLORS[name]) return AGENT_COLORS[name];
     let h = 0;
@@ -4794,7 +4799,7 @@
       + (a.doing === 'waking'
         ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${elapsed(a.since)}`
         : a.doing === 'held' && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
-        ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${esc(a.why)}` + (a.until ? ` · answers by ${esc(hhmm(a.until))} at the latest` : '')
+        ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${waitedFor(a.why)}` + (a.until ? ` · answers by ${esc(hhmm(a.until))} at the latest` : '')
         : a.doing === 'held'
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
           + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
@@ -6159,7 +6164,7 @@
   function readLabel(item) {
     if (item.kind === 'deploy') return `<b>${esc(item.text || 'a redeploy')}</b>`;
     const where = esc((moods.find(m => m.slug === item.mood) || {}).title || item.mood || '');
-    if (item.kind === 'thinking') return `<b>${esc(shown(item.who))}</b> ${item.waiting ? 'waiting for ' + esc(item.waiting) : 'at work'} · ${where}`;
+    if (item.kind === 'thinking') return `<b>${esc(shown(item.who))}</b> ${item.waiting ? waitedFor(item.waiting) : 'at work'} · ${where}`;
     const memo = MEMO_AUDIO.test(item.text || '');
     const words = memo ? '🎙 voice memo' : (item.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     return `<b>${esc(shown(item.who))}</b> · ${where}${words ? ' — ' + esc(words) : ''}`;
