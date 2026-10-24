@@ -53,7 +53,7 @@ class RulesBundleTest(TestCase):
     def test_three_layers_each_named_with_its_page_and_revision(self):
         b = self.gather(wiki())
         self.assertEqual(b.degraded, [])
-        self.assertTrue(b.text.startswith('<instructions agent="magent" mood="magent-self" gathered="2026-10-19T23:40Z">'))
+        self.assertTrue(b.text.startswith('<instructions agent="magent" mood="magent-self">\n'))
         self.assertIn('<standing page="Cryptograss:Agents/GeneralOrders" revision="101" by="JMyles">\n'
                       'Never merge a pull request.\n</standing>', b.text)
         self.assertIn('<identity agent="magent" page="Cryptograss:Agents/Magent/Instructions" revision="102"', b.text)
@@ -95,7 +95,7 @@ class RulesBundleTest(TestCase):
         b = bundle('magent', None, get=wiki().get, state_dir=self.state, now=T0)
         self.assertEqual([layer.name for layer in b.layers], ['standing', 'identity'])
         self.assertNotIn('<mood', b.text)
-        self.assertTrue(b.text.startswith('<instructions agent="magent" gathered='))
+        self.assertTrue(b.text.startswith('<instructions agent="magent">\n'))
 
     def test_pickipedia_down_the_last_copy_stands_and_it_says_so_loudly(self):
         w = wiki()

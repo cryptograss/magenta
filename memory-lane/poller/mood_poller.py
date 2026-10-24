@@ -1782,19 +1782,30 @@ class MoodPoller:
                 from poller.instructions import bundle
             except ImportError:
                 from instructions import bundle
-            block = self.api.block() if hasattr(self.api, 'block') else None
-            b = bundle(self.agent, slug, block=block if isinstance(block, int) else None, record_id=record_id)
+            # No block: it would change the instructions every turn (instructions.render says why); the wake
+            # carries it instead.
+            b = bundle(self.agent, slug, record_id=record_id)
             text, record = b.text, b.record()
         except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery instructions stand
             logger.error(f'{slug}: instructions not gathered ({e}); the recovery instructions stand in')
             recovery = Path(__file__).with_name('recovery_instructions.md')
             words = recovery.read_text() if recovery.exists() else 'Your instructions could not be gathered.'
-            text = (f'<instructions agent="{self.agent}" mood="{slug}" bundle="{record_id}">\n<recovery>\n{words}\n'
+            text = (f'<instructions agent="{self.agent}" mood="{slug}">\n<recovery>\n{words}\n'
                     '</recovery>\n</instructions>')
             record = {'id': record_id, 'agent': self.agent, 'mood': slug, 'parts': [text], 'stamps': {},
                       'sha256': hashlib.sha256(text.encode()).hexdigest(), 'error': f'{type(e).__name__}: {e}'[:300]}
-        record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit)
+        block = self.api.block() if hasattr(self.api, 'block') else None
+        record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit,
+                      block=block if isinstance(block, int) else None)
         return text, record
+
+    @staticmethod
+    def turn_line(record):
+        """The last line of a wake given instructions: the block, and which recorded bundle they are, so
+        the agent can say. In the wake, not the instructions, which stay the same from turn to turn."""
+        block = f"It's block {record['block']:,}. " if isinstance(record.get('block'), int) else ''
+        return f"\n\n{block}Your instructions this turn are bundle {record['id']} (Special:AgentBundles)."
+
 
     def record_bundle(self, record, session_id, delivered_at, harness=None):
         """The bundle a turn was given, kept in magenta: delivered_at is when its harness first spoke,
@@ -1872,6 +1883,7 @@ class MoodPoller:
         bundled = None
         if self.instructions:
             options['system'], bundled = self.instructions_for(slug)
+            prompt += self.turn_line(bundled)
         if hasattr(self.waker, 'harness_for'):  # two harnesses: settled here, so the poster suits it
             options['harness'] = options.get('harness') or self.waker.harness_for(options.get('model'))
         poster = None
