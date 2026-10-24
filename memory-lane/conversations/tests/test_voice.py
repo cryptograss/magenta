@@ -218,25 +218,16 @@ class SpeakAndTranscribeTest(TestCase):
         self.assertEqual(self.client.get(stored.url)['Content-Type'], 'audio/webm')
 
 
-    def test_a_mood_voices_at_its_own_speed_and_a_voice_blocks_wins(self):
-        # Justin, 23 Oct: the voice's own pace asked of ElevenLabs once for the Mood; a writer's speed stays.
-        from django.core.cache import cache
+    def test_no_mood_speed_is_asked_for(self):
+        # Eleven v4 takes a speed and ignores it (23 Oct: the same words at 0.8, 1.0 and 1.2 ran within 1%):
+        # a Mood's speed is gone, and nothing is asked unless a voice block asks it.
         from conversations.services import settings as knobs
         fake = FakeEleven()
         voice.speak(self.say('As voiced.'), 'justin', http=fake)
-        self.assertNotIn('voice_settings', fake.asked[-1][2]['json'])  # 1.0 by default: nothing asked
-        knobs.change('voice_speed', 1.2, mood=self.mood, by=None)
-        cache.delete(f'voice:speed:{self.mood.slug}')
-        voice.speak(self.say('Plain words.'), 'justin', http=fake)
-        self.assertEqual(fake.asked[-1][2]['json']['voice_settings'], {'speed': 1.2})
+        self.assertNotIn('voice_settings', fake.asked[-1][2]['json'])
         voice.speak(self.say('Hi.\n```voice\nspeed: 0.9\n---\nHi there.\n```'), 'justin', http=fake)
         self.assertEqual(fake.asked[-1][2]['json']['voice_settings'], {'speed': 0.9})
-        knobs.change('voice_speed', 1.0, mood=self.mood, by=None)
-        cache.delete(f'voice:speed:{self.mood.slug}')
-        voice.speak(self.say('Slower here.'), 'justin', http=fake)
-        self.assertNotIn('voice_settings', fake.asked[-1][2]['json'])  # 1.0: nothing asked, as before
-        with self.assertRaises(knobs.Invalid):
-            knobs.change('voice_speed', 2, mood=self.mood, by=None)
+        self.assertNotIn('voice_speed', knobs.MOOD_KEYS)
 
     def test_a_speed_the_model_refuses_never_loses_a_reading(self):
         from django.core.cache import cache
@@ -248,15 +239,10 @@ class SpeakAndTranscribeTest(TestCase):
                     self.asked.append(('POST', url, kw))
                     return Answer(400, {'detail': {'message': 'speed is not supported for this model'}})
                 return super().post(url, **kw)
-        from conversations.services import settings as knobs
-        knobs.change('voice_speed', 1.2, mood=self.mood, by=None)  # a speed asked for
-        cache.delete(f'voice:speed:{self.mood.slug}')
         fake = NoSpeed()
-        self.addCleanup(cache.delete, voice.SPEED_REFUSED)  # the cache isn't rolled back with the test
-        url = voice.speak(self.say('Read me anyway.'), 'justin', http=fake)
+        url = voice.speak(self.say('Hi.\n```voice\nspeed: 1.2\n---\nRead me anyway.\n```'), 'justin', http=fake)
         self.assertTrue(url.split('#')[0].endswith('.mp3'))
         self.assertNotIn('voice_settings', fake.asked[-1][2]['json'])  # asked again without
-        self.assertTrue(cache.get(voice.SPEED_REFUSED))
         row = M.objects.filter(source_file='voice', content__type='spoken').order_by('-created_at').first().content
         self.assertNotIn('speed', row)
         self.assertIn('seconds', row)  # how long it runs: a speed's effect, readable from the record
