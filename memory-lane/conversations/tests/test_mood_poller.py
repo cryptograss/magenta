@@ -795,7 +795,7 @@ class MentionContextTest(TestCase):
         page = {'agents': {'magent': {}, 're': {}, 'blu': {}},
                 'activities': [{'agent': 're', 'doing': 'thinking'}, {'agent': 'blu', 'doing': 'held'}]}
         lines = also_asked(owed, 'magent', page)
-        self.assertIn('Also asked in what woke you: re, at work here now; blu, not at work here yet.', lines[1])
+        self.assertIn('Others mentioned, and likely woken, by what woke you: re, at work here now; blu, not at work here yet.', lines[1])
         self.assertIn('read_mood', lines[1])
         self.assertEqual(also_asked([dict(owed[0], mentions=['magent', 'skyler'])], 'magent', page), [])  # a person isn't
         self.assertEqual(also_asked(owed, 'magent', None), [])  # nothing known: nothing said
@@ -814,7 +814,7 @@ class MentionContextTest(TestCase):
         waker = FakeWaker()
         MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=101), consider=False).poll_once()
         prompt = waker.woken[0][1]
-        self.assertLess(prompt.index('which first?'), prompt.index('Also asked in what woke you: re, at work here now.'))
+        self.assertLess(prompt.index('which first?'), prompt.index('Others mentioned, and likely woken, by what woke you: re, at work here now.'))
 
     def test_everything_since_its_last_word_and_long_posts_whole(self):
         said = [turn(f's{i}', 'skyler' if i % 2 else 'justin', 1 + i, f'point {i}: are you sure?') for i in range(40)]
