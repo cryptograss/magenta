@@ -224,6 +224,11 @@ def renew_device(entity, label):
     return device
 
 
+def clip_message(challenge, origin, name, sha256, caption):
+    """What `magenta.sh clips save` signs: the challenge, its origin, the clip's name, its video's hash and its caption."""
+    return signed_message(challenge, origin, purpose=f'clip {name}') + f'\n{sha256}\n{caption}'
+
+
 def attest_message(challenge, origin, text):
     """What `magenta.sh attest` signs: the challenge, its origin, and the statement."""
     return signed_message(challenge, origin, purpose='attest') + '\n' + text
