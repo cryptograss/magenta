@@ -276,17 +276,22 @@ class TidingTalkTests(TidingLinksTest):
         said = self.say(self.skyler, 'Molly Tuttle is on the **Saturday** bill https://example.org/lineup\n\n- tent\n- capo')
         tiding = tiding_links.promote(said, self.justin)
         html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
-        post = html.split('<div class="comment post">')[1].split('<section class="comments">')[0]
+        post = html.split('<div class="post">')[1].split('<section class="comments">')[0]
+        # Right under who posted it, in the link's own block -- not below it, after a rule.
+        self.assertLess(html.index('class="meta muted"'), html.index('<div class="post">'))
+        self.assertLess(html.index('<div class="post">'), html.index('<section class="comments">'))
+        self.assertNotIn('class="comment post"', html)
         self.assertIn('<strong>Saturday</strong>', post)            # drawn as the Mood draws it
         self.assertIn('<li>capo</li>', post)                        # all of it, not 200 characters
         self.assertNotIn('example.org/lineup', post)                # the link is the title already
         self.assertIn('data-kind="message"', self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1')
-                      .content.decode().split('<div class="comment post">')[1].split('</div>')[0])  # answered at the top level
+                      .content.decode().split('<div class="post">')[1].split('<section')[0])  # answered at the top level
+        self.assertNotIn('with the link', html)  # who posted it is said once, in the meta
         [link] = [l for l in tiding_links.listed() if l['id'] == str(tiding.id)]
         self.assertEqual(link['comments'], 0)                       # not counted
         only_link = self.say(self.skyler, 'https://example.org/other')
         tiding2 = tiding_links.promote(only_link, self.justin)
-        self.assertNotIn('class="comment post"', self.client.get(f'/moods/tidings/{tiding2.id}/?embed=1').content.decode())
+        self.assertNotIn('<div class="post">', self.client.get(f'/moods/tidings/{tiding2.id}/?embed=1').content.decode())
 
     def test_what_a_message_says_besides_its_link(self):
         url = 'https://example.org/lineup'
