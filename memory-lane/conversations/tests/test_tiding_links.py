@@ -284,8 +284,12 @@ class TidingTalkTests(TidingLinksTest):
         self.assertIn('<strong>Saturday</strong>', post)            # drawn as the Mood draws it
         self.assertIn('<li>capo</li>', post)                        # all of it, not 200 characters
         self.assertNotIn('example.org/lineup', post)                # the link is the title already
-        self.assertIn('data-kind="message"', self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1')
-                      .content.decode().split('<div class="post">')[1].split('<section')[0])  # answered at the top level
+        # The box right under it, before what's been said (Justin, 24 Oct): a top-level comment by default.
+        signed_in = self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        self.assertLess(signed_in.index('<div class="post">'), signed_in.index('<form class="say"'))
+        self.assertLess(signed_in.index('<form class="say"'), signed_in.index('<section class="comments">'))
+        self.assertIn('id="replyTo" name="reply_to" value=""', signed_in)
+        self.assertLess(html.index('<p class="say signin">'), html.index('<section class="comments">'))  # signed out: the way in, there
         self.assertNotIn('with the link', html)  # who posted it is said once, in the meta
         [link] = [l for l in tiding_links.listed() if l['id'] == str(tiding.id)]
         self.assertEqual(link['comments'], 0)                       # not counted
