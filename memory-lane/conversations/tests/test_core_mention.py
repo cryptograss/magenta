@@ -1,4 +1,4 @@
-"""@core: everyone who signs in with an SSH key, in one tag (Skyler, 24 Oct: "for stuff like consensus Beta
+"""@core, @humans, @agents: a group in one tag; @core, everyone who signs in with an SSH key (Skyler, 24 Oct: "for stuff like consensus Beta
 releases"). services/mood_view.GROUPS, mood_auth.key_holders."""
 
 import tempfile
@@ -54,7 +54,17 @@ class CoreMentionTest(TestCase):
         ThinkingEntity.objects.create(name='core', is_biological_human=True)
         self.assertEqual(mentions_in('@core hi', known_names()), ['core'])
 
-    def test_the_composer_is_told_of_it(self):
+    def test_the_composer_is_told_of_them(self):
         groups = self.client.get('/api/moods/').json()['groups']
-        self.assertEqual(groups, [{'name': 'core', 'is': 'everyone who signs in with an SSH key',
-                                   'members': ['justin', 'skyler']}])
+        self.assertEqual(groups[0], {'name': 'core', 'is': 'everyone who signs in with an SSH key',
+                                     'members': ['justin', 'skyler']})
+        self.assertEqual([g['name'] for g in groups], ['core', 'humans', 'agents'])
+
+    def test_humans_and_agents(self):
+        # Justin, 24 Oct: "let's have @core, @humans, and @agents"; Skyler: "call in the fleet".
+        names = known_names()
+        self.assertEqual(mentions_in('@humans', names), ['cyrus', 'justin', 'skyler'])   # key or none
+        self.assertEqual(mentions_in('@agents', names), ['blu', 'magent', 're'])
+        self.assertEqual(mentions_in('@agents thoughts?', {'magent', 're'}), ['magent', 're'])  # each woken
+        self.assertEqual(mentions_in('@humans thoughts?', {'magent', 're'}), [])               # no agent
+        self.assertEqual(mentions_in('@core @agents', names), ['justin', 'skyler', 'blu', 'magent', 're'])

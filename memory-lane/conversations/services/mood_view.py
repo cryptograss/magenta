@@ -327,23 +327,28 @@ def wikilinks_in(text):
     return out
 
 
-# A tag for a group: '@core' mentions everyone who signs in with an SSH key -- the core of the team, for
-# what wants them all, like a consensus on a beta release (Skyler, 24 Oct). Only the people: an agent with
-# a key of its own isn't woken by it. Unless someone is called 'core', which wins.
-GROUPS = {'core': 'everyone who signs in with an SSH key'}
+# Tags for a group, each mentioning all its members as if each were named (Skyler and Justin, 24 Oct: "for
+# stuff like consensus Beta releases", "call in the fleet"):
+#   @core    everyone who signs in with an SSH key -- the people only: an agent with a key isn't woken by it
+#   @humans  every person here
+#   @agents  every agent here: each is woken, as by its own name (its listening and its caps still apply)
+# Someone actually called by one of these names wins.
+GROUPS = {'core': 'everyone who signs in with an SSH key', 'humans': 'every person here', 'agents': 'every agent here'}
 
 
 def group_members(group, mentionable=None):
-    """The people `group` mentions, sorted; restricted to `mentionable` if given."""
+    """Who `group` mentions, sorted; restricted to `mentionable` if given."""
     from conversations.models import ThinkingEntity
     from .mood_auth import key_holders
-    if group != 'core':
+    if group not in GROUPS:
         return []
-    holders = key_holders()
-    people = set(ThinkingEntity.objects.filter(is_biological_human=True, name__in=holders).values_list('name', flat=True))
+    found = ThinkingEntity.objects.filter(is_biological_human=group != 'agents')
+    if group == 'core':
+        found = found.filter(name__in=key_holders())
+    members = set(found.values_list('name', flat=True))
     if mentionable is not None:
-        people &= {n.lower() for n in mentionable}
-    return sorted(people)
+        members &= {n.lower() for n in mentionable}
+    return sorted(members)
 
 
 def mentions_in(text, mentionable):
