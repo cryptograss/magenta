@@ -2927,6 +2927,22 @@
       prev = null;
       return;
     }
+    if (e.type === 'agent-settings' || e.type === 'agent-settings-refused') {  // services/agent_settings.py
+      // Shown when it's used: above an agent's first turn on settings other than its last turn's (Justin, 24 Oct).
+      el.className = 'event';
+      // "at justin's ask, #m-…": the word "ask" goes to the words that asked.
+      const linked = s => esc(s || '').replace(/(\bask, )?#m-([0-9a-f-]{36})/g, (m, ask, id) =>
+        `<a href="#m-${id}" data-reveal="${id}">${ask ? 'ask' : '#m-' + id.slice(0, 8)}</a>`);
+      const word = { model: 'model', mention_effort: 'effort', listening: 'listening', verbosity: 'verbosity', discretion: 'discretion' };
+      el.innerHTML = e.type === 'agent-settings'
+        ? `⚙ <b>${esc(shown(e.agent || 'an agent'))}</b> now on `
+          + (e.changes || []).map(c => `${esc(word[c.key] || c.key)} <b>${esc(c.now || 'default')}</b> <span class="was">(was ${esc(c.was || 'default')})</span>`).join(', ')
+          + (e.by ? ` · set by <b>${esc(shown(e.by))}</b>` : '') + (e.note ? `, ${linked(e.note)}` : '') + ` · ${esc(stamp(e.created_at))}`
+        : `⚙ ${esc(shown(e.by || 'an agent'))}'s settings block wasn't applied: ${esc(e.note || '')} · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'merged') {  // a pull request on this Mood's to-do list merged (services/todo.py)
       el.className = 'event';
       // "memory-lane#142 (226537a) merged by justin": which one, and its commit; its title on hover.

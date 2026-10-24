@@ -801,6 +801,13 @@ HANDOFF_HOW = ('Asked to take this to another Mood, put in your reply a block: `
                'what bears on this one, read it (read_mood, from a time) and write the same block with '
                '"from: <mood>" instead of "to:", what you found as its context.')
 
+# Setting agents' settings at a person's ask (memory-lane's services/agent_settings.py): said on full-tools
+# wakes only, the only ones it works on; the server checks the grant and refuses, in a line, what it won't do.
+SETTINGS_HOW = ('Asked to change an agent\'s settings in a Mood -- its model, effort, listening, verbosity or '
+                'discretion; yours too -- and the settings_may_set grant names you, put in your reply a block: '
+                '```settings, then a line per agent ("re: model sonnet, effort high"; "blu: listening off for 1h"), '
+                '"in: <mood>" if not this one, and ``` to close. It is set as you reply, noted as at their ask.')
+
 
 # Mentions with no live session behind them: typed into the web composer, or
 # brought in by another agent's handoff. None is owed a wait, and only a wake
@@ -833,6 +840,7 @@ def wake_footer(full=False):
             'the Mood shows it as a small dot, and the words when someone opens it.',
             GREETING,
             HANDOFF_HOW,
+            *([SETTINGS_HOW] if full else []),
             tools,
             '</mood-wake>']
 
@@ -890,6 +898,24 @@ def arrival_opening(slug, arrival, now):
 
 def mention_opening(slug, why):
     return [f'<mood-wake mood="{slug}">', f'You were woken by the Mood poller: {why}', '']
+
+
+SETTING_WORDS = {'model': 'model', 'mention_effort': 'effort', 'listening': 'listening', 'verbosity': 'verbosity',
+                 'discretion': 'discretion'}
+
+
+def settings_changed(agent, page):
+    """Lines telling a woken agent its settings here changed since its last word here, and who changed them
+    (re, 24 Oct: told, with a place to object). `page`: the Mood's turns API."""
+    changed = (((page or {}).get('agents') or {}).get(agent) or {}).get('changed')
+    if not changed or not changed.get('changes'):
+        return []
+    said = ', '.join(f"{SETTING_WORDS.get(c['key'], c['key'])} {c.get('was') or 'default'} → {c.get('now') or 'default'}"
+                     for c in changed['changes'])
+    who = f" by {changed['by']}" if changed.get('by') else ''
+    why = f", {changed['note']}" if changed.get('note') else ''
+    return ['', f'Your settings here changed since your last word here: {said} (set{who}{why}). If you think that '
+                'was wrong, say so here; a person can set it back.']
 
 
 def cut_off_note(started):
@@ -1724,6 +1750,11 @@ class MoodPoller:
             window, cost = self.fit(said, room)
             self.spend(cost)
             lines += ['', note, *window]
+        # Its own settings here, if someone changed them since it last spoke here.
+        try:
+            lines += settings_changed(self.agent, page or self.api.recent(slug, limit=1))
+        except Exception:
+            pass
         # Taken here from another Mood for this agent, since it last spoke here.
         try:
             handed = handoffs_for(page or self.api.recent(slug, limit=400), self.agent)
