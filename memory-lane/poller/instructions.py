@@ -98,6 +98,7 @@ GREETING = 'Cryptograss:Agents/Greeting'
 GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
 AGENT_TEMPLATE = 'Agent'
 AGENT_FIELDS = ('colour', 'hex', 'greeting', 'image')  # what an agent's own page may put in its line
+ROSTER_FIELDS = ('colour', 'for')  # what each other agent's page puts in the roster: '<name> (<colour>), <for>'
 BLANK = re.compile(r'(?<!\{)\{([a-z]+)\}(?!\})')
 SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 RECOVERY = Path(__file__).with_name('recovery_instructions.md')
@@ -159,6 +160,7 @@ class Bundle:
     text: str = field(default='', repr=False)
     greeting: Layer = None  # the line's page, and the agent's own (colour, greeting), read like layers
     agent_page: Layer = None
+    roster: list = field(default_factory=list)  # [(name, Layer)]: the other agents' own pages, for {others}
     greeting_line: str = ''
     block: int = None
     id: str = None          # its record's, when it is recorded: named in the wake, so the agent can name it
@@ -184,7 +186,8 @@ class Bundle:
         """What the journal records: every layer's page and revision, and what was wrong."""
         return {'agent': self.agent, 'mood': self.mood, 'gathered': self.gathered,
                 'greeting': {**self.greeting.stamp(), 'line': self.greeting_line,
-                             'agent_page': self.agent_page.stamp() if self.agent_page else None} if self.greeting else None,
+                             'agent_page': self.agent_page.stamp() if self.agent_page else None,
+                             'roster': {name: page.stamp() for name, page in self.roster}} if self.greeting else None,
                 'layers': {layer.name: layer.stamp() for layer in self.layers},
                 'degraded': self.degraded, 'recovery': bool(self.recovery)}
 
@@ -294,10 +297,26 @@ def template_fields(text, name=AGENT_TEMPLATE):
     return fields
 
 
-def greeting_line(line, mine, agent, mood=None, block=None, fallback_path=GREETING_FALLBACK):
+def roster_text(pages):
+    """The other agents, as {others} in the line: '<name> (<colour>), <for>; ...', each from that agent's own
+    page (a Layer) at its trusted revision, in the order given. An agent whose page has no trusted revision,
+    or no {{Agent}}, is left out: nothing about it is vouched for. '' if none can be said."""
+    entries = []
+    for name, page in pages:
+        fields = template_fields(page.text or '') if page.text else {}
+        if not fields:
+            continue
+        entry = name + (f" ({fields['colour']})" if fields.get('colour') else '')
+        entries.append(entry + (f", {fields['for']}" if fields.get('for') else ''))
+    return '; '.join(entries)
+
+
+def greeting_line(line, mine, agent, mood=None, block=None, fallback_path=GREETING_FALLBACK, roster=()):
     """(the line, why it is the fallback or None): the Greeting page's line (a Layer) with its blanks filled
-    for `agent`: colour, hex, greeting and image from the agent's own page (a Layer)."""
-    data = {'name': agent, 'mood': mood or '', 'block': f'{block:,}' if isinstance(block, int) else ''}
+    for `agent`: colour, hex, greeting and image from the agent's own page (a Layer), and {others} from the
+    other agents' pages (`roster`: [(name, Layer)], roster_text)."""
+    data = {'name': agent, 'mood': mood or '', 'block': f'{block:,}' if isinstance(block, int) else '',
+            'others': roster_text(roster)}
     why = None
     template = ' '.join((line.text or '').split())
     fields = template_fields(mine.text or '') if mine.text else {}
@@ -398,13 +417,19 @@ def render(b, degraded_path=DEGRADED):
 
 
 def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITORS, recovery_path=RECOVERY,
-           degraded_path=DEGRADED, block=None, fallback_path=GREETING_FALLBACK, record_id=None):
-    """The agent's instructions for `mood` (or with no Mood: standing and identity alone, as a terminal gets)."""
+           degraded_path=DEGRADED, block=None, fallback_path=GREETING_FALLBACK, record_id=None, others=()):
+    """The agent's instructions for `mood` (or with no Mood: standing and identity alone, as a terminal gets).
+    `others`: the other agents' names, for the roster ({others} in the line), from magenta's list of agents
+    (no wiki query names them); each is read from its own page at its trusted revision, in name order, so
+    the instructions stay the same turn to turn."""
     get = get or WikiTexts().get
     cache = Cache(Path(state_dir).expanduser() / CACHE_FILE if state_dir else None)
     stamp = now_iso(now)
     greeting = read_layer('greeting', GREETING, get, cache, stamp, editors, optional=True)
     agent_page = read_layer('agent', agent_title(agent), get, cache, stamp, editors, optional=True)
+    roster = [(name, read_layer(f'roster:{name}', agent_title(name), get, cache, stamp, editors, optional=True))
+              for name in sorted({o.strip().lower() for o in others if o and o.strip().lower() != agent})
+              if re.fullmatch(r'[a-z0-9-]{1,40}', name)]
     layers = [read_layer('standing', STANDING, get, cache, stamp, editors),
               read_layer('identity', identity_title(agent), get, cache, stamp, editors)]
     if mood:
@@ -414,8 +439,8 @@ def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITOR
     if any(layer.problem and not layer.text for layer in layers):
         recovery = file_text(recovery_path)
     b = Bundle(agent, mood, layers, stamp, recovery, block=block, id=record_id)
-    b.greeting, b.agent_page = greeting, agent_page
-    b.greeting_line, why = greeting_line(greeting, agent_page, agent, mood, block, fallback_path)
+    b.greeting, b.agent_page, b.roster = greeting, agent_page, roster
+    b.greeting_line, why = greeting_line(greeting, agent_page, agent, mood, block, fallback_path, roster)
     if why and not greeting.problem:
         greeting.problem = why  # in its stamps; not all-hands (the layers above say that)
     b.text, b.parts = render(b, degraded_path)

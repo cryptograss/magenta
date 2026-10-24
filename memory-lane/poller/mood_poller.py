@@ -172,6 +172,13 @@ class MoodAPI:
         except Exception:  # noqa: BLE001 -- a bundle without its block sentence, not a turn without instructions
             return None
 
+    def agents(self):
+        """Every agent magenta knows ('blu', 'magent', 're', ...), or None if it can't be asked."""
+        try:
+            return list(self._get('/api/settings/').get('agents') or [])
+        except Exception:  # noqa: BLE001 -- instructions without a roster, not a turn without instructions
+            return None
+
     def bundle(self, record):
         """Record the instructions a turn was given (poller/instructions.py Bundle.record)."""
         if not self.key:
@@ -1785,7 +1792,7 @@ class MoodPoller:
                 from instructions import bundle
             # No block: it would change the instructions every turn (instructions.render says why); the wake
             # carries it instead.
-            b = bundle(self.agent, slug, record_id=record_id)
+            b = bundle(self.agent, slug, record_id=record_id, others=self.other_agents())
             text, record = b.text, b.record()
         except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery instructions stand
             logger.error(f'{slug}: instructions not gathered ({e}); the recovery instructions stand in')
@@ -1807,6 +1814,16 @@ class MoodPoller:
         block = f"It's block {record['block']:,}. " if isinstance(record.get('block'), int) else ''
         return f"\n\n{block}Your instructions this turn are bundle {record['id']} (Special:AgentBundles)."
 
+
+    def other_agents(self, ttl=600):
+        """The other agents' names, for the roster in its instructions: magenta's list, asked at most every
+        ten minutes; the last list stands if magenta can't be asked, and none was ever had means no roster."""
+        now = time.time()
+        if now - getattr(self, '_agents_at', 0) >= ttl:
+            found = self.api.agents() if hasattr(self.api, 'agents') else None
+            if found is not None:
+                self._agents, self._agents_at = found, now
+        return [a for a in getattr(self, '_agents', []) if a != self.agent]
 
     def record_bundle(self, record, session_id, delivered_at, harness=None):
         """The bundle a turn was given, kept in magenta: delivered_at is when its harness first spoke,

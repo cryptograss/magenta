@@ -255,3 +255,41 @@ class GreetingTest(TestCase):
         from poller.instructions import template_fields
         self.assertEqual(template_fields('{{Agent greeting|agent=re|colour=red}}'), {})
         self.assertEqual(template_fields('{{Agent\n|colour=red}}'), {'colour': 'red'})
+
+
+ROSTER_LINE = 'You are {name}, the {colour} agent of cryptograss. The other agents: {others}. You are in #{mood}.'
+
+
+class RosterTest(TestCase):
+    """The other agents, each from its own page at its trusted revision: the same templating as the greeting."""
+
+    def gather(self, others, extra=None, agent='re'):
+        pages = {'Cryptograss:Agents/Greeting': [(200, 'JMyles', ROSTER_LINE)],
+                 'Cryptograss:Agents/Re': [(210, 'JMyles', agent_page('red', 'Look before you claim.'))],
+                 'Cryptograss:Agents/Magent': [(211, 'JMyles', agent_page('magenta', 'Hi.', **{'for': 'the longest memory'}))],
+                 'Cryptograss:Agents/Blu': [(212, 'JMyles', agent_page('blue', 'Hi.', **{'for': 'the connectome'}))],
+                 identity_title('re'): [(104, 'JMyles', 'You keep the docs.')]}
+        pages.update(extra or {})
+        return bundle(agent, 'magent-self', get=wiki(**pages).get, state_dir=None, now=T0, others=others)
+
+    def test_each_other_agent_by_name_colour_and_what_it_is_for_in_name_order(self):
+        b = self.gather(['magent', 'blu', 're'])  # its own name is left out
+        self.assertIn('The other agents: blu (blue), the connectome; magent (magenta), the longest memory. '
+                      'You are in #magent-self.', b.greeting_line)
+        self.assertEqual(sorted(b.stamps()['greeting']['roster']), ['blu', 'magent'])
+        self.assertEqual(b.stamps()['greeting']['roster']['blu']['revision'], 212)
+
+    def test_an_untrusted_page_says_nothing_about_its_agent(self):
+        b = self.gather(['magent', 'blu', 'yeller'], {'Cryptograss:Agents/Yeller': [(300, 'Magent', agent_page('gold', 'x'))],
+                                                     'Cryptograss:Agents/Blu': [(213, 'Blu', agent_page('green', 'x')),
+                                                                                (212, 'JMyles', agent_page('blue', 'Hi.'))]})
+        self.assertIn('The other agents: blu (blue); magent (magenta), the longest memory.', b.greeting_line)
+        self.assertNotIn('yeller', b.greeting_line)
+        self.assertNotIn('green', b.greeting_line)
+
+    def test_with_nobody_else_the_sentence_is_left_out(self):
+        self.assertNotIn('other agents', self.gather([]).greeting_line)
+        self.assertNotIn('other agents', self.gather(['re']).greeting_line)
+
+    def test_the_order_given_does_not_change_the_instructions(self):
+        self.assertEqual(self.gather(['magent', 'blu']).text, self.gather(['blu', 'magent', 'blu']).text)

@@ -110,6 +110,9 @@ class RecordingAPI(FakeAPI):
         self.recorded.append(record)
         return True
 
+    def agents(self):
+        return ['blu', 'magent', 're']
+
 
 class SilentWaker(FakeWaker):
     """A harness that never started: it says nothing, then fails."""
@@ -139,6 +142,7 @@ class PollerRecordsTest(SimpleTestCase):
         self.assertTrue(poller.waker.woken[0][1].endswith(
             f"It's block 26,260,600. Your instructions this turn are bundle {record['id']} (Special:AgentBundles)."))
         self.assertTrue(record['session_id'])  # the session the turn ran as
+        self.assertEqual(sorted(record['stamps']['greeting']['roster']), ['blu', 're'])  # magenta's list, less magent
         self.assertTrue(record['requested_at'] <= record['produced_at'] <= record['delivered_at'])
         self.assertEqual(record['block'], 26_260_600)
         self.assertTrue(rebuilt(record, texts=every_revision(w))['matches'])
