@@ -876,9 +876,8 @@ class MentionContextTest(TestCase):
 class DefaultsTest(TestCase):
 
     def test_eight_turns_at_once_by_default(self):
-        import inspect
-        from poller import mood_poller
-        self.assertIn("'--parallel', type=int, default=8", inspect.getsource(mood_poller.main))
+        from poller.mood_poller import build_parser
+        self.assertEqual(build_parser().parse_args([]).parallel, 8)
 
 
 class ColdQuietTest(TestCase):

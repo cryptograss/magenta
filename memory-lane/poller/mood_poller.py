@@ -169,11 +169,11 @@ class MoodAPI:
         """Ethereum mainnet's newest height, as magenta last heard it, or None."""
         try:
             return self._get('/api/block/').get('height')
-        except Exception:  # noqa: BLE001 -- a bundle without its block sentence, not a turn without rules
+        except Exception:  # noqa: BLE001 -- a bundle without its block sentence, not a turn without instructions
             return None
 
     def bundle(self, record):
-        """Record the rules bundle a turn was given (poller/rules_bundle.py Bundle.record)."""
+        """Record the instructions a turn was given (poller/instructions.py Bundle.record)."""
         if not self.key:
             return False
         response = self.http.post(f'{self.base}/api/bundles/', json=record,
@@ -588,7 +588,7 @@ class ClaudeCodeWaker:
             # session setting, not an effort level. Only with full tools --
             # a look-only turn couldn't run a workflow anyway.
             cmd += ['--settings', json.dumps({'ultracode': True})]
-        if system:  # its rules (MoodPoller.rules_for): after Claude Code's own, never in the history
+        if system:  # its instructions (MoodPoller.instructions_for): after Claude Code's own, never in the history
             cmd += ['--append-system-prompt', system]
         return cmd + ['--', prompt]
 
@@ -1206,12 +1206,12 @@ class MoodPoller:
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
                  letter=None, agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
-                 end_orphans=end_orphans, texts=None, rules_bundle=False):
+                 end_orphans=end_orphans, texts=None, instructions=False):
         self.api = api
-        # Its rules, gathered for each turn and given as system prompt (poller/rules_bundle.py): for an agent
-        # that has them on PickiPedia (blu first), never for one whose rules live elsewhere yet.
-        self.rules_bundle = rules_bundle
-        self.commit = magenta_commit() if rules_bundle else ''
+        # Its instructions, gathered for each turn and given as system prompt (poller/instructions.py): for an
+        # agent that has them on PickiPedia (blu first), never for one whose instructions live elsewhere yet.
+        self.instructions = instructions
+        self.commit = magenta_commit() if instructions else ''
         # The dials' texts, from PickiPedia (poller/wiki_rules.WikiTexts); None: this file's own.
         self.texts = texts
         self.waker = waker
@@ -1770,27 +1770,27 @@ class MoodPoller:
             self.replies[flight] = self.last_reply
         return outcome
 
-    def rules_for(self, slug):
-        """(text, record): this agent's rules for `slug`, as its harness takes them
+    def instructions_for(self, slug):
+        """(text, record): this agent's instructions for `slug`, as its harness takes them
         (--append-system-prompt), gathered fresh for each turn, so a page saved on PickiPedia holds
-        from the next one; and what is recorded of them (rules_bundle.Bundle.record), with when they
-        were asked for and made. If they can't be gathered at all, the recovery rules beside this
-        file -- never a turn with none -- and the record says why."""
+        from the next one; and what is recorded of them (instructions.Bundle.record), with when they
+        were asked for and made. If they can't be gathered at all, the recovery instructions beside
+        this file -- never a turn with none -- and the record says why."""
         requested, record_id = utc_seconds(), str(uuid.uuid4())
         try:
             try:
-                from poller.rules_bundle import bundle
+                from poller.instructions import bundle
             except ImportError:
-                from rules_bundle import bundle
+                from instructions import bundle
             block = self.api.block() if hasattr(self.api, 'block') else None
             b = bundle(self.agent, slug, block=block if isinstance(block, int) else None, record_id=record_id)
             text, record = b.text, b.record()
-        except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery rules stand
-            logger.error(f'{slug}: rules not gathered ({e}); the recovery rules stand in')
-            recovery = Path(__file__).with_name('recovery_rules.md')
-            words = recovery.read_text() if recovery.exists() else 'Your rules could not be gathered.'
-            text = (f'<rules agent="{self.agent}" mood="{slug}" bundle="{record_id}">\n<recovery>\n{words}\n'
-                    '</recovery>\n</rules>')
+        except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery instructions stand
+            logger.error(f'{slug}: instructions not gathered ({e}); the recovery instructions stand in')
+            recovery = Path(__file__).with_name('recovery_instructions.md')
+            words = recovery.read_text() if recovery.exists() else 'Your instructions could not be gathered.'
+            text = (f'<instructions agent="{self.agent}" mood="{slug}" bundle="{record_id}">\n<recovery>\n{words}\n'
+                    '</recovery>\n</instructions>')
             record = {'id': record_id, 'agent': self.agent, 'mood': slug, 'parts': [text], 'stamps': {},
                       'sha256': hashlib.sha256(text.encode()).hexdigest(), 'error': f'{type(e).__name__}: {e}'[:300]}
         record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit)
@@ -1870,8 +1870,8 @@ class MoodPoller:
         new_session = options.pop('new_session', None) or str(uuid.uuid4())
         answers = options.pop('answers', None)
         bundled = None
-        if self.rules_bundle:
-            options['system'], bundled = self.rules_for(slug)
+        if self.instructions:
+            options['system'], bundled = self.instructions_for(slug)
         if hasattr(self.waker, 'harness_for'):  # two harnesses: settled here, so the poster suits it
             options['harness'] = options.get('harness') or self.waker.harness_for(options.get('model'))
         poster = None
@@ -1890,7 +1890,7 @@ class MoodPoller:
             if answers:
                 poster.answers = list(answers)
         stop = self.stop_check(slug, options.pop('since', None))
-        heard = {}  # when the harness first spoke: it had started, with its rules in hand
+        heard = {}  # when the harness first spoke: it had started, with its instructions in hand
         on_event = poster.put if poster else None
         if bundled is not None:
             def on_event(event, put=on_event):
@@ -2460,7 +2460,7 @@ def runner_key():
         return ''
 
 
-def main(argv=None):
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('--agent', default='magent')
     parser.add_argument('--base', default=os.environ.get('MEMORY_LANE_URL', DEFAULT_BASE))
@@ -2522,11 +2522,16 @@ def main(argv=None):
                              "(its home went with its container), so a mention starts it over from the record")
     parser.add_argument('--letter', default=None,
                         help="The letter a new Mood's first session reads (default: poller/letter.md, for magent only)")
-    parser.add_argument('--rules-bundle', action='store_true',
-                        help="Give each turn the agent's rules from PickiPedia as system prompt (poller/rules_bundle.py)")
+    parser.add_argument('--instructions', '--rules-bundle', dest='instructions', action='store_true',
+                        help="Give each turn the agent's instructions from PickiPedia as system prompt "
+                             "(poller/instructions.py); --rules-bundle is the old name, until the inventory says this one")
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--dry-run', action='store_true', help='Log what would be woken; change nothing')
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
 
     handlers = [logging.StreamHandler()]
     if args.log:
@@ -2586,7 +2591,7 @@ def main(argv=None):
                           letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour,
                           only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
                           texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')),
-                          rules_bundle=args.rules_bundle)
+                          instructions=args.instructions)
     report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on
