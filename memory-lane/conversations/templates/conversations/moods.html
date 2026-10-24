@@ -652,6 +652,18 @@
   .aturn.folded > .ahead { flex: 1; min-width: 0; }
   .aturn.folded > .speak.block { display: inline-block; flex: none; }
   .abody { padding-left: 10px; }
+  /* The agents' turns between two people's words, under one heading (drawRuns): folded to it, or open. */
+  .runhead { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 2px -10px; padding: 0 10px;
+             border-top: 1px dashed var(--line); font-size: 12.5px; color: var(--muted); }
+  .runhead .runfold { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: baseline; text-align: left; border: 0;
+                      background: none; padding: 5px 0 3px; font: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
+  .runhead .runfold b { font-weight: 600; }
+  .runhead .caret { width: 10px; flex: none; }
+  .runhead .preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font-size: 13.5px; }
+  .runhead .runall { flex: none; border: 0; background: none; font: inherit; font-size: 12px; color: var(--accent);
+                     cursor: pointer; padding: 0; }
+  .runhead .runall:hover { text-decoration: underline; }
+  .runhid { display: none !important; }
   /* A statement signed with someone's SSH key. */
   .signed { font-size: 11.5px; color: #2e9e5b; border: 1px solid currentColor; border-radius: 10px; padding: 0 7px;
             cursor: pointer; background: none; font-family: inherit; }
@@ -3156,7 +3168,7 @@
   function jump(dir, only = '') {
     const top = main.getBoundingClientRect().top;
     const sel = only ? only.split(',').map(c => '#turns .turn' + c.trim()).join(', ') : '#turns .turn';
-    const turns = [...document.querySelectorAll(sel)].filter(t => !t.closest('.aturn.folded') || t.closest('.abody') === null);
+    const turns = [...document.querySelectorAll(sel)].filter(t => (!t.closest('.aturn.folded') || t.closest('.abody') === null) && !t.closest('.runhid'));
     const at = t => t.getBoundingClientRect().top - top;
     const target = dir > 0 ? turns.find(t => at(t) > 16) : turns.reverse().find(t => at(t) < -16);
     if (target) main.scrollTo({ top: main.scrollTop + at(target) - 8, behavior: 'smooth' });
@@ -3505,6 +3517,87 @@
     const b = head.closest('.aturn');
     b.classList.toggle('folded');
     drawBlockHead(b);
+    drawRuns(b.parentNode);
+  });
+
+  // --- the agents between two people's words, under one heading ------------------
+  // With agents answering each other, a person's words can be followed by many turns (Justin, 24 Oct):
+  // a heading over them says who spoke, and folds them all away; opened, each turn shows as before, under
+  // its own heading; "open all" opens every turn at once, their steps and thinking still each a folded
+  // line. Only where two turns or more stand together: one turn is already a heading of its own.
+  // Older ones start folded; the newest, open.
+  function drawRuns(container, keepNewest = true) {
+    const runs = [];
+    let run = null;
+    for (const el of container.children) {
+      if (el.classList.contains('runhead')) continue;
+      // A person's words end a run (an agent's words are inside its turn); what's still on its way is a person's.
+      if (el.classList.contains('turn')) { run = null; continue; }
+      if (!run) runs.push(run = []);
+      run.push(el);
+    }
+    const heads = new Set();
+    runs.forEach((members, i) => {
+      const turns = members.filter(el => el.classList.contains('aturn'));
+      if (turns.length < 2) { members.forEach(el => el.classList.remove('runhid')); return; }
+      let head = members[0].previousElementSibling;
+      if (!head || !head.classList.contains('runhead')) {
+        head = document.createElement('div');
+        head.className = 'runhead';
+        head._shut = !(keepNewest && i === runs.length - 1);
+        members[0].before(head);
+      }
+      Object.assign(head, { _members: members, _turns: turns });
+      heads.add(head);
+      drawRunHead(head);
+    });
+    // One left inside a longer run (an earlier page joined to it) goes; the run's first speaks for it.
+    container.querySelectorAll(':scope > .runhead').forEach(h => { if (!heads.has(h)) h.remove(); });
+  }
+  function drawRunHead(head) {
+    const turns = head._turns, shut = !!head._shut;
+    const seq = [];
+    turns.forEach(b => { if (seq[seq.length - 1] !== b._agent) seq.push(b._agent); });
+    const name = a => `<b style="color:${agentColor(a)}">${esc(a)}</b>`;
+    // A back-and-forth, in its order; a long one, each with how many turns.
+    const counts = {};
+    turns.forEach(b => { counts[b._agent] = (counts[b._agent] || 0) + 1; });
+    const who = seq.length <= 5 ? seq.map(name).join(' → ')
+      : Object.entries(counts).map(([a, n]) => `${name(a)} ×${n}`).join(', ');
+    const took = Math.max(0, Math.round(Math.max(...turns.map(b => b._end)) - Math.min(...turns.map(b => b._start))));
+    const priced = turns.some(b => b._priced);
+    const usd = turns.reduce((n, b) => n + (b._priced ? b._usd : 0), 0);
+    const dots = head._members.reduce((n, el) => n + (el.classList.contains('quiet') ? el.querySelectorAll('.dot').length : 0), 0);
+    const last = [...turns].reverse().find(b => b._final);
+    const allOpen = !shut && turns.every(b => !b.classList.contains('folded'));
+    head.innerHTML = `<button type="button" class="runfold" aria-expanded="${!shut}" title="${shut ? 'Show these turns' : 'Fold these turns away'}">`
+      + `<span class="caret">${shut ? '▸' : '▾'}</span><span>${who}</span>`
+      + `<span>· ${turns.length} turns${took ? ' · ' + esc(elapsed(Date.now() / 1000 - took)) : ''}`
+      + (priced ? ` · <span title="At API list prices, all these turns together">${esc(usdText(usd))}</span>` : '')
+      + (dots ? ` · ${dots} quiet` : '')
+      + (turns.some(b => !b._ended && isWorking(b)) ? ' · working…' : '') + '</span>'
+      + (shut && last ? `<span class="preview">${esc(last._final)}</span>` : '') + '</button>'
+      + `<button type="button" class="runall" title="${allOpen ? 'Each turn back to its heading' : 'Every turn opened, its steps and thinking still folded'}">`
+      + `${allOpen ? 'fold each' : 'open all'}</button>`;
+    head._members.forEach(el => el.classList.toggle('runhid', shut));
+  }
+  // A message inside a folded run, taken to: its run opens.
+  function openRunOf(el) {
+    let h = el.closest('.runhid');
+    while (h && !h.classList.contains('runhead')) h = h.previousElementSibling;
+    if (h) { h._shut = false; drawRunHead(h); }
+  }
+  document.addEventListener('click', e => {
+    const head = e.target.closest('.runhead');
+    if (!head) return;
+    if (e.target.closest('.runfold')) head._shut = !head._shut;
+    else if (e.target.closest('.runall')) {
+      const open = !head._shut && head._turns.every(b => !b.classList.contains('folded'));
+      head._shut = false;
+      // Open all: each turn opened. Fold each: back to its heading, as an older turn is.
+      head._turns.forEach(b => { if (b._ended || !open) { b.classList.toggle('folded', open); drawBlockHead(b); } });
+    } else return;
+    drawRunHead(head);
   });
 
   function renderItems(items, container, isNew) {
@@ -3859,6 +3952,7 @@
       // A message, or a step (a tool call), shown in its opened group.
       const el = document.getElementById('m-' + id) || document.querySelector(`.step[data-id="${CSS.escape(id)}"]`);
       if (el) {
+        openRunOf(el);
         const folded = el.closest('.aturn.folded');
         if (folded) { folded.classList.remove('folded'); drawBlockHead(folded); }
         const work = el.classList.contains('step') && el.closest('.work');
@@ -4044,6 +4138,7 @@
       const turnsEl = document.getElementById('turns');
       const height = main.scrollHeight;
       turnsEl.prepend(...box.children);
+      drawRuns(turnsEl);
       main.scrollTop += main.scrollHeight - height;
       if (items.length) firstId = items[0].v.id;
       button.hidden = !data.has_earlier;
@@ -4124,6 +4219,7 @@
     if (!items.length) { turnsEl.innerHTML = '<div class="empty">Nothing said here yet.</div>'; return; }
     renderItems(items, turnsEl, false);
     foldOld(turnsEl);
+    drawRuns(turnsEl);
     lastId = items[items.length - 1].v.id;
   }
   async function pollOnce(full, mine) {
@@ -4187,6 +4283,7 @@
       const emptyNote = turnsEl.querySelector('.empty'); if (emptyNote) emptyNote.remove();
       renderItems(items, turnsEl, !full);
       if (full) foldOld(turnsEl);
+      drawRuns(turnsEl);
       lastId = items[items.length - 1].v.id;
       if (full || nearBottom) main.scrollTop = main.scrollHeight;
       else if (!full) { newBelow += data.turns.length; }
