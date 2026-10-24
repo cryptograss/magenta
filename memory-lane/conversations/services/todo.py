@@ -19,8 +19,8 @@ checklist with real links (PickiPediaContent's <todo> tag); a list inside
 `task` is the one thing an item needs; `who` (a name, or several),
 `kind` (review, merge, deploy, edit, or anything), `link`, `note` and
 `done` are as they're useful. The page shows it beside the Mood
-(views_moods.api_mood_todo); agents keep it current -- every wake points
-them to it (poller wake_extras) -- adding what they leave someone to do,
+(views_moods.api_mood_todo); agents keep it current -- their instructions
+point them to it (Cryptograss:Moods/Instructions) -- adding what they leave someone to do,
 and ticking off what's been done.
 
 A renamed Mood's list is found under its old name too, until it's moved.

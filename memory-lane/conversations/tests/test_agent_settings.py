@@ -137,8 +137,7 @@ class AgentSettingsTest(TestCase):
         self.assertEqual(agent_settings.vendor('anthropic/claude-sonnet-5-5'), 'anthropic')
         self.assertEqual(agent_settings.vendor('openrouter/moonshotai/kimi-k3'), 'openrouter')
 
-    def test_a_full_tools_wake_says_how_and_a_look_only_one_doesnt(self):
-        from poller.mood_poller import SETTINGS_HOW, wake_footer
-        self.assertIn(SETTINGS_HOW, wake_footer(full=True))
-        self.assertNotIn(SETTINGS_HOW, wake_footer(full=False))
-        self.assertIn('```settings', SETTINGS_HOW)
+    def test_how_is_in_the_instructions_not_the_wake(self):
+        from poller.mood_poller import wake_footer
+        for full in (True, False):  # Cryptograss:Moods/Instructions says how, and that it's for full-tools turns
+            self.assertNotIn('```settings', '\n'.join(wake_footer(full=full)))

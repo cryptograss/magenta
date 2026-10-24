@@ -88,7 +88,7 @@ class MoodPollerTest(TestCase):
         self.assertEqual(session, 's-local')
         self.assertTrue(prompt.startswith('<mood-wake mood="m26">'))
         self.assertIn('[skyler, 2026-09-29T18:00Z] @magent are you there?', prompt)
-        self.assertIn('<silent>a few words on why</silent>', prompt)
+        self.assertTrue(prompt.endswith('</mood-wake>'))  # how to stay silent is in its instructions now
 
     def test_only_the_poller_holding_the_newest_session_answers(self):
         # Two containers each hold a session in the Mood; only one may speak.
@@ -1781,7 +1781,6 @@ class GreetingTest(TestCase):
         self.assertIn('3 day(s) ago', prompt)
         self.assertIn('never a generic welcome', prompt)
         self.assertIn('search your memory for their name', prompt)  # memory first, PickiPedia if none
-        self.assertIn("don't introduce yourself", prompt)  # and in every wake: wake_footer's GREETING
         self.at(2)
         poller.cycle()
         self.assertEqual(len(self.waker.woken), 1)  # once per sign-in

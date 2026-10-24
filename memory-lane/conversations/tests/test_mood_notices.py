@@ -122,7 +122,7 @@ class NoticesTest(TestCase):
         self.assertIn('Special:AgentBundles?agent=magent&amp;mood=m26', page)
         for title in ('full tools', 'look, not touch', 'nobody asks it', 'quiet a long while', 'The screen'):
             self.assertIn(title, page)
-        self.assertIn('&lt;silent&gt;a few words on why&lt;/silent&gt;', page)  # the wake's own words, escaped
+        self.assertIn('This turn has your full tools', page)  # the wake's own words
 
     def test_the_old_address_goes_there_and_only_an_agent_names_the_pages(self):
         old = self.client.get('/moods/m26/rules/?agent=magent')
