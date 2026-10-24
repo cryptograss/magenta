@@ -214,3 +214,66 @@ class RecordEventsTest(TestCase):
         notice = Message.objects.get(session_id=session, source_file='task-notification')
         self.assertIn('<status>completed</status>', notice.content)
         self.assertEqual(notice.mood, self.mood)
+
+
+CLIP = 'ffb40a1a-a936-49ee-962a-ef53e0cb7237'
+
+
+@override_settings(MOOD_RUNNER_KEYS={'magent': KEY}, TOOL_RESULT_CONTENT_CHARS=20000)
+class AgentClipsTest(TestCase):
+    """An agent's reply that is only '/clips <name>' plays the clip, as the composer does for people."""
+
+    @classmethod
+    def setUpTestData(cls):
+        ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        ThinkingEntity.objects.create(name='magent', is_biological_human=False)
+        cls.mood = Mood.objects.create(slug='m26')
+        Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=cls.mood, timestamp=1, source_file='mood-web',
+                               content=f'/clips save huh https://www.yarn.co/yarn-clip/{CLIP}')
+
+    def setUp(self):
+        from conversations.services import clips
+        clips.forget_cached()
+
+    def reply(self, text, events_v1=True):
+        session = str(uuid.uuid4())
+        if events_v1:
+            events = [ev('turn_started', 0), ev('assistant_message', 1, text=text, model='m'),
+                      ev('turn_ended', 2, outcome='completed')]
+            body = {'format': 'events/1', 'harness': 'test 1.0', 'session_id': session, 'events': events}
+        else:
+            from conversations.tests.test_mood_runner import event
+            body = {'harness': 'claude-code', 'session_id': session,
+                    'events': [event('assistant', [{'type': 'text', 'text': text}], session_id=session)]}
+        self.assertEqual(self.client.post('/api/moods/m26/stream/', json.dumps(body),
+                                          content_type='application/json', **AUTH).status_code, 200)
+        said = Message.objects.filter(session_id=session, sender_id='magent').values_list('content', flat=True)
+        return [c if isinstance(c, str) else ' '.join(b.get('text', '') for b in c) for c in said]
+
+    def test_a_reply_that_is_only_a_clip_plays_it_either_way_in(self):
+        played = f'/clips huh https://www.yarn.co/yarn-clip/{CLIP}'
+        self.assertEqual(self.reply('/clips huh'), [played])
+        self.assertEqual(self.reply('/clip HUH', events_v1=False), [played])  # as General Orders spell it
+        from conversations.services.mood_view import render_html
+        self.assertNotIn('/clips', render_html(played))  # shown as the clip, as a person's would be
+
+    def test_the_mood_shows_the_clip_not_the_command(self):
+        self.reply('/clips huh')
+        self.reply('/clip huh', events_v1=False)
+        turns = self.client.get('/api/moods/m26/turns/').json()['turns']
+        html = [t['html'] for t in turns if t.get('sender') == 'magent']
+        self.assertEqual(len(html), 2)
+        for h in html:
+            self.assertIn(f'yarn-clip/{CLIP}', h)
+            self.assertNotIn('/clips', h)
+
+    def test_anything_else_is_left_as_said(self):
+        for text in ('/clips nosuchclip', 'Here: /clips huh', '/clips huh and more'):
+            self.assertEqual(self.reply(text), [text])
+
+    def test_an_agent_cannot_change_the_library(self):
+        from conversations.services import clips
+        self.reply(f'/clips save mine https://www.yarn.co/yarn-clip/{CLIP}')
+        self.reply('/clips forget huh')
+        clips.forget_cached()
+        self.assertEqual(sorted(clips.library()), ['huh'])
