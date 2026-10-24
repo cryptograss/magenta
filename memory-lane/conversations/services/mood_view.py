@@ -64,12 +64,18 @@ def prose(content):
 _QUIET = re.compile(r'^<silent\s*/>$|^<silent(?:\s+by="(\w+)")?>(.*)</silent>$', re.S)
 
 
+# An agent waiting for another asked the same thing (poller/mood_poller.py _WAIT_REPLY): no answer yet, so a
+# silence -- a dot saying whom it's waiting for -- never a turn, an answer, or a mention.
+_WAIT = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"\s*/>\s*$')
+
+
 def quiet_reason(text):
     """{'reason', 'by'} for a silent reply ('by' is '' when the agent itself
-    chose), or None if the text isn't one."""
+    chose), or None if the text isn't one. A wait for another agent is one."""
     match = _QUIET.match(text)
     if not match:
-        return None
+        wait = _WAIT.match(text or '')
+        return {'reason': f'waiting for {wait.group(1).strip()}', 'by': ''} if wait else None
     return {'reason': (match.group(2) or '').strip(), 'by': match.group(1) or ''}
 
 
