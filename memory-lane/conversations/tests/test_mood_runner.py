@@ -396,6 +396,9 @@ class PulseAndQuietTest(TestCase):
         self.assertEqual([(a['doing'], a['why']) for a in mine], [('held', 'waiting for re')])
         quiet = self.client.get('/api/moods/m26/turns/').json()['quiet']
         self.assertEqual([q['reason'] for q in quiet], ['waiting for re'])  # its reply: a silence, not a turn
+        cache.delete('moods-live')
+        live = self.client.get('/api/moods/live/').json()['moods']['m26']
+        self.assertEqual(live['waiting'], [{'agent': 'magent', 'for': 're'}])  # for the page to say aloud
 
     def test_recent_context_only_when_asked(self):
         for i in range(5):

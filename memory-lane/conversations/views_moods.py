@@ -1329,7 +1329,13 @@ def api_moods_live(request):
         last = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at) index
         entry['last'] = last.isoformat() if last else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way
-            working = [a['agent'] for a in activities(mood) if a.get('doing') != 'held']
+            doing = activities(mood)
+            working = [a['agent'] for a in doing if a.get('doing') != 'held']
+            # An agent waiting for another asked too (poller's _WAIT_REPLY): read aloud as thinking is.
+            waiting = [{'agent': a['agent'], 'for': a['why'][len('waiting for '):]} for a in doing
+                       if a.get('doing') == 'held' and str(a.get('why') or '').startswith('waiting for ')]
+            if waiting:
+                entry['waiting'] = waiting
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list

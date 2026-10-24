@@ -1348,9 +1348,13 @@ def api_narrate(request):
         steps = ToolUse.objects.filter(mood=mood, sender=agent, is_sidechain=False,
                                        timestamp__gte=int(doing['since'] * 1000)).count()
         still = (max(1, int((time.time() - doing['since']) // 60)), steps)
+    waiting = str(body.get('waiting') or '')
+    if waiting and not re.fullmatch(r'[\w.-]+(?:,\s*[\w.-]+)*', waiting):
+        return JsonResponse({'error': 'waiting: agents\' names'}, status=400)
     try:
         return JsonResponse({'url': voice.narrate_thinking(mood, agent.name, device.entity_id,
-                                                           where=bool(body.get('where')), still=still)})
+                                                           where=bool(body.get('where')), still=still,
+                                                           waiting=waiting)})
     except voice.VoiceError as e:
         return JsonResponse({'error': str(e)}, status=e.status)
 
