@@ -929,7 +929,7 @@ def api_mentions(request, name):
         limit = 50
 
     from django.db.models import Q
-    from .services import handoff
+    from .services import handoff, tiding_links
 
     names = known_names()
     is_agent = not ThinkingEntity.objects.get(name=name).is_biological_human
@@ -937,7 +937,9 @@ def api_mentions(request, name):
         Message.objects.filter(mood__isnull=False, is_sidechain=False)
         # A handoff into a Mood "for" an agent is the system's line, but it
         # addresses that agent: it wakes it there (handoff_mention).
-        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file=handoff.SOURCE))
+        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file=handoff.SOURCE)
+                # So is a comment on Tidings that asks an agent by name: its line in the link's Mood wakes it.
+                | Q(source_file=tiding_links.COMMENT_SOURCE))
         .select_related('sender')
         .order_by('-created_at')
     )
@@ -948,6 +950,13 @@ def api_mentions(request, name):
     for msg in messages.iterator():
         if msg.source_file == handoff.SOURCE:
             turn = handoff_mention(msg, name, names) if is_agent else None
+            if turn:
+                found.append({'mood': msg.mood_slug, 'turn': turn})
+                if len(found) >= limit:
+                    break
+            continue
+        if msg.source_file == tiding_links.COMMENT_SOURCE:
+            turn = tiding_links.mention_of(msg, name) if is_agent else None
             if turn:
                 found.append({'mood': msg.mood_slug, 'turn': turn})
                 if len(found) >= limit:
