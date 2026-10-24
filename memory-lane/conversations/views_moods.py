@@ -132,6 +132,8 @@ def _watchers(request, mood):
     device = mood_auth.device_for(request)
     if device is None:
         watchers.seen(request, mood.slug)
+    else:
+        watchers.signed_in(request, device.entity_id)
     return {'watchers': watchers.now_watching(mood.slug, admin=device is not None and device.tier == 'key')}
 
 

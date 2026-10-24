@@ -303,3 +303,9 @@ CSRF_TRUSTED_ORIGINS = [f'https://{h}' for h in ALLOWED_HOSTS
 # Served only over https outside development.
 CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE = not DEBUG
 SECURE_HSTS_SECONDS = 0 if DEBUG else 365 * 24 * 3600  # this host only, no subdomains
+
+# Where readers' addresses are (conversations/services/geoip.py): DB-IP's free city database, fetched in the
+# background into GEOIP_PATH (default: under the temp directory). Off under `manage.py test`: no test downloads it.
+import sys as _sys  # noqa: E402
+GEOIP_PATH = os.getenv('GEOIP_PATH', '')
+GEOIP_FETCH = os.getenv('GEOIP_FETCH', '0' if _sys.argv[1:2] == ['test'] else '1') != '0'
