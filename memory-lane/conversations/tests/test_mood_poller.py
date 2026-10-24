@@ -714,6 +714,15 @@ class HoldTest(TestCase):
         api._mentions.append(mention('m26', dict(turn('b', 'justin', 14.5, '@magent and also'), via='web')))
         poller.poll_once()
         self.assertEqual(api.holds, [('m26', 'a turn is under way here; this one is next', None)])
+        # Another post during the turn is held too, and said so at once: not "waking" until the renewal
+        # (Justin, 24 Oct), since the Mood holds only the posts before a hold.
+        self.clock[0] += timedelta(minutes=1)
+        api._mentions.append(mention('m26', dict(turn('c', 'justin', 15.5, '@magent one more'), via='web')))
+        poller.poll_once()
+        self.assertEqual(len(api.holds), 2)
+        self.clock[0] += timedelta(seconds=10)
+        poller.poll_once()
+        self.assertEqual(len(api.holds), 2)  # nothing newer: not said again
         gate.set()
         for thread in list(poller.running.values()):
             thread.join(5)
