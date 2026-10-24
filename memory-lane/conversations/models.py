@@ -1722,7 +1722,7 @@ class BundleRecord(models.Model):
     transform = models.CharField(max_length=200, blank=True, default='')
     stamps = models.JSONField(default=dict)     # Bundle.stamps(): each layer's page, revision, editor, problem
     commit = models.CharField(max_length=40, blank=True, default='')
-    error = models.CharField(max_length=300, blank=True, default='')  # why the recovery rules stood in
+    error = models.CharField(max_length=300, blank=True, default='')  # why the recovery instructions stood in
     recorded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

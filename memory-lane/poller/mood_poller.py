@@ -169,7 +169,7 @@ class MoodAPI:
         """Ethereum mainnet's newest height, as magenta last heard it, or None."""
         try:
             return self._get('/api/block/').get('height')
-        except Exception:  # noqa: BLE001 -- a bundle without its block sentence, not a turn without rules
+        except Exception:  # noqa: BLE001 -- a bundle without its block sentence, not a turn without instructions
             return None
 
     def bundle(self, record):
@@ -1785,10 +1785,10 @@ class MoodPoller:
             block = self.api.block() if hasattr(self.api, 'block') else None
             b = bundle(self.agent, slug, block=block if isinstance(block, int) else None, record_id=record_id)
             text, record = b.text, b.record()
-        except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery rules stand
-            logger.error(f'{slug}: rules not gathered ({e}); the recovery rules stand in')
+        except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery instructions stand
+            logger.error(f'{slug}: instructions not gathered ({e}); the recovery instructions stand in')
             recovery = Path(__file__).with_name('recovery_instructions.md')
-            words = recovery.read_text() if recovery.exists() else 'Your rules could not be gathered.'
+            words = recovery.read_text() if recovery.exists() else 'Your instructions could not be gathered.'
             text = (f'<instructions agent="{self.agent}" mood="{slug}" bundle="{record_id}">\n<recovery>\n{words}\n'
                     '</recovery>\n</instructions>')
             record = {'id': record_id, 'agent': self.agent, 'mood': slug, 'parts': [text], 'stamps': {},
@@ -1890,7 +1890,7 @@ class MoodPoller:
             if answers:
                 poster.answers = list(answers)
         stop = self.stop_check(slug, options.pop('since', None))
-        heard = {}  # when the harness first spoke: it had started, with its rules in hand
+        heard = {}  # when the harness first spoke: it had started, with its instructions in hand
         on_event = poster.put if poster else None
         if bundled is not None:
             def on_event(event, put=on_event):

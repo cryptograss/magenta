@@ -7,7 +7,7 @@ A task is a PickiPedia page, Cryptograss:Agents/<Name>/Tasks/<Task>:
     ...
 
 The template holds its settings; everything else on the page, less <!--
-comments -->, is the prompt, sent word for word (as rules are,
+comments -->, is the prompt, sent word for word (as instructions are,
 poller/instructions.py). A {blank} is filled from the call's parameters.
 Only a revision by a trusted editor counts (poller/wiki_rules.EDITORS): an
 agent can edit pages, so it can propose a task but not set one going.
