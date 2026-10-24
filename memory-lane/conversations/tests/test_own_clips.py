@@ -63,6 +63,19 @@ class OwnClipsTest(TestCase):
         # Its link, opened: the video.
         self.assertRedirects(self.client.get(f'/clips/{clip.clip}/'), clip.media.url, fetch_redirect_response=False)
 
+    def test_words_under_a_clip_come_with_it(self):
+        # Justin, 24 Oct: "if you just add more text in the same message as a clip, on the next line(s)?"
+        link = self.make().json()['link']
+        posted, _ = clips.command('/clips whole-point\nSaid it in 2019, still true.', 'skyler')
+        self.assertEqual(posted, f'/clips whole-point {link}\nSaid it in 2019, still true.')
+        html = render_html(posted)
+        self.assertIn('data-own="1"', html)                              # the clip,
+        self.assertIn('<p>Said it in 2019, still true.</p>', html)      # and the words under it
+        self.assertEqual(clips.played_by('/clip whole-point\nand that\'s that'),
+                         f'/clips whole-point {link}\nand that\'s that')  # an agent's reply too
+        with self.assertRaises(clips.Refused):
+            clips.command('/clips nothing-saved\nwords', 'skyler')       # still a name it knows
+
     def test_refused(self):
         self.make()
         self.assertEqual(self.make(signer='skyler').status_code, 409)          # Justin's name: first come

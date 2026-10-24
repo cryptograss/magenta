@@ -1,7 +1,7 @@
 """Saved clips: the team's library of quotes, kept in the record itself.
 
     /clips save <name> <yarn link>   saves a clip under a name (or one of our own clips' links)
-    /clips <name>                    posts the saved clip
+    /clips <name>                    posts the saved clip (lines after it: words of yours, under it)
     /clips forget <name>             forgets a name
     /clips                           lists the names (to whoever asked; nothing posted)
 
@@ -54,11 +54,13 @@ class Refused(ValueError):
 
 
 def played_by(text):
-    """An agent's reply that is only '/clips <name>' (or '/clip <name>'): the clip, as the
-    composer posts it ('/clips <name> <link>'). None for anything else, or a name not saved."""
-    played = AGENT_PLAY.match(text.strip()) if isinstance(text, str) else None
+    """An agent's reply whose first line is only '/clips <name>' (or '/clip <name>'): the clip, as the
+    composer posts it ('/clips <name> <link>'), and any lines after it as they were. None for anything
+    else, or a name not saved."""
+    first, _, rest = text.strip().partition('\n') if isinstance(text, str) else ('', '', '')
+    played = AGENT_PLAY.match(first.strip())
     found = library().get(played[1].lower()) if played else None
-    return f'/clips {played[1].lower()} {link_of(found)}' if found else None
+    return f'/clips {played[1].lower()} {link_of(found)}' + (f'\n{rest.strip()}' if rest.strip() else '') if found else None
 
 
 def clip_link(clip):
@@ -117,6 +119,10 @@ def command(text, who):
     if not words or words[0].lower() not in COMMANDS:
         return text, ''
     args = words[1:]
+    # '/clips <name>' on its first line, and words of the sender's under it: the clip, then them (Justin, 24 Oct).
+    first, _, rest = text.strip().partition('\n')
+    if rest.strip() and len(first.split()) == 2 and first.split()[1].lower() not in RESERVED | {'list'}:
+        args = first.split()[1:]
     found = library()
 
     if not args or args == ['list']:
@@ -155,6 +161,6 @@ def command(text, who):
         name = args[0].lower()
         if name not in found:
             raise Refused(f'No clip called "{name}": save one with /clips save {name} <yarn link>')
-        return f'/clips {name} {link_of(found[name])}', ''
+        return f'/clips {name} {link_of(found[name])}' + (f'\n{rest.strip()}' if rest.strip() else ''), ''
 
     raise Refused(USAGE)

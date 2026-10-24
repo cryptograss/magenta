@@ -4,6 +4,7 @@
     magenta.sh clips save <file> <start> <end> "<subtitle>"
     magenta.sh clips save talk.mp4 1:02.5 1:06 "That's the whole point."
     magenta.sh clips save talk.mp4 62.5 66 "That's the whole point." --name whole-point --mood jams
+    magenta.sh clips save talk.mp4 62.5 66 "That's the whole point." --preview   # watch it, then save, retime or stop
     magenta.sh clips save talk.mp4 62.5 66 "That's the whole point." --out /tmp/clip.mp4   # cut only, to look first
 
 Times are seconds, or m:ss, or h:mm:ss, with decimals if you like. The clip is cut here, by ffmpeg, at
@@ -106,6 +107,45 @@ def still_of(video, at, out):
                     '-frames:v', '1', '-q:v', '4', out], check=True)
 
 
+def play(video):
+    """Show the cut clip: ffplay where there is one (it closes at the end), else the system's own player."""
+    if shutil.which('ffplay'):
+        subprocess.run(['ffplay', '-hide_banner', '-loglevel', 'error', '-autoexit', '-window_title', 'clip', video])
+        return
+    opener = 'open' if sys.platform == 'darwin' else 'xdg-open' if shutil.which('xdg-open') else None
+    if opener is None:
+        print(f'(no player found here: the clip is at {video})')
+    else:
+        subprocess.run([opener, video])
+
+
+def preview(args, caption, name, tmp):
+    """Cut, show it, and ask: save it, play it again, retime it (new start and end), or stop. The times it's saved with."""
+    start, end = seconds(args.start), seconds(args.end)
+    video = os.path.join(tmp, 'preview.mp4')
+    while True:
+        cut(args.file, start, end - start, caption, video, tmp)
+        print(f'{start:g}s to {end:g}s ({end - start:.1f}s), as "{name}":')
+        while True:
+            play(video)
+            answer = input('Save it? [y]es, [p]lay again, [r]etime, [n]o: ').strip().lower()
+            if answer in ('p', 'play'):
+                continue
+            break
+        if answer in ('y', 'yes'):
+            return start, end
+        if answer in ('r', 'retime'):
+            try:
+                start = seconds(input(f'start [{start:g}]: ').strip() or str(start))
+                end = seconds(input(f'end [{end:g}]: ').strip() or str(end))
+            except ValueError:
+                print('seconds, m:ss or h:mm:ss; keeping the last times')
+            if not 0 < end - start <= MAX_SECONDS:
+                sys.exit(f'end must come after start, by up to {MAX_SECONDS} seconds')
+            continue
+        sys.exit('Not saved.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('action', choices=('save',), help='save: cut a clip from a local file and save it under a name')
@@ -115,6 +155,8 @@ def main():
     parser.add_argument('subtitle', nargs='+', help='the words, burned in along the bottom; quote them')
     parser.add_argument('--name', help="what /clips calls it (default: the subtitle's first words)")
     parser.add_argument('--mood', default='general', help='the Mood the save is posted in (default: general)')
+    parser.add_argument('--preview', action='store_true',
+                        help='watch it first (ffplay, or your system player), then save it, play it again or retime it')
     parser.add_argument('--out', help='only cut it, to this file, to look at first: nothing is sent')
     parser.add_argument('--key', default=default_key(), help='SSH private key (default: ~/.ssh/id_ed25519, …)')
     parser.add_argument('--base', default=os.environ.get('MEMORY_LANE_URL', DEFAULT_BASE))
@@ -138,9 +180,15 @@ def main():
     if not NAME.match(name) or name in RESERVED:
         sys.exit('--name: letters, digits, - and _, up to 35, and not save, forget or list')
 
+    if args.preview and not sys.stdin.isatty():
+        sys.exit('--preview asks you questions: run it in a terminal')
     with tempfile.TemporaryDirectory() as tmp:
         video = args.out or os.path.join(tmp, 'clip.mp4')
-        cut(args.file, start, end - start, caption, video, tmp)
+        if args.preview and not args.out:
+            start, end = preview(args, caption, name, tmp)  # what was watched is what's sent
+            os.replace(os.path.join(tmp, 'preview.mp4'), video)
+        else:
+            cut(args.file, start, end - start, caption, video, tmp)
         if os.path.getsize(video) > MAX_BYTES:  # a big picture: smaller, once
             cut(args.file, start, end - start, caption, video, tmp, height=360, crf=32)
         size = os.path.getsize(video)

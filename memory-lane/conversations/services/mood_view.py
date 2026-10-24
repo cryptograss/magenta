@@ -729,13 +729,16 @@ _YARN_USED = re.compile(r'^(?:/clips|/yarn|🎬) [a-z0-9][a-z0-9_-]{0,34} (https
 def render_html(text, mentionable=()):
     """Escape, then translate the markdown the agent writes into HTML."""
     plain = text.strip()
-    saved, forgotten, used = _YARN_SAVED.match(plain), _YARN_FORGOTTEN.match(plain), _YARN_USED.match(plain)
+    # A clip played on the first line may have words under it (services/clips.command): the clip, then them.
+    head, _, under = plain.partition('\n')
+    saved, forgotten = _YARN_SAVED.match(plain), _YARN_FORGOTTEN.match(plain)
+    used = _YARN_USED.match(plain) or (_YARN_USED.match(head.strip()) if under.strip() else None)
     if saved:
         text = f'🎬 saved **{saved[1]}**'
     elif forgotten:
         text = f'🎬 forgot **{forgotten[1]}**'
     elif used:
-        text = used[1]
+        text = used[1] + (f'\n\n{under.strip()}' if used[0] != plain and under.strip() else '')
     text = html.escape(_PLACEHOLDER_CHARS.sub('', text), quote=True)
 
     def inline(s):
