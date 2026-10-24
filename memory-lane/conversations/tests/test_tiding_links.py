@@ -151,9 +151,15 @@ class TidingTalkTests(TidingLinksTest):
         done = self.comment(self.client_for(self.justin), tiding, 'yes, that one')
         self.assertEqual(done.status_code, 201)
         notice = Message.objects.exclude(id=said.id).get()
-        self.assertEqual(notice.content['type'], 'tiding-comment')  # the words aren't in the Mood
+        self.assertEqual(notice.content['type'], 'tiding-comment')  # a line in the Mood, not the comment
         self.assertEqual(notice.content['by'], 'justin')
-        self.assertNotIn('yes, that one', str(notice.content))
+        # Its link's title and its first words, which open it on Tidings (Justin, 23 Oct); the rest stays there.
+        self.assertEqual((notice.content['title'], notice.content['comment']), (tiding.title, 'yes, that one'))
+        self.assertEqual(notice.content['tiding'], str(tiding.id))
+        long = self.comment(self.client_for(self.justin), tiding, 'word ' * 200)
+        self.assertEqual(long.status_code, 201)
+        self.assertLessEqual(len(Message.objects.filter(source_file='tiding-comment').order_by('-created_at')
+                                 .first().content['comment']), 120)
         body = self.client.get(f'/api/tidings/{tiding.id}/').json()
         self.assertEqual((body['comments'][0]['kind'], body['comments'][0]['snippet']), ('comment', 'yes, that one'))
 
@@ -250,8 +256,18 @@ class TidingTalkTests(TidingLinksTest):
         self.assertEqual(page['X-Frame-Options'], 'SAMEORIGIN')  # else the frame stays blank
         html = page.content.decode()
         self.assertIn('looking forward', html)
+        # Nobody signed in here: no box that can't be typed in, but the way in -- and back to this discussion.
+        self.assertNotIn('>say it</button>', html)
+        self.assertNotIn('<textarea', html)
+        self.assertIn('sign in', html)
+        with override_settings(PICKIPEDIA_OAUTH_CLIENT_ID='client-1', PICKIPEDIA_OAUTH_CLIENT_SECRET='secret-1'):
+            html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        self.assertIn(f'href="/moods/auth/wiki/?next=/moods/tidings/{tiding.id}/" target="_top"', html)
+        # Signed in: the box, and [[ suggesting PickiPedia's titles.
+        html = self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
         self.assertIn('say it', html)
-        self.assertIn('sign in', html)  # nobody signed in here: the box is closed but says so
+        self.assertIn('id="wikiSuggest"', html)
+        self.assertIn('list=prefixsearch', html)
         gone = self.client.get(f'/moods/tidings/{uuid.uuid4()}/?embed=1')
         self.assertEqual(gone.status_code, 404)
 

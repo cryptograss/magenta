@@ -400,10 +400,12 @@ def vote_on_comment(tiding, by, comment_id):
 COMMENT_SOURCE = 'tiding-comment'
 
 
-def _notice(tiding, by):
+def _notice(tiding, by, said=None):
     """A line in the link's Mood: '💬 new comment by …', referring to the message it was posted from.
     The comment's words stay on Tidings (Justin, 21 Oct); the notice is all the Mood gets, and only
-    if the link isn't muted there."""
+    if the link isn't muted there -- with the link's title and the comment's first words, which open it
+    (Justin, 23 Oct)."""
+    from .mood_view import snippet_of
     import time as _time
     from conversations.models import ConversationParticipant, Message
     system, _ = ConversationParticipant.objects.get_or_create(name='system',
@@ -411,7 +413,8 @@ def _notice(tiding, by):
     Message.objects.create(id=uuid.uuid4(), sender=system, mood=tiding.message.mood, source_file=COMMENT_SOURCE,
                            timestamp=int(_time.time() * 1000),
                            content={'type': COMMENT_SOURCE, 'by': by.name, 'message': str(tiding.message_id),
-                                    'tiding': str(tiding.id)})
+                                    'tiding': str(tiding.id), 'title': (tiding.title or tiding.url)[:200],
+                                    **({'comment': snippet_of(said.text)[:120], 'comment_id': str(said.id)} if said else {})})
 
 
 def mute(tiding, device, muted):
@@ -464,7 +467,7 @@ def comment(tiding, by, text, parent=None, client_version=''):
     row = TidingComment.objects.create(tiding=tiding, by=by, parent=comment_parent,
                                        parent_message_id=parent_message_id, text=text)
     if not tiding.muted_in_mood:
-        _notice(tiding, by)
+        _notice(tiding, by, row)
     return {'id': str(row.id), 'kind': 'comment', 'sender': by.name, 'at': row.at,
             'snippet': text, 'html': said_html(text), 'replies': [], 'score': 0, 'mine': False}
 

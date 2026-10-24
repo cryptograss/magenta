@@ -97,11 +97,13 @@ class SpeakAndTranscribeTest(TestCase):
         fake = FakeEleven()
         message = self.say('Hello **there**.\n```voice\nvoice: george\nstyle: 0.3\n---\n[warmly] Hello there.\n```')
         url = voice.speak(message, 'justin', http=fake)
-        self.assertTrue(url.endswith('.mp3'))
+        self.assertTrue(url.split('#')[0].endswith('.mp3'))
+        # How many words it says, and whose: the page plays it at the listener's words a minute (Justin, 22 Oct).
+        self.assertEqual(url.split('#')[1], 'words=3&who=agent')
         _, where, sent = fake.asked[-1]
         self.assertTrue(where.endswith('/text-to-speech/v-george'))  # "george" matched "George - warm storyteller"
         self.assertEqual(sent['json'], {'text': '[warmly] Hello there.', 'model_id': 'eleven_v4',
-                                        'voice_settings': {'style': 0.3}})
+                                        'voice_settings': {'style': 0.3}})  # no speed asked: 1.0 by default
         self.assertEqual(sent['headers'], {'xi-api-key': 'test-eleven-key'})
         asked = len(fake.asked)
         self.assertEqual(voice.speak(message, 'justin', http=fake), url)  # the same again: not paid twice
@@ -216,6 +218,49 @@ class SpeakAndTranscribeTest(TestCase):
         self.assertEqual(self.client.get(stored.url)['Content-Type'], 'audio/webm')
 
 
+    def test_a_mood_voices_at_its_own_speed_and_a_voice_blocks_wins(self):
+        # Justin, 23 Oct: the voice's own pace asked of ElevenLabs once for the Mood; a writer's speed stays.
+        from django.core.cache import cache
+        from conversations.services import settings as knobs
+        fake = FakeEleven()
+        voice.speak(self.say('As voiced.'), 'justin', http=fake)
+        self.assertNotIn('voice_settings', fake.asked[-1][2]['json'])  # 1.0 by default: nothing asked
+        knobs.change('voice_speed', 1.2, mood=self.mood, by=None)
+        cache.delete(f'voice:speed:{self.mood.slug}')
+        voice.speak(self.say('Plain words.'), 'justin', http=fake)
+        self.assertEqual(fake.asked[-1][2]['json']['voice_settings'], {'speed': 1.2})
+        voice.speak(self.say('Hi.\n```voice\nspeed: 0.9\n---\nHi there.\n```'), 'justin', http=fake)
+        self.assertEqual(fake.asked[-1][2]['json']['voice_settings'], {'speed': 0.9})
+        knobs.change('voice_speed', 1.0, mood=self.mood, by=None)
+        cache.delete(f'voice:speed:{self.mood.slug}')
+        voice.speak(self.say('Slower here.'), 'justin', http=fake)
+        self.assertNotIn('voice_settings', fake.asked[-1][2]['json'])  # 1.0: nothing asked, as before
+        with self.assertRaises(knobs.Invalid):
+            knobs.change('voice_speed', 2, mood=self.mood, by=None)
+
+    def test_a_speed_the_model_refuses_never_loses_a_reading(self):
+        from django.core.cache import cache
+        from conversations.models import Message as M
+
+        class NoSpeed(FakeEleven):
+            def post(self, url, **kw):
+                if '/text-to-speech/' in url and 'speed' in (kw['json'].get('voice_settings') or {}):
+                    self.asked.append(('POST', url, kw))
+                    return Answer(400, {'detail': {'message': 'speed is not supported for this model'}})
+                return super().post(url, **kw)
+        from conversations.services import settings as knobs
+        knobs.change('voice_speed', 1.2, mood=self.mood, by=None)  # a speed asked for
+        cache.delete(f'voice:speed:{self.mood.slug}')
+        fake = NoSpeed()
+        self.addCleanup(cache.delete, voice.SPEED_REFUSED)  # the cache isn't rolled back with the test
+        url = voice.speak(self.say('Read me anyway.'), 'justin', http=fake)
+        self.assertTrue(url.split('#')[0].endswith('.mp3'))
+        self.assertNotIn('voice_settings', fake.asked[-1][2]['json'])  # asked again without
+        self.assertTrue(cache.get(voice.SPEED_REFUSED))
+        row = M.objects.filter(source_file='voice', content__type='spoken').order_by('-created_at').first().content
+        self.assertNotIn('speed', row)
+        self.assertIn('seconds', row)  # how long it runs: a speed's effect, readable from the record
+
 class PageTest(TestCase):
 
     def test_a_voice_block_is_performed_not_shown(self):
@@ -277,7 +322,7 @@ class VoiceEndpointsTest(SignedInCase):
             spoken = self.post(client, f'/api/moods/m26/speak/{here.id}/').json()
             Mood.objects.create(slug='other')
             elsewhere = self.post(client, f'/api/moods/other/speak/{here.id}/')
-        self.assertTrue(spoken['url'].endswith('.mp3'))
+        self.assertTrue(spoken['url'].split('#')[0].endswith('.mp3'))
         self.assertEqual(elsewhere.status_code, 404)
 
     def test_voices_listed_with_todays_spend(self):

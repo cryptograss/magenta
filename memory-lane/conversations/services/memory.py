@@ -43,11 +43,12 @@ class MemoryService:
     """Service for querying conversation memory"""
 
     @staticmethod
-    def get_latest_continuation():
-        """Get the most recent continuation message"""
-        return Message.objects.filter(
-            is_continuation_message=True
-        ).order_by('-created_at').first()
+    def get_latest_continuation(within=None):
+        """Get the most recent continuation message (of one agent's conversations, with `within`)"""
+        found = Message.objects.filter(is_continuation_message=True)
+        if within is not None:
+            found = found.filter(within)
+        return found.order_by('-created_at').first()
 
     @staticmethod
     def get_message_by_id(message_id):
@@ -228,7 +229,7 @@ class MemoryService:
         return results
 
     @staticmethod
-    def get_recent_messages_by_chars(max_chars=10000, scan=500):
+    def get_recent_messages_by_chars(max_chars=10000, scan=500, within=None):
         """Recent messages, newest first, up to a character budget.
 
         Tool output is left out, and a single message too big for what's
@@ -239,7 +240,10 @@ class MemoryService:
         messages = []
         total_chars = 0
 
-        for msg in Message.objects.exclude(sender_id='tool-result').order_by('-created_at')[:scan]:
+        found = Message.objects.exclude(sender_id='tool-result')
+        if within is not None:
+            found = found.filter(within)
+        for msg in found.order_by('-created_at')[:scan]:
             content_str = str(msg.content)
             if total_chars + len(content_str) > max_chars:
                 continue
@@ -251,12 +255,12 @@ class MemoryService:
         return messages, total_chars
 
     @staticmethod
-    def get_awakening_reflection():
-        """Get most recent 'reawaken and breathe' message"""
+    def get_awakening_reflection(agent='magent'):
+        """Get the agent's most recent 'reawaken and breathe' message"""
         # TODO: Query by topic once topic tagging is working
-        # For now, search for messages from magent containing "reawaken" or "breathe"
+        # For now, search for messages from the agent containing "reawaken" or "breathe"
         return Message.objects.filter(
-            Q(sender_id='magent') &
+            Q(sender_id=agent) &
             (Q(content__icontains='reawaken') | Q(content__icontains='breathe'))
         ).order_by('-created_at').first()
 
@@ -390,12 +394,13 @@ def message_context(ref, before=10, after=10):
     return '\n'.join(head + lines)
 
 
-def search(query, limit=20, exact=False, sender=None):
+def search(query, limit=20, exact=False, sender=None, within=None):
     """Matching messages, newest or best first, each with its id and the text around the match.
 
     exact=True finds the phrase as written, case-insensitively, anywhere in a
     message's stored content, tool calls included. Otherwise it is Postgres
-    full-text search (words, stemmed), ranked.
+    full-text search (words, stemmed), ranked. `within`: a Q the messages
+    must also match (services/recall: what one agent remembers).
     """
     from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
     from django.db.models import TextField
@@ -408,6 +413,8 @@ def search(query, limit=20, exact=False, sender=None):
     messages = Message.objects.exclude(sender_id='tool-result')
     if sender:
         messages = messages.filter(sender_id=sender)
+    if within is not None:
+        messages = messages.filter(within)
     if exact:
         # The content is stored as JSON, where a quote or a newline inside a
         # phrase is escaped; look for the phrase both as typed and as escaped.

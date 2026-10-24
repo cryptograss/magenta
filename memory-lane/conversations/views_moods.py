@@ -93,7 +93,8 @@ def page_version():
     from django.template.loader import get_template
     from .services import embeds, mood_view
     digest = hashlib.sha256()
-    for path in (get_template('conversations/moods.html').origin.name, mood_view.__file__, embeds.__file__):
+    for path in (get_template('conversations/moods.html').origin.name,
+                 get_template('conversations/name_art_css.html').origin.name, mood_view.__file__, embeds.__file__):
         with open(path, 'rb') as f:
             digest.update(f.read())
     return digest.hexdigest()[:12]
@@ -182,7 +183,7 @@ def api_mood_turns(request, slug):
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
-                                                   'task', 'revision', 'reason', 'tools')},
+                                                   'tiding', 'comment_id', 'task', 'revision', 'reason', 'tools')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
@@ -413,8 +414,10 @@ def front_page(request):
     import random
     from .services import front
     slogans = front.slogans()
+    here = request.build_absolute_uri('/')
     return render(request, 'conversations/front.html', {'front': front.state(), 'slogans': slogans,
-                                                        'slogan': random.choice(slogans)})
+                                                        'slogan': random.choice(slogans),
+                                                        'here': here, 'qr': front.qr_svg(here)})
 
 
 @require_GET
@@ -542,7 +545,23 @@ def api_typing(request, slug):
     else:
         state.pop(device.entity_id, None)
     cache.set(_typing_key(slug), state, TYPING_FOR * 2)
+    from .services import presence
+    presence.note(device.entity_id, slug, now)  # typing, or stopped: shown here, three minutes from now
     return JsonResponse({'typing': sorted(state)})
+
+
+@require_POST
+def api_here(request, slug):
+    """This device's person opened a Mood: shown there, and nowhere else, for three minutes (services/presence)."""
+    from django.core.cache import cache
+    from .services import presence
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to be shown'}, status=401)
+    mood = Mood.by_slug_or_404(slug)
+    presence.note(device.entity_id, mood.slug)
+    cache.delete('moods-live')  # seen there at the next look, not three seconds on
+    return JsonResponse({'here': mood.slug})
 
 
 @require_GET
@@ -683,6 +702,8 @@ def api_recent(request):
     out, or they would be all there is. ?oldest=1: the first after `since`
     instead, oldest first -- for reading a stretch through from its start,
     a page at a time (moods.html, reading aloud from a message on).
+    ?progress=1: an agent's words mid-turn too, as they're said -- read aloud as they come, not all at
+    once when its turn ends (Justin, 22 Oct) -- never its thinking or its tool calls.
     """
     from datetime import timedelta
     from django.utils import timezone
@@ -701,7 +722,15 @@ def api_recent(request):
     titles = dict(Mood.objects.values_list('slug', 'title'))
     events = []
 
-    said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since)
+    progress = request.GET.get('progress') == '1'
+    # A listening page says so as it asks (services/listening.py): its person shows with 🎧 where they listen.
+    if request.GET.get('listening') in ('here', 'everywhere'):
+        device = mood_auth.device_for(request)
+        if device is not None:
+            from .services import listening
+            listening.note(device.entity_id, request.GET['listening'], request.GET.get('mood') or None)
+    said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since,
+                                   thought__isnull=True, tooluse__isnull=True, toolresult__isnull=True)
             .exclude(sender_id__in=MACHINERY_SENDERS).order_by(order)[:RECENT_SCAN])
     for msg in said:
         if msg.sender_id not in names:
@@ -709,7 +738,7 @@ def api_recent(request):
         text = prose(msg.content)
         if not text or is_wrapper(text) or is_summary(msg) or quiet_reason(text) is not None:
             continue
-        if msg.sender_id in agents and msg.stop_reason != 'end_turn':
+        if msg.sender_id in agents and msg.stop_reason != 'end_turn' and not progress:
             continue
         events.append({'kind': 'answered' if msg.sender_id in agents else 'said', 'at': msg.created_at.isoformat(),
                        'mood': msg.mood_slug, 'who': msg.sender_id, 'id': str(msg.id), 'text': text[:140]})
@@ -1257,8 +1286,9 @@ def api_unfurl(request, slug, message_id):
 
 @require_GET
 def api_moods_live(request):
-    """Each Mood's people of the moment: who has spoken in the last 100 blocks
-    (about 20 minutes), who's typing, which agent is working; and when anything
+    """Each Mood's people of the moment: each person in the one Mood they last opened, typed or
+    spoke in, for three minutes (services/presence); each agent where it spoke in the last 100
+    blocks (about 20 minutes); who's typing, which agent is working; and when anything
     was last added there (a page brings the Moods it holds up to date by it,
     before they're opened). Cached for 3 s: every open page asks every few seconds."""
     from datetime import timedelta
@@ -1275,9 +1305,19 @@ def api_moods_live(request):
     spoke = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gte=since,
                                     sender_id__in=names)
              .values('mood__slug', 'sender_id').annotate(last=Max('created_at')).order_by('-last'))
+    # A person is shown in one Mood: where they last opened, typed or spoke, for three minutes after
+    # (services/presence; Justin, 23 Oct). An agent, wherever it's spoken lately, as before.
+    from .services import presence
+    people = set(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True))
+    spoke = list(spoke)
+    where = presence.places(said=[(r['sender_id'], r['mood__slug'], r['last'].timestamp()) for r in spoke
+                                  if r['sender_id'] in people])
     live = {}
     for row in spoke:
-        live.setdefault(row['mood__slug'], {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(row['sender_id'])
+        if row['sender_id'] not in people:
+            live.setdefault(row['mood__slug'], {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(row['sender_id'])
+    for name, slug in sorted(where.items()):
+        live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(name)
     for mood in Mood.objects.all():
         entry = live.setdefault(mood.slug, {'speakers': [], 'typing': [], 'busy': None})
         entry['typing'] = typing_in(mood.slug)
@@ -1288,7 +1328,11 @@ def api_moods_live(request):
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list
-    from .services import watchers
+    from .services import listening, watchers
+    for slug in list(live):  # who's listening by voice there, 🎧 beside their names (Justin, 22 Oct)
+        heard_by = listening.in_mood(slug)
+        if heard_by:
+            live[slug]['listening'] = heard_by
     for slug, n in watchers.by_mood().items():  # who's reading without signing in: a count beside the Mood
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['watching'] = n
     body = {'moods': live, 'blocks': AROUND_BLOCKS}
