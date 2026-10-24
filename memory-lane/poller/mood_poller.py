@@ -49,6 +49,7 @@ the Mood's model: Anthropic's on Claude Code, other vendors' on Pi.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -90,6 +91,22 @@ MAX_PROMPT_CHARS = 100_000
 # Text that could pass for the wrapper's own tags, so a post can't close
 # <mood-wake> early and write what looks like the poller's instructions.
 _WRAPPER_TAG = re.compile(r'<(/?)(mood-wake)', re.I)
+
+
+def utc_seconds():
+    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+
+def magenta_commit():
+    """The magenta commit this runs from: MAGENTA_COMMIT, else its checkout's; '' if neither says."""
+    found = os.environ.get('MAGENTA_COMMIT', '').strip()
+    if found:
+        return found[:12]
+    try:
+        return subprocess.run(['git', '-C', str(Path(__file__).parent), 'rev-parse', '--short=12', 'HEAD'],
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:  # noqa: BLE001
+        return ''
 
 
 def parse_time(iso):
@@ -146,6 +163,23 @@ class MoodAPI:
             return False
         response = self.http.post(f'{self.base}/api/moods/{slug}/quiet/', json={'reason': reason, 'by': by},
                                   headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
+        return response.status_code == 201
+
+    def block(self):
+        """Ethereum mainnet's newest height, as magenta last heard it, or None."""
+        try:
+            return self._get('/api/block/').get('height')
+        except Exception:  # noqa: BLE001 -- a bundle without its block sentence, not a turn without rules
+            return None
+
+    def bundle(self, record):
+        """Record the rules bundle a turn was given (poller/rules_bundle.py Bundle.record)."""
+        if not self.key:
+            return False
+        response = self.http.post(f'{self.base}/api/bundles/', json=record,
+                                  headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
+        if response.status_code != 201:
+            logger.warning(f'recording bundle {record.get("id")}: {response.status_code} {response.text[:200]}')
         return response.status_code == 201
 
     def report_models(self, agent, catalog):
@@ -1177,6 +1211,7 @@ class MoodPoller:
         # Its rules, gathered for each turn and given as system prompt (poller/rules_bundle.py): for an agent
         # that has them on PickiPedia (blu first), never for one whose rules live elsewhere yet.
         self.rules_bundle = rules_bundle
+        self.commit = magenta_commit() if rules_bundle else ''
         # The dials' texts, from PickiPedia (poller/wiki_rules.WikiTexts); None: this file's own.
         self.texts = texts
         self.waker = waker
@@ -1736,20 +1771,40 @@ class MoodPoller:
         return outcome
 
     def rules_for(self, slug):
-        """This agent's rules for `slug`, as its harness takes them (--append-system-prompt): gathered
-        fresh for each turn, so a page saved on PickiPedia holds from the next one. If they can't be
-        gathered at all, the recovery rules beside this file -- never a turn with none."""
+        """(text, record): this agent's rules for `slug`, as its harness takes them
+        (--append-system-prompt), gathered fresh for each turn, so a page saved on PickiPedia holds
+        from the next one; and what is recorded of them (rules_bundle.Bundle.record), with when they
+        were asked for and made. If they can't be gathered at all, the recovery rules beside this
+        file -- never a turn with none -- and the record says why."""
+        requested, record_id = utc_seconds(), str(uuid.uuid4())
         try:
             try:
                 from poller.rules_bundle import bundle
             except ImportError:
                 from rules_bundle import bundle
-            return bundle(self.agent, slug).text
+            block = self.api.block() if hasattr(self.api, 'block') else None
+            b = bundle(self.agent, slug, block=block if isinstance(block, int) else None, record_id=record_id)
+            text, record = b.text, b.record()
         except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery rules stand
             logger.error(f'{slug}: rules not gathered ({e}); the recovery rules stand in')
             recovery = Path(__file__).with_name('recovery_rules.md')
-            text = recovery.read_text() if recovery.exists() else 'Your rules could not be gathered.'
-            return f'<rules agent="{self.agent}" mood="{slug}">\n<recovery>\n{text}\n</recovery>\n</rules>'
+            words = recovery.read_text() if recovery.exists() else 'Your rules could not be gathered.'
+            text = (f'<rules agent="{self.agent}" mood="{slug}" bundle="{record_id}">\n<recovery>\n{words}\n'
+                    '</recovery>\n</rules>')
+            record = {'id': record_id, 'agent': self.agent, 'mood': slug, 'parts': [text], 'stamps': {},
+                      'sha256': hashlib.sha256(text.encode()).hexdigest(), 'error': f'{type(e).__name__}: {e}'[:300]}
+        record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit)
+        return text, record
+
+    def record_bundle(self, record, session_id, delivered_at, harness=None):
+        """The bundle a turn was given, kept in magenta: delivered_at is when its harness first spoke,
+        so it had started with the bundle in hand; None, it never did."""
+        record.update(session_id=session_id or '', delivered_at=delivered_at, harness=harness or '')
+        try:
+            if hasattr(self.api, 'bundle'):
+                self.api.bundle(record)
+        except Exception as e:  # noqa: BLE001 -- the turn happened; only its record is lost, and said so
+            logger.warning(f'bundle {record.get("id")} not recorded: {e}')
 
     # --- waiting for another agent -------------------------------------------------
 
@@ -1814,8 +1869,9 @@ class MoodPoller:
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
         new_session = options.pop('new_session', None) or str(uuid.uuid4())
         answers = options.pop('answers', None)
+        bundled = None
         if self.rules_bundle:
-            options['system'] = self.rules_for(slug)
+            options['system'], bundled = self.rules_for(slug)
         if hasattr(self.waker, 'harness_for'):  # two harnesses: settled here, so the poster suits it
             options['harness'] = options.get('harness') or self.waker.harness_for(options.get('model'))
         poster = None
@@ -1834,12 +1890,21 @@ class MoodPoller:
             if answers:
                 poster.answers = list(answers)
         stop = self.stop_check(slug, options.pop('since', None))
+        heard = {}  # when the harness first spoke: it had started, with its rules in hand
+        on_event = poster.put if poster else None
+        if bundled is not None:
+            def on_event(event, put=on_event):
+                heard.setdefault('at', utc_seconds())
+                if put:
+                    put(event)
         try:
             new_session, reply = self.waker.wake(session_id, prompt, new_session_id=new_session,
-                                                 on_event=poster.put if poster else None, stop=stop,
+                                                 on_event=on_event, stop=stop,
                                                  **options)
         except Exception as e:
             logger.error(f'{slug}: wake failed, not retrying: {e}')
+            if bundled is not None:
+                self.record_bundle(bundled, new_session, heard.get('at'), options.get('harness'))
             if poster:  # close the turn in the Mood, or it shows as working until it times out
                 poster.put({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
                             'session_id': new_session, 'uuid': str(uuid.uuid4())})
@@ -1847,6 +1912,8 @@ class MoodPoller:
             return 'failed', None, 0.0
         if poster:
             poster.close()
+        if bundled is not None:
+            self.record_bundle(bundled, new_session, heard.get('at'), options.get('harness'))
         cost = (getattr(self.waker, 'last_result', None) or {}).get('run_cost_usd')
         ending = (getattr(self.waker, 'last_result', None) or {}).get('subtype') or ''
         command = (getattr(self.waker, 'last_result', None) or {}).get('local_command')

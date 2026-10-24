@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from . import views_auth
 from . import views_moods
+from . import views_bundles
 from . import views_runner
 from . import views_settings
 from . import views_admin
@@ -95,6 +96,9 @@ urlpatterns = [
     path('api/deploys/', views_runner.api_deploys, name='api_deploys'),
     path('api/access/ssh/', views_runner.api_ssh, name='api_ssh'),
     path('api/servers/', views_runner.api_servers, name='api_servers'),
+    path('api/bundles/', views_bundles.api_bundles, name='api_bundles'),
+    path('api/bundles/<str:record_id>/', views_bundles.api_bundle, name='api_bundle'),
+    path('api/bundles/<str:record_id>/text/', views_bundles.api_bundle_text, name='api_bundle_text'),
     path('api/tokens/', views_moods.api_tokens, name='api_tokens'),
     path('moods/media/<str:sha256>.<str:ext>', views_moods.media_file, name='mood_media'),
     path('moods/media/<str:sha256>.<str:ext>/preview', views_moods.media_preview, name='mood_media_preview'),

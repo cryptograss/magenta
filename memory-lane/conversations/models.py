@@ -1697,6 +1697,46 @@ class HarnessModels(models.Model):
     def __str__(self):
         return f"{self.agent_id}: {self.harness}, {len(self.vendors)} vendors"
 
+class BundleRecord(models.Model):
+    """
+    The rules a turn was given (poller/rules_bundle.py), as its runner sent
+    them: not the text but its parts -- the bundle's own words, and in each
+    layer's place a PickiPedia page and revision -- and the text's sha256.
+    Joining the revisions' texts back in rebuilds it (rules_bundle.rebuilt),
+    and the sha256 proves the rebuild. Each is one bundle action: asked for,
+    made, and handed to a harness that started with it (delivered_at; none,
+    it never did). Justin, magent-self, 2026-10-24.
+    """
+
+    id = models.UUIDField(primary_key=True)  # the runner's, in the bundle's <rules bundle="..."> tag
+    agent = models.CharField(max_length=60, db_index=True)
+    mood = models.CharField(max_length=120, blank=True, default='', db_index=True)
+    session_id = models.CharField(max_length=80, blank=True, default='')
+    harness = models.CharField(max_length=60, blank=True, default='')
+    requested_at = models.DateTimeField(db_index=True)
+    produced_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    block = models.BigIntegerField(null=True, blank=True)
+    sha256 = models.CharField(max_length=64)
+    parts = models.JSONField(default=list)      # [str | {'page', 'revision'}]
+    transform = models.CharField(max_length=200, blank=True, default='')
+    stamps = models.JSONField(default=dict)     # Bundle.stamps(): each layer's page, revision, editor, problem
+    commit = models.CharField(max_length=40, blank=True, default='')
+    error = models.CharField(max_length=300, blank=True, default='')  # why the recovery rules stood in
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'bundle_records'
+        ordering = ['-requested_at']
+
+    def __str__(self):
+        return f"{self.agent} in {self.mood or '(no Mood)'} at {self.requested_at:%Y-%m-%d %H:%M:%S}: {self.sha256[:12]}"
+
+    def pages(self):
+        """[{'page', 'revision'}] in the order the bundle has them."""
+        return [part for part in self.parts if not isinstance(part, str)]
+
+
 # ============================================================================
 # Import Tracking Constants
 # ============================================================================
