@@ -381,6 +381,22 @@ class PulseAndQuietTest(TestCase):
         self.assertEqual(post({'reason': ''}).status_code, 200)  # lifted
         self.assertEqual(activity(self.mood)['doing'], 'waking')
 
+    def test_waiting_for_another_agent_shows_as_such(self):
+        # Justin, 24 Oct: the wait showed only as its quiet dot; the hold saying whom it waits for wasn't drawn.
+        from django.core.cache import cache
+        from conversations.services.mood_view import activities
+        cache.delete('held:m26')
+        Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, content='@re and @magent, thoughts?',
+                               source_file='mood-web')
+        Message.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.mood, session_id=str(uuid.uuid4()),
+                               content=[{'type': 'text', 'text': '<wait for="re"/>'}], stop_reason='end_turn')
+        self.assertEqual(self.client.post('/api/moods/m26/held/', json.dumps({'reason': 'waiting for re to answer'}),
+                                          content_type='application/json', **AUTH).status_code, 200)
+        mine = [a for a in activities(self.mood) if a['agent'] == 'magent']
+        self.assertEqual([(a['doing'], a['why']) for a in mine], [('held', 'waiting for re to answer')])
+        quiet = self.client.get('/api/moods/m26/turns/').json()['quiet']
+        self.assertEqual([q['reason'] for q in quiet], ['waiting for re'])  # its reply: a silence, not a turn
+
     def test_recent_context_only_when_asked(self):
         for i in range(5):
             Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, content=f'line {i}',

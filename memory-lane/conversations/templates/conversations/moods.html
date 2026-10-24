@@ -4771,6 +4771,8 @@
     activityText.innerHTML = acts.map(a => `<span class="one${a.doing === 'held' ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
       + (a.doing === 'waking'
         ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${elapsed(a.since)}`
+        : a.doing === 'held' && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
+        ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${esc(a.why)}` + (a.until ? ` · answers by ${esc(hhmm(a.until))} at the latest` : '')
         : a.doing === 'held'
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
           + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
