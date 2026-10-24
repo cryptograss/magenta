@@ -1416,14 +1416,18 @@ class MoodPoller:
     # Without a word from the runner, the Mood can only show "waking" for as
     # long as a mention goes unanswered. So a hold is said once -- logged, and
     # posted to the Mood with its reason -- renewed before it lapses there,
-    # and lifted when it ends.
+    # and lifted when it ends. Said again, too, for a post newer than it: the
+    # Mood holds only the posts before a hold, so a second mention during a
+    # turn read as "waking" until the renewal (Justin, 24 Oct).
     RENEW_HOLD = timedelta(minutes=5)  # well inside the server's HELD_FOR
 
-    def hold(self, slug, reason, until=None):
+    def hold(self, slug, reason, until=None, after=None):
+        """`after`: when the newest post held was made, to say the hold again if it's newer than that."""
         self.held_now.add(slug)
         until = until.isoformat() if hasattr(until, 'isoformat') else (until or None)
         said = self.holds.get(slug)
-        if said and said[:2] == (reason, until) and self.now() - said[2] < self.RENEW_HOLD:
+        newer = bool(said and after and parse_time(after) >= said[2])
+        if said and said[:2] == (reason, until) and self.now() - said[2] < self.RENEW_HOLD and not newer:
             return
         if not said or said[:2] != (reason, until):
             logger.warning(f'{slug}: holding a mention: {reason}' + (f' (until {until})' if until else ''))
@@ -1539,17 +1543,19 @@ class MoodPoller:
                 continue  # another runner's Mood
             if self.listening(slug) == 'off':
                 # Held, not dropped: answered once the agent is listening again.
-                self.hold(slug, 'hushed here', (self.knob(slug, 'listening') or {}).get('until'))
+                self.hold(slug, 'hushed here', (self.knob(slug, 'listening') or {}).get('until'),
+                          after=mentioned[-1]['created_at'])
                 continue
             if not self.free(slug):
                 # Held too: answered when the turn there (or a slot) is done.
                 self.hold(slug, 'a turn is under way here; this one is next' if slug in self.running
-                          else f'all {self.parallel} turn slots are busy')
+                          else f'all {self.parallel} turn slots are busy', after=mentioned[-1]['created_at'])
                 continue
             only_agents = not any(t.get('is_human', True) for t in mentioned)
             if only_agents and not self.agent_wake_allowed(slug):
                 # Held, not dropped: a person can still see it, and the hour ends.
-                self.hold(slug, f'{self.agent_wake_limit(slug)} wakes by agents this hour already')
+                self.hold(slug, f'{self.agent_wake_limit(slug)} wakes by agents this hour already',
+                          after=mentioned[-1]['created_at'])
                 continue
             try:
                 done, outcome = self.consider(slug, mentioned)
@@ -1595,7 +1601,7 @@ class MoodPoller:
         if len(recent) >= self.max_wakes_per_hour:
             # The next slot opens when the oldest of the hour's wakes ages out.
             opens = min(parse_time(w) for w in recent) + timedelta(hours=1)
-            self.hold(slug, f'{self.max_wakes_per_hour} wakes this hour already', opens)
+            self.hold(slug, f'{self.max_wakes_per_hour} wakes this hour already', opens, after=owed[-1]['created_at'])
             return settled, None
 
         # Someone pressed stop here after these were posted: let them go. What
