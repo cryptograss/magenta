@@ -876,9 +876,8 @@ class MentionContextTest(TestCase):
 class DefaultsTest(TestCase):
 
     def test_eight_turns_at_once_by_default(self):
-        import inspect
-        from poller import mood_poller
-        self.assertIn("'--parallel', type=int, default=8", inspect.getsource(mood_poller.main))
+        from poller.mood_poller import build_parser
+        self.assertEqual(build_parser().parse_args([]).parallel, 8)
 
 
 class ColdQuietTest(TestCase):
@@ -1288,7 +1287,7 @@ class SettingsInTheRunnerTest(TestCase):
 
     def test_knobs_reach_the_wake(self):
         api = MentionsAndPulse(settings={'consider_effort': 'low', 'model': 'sonnet', 'consider_after': 60,
-                                         'rules': 'This is the casual channel: be light.'})
+                                         'verbosity': 'brief'})
         poller = self.make(api, FakeScreen('pass'))
         api.add(post('a', 1))
         self.at(minutes=1, seconds=30)
@@ -1296,7 +1295,8 @@ class SettingsInTheRunnerTest(TestCase):
         self.at(minutes=2, seconds=30)
         self.assertEqual(poller.cycle()[1], [('m26', 'silent')])
         self.assertEqual(self.waker.options, {'effort': 'low', 'budget': 3.0, 'model': 'sonnet'})
-        self.assertIn('This is the casual channel: be light.', self.waker.woken[0][1])
+        from poller.mood_poller import VERBOSITY_LINES
+        self.assertIn(VERBOSITY_LINES['brief'], self.waker.woken[0][1])
 
     def test_chatty_skips_the_screen_and_asks_it_to_join_in(self):
         api = MentionsAndPulse(settings={'discretion': 'chatty'})

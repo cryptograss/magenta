@@ -433,7 +433,7 @@ class PiWaker:
             cmd += ['--thinking', EFFORTS.get(effort, effort)]
         if not full:
             cmd += ['--tools', LOOK_ONLY_TOOLS]  # reading only; MCP tools stay
-        if system:  # its rules (mood_poller.MoodPoller.rules_for): after Pi's own, never in the session
+        if system:  # its instructions (mood_poller.MoodPoller.instructions_for): after Pi's own, never in the session
             cmd += ['--append-system-prompt', system]
         return cmd + [prompt]
 
