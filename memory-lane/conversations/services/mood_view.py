@@ -66,7 +66,7 @@ _QUIET = re.compile(r'^<silent\s*/>$|^<silent(?:\s+by="(\w+)")?>(.*)</silent>$',
 
 # An agent waiting for another asked the same thing (poller/mood_poller.py _WAIT_REPLY): no answer yet, so a
 # silence -- a dot saying whom it's waiting for -- never a turn, an answer, or a mention.
-_WAIT = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"\s*/>\s*$')
+_WAIT = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"(?:\s+to="([^"<>]{0,200})")?\s*/>\s*$')
 
 
 def quiet_reason(text):
@@ -75,7 +75,12 @@ def quiet_reason(text):
     match = _QUIET.match(text)
     if not match:
         wait = _WAIT.match(text or '')
-        return {'reason': f'waiting for {wait.group(1).strip()}', 'by': ''} if wait else None
+        if not wait:
+            return None
+        # As the poller shows it (wait_reason): to="..." cut to its first eight words.
+        to = (wait.group(2) or '').split()
+        to = ' '.join((to[1:] if to and to[0].lower() == 'to' else to)[:8])
+        return {'reason': f'waiting for {wait.group(1).strip()}' + (f' to {to}' if to else ''), 'by': ''}
     return {'reason': (match.group(2) or '').strip(), 'by': match.group(1) or ''}
 
 

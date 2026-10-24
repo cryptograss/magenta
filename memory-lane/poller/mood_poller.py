@@ -81,11 +81,16 @@ SILENT = '<silent/>'
 # A silent reply, with or without a reason: <silent/> or <silent>why</silent>.
 _SILENT_REPLY = re.compile(r'^\s*<silent\s*/>\s*$|^\s*<silent>.*</silent>\s*$', re.S)
 # Waiting for another agent asked the same thing (Justin and re, 24 Oct): a reply that is only this. The poller
-# takes it -- it's a state shown in the Mood (a hold), never a mention or a post that wakes anyone -- and wakes
-# the agent again once they've answered, after WAIT_FOR, or at once if they're waiting for it and it was
-# named first. Once a question: its next wake says to answer.
-_WAIT_REPLY = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"\s*/>\s*$')
-WAIT_FOR = timedelta(minutes=5)
+# takes it -- it's a state shown in the Mood (a hold), never a mention or a post that wakes anyone -- and checks
+# in every WAIT_FOR: while they're at work the wait goes on, with no turn spent on it; the agent is woken again
+# once they've answered, or finished without answering, or at once if they're waiting for it and it was named
+# first. No cap (Justin: a person mentioning it ends the wait anyway). Woken, it may wait again, for one still
+# at work or one an answer handed it on to.
+# With to="...", a few words on what it waits for them to do, shown and said: "magent is waiting for re to
+# settle the schema" (Justin, 24 Oct).
+_WAIT_REPLY = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"(?:\s+to="([^"<>]{0,200})")?\s*/>\s*$')
+WAIT_TO_WORDS = 8      # words of a wait's to="..." shown; the rest are cut
+WAIT_FOR = timedelta(minutes=5)   # between check-ins
 # Linux caps a single argument at 128 KiB; a prompt is an argument.
 MAX_PROMPT_CHARS = 100_000
 # Text that could pass for the wrapper's own tags, so a post can't close
@@ -945,6 +950,25 @@ def mention_opening(slug, why):
     return [f'<mood-wake mood="{slug}">', f'You were woken by the Mood poller: {why}', '']
 
 
+def wait_reason(names, to=''):
+    """A wait as the Mood shows it: 'waiting for re', or 'waiting for re to settle the schema'."""
+    return f'waiting for {", ".join(names)}' + (f' to {to}' if to else '')
+
+
+def wait_to(text):
+    """A wait's to="...": its first WAIT_TO_WORDS words, on one line, without a leading 'to'."""
+    words = (text or '').split()
+    if words and words[0].lower() == 'to':
+        words = words[1:]
+    return ' '.join(words[:WAIT_TO_WORDS])
+
+
+def waited_for(why):
+    """The names a shown wait ('waiting for re, blu to …') is for."""
+    names = str(why or '')[len('waiting for '):].split(' to ', 1)[0]
+    return [n.strip() for n in names.split(',') if n.strip()]
+
+
 def also_asked(owed, agent, page, may_wait=True):
     """Lines telling a woken agent which other agents the posts that woke it asked too, and whether each was at
     work here as its wake was written (Justin, 24 Oct: two agents answering one question blind, neither knowing
@@ -970,8 +994,10 @@ def also_asked(owed, agent, page, may_wait=True):
         return 'has answered, below' if name in answered else 'not at work here yet'
     said = '; '.join(f'{name}, {state(name)}' for name in asked)
     # Justin's words (24 Oct): "mentioned, and likely woken" -- whether they answer is theirs to say.
-    wait = (f' If you would rather answer after them, reply with only <wait for="{asked[0]}"/>: you are woken '
-            f'again once they have answered, or in {int(WAIT_FOR.total_seconds() // 60)} minutes.') if may_wait else ''
+    wait = (f' If you would rather answer after them, reply with only <wait for="{asked[0]}" to="a few words"/>, '
+            'the words saying what you wait for them to do ("settle the schema"), shown and read aloud as '
+            f'"{agent} is waiting for {asked[0]} to settle the schema": you are woken again once they have answered, '
+            'or have finished without answering; while they are at work, the wait goes on.') if may_wait else ''
     return ['', f'Others mentioned, and likely woken, by what woke you: {said}. Each of you is woken on its own and '
                 'answers without waiting for the other; what they say lands in the Mood as they write it (read_mood '
                 f'shows it), if you would rather answer with it in view.{wait}']
@@ -1291,7 +1317,8 @@ class MoodPoller:
         self.state.setdefault('spend', {'day': '', 'usd': 0.0})
         self.state.setdefault('agent_wakes', {})
         self.state.setdefault('waits', {})    # slug -> a wait under way (start_wait)
-        self.state.setdefault('waited', [])   # mention ids already waited on once
+        self.state.setdefault('waited', [])   # mention ids waited on already: waiting again needs one at work
+        self.state.setdefault('wait_also', {})  # slug -> agents an answer waited for handed it on to
         self.replies = {}      # flight -> what its turn replied, for after it lands
         self.wait_notes = {}   # slug -> what the next wake there says of the wait that ended
         self.end_orphans = end_orphans
@@ -1525,7 +1552,7 @@ class MoodPoller:
         for slug in [s for s in pending if s in self.state['waits']]:
             wait = self.state['waits'].pop(slug)
             self.wait_notes[slug] = (f"You chose to wait for {', '.join(wait['for'])}; more was said to you "
-                                     'meanwhile. Answer now: you can wait only once on a question.')
+                                     'meanwhile. Answer it all now' + self.wait_again(slug, wait['for']))
             over[slug] = wait['owed']
         for slug, owed in over.items():
             have = {t['id'] for t in pending.get(slug, [])}
@@ -1809,61 +1836,119 @@ class MoodPoller:
     # --- waiting for another agent -------------------------------------------------
 
     def after_reply(self, slug, owed, reply):
-        """A mention's turn has ended: if it chose to wait for another agent asked too, it waits."""
+        """A mention's turn has ended: if it chose to wait for another agent asked too, it waits. A wait not
+        taken is said at its next wake, at once, so the question is still answered."""
         match = _WAIT_REPLY.match(reply or '')
         if not match or not owed:
             return
-        asked = others_asked(owed, self.agent)
-        names = [n for n in re.split(r'[\s,]+', match.group(1).lower()) if n in asked]
         ids = [t['id'] for t in owed]
-        if not names or any(i in self.state['waited'] for i in ids):
-            logger.info(f'{slug}: a wait for {match.group(1)!r} not taken: '
-                        + ('waited once already' if names else 'nobody asked here by that name'))
-            return
+        allowed = others_asked(owed, self.agent) + self.state['wait_also'].pop(slug, [])
+        wanted = [n for n in re.split(r'[\s,]+', match.group(1).lower()) if n]
+        names = [n for n in wanted if n in allowed]
+        again = any(i in self.state['waited'] for i in ids)
+        why = None
+        if not names:
+            why = f"nobody asked here, or handed it on to, goes by {', '.join(wanted) or 'that name'}"
+        elif again and not self.at_work(slug, names):
+            why = f"{', '.join(names)} {'is' if len(names) == 1 else 'are'} not at work here now"
         now = self.now()
+        if why:
+            logger.info(f'{slug}: a wait for {match.group(1)!r} not taken: {why}')
+            if any(i in self.state.get('wait_refused', []) for i in ids):
+                return  # told once already: nothing more to wake it for
+            self.state['wait_refused'] = (self.state.get('wait_refused', []) + ids)[-200:]
+            self.state['waits'][slug] = {'for': wanted, 'owed': owed, 'since': now.isoformat(), 'until': now.isoformat(),
+                                         'refused': f'Your wait for {", ".join(wanted)} was not taken: {why}. Answer now.'}
+            self.save()
+            return
         # Who was named first, this agent among them: if two wait on each other, that one answers.
         first = next((n for t in owed for n in t.get('mentions') or []
-                      if n != t.get('sender') and (n == self.agent or n in asked)), self.agent)
+                      if n != t.get('sender') and (n == self.agent or n in names)), self.agent)
         self.state['waits'][slug] = {'for': names, 'owed': owed, 'since': now.isoformat(),
                                      'until': (now + WAIT_FOR).isoformat(), 'first': first}
         self.state['waited'] = (self.state['waited'] + ids)[-200:]
-        logger.info(f'{slug}: waiting for {", ".join(names)}')
-        self.hold(slug, f'waiting for {", ".join(names)}', now + WAIT_FOR)
+        to = wait_to(match.group(2))
+        if to:
+            self.state['waits'][slug]['to'] = to
+        logger.info(f'{slug}: {wait_reason(names, to)}')
+        self.hold(slug, wait_reason(names, to), now + WAIT_FOR)
         self.save()
 
-    def check_waits(self):
-        """{slug: the mentions to answer now} for each wait that's over -- they answered, the time's up, or
-        they're waiting for this agent and it was named first; the rest are held, and shown so, a while longer."""
-        over = {}
-        for slug, wait in list(self.state['waits'].items()):
-            names, since = wait['for'], parse_time(wait['since'])
+    def at_work(self, slug, names, page=None):
+        """Which of `names` are at work in `slug` now: thinking, working, writing -- not held, not idle."""
+        if page is None:
             try:
-                page = self.api.recent(slug, limit=60)
+                page = self.api.recent(slug, limit=1)
             except Exception:
                 page = {}
-            doing = {a.get('agent'): a for a in page.get('activities') or [] if a.get('agent')}
-            said = [t for t in page.get('turns') or []
-                    if t.get('sender') in names and parse_time(t['created_at']) > since]
-            busy = [n for n in names if (doing.get(n) or {}).get('doing') not in (None, 'held')]
-            waiting_on_me = [n for n in names if (doing.get(n) or {}).get('doing') == 'held'
-                             and self.agent in str((doing.get(n) or {}).get('why') or '')
-                             and 'waiting for' in str((doing.get(n) or {}).get('why') or '')]
-            who = ', '.join(names)
-            if said and not busy:
-                note = f'You chose to wait for {who}. {who} has answered: it is in what was said here, below.'
-            elif self.now() >= parse_time(wait['until']):
-                note = f'You chose to wait for {who}; {int(WAIT_FOR.total_seconds() // 60)} minutes on, {who} has not answered.'
-            elif waiting_on_me and wait.get('first') == self.agent:
-                note = f'You chose to wait for {who}, and {who} is waiting for you; you were named first.'
+        doing = {a.get('agent'): a.get('doing') for a in page.get('activities') or [] if a.get('agent')}
+        return [n for n in names if doing.get(n) not in (None, 'held')]
+
+    def wait_again(self, slug, names, page=None):
+        """How a woken agent may wait again: for those it waited for still at work. Said after 'Answer now'."""
+        busy = self.at_work(slug, names, page)
+        if not busy:
+            return '.'
+        self.state['wait_also'][slug] = busy
+        return (f', or, since {", ".join(busy)} {"is" if len(busy) == 1 else "are"} still at work here, reply with '
+                f'only <wait for="{busy[0]}" to="a few words"/> to wait on.')
+
+    def check_waits(self):
+        """{slug: the mentions to answer now} for each wait that's over: they answered, or finished without
+        answering, or they're waiting for this agent and it was named first. While they're at work (or waiting
+        for this one, named first), it goes on: checked again every WAIT_FOR, with no turn spent, and shown so."""
+        over = {}
+        changed = False
+        for slug, wait in list(self.state['waits'].items()):
+            names, since, now = wait['for'], parse_time(wait['since']), self.now()
+            if wait.get('refused'):
+                note = wait['refused']
             else:
-                self.hold(slug, f'waiting for {who}', wait['until'])
-                continue
+                try:
+                    page = self.api.recent(slug, limit=60)
+                except Exception:
+                    page = {}
+                doing = {a.get('agent'): a for a in page.get('activities') or [] if a.get('agent')}
+                said = [t for t in page.get('turns') or []
+                        if t.get('sender') in names and parse_time(t['created_at']) > since]
+                busy = self.at_work(slug, names, page)
+                waiting_on_me = [n for n in names if (doing.get(n) or {}).get('doing') == 'held'
+                                 and str((doing.get(n) or {}).get('why') or '').startswith('waiting for ')
+                                 and self.agent in waited_for((doing.get(n) or {}).get('why'))]
+                who = ', '.join(names)
+                if said and not busy:
+                    note = (f'You chose to wait for {who}. {who} has answered: it is in what was said here, below.'
+                            + self.handed_on(slug, said, names, page))
+                elif waiting_on_me and wait.get('first') == self.agent:
+                    note = f'You chose to wait for {who}, and {who} is waiting for you; you were named first. Answer now.'
+                elif busy or waiting_on_me or now < parse_time(wait['until']):
+                    # At work, or about to be: the wait goes on, checked in on again in WAIT_FOR.
+                    if now >= parse_time(wait['until']):
+                        wait['until'] = (now + WAIT_FOR).isoformat()
+                        changed = True
+                    self.hold(slug, wait_reason(names, wait.get('to', '')), wait['until'])
+                    continue
+                else:
+                    note = (f'You chose to wait for {who}; {who} {"is" if len(names) == 1 else "are"} not at work here, '
+                            'and has not answered since. Answer now.')
             del self.state['waits'][slug]
-            self.wait_notes[slug] = note + ' Answer now: you can wait only once on a question.'
+            self.wait_notes[slug] = note
             over[slug] = wait['owed']
-        if over:
+        if over or changed:
             self.save()
         return over
+
+    def handed_on(self, slug, said, names, page):
+        """What an answer waited for handed on: agents it mentioned who are at work here now, to wait for in turn."""
+        agents = set(page.get('agents') or {})
+        named = [n for t in said for n in t.get('mentions') or []
+                 if n not in names and n != self.agent and n != t.get('sender') and n in agents]
+        busy = [n for n in dict.fromkeys(named) if n in self.at_work(slug, named, page)]
+        if not busy:
+            return ' Answer now.'
+        self.state['wait_also'][slug] = busy
+        return (f' {", ".join(names)} mentioned {", ".join(busy)}, at work here now. Answer now, or reply with only '
+                f'<wait for="{busy[0]}" to="a few words"/> to wait for {busy[0]} in turn.')
 
     def run_turn_for(self, slug, session_id, prompt, **options):
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
