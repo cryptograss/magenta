@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import TestCase
 
-from poller.mood_poller import SILENT, WAIT_FOR, ClaudeCodeWaker, Harnesses, MoodPoller, project_dir_name
+from poller.mood_poller import SILENT, WAIT_FOR, ClaudeCodeWaker, Harnesses, MoodPoller, parse_time, project_dir_name
 
 T0 = datetime(2026, 9, 29, 18, 0, tzinfo=timezone.utc)
 
@@ -2048,12 +2048,14 @@ class HarnessesTest(TestCase):
 
 
 class WaitingTest(TestCase):
-    """Waiting for another agent asked the same thing (Justin and re, 24 Oct): a state, shown as a hold, that
-    always ends in an answer -- theirs came, the time ran out, or they were waiting too and this one was first."""
+    """Waiting for another agent asked the same thing (Justin and re, 24 Oct): a state, shown as a hold, checked
+    in on every WAIT_FOR, going on while they're at work, that ends in a wake -- theirs came, they finished without
+    one, or they were waiting too and this one was first -- where it may answer, or wait again for one still at
+    work or one the answer handed on to."""
 
     def make(self, replies, mentions=('magent', 're')):
         clock = self.clock = [T0 + timedelta(minutes=1)]
-        self.page = {'turns': [], 'activities': [], 'agents': {'magent': {}, 're': {}}}
+        self.page = {'turns': [], 'activities': [], 'agents': {'magent': {}, 're': {}, 'blu': {}}}
         test = self
 
         class API(FakeAPI):
@@ -2094,13 +2096,43 @@ class WaitingTest(TestCase):
         self.assertIn('re, has answered, below', again)              # not "not at work here yet"
         self.assertNotIn('m26', poller.state['waits'])
 
-    def test_a_second_wait_on_the_same_question_is_not_taken(self):
-        poller = self.make(['<wait for="re"/>', '<wait for="re"/>'])
+    def test_at_work_at_its_check_in_the_wait_goes_on_with_no_turn_spent(self):
+        poller = self.make(['<wait for="re"/>'])
         poller.poll_once()
-        self.clock[0] += WAIT_FOR + timedelta(seconds=1)            # re never answers
+        self.page['activities'] = [{'agent': 're', 'doing': 'working'}]
+        for _ in range(3):                                          # fifteen minutes and more of re at work
+            self.clock[0] += WAIT_FOR + timedelta(seconds=1)
+            self.assertEqual(poller.poll_once(), [])
+        self.assertEqual(len(self.waker.woken), 1)                   # never woken to be told so
+        until = poller.state['waits']['m26']['until']
+        self.assertGreater(parse_time(until), self.clock[0])         # the next check-in, ahead
+        self.assertEqual(self.api.holds[-1][:2], ('m26', 'waiting for re'))
+
+    def test_finished_without_answering_it_is_woken_and_waits_again_only_for_one_at_work(self):
+        poller = self.make(['<wait for="re"/>', '<wait for="re"/>', '<wait for="re"/>'])
+        poller.poll_once()
+        self.clock[0] += WAIT_FOR + timedelta(seconds=1)            # re never at work, never answers
         self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('5 minutes on, re has not answered', self.waker.woken[1][1])
-        self.assertNotIn('m26', poller.state['waits'])              # it waits no more
+        self.assertIn('re is not at work here, and has not answered since. Answer now.', self.waker.woken[1][1])
+        self.assertTrue(poller.state['waits']['m26'].get('refused'))  # waiting again for re, idle: not taken,
+        self.clock[0] += timedelta(seconds=30)
+        self.assertEqual(poller.poll_once(), ['m26'])                 # and said at once
+        self.assertIn('Your wait for re was not taken: re is not at work here now', self.waker.woken[2][1])
+        self.clock[0] += timedelta(seconds=30)
+        self.assertEqual(poller.poll_once(), [])                      # told once: no more turns on it
+        self.assertEqual(len(self.waker.woken), 3)
+
+    def test_an_answer_that_hands_on_may_be_waited_for_in_turn(self):
+        poller = self.make(['<wait for="re"/>', '<wait for="blu"/>'])
+        poller.poll_once()
+        self.page['turns'] = [dict(turn('r1', 're', 2, 'Half of it; @blu knows the rest.'), mentions=['blu'])]
+        self.page['activities'] = [{'agent': 'blu', 'doing': 'thinking'}]
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), ['m26'])
+        self.assertIn('re mentioned blu, at work here now. Answer now, or reply with only <wait for="blu"/>',
+                      self.waker.woken[1][1])
+        self.assertEqual(poller.state['waits']['m26']['for'], ['blu'])  # now waiting for blu
+        self.assertEqual(self.api.holds[-1][:2], ('m26', 'waiting for blu'))
 
     def test_waiting_on_each_other_the_first_named_answers(self):
         poller = self.make(['<wait for="re"/>'])                    # magent named first
@@ -2120,7 +2152,10 @@ class WaitingTest(TestCase):
     def test_only_for_an_agent_asked_here(self):
         poller = self.make(['<wait for="blu"/>'])
         poller.poll_once()
-        self.assertNotIn('m26', poller.state['waits'])
+        self.assertTrue(poller.state['waits']['m26'].get('refused'))   # not a wait: said at the next pass
+        self.clock[0] += timedelta(seconds=30)
+        self.assertEqual(poller.poll_once(), ['m26'])
+        self.assertIn('Your wait for blu was not taken: nobody asked here', self.waker.woken[1][1])
 
     def test_a_wait_is_quiet_never_a_turn_or_a_mention(self):
         from conversations.services.mood_view import is_wrapper, quiet_reason
