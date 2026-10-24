@@ -8,6 +8,11 @@ One per address and browser, in a shared cache entry, as typing is. Only
 browsers count: the runner and other scripts read the Moods too, and bots
 are left out. The address is the one Caddy saw (the last of
 X-Forwarded-For), never one a client claims for itself.
+
+To an SSH-key sign-in each reader also shows where its address is, roughly
+(services/geoip.py), and who signed in from that address lately, if anyone has
+(Justin, 24 Oct): someone reading signed out on another browser, or a house
+sharing one address -- or a phone carrier sharing one among thousands.
 """
 
 import hashlib
@@ -17,8 +22,11 @@ import time
 from django.core.cache import cache
 
 KEY = 'watchers'
+KNOWN = 'watchers:known'  # address -> {name: when last signed in from it}
 WATCHING_FOR = 90      # seconds since its last look that a page counts (a hidden tab looks once a minute)
 WRITE_EVERY = 20       # seconds between noting the same watcher again
+KNOWN_FOR = 7 * 86400  # seconds an address is remembered as someone's
+KNOWN_EVERY = 600      # seconds between noting the same person at the same address again
 _NOT_A_PERSON = re.compile(r'bot|crawl|spider|slurp|preview|python|curl|wget|headless', re.I)
 
 
@@ -54,6 +62,26 @@ def seen(request, slug, now=None):
     cache.set(KEY, watching, WATCHING_FOR * 2)
 
 
+def signed_in(request, name, now=None):
+    """Note that `name`, signed in, looked from this address: a reader there without a sign-in may be them."""
+    now = now or time.time()
+    ip = client_ip(request)
+    known = cache.get(KNOWN) or {}
+    if now - known.get(ip, {}).get(name, 0) < KNOWN_EVERY:
+        return
+    known = {a: kept for a, names in known.items()
+             if (kept := {n: t for n, t in names.items() if now - t < KNOWN_FOR})}
+    known.setdefault(ip, {})[name] = now
+    cache.set(KNOWN, known, KNOWN_FOR)
+
+
+def known_at(ip, now=None, known=None):
+    """Who signed in from `ip` in the last KNOWN_FOR seconds, the latest first."""
+    now = now or time.time()
+    names = (cache.get(KNOWN) or {} if known is None else known).get(ip, {})
+    return [n for n, t in sorted(names.items(), key=lambda nt: -nt[1]) if now - t < KNOWN_FOR]
+
+
 def by_mood(now=None):
     """slug -> how many are reading it without signing in: counts only, for anyone."""
     now = now or time.time()
@@ -65,11 +93,15 @@ def by_mood(now=None):
 
 
 def now_watching(slug, admin=False, now=None):
-    """{'here', 'all'} counts, and with `admin` (an SSH-key sign-in) each one: {'ip', 'browser', 'mood', 'since'}."""
+    """{'here', 'all'} counts, and with `admin` (an SSH-key sign-in) each one:
+    {'ip', 'place', 'known', 'browser', 'mood', 'since'}."""
     now = now or time.time()
     watching = [w for w in (cache.get(KEY) or {}).values() if now - w['last'] < WATCHING_FOR]
     out = {'here': sum(1 for w in watching if w['slug'] == slug), 'all': len(watching)}
     if admin:
-        out['who'] = sorted(({'ip': w['ip'], 'browser': w['browser'], 'mood': w['slug'], 'since': w['since']}
+        from . import geoip
+        known = cache.get(KNOWN) or {}
+        out['who'] = sorted(({'ip': w['ip'], 'place': geoip.place(w['ip']), 'known': known_at(w['ip'], now, known),
+                              'browser': w['browser'], 'mood': w['slug'], 'since': w['since']}
                              for w in watching), key=lambda w: (w['mood'] != slug, w['since']))
     return out

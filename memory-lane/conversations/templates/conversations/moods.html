@@ -1537,15 +1537,18 @@
   }
   // Who reads without signing in (services/watchers.py): 👁 and how many, on each
   // Mood's line. The open Mood's own count is the freshest, and to an SSH-key
-  // sign-in its hover says who each one is.
+  // sign-in its hover says who each one is: its address, roughly where that is,
+  // and who signed in from it lately.
   let watchersNow = null;
   function watchingIn(slug) {
     const here = slug === current && watchersNow;
     const n = here ? watchersNow.here : ((liveData[slug] || {}).watching || 0);
     if (!n) return '';
+    const who = here && watchersNow.who ? watchersNow.who.filter(x => x.mood === slug) : [];
     const title = `${n} reading without signing in, in the last minute or so`
-      + (here && watchersNow.who ? '\n\n' + watchersNow.who.filter(x => x.mood === slug)
-           .map(x => `${x.ip} · ${x.browser} · for ${elapsed(x.since)}`).join('\n') : '');
+      + (who.length ? '\n\n' + who.map(x => [x.ip, x.place, x.browser, `for ${elapsed(x.since)}`].filter(Boolean).join(' · ')
+           + ((x.known || []).length ? `\n    signed in from there lately: ${x.known.join(', ')}` : '')).join('\n')
+           + (who.some(x => x.place) ? '\n\nPlaces: IP Geolocation by DB-IP (db-ip.com), roughly' : '') : '');
     return ` <span class="watching" title="${esc(title)}">👁 ${n}</span>`;
   }
   function markLive() {
