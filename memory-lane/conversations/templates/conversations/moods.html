@@ -2935,6 +2935,20 @@
       prev = null;
       return;
     }
+    if (e.type === 'task') {  // an agent's task, started by a schedule or a person's call (services/tasks.py)
+      const page = `https://pickipedia.xyz/wiki/${encodeURIComponent((e.page || '').replace(/ /g, '_')).replace(/%2F/g, '/').replace(/%3A/g, ':')}`;
+      const task = `<a href="${esc(page)}${e.revision ? `?oldid=${esc(String(e.revision))}` : ''}" target="_blank" rel="noopener">${esc(e.task || 'a task')}</a>`;
+      const how = e.by === 'schedule' ? 'on its schedule' : `by <b>${esc(shown(e.by || 'someone'))}</b>`;
+      const who = `<b>${esc(shown(e.for || 'an agent'))}</b>`;
+      el.className = 'event task';
+      el.innerHTML = e.state === 'refused'
+        ? `✗ ${who}'s task ${task} didn't start (${how}): ${esc(e.reason || '')} · ${esc(stamp(e.created_at))}`
+        : `<details><summary>▶ ${who}'s task ${task}, started ${how}${e.tools === 'full' ? '' : ' · look-only'}`
+          + ` · ${esc(stamp(e.created_at))}</summary><div class="body">${e.html || ''}</div></details>`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'interrupt' || e.type === 'created') {  // someone pressed stop; someone started this Mood
       el.className = 'event';
       el.innerHTML = e.type === 'created'

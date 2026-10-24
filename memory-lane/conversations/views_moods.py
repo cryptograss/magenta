@@ -183,13 +183,15 @@ def api_mood_turns(request, slug):
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
-                                                   'tiding', 'comment_id', 'changes')},
+                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
                                   if text.get('type') == 'release' and text.get('cid') else {}),
                                # A handoff's context, as a message is shown (services/handoff.py).
-                               **({'html': render_html(text.get('context') or '')} if text.get('type') == 'handoff' else {})})
+                               **({'html': render_html(text.get('context') or '')} if text.get('type') == 'handoff' else {}),
+                               # A task's prompt, filled in, as it was sent (services/tasks.py).
+                               **({'html': render_html(text.get('text') or '')} if text.get('type') == 'task' else {})})
         elif kind == 'compaction':
             compactions_out.append({'id': str(msg.id), 'session_id': str(msg.session_id or ''),
                                     'created_at': msg.created_at.isoformat(), 'html': render_html(text)})
@@ -935,15 +937,16 @@ def api_mentions(request, name):
         limit = 50
 
     from django.db.models import Q
-    from .services import handoff, tiding_links
+    from .services import handoff, tasks, tiding_links
 
     names = known_names()
     is_agent = not ThinkingEntity.objects.get(name=name).is_biological_human
     messages = (
         Message.objects.filter(mood__isnull=False, is_sidechain=False)
         # A handoff into a Mood "for" an agent is the system's line, but it
-        # addresses that agent: it wakes it there (handoff_mention).
-        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file=handoff.SOURCE)
+        # addresses that agent: it wakes it there (handoff_mention). So does
+        # a task started for it (services/tasks.py).
+        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file__in=(handoff.SOURCE, tasks.SOURCE))
                 # So is a comment on Tidings that asks an agent by name: its line in the link's Mood wakes it.
                 | Q(source_file=tiding_links.COMMENT_SOURCE))
         .select_related('sender')
@@ -956,6 +959,13 @@ def api_mentions(request, name):
     for msg in messages.iterator():
         if msg.source_file == handoff.SOURCE:
             turn = handoff_mention(msg, name, names) if is_agent else None
+            if turn:
+                found.append({'mood': msg.mood_slug, 'turn': turn})
+                if len(found) >= limit:
+                    break
+            continue
+        if msg.source_file == tasks.SOURCE:
+            turn = tasks.mention(msg, name) if is_agent else None
             if turn:
                 found.append({'mood': msg.mood_slug, 'turn': turn})
                 if len(found) >= limit:

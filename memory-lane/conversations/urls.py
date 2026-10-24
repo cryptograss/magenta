@@ -91,6 +91,7 @@ urlpatterns = [
     path('api/moods/<slug:slug>/quiet/', views_runner.api_quiet, name='api_mood_quiet'),
     path('api/moods/<slug:slug>/held/', views_runner.api_held, name='api_mood_held'),
     path('api/agents/<str:name>/models/', views_runner.api_agent_models, name='api_agent_models'),
+    path('api/agents/<str:name>/tasks/<str:task>/', views_auth.api_task, name='api_task'),
     path('api/deploys/', views_runner.api_deploys, name='api_deploys'),
     path('api/access/ssh/', views_runner.api_ssh, name='api_ssh'),
     path('api/servers/', views_runner.api_servers, name='api_servers'),

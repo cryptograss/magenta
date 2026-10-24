@@ -819,10 +819,11 @@ SETTINGS_HOW = ('Asked to change an agent\'s settings in a Mood -- its model, ef
                 '"in: <mood>" if not this one, and ``` to close. It is set as you reply, noted as at their ask.')
 
 
-# Mentions with no live session behind them: typed into the web composer, or
-# brought in by another agent's handoff. None is owed a wait, and only a wake
+# Mentions with no live session behind them: typed into the web composer,
+# brought in by another agent's handoff, or a task started for the agent
+# (memory-lane services/tasks.py). None is owed a wait, and only a wake
 # that carried one answers it.
-UNLISTENED = ('web', 'handoff')
+UNLISTENED = ('web', 'handoff', 'task')
 
 
 def signed_in_with_key(turn):
@@ -1863,6 +1864,8 @@ class MoodPoller:
     def prompt(self, slug, owed, full=False):
         if all(t.get('via') == 'web' for t in owed):
             why = 'this was posted from the web, where no session is listening.'
+        elif all(t.get('via') == 'task' for t in owed):
+            why = 'one of your tasks was started here (memory-lane services/tasks.py).'
         elif all(t.get('via') in UNLISTENED and t.get('sender') == self.agent for t in owed):
             why = 'you handed this over to yourself here, from another Mood.'
         elif all(t.get('via') in UNLISTENED for t in owed):
