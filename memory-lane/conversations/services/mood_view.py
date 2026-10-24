@@ -1323,6 +1323,14 @@ def _activity(mood, now=None, only=None):
         return None
     newest = recent[0]
 
+    # Waiting for another agent asked the same thing (poller's _WAIT_REPLY): its reply was the newest line, a
+    # silence, and the runner's hold since says whom it waits for (Justin, 24 Oct: "magent is waiting for re").
+    if only:
+        hold = held_in(mood.slug, now).get(only)
+        if hold and hold['at'] >= _when(newest) and str(hold.get('reason') or '').startswith('waiting for'):
+            return {'agent': only, 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
+                    'since': hold['at']}
+
     if newest.source_file in POSTED:
         named = [only] if only else named_in(newest)
         if not named:
