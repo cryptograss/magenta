@@ -265,6 +265,29 @@ def verify_attestation(name, proof, text):
             'origin': lines[1] if len(lines) > 1 else ''}
 
 
+_holders = {}  # (path, mtime) -> names, read once per version of the file
+
+
+def key_holders():
+    """The names allowed_signers lists, lowercased: the people who sign in with an SSH key (hunter's inventory).
+    Who '@core' mentions (mood_view.mentions_in; Skyler, 24 Oct)."""
+    path = allowed_signers_path()
+    try:
+        stamp = (path, os.path.getmtime(path))
+    except (OSError, TypeError):
+        return set()
+    if stamp not in _holders:
+        names = set()
+        with open(path) as f:
+            for line in f:
+                parts = line.split()
+                if parts and not parts[0].startswith('#'):
+                    names.update(n.strip().lower() for n in parts[0].split(',') if n.strip())
+        _holders.clear()
+        _holders[stamp] = names
+    return set(_holders[stamp])
+
+
 def public_key_of(name):
     """The key line allowed_signers holds for `name` (to show beside what it signed)."""
     path = allowed_signers_path()

@@ -327,6 +327,25 @@ def wikilinks_in(text):
     return out
 
 
+# A tag for a group: '@core' mentions everyone who signs in with an SSH key -- the core of the team, for
+# what wants them all, like a consensus on a beta release (Skyler, 24 Oct). Only the people: an agent with
+# a key of its own isn't woken by it. Unless someone is called 'core', which wins.
+GROUPS = {'core': 'everyone who signs in with an SSH key'}
+
+
+def group_members(group, mentionable=None):
+    """The people `group` mentions, sorted; restricted to `mentionable` if given."""
+    from conversations.models import ThinkingEntity
+    from .mood_auth import key_holders
+    if group != 'core':
+        return []
+    holders = key_holders()
+    people = set(ThinkingEntity.objects.filter(is_biological_human=True, name__in=holders).values_list('name', flat=True))
+    if mentionable is not None:
+        people &= {n.lower() for n in mentionable}
+    return sorted(people)
+
+
 def mentions_in(text, mentionable):
     """Ordered, de-duplicated names mentioned in text, restricted to known ones.
 
@@ -343,9 +362,11 @@ def mentions_in(text, mentionable):
     for match in _MENTION.finditer(text):
         name = match.group(1).rstrip('.').lower()
         name = known_as.get(name, name)
-        if name in lowered and name not in seen:
-            seen.add(name)
-            out.append(name)
+        named = group_members(name, lowered) if name in GROUPS and name not in lowered else [name]
+        for name in named:
+            if name in lowered and name not in seen:
+                seen.add(name)
+                out.append(name)
     return out
 
 
@@ -500,6 +521,11 @@ def _mention(mentionable, stash=lambda markup: markup):
         if raw.endswith('.'):
             raw, trailing = raw[:-1], '.'
         who = known_as.get(raw.lower(), raw.lower())
+        if who in GROUPS and who not in lowered:
+            members = group_members(who)
+            title = html.escape(f'@{who}: {GROUPS[who]} -- ' + (', '.join(members) or 'nobody yet'), quote=True)
+            return stash(f'<span class="mention group" data-who="{who}" data-members="{",".join(members)}" '
+                         f'title="{title}">@{raw}</span>') + trailing
         if who not in lowered:
             return match.group(0)
         # A link to who it is, on PickiPedia; still a .mention, highlighted when it's you.
