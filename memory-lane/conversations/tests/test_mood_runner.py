@@ -400,6 +400,26 @@ class PulseAndQuietTest(TestCase):
         live = self.client.get('/api/moods/live/').json()['moods']['m26']
         self.assertEqual(live['waiting'], [{'agent': 'magent', 'for': 're'}])  # for the page to say aloud
 
+    def test_a_wait_says_what_for(self):
+        # Justin, 24 Oct: "waiting for re to <1-5 word summary>".
+        from django.core.cache import cache
+        from conversations.services.mood_view import quiet_reason
+        self.assertEqual(quiet_reason('<wait for="re" to="to settle the schema"/>')['reason'],
+                         'waiting for re to settle the schema')
+        self.assertEqual(quiet_reason('<wait for="re" to="a b c d e f g h i j"/>')['reason'],
+                         'waiting for re to a b c d e f g h')  # eight words at most
+        cache.delete('held:m26')
+        Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, content='@re and @magent, thoughts?',
+                               source_file='mood-web')
+        Message.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.mood, session_id=str(uuid.uuid4()),
+                               content=[{'type': 'text', 'text': '<wait for="re" to="settle the schema"/>'}],
+                               stop_reason='end_turn')
+        self.client.post('/api/moods/m26/held/', json.dumps({'reason': 'waiting for re to settle the schema'}),
+                         content_type='application/json', **AUTH)
+        cache.delete('moods-live')
+        live = self.client.get('/api/moods/live/').json()['moods']['m26']
+        self.assertEqual(live['waiting'], [{'agent': 'magent', 'for': 're', 'to': 'settle the schema'}])
+
     def test_recent_context_only_when_asked(self):
         for i in range(5):
             Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, content=f'line {i}',

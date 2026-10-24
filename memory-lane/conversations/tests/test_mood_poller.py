@@ -2080,7 +2080,7 @@ class WaitingTest(TestCase):
         poller = self.make(['<wait for="re"/>'])
         self.assertEqual(poller.poll_once(), ['m26'])
         first = self.waker.woken[0][1]
-        self.assertIn('reply with only <wait for="re"/>', first)   # offered, where another was asked
+        self.assertIn('reply with only <wait for="re" to="a few words"/>', first)   # offered, where another was asked
         self.assertIn('m26', poller.state['waits'])
         self.assertIn(('m26', 'waiting for re'), [(h[0], h[1]) for h in self.api.holds])
         self.page['activities'] = [{'agent': 're', 'doing': 'thinking'}]
@@ -2129,10 +2129,27 @@ class WaitingTest(TestCase):
         self.page['activities'] = [{'agent': 'blu', 'doing': 'thinking'}]
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('re mentioned blu, at work here now. Answer now, or reply with only <wait for="blu"/>',
+        self.assertIn('re mentioned blu, at work here now. Answer now, or reply with only <wait for="blu" to="a few words"/>',
                       self.waker.woken[1][1])
         self.assertEqual(poller.state['waits']['m26']['for'], ['blu'])  # now waiting for blu
         self.assertEqual(self.api.holds[-1][:2], ('m26', 'waiting for blu'))
+
+    def test_a_wait_says_what_for_and_keeps_saying_it(self):
+        poller = self.make(['<wait for="re" to="to settle the schema first, then the rest of it all"/>'])
+        poller.poll_once()
+        self.assertIn('<wait for="re" to="a few words"/>', self.waker.woken[0][1])      # offered so
+        self.assertEqual(self.api.holds[-1][:2], ('m26', 'waiting for re to settle the schema first, then the rest of'))
+        self.page['activities'] = [{'agent': 're', 'doing': 'working'}]
+        self.clock[0] += WAIT_FOR + timedelta(seconds=1)
+        poller.poll_once()                                                               # a check-in: still so
+        self.assertEqual(self.api.holds[-1][:2], ('m26', 'waiting for re to settle the schema first, then the rest of'))
+
+    def test_what_another_waits_for_doesnt_make_it_wait_for_this_one(self):
+        poller = self.make(['<wait for="re"/>'])                    # magent named first
+        poller.poll_once()
+        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for blu to ask magent'}]
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), [])                    # re waits for blu, not for magent
 
     def test_waiting_on_each_other_the_first_named_answers(self):
         poller = self.make(['<wait for="re"/>'])                    # magent named first
