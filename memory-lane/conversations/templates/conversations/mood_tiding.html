@@ -43,6 +43,18 @@
   .thelink .embed video { width: 100%; max-height: 420px; border-radius: 8px; }
   /* What's been said: a tree, HN-style, each comment's score beside it (Justin, 21 Oct). */
   .comments { margin: 14px 0 0 0; }
+  /* The post's own words, under who posted it: drawn as a comment's are. */
+  .thelink .post { margin-top: 8px; max-width: 75ch; }
+  .thelink .post .words { font-size: 15px; overflow-wrap: anywhere; }
+  .thelink .post .words > :first-child { margin-top: 0; }
+  .thelink .post .words > :last-child { margin-bottom: 0; }
+  .thelink .post .words p, .thelink .post .words ul, .thelink .post .words ol, .thelink .post .words pre { margin: 0 0 8px; }
+  .thelink .post .words ul, .thelink .post .words ol { padding-left: 22px; }
+  .thelink .post .words code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+  .thelink .post .words pre { background: var(--code); padding: 8px 10px; border-radius: 6px; overflow-x: auto; }
+  .thelink .post .words img { max-width: min(100%, 420px); max-height: 320px; border-radius: 6px; }
+  .thelink .post .replyto { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+  .thelink .post .replyto:hover { color: var(--accent); }
   .comment { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
   .comment .rank { padding-top: 1px; }
   .comment .said { flex: 1; min-width: 0; }
@@ -63,9 +75,24 @@
   .comment .words td, .comment .words th { border: 1px solid var(--line); padding: 2px 8px; }
   .comment .replyto { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
   .comment .replyto:hover { color: var(--accent); }
+  /* Yours to change, as in the Mood: edit within a day, delete within a week (Justin, 21 Oct). */
+  .comment .editsaid, .comment .deletesaid { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0;
+                                             margin-left: 6px; cursor: pointer; font-family: inherit; }
+  .comment .editsaid:hover, .comment .deletesaid:hover { color: var(--accent); }
+  .comment .changed { font-style: italic; }
+  .comment .editing textarea { width: 100%; min-height: 64px; border: 1px solid var(--accent); border-radius: 8px; padding: 6px 8px;
+                               background: var(--panel); color: var(--ink); font: inherit; resize: vertical; }
+  .comment .editing .bar { display: flex; gap: 8px; align-items: baseline; margin-top: 4px; font-size: 12.5px; }
+  .comment .editing button { font: inherit; border: 0; border-radius: 6px; padding: 3px 12px; cursor: pointer; }
+  .comment .editing .save { background: var(--accent); color: #fff; }
+  .comment .editing .err { color: var(--err, #c0392b); }
   .comments .replies { margin-left: 24px; border-left: 2px solid var(--line); padding-left: 12px; }
   /* The box: say it here, and it's said in the Mood too (one record). */
-  .say { margin-top: 18px; }
+  .say { margin: 14px 0 6px; }
+  .comment .say { margin: 8px 0; }
+  .say .cancelreply { all: unset; cursor: pointer; font-size: 12.5px; color: var(--muted); }
+  .say .cancelreply:hover { color: var(--accent); }
+  .say .cancelreply[hidden] { display: none; }
   .say textarea { width: 100%; min-height: 72px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
                   background: var(--panel); color: var(--ink); font: inherit; resize: vertical; }
   .say textarea:focus { outline: 1px solid var(--accent); }
@@ -103,11 +130,27 @@
   document.addEventListener('click', e => {
     const b = e.target.closest('button.replyto');
     if (!b) return;
+    const form = document.querySelector('form.say');
     document.getElementById('replyTo').value = b.dataset.id;
-    if (b.dataset.kind) document.getElementById('replyKind').value = b.dataset.kind;
+    document.getElementById('replyKind').value = b.dataset.kind || '';
     const who = document.getElementById('replyToNote');
     who.textContent = b.dataset.who ? `replying to ${b.dataset.who}` : '';
+    form.querySelector('.cancelreply').hidden = false;
+    form.querySelector('button[type=submit]').textContent = 'reply';  // as HN's buttons say
+    b.closest('.said').querySelector('.words').after(form);  // the box goes to the comment it answers
     document.getElementById('say').focus();
+  });
+  // Cancel: a top-level comment again, the box back under the post.
+  document.addEventListener('click', e => {
+    const c = e.target.closest('button.cancelreply');
+    if (!c) return;
+    const form = c.closest('form.say');
+    document.getElementById('replyTo').value = '';
+    document.getElementById('replyKind').value = '';
+    document.getElementById('replyToNote').textContent = '';
+    c.hidden = true;
+    form.querySelector('button[type=submit]').textContent = 'add comment';
+    document.getElementById('sayHome').after(form);
   });
   document.addEventListener('click', async e => {
     const m = e.target.closest('button.mute');
@@ -130,6 +173,44 @@
     m.disabled = false;
   });
 
+  // Changing what you said: in place, saved, and the page drawn again; or deleted, after asking.
+  const saidUrl = b => `/api/tidings/{{ tiding.id }}/said/${b.dataset.kind}/${b.dataset.id}/`;
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button.editsaid');
+    if (!b) return;
+    const said = b.closest('.said'), words = said.querySelector(':scope > .words');
+    if (said.querySelector(':scope > .editing')) return;
+    const box = document.createElement('div');
+    box.className = 'editing';
+    box.innerHTML = '<textarea aria-label="What you said"></textarea><div class="bar"><button type="button" class="save">save</button>'
+      + '<button type="button" class="cancel">cancel</button><span class="err"></span></div>';
+    const area = box.querySelector('textarea');
+    area.value = said.querySelector(':scope > textarea.raw').value;
+    words.hidden = true;
+    words.after(box);
+    area.focus();
+    box.querySelector('.cancel').onclick = () => { box.remove(); words.hidden = false; };
+    box.querySelector('.save').onclick = async () => {
+      try {
+        const r = await fetch(saidUrl(b), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                            body: JSON.stringify({ text: area.value }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || r.status);
+        location.reload();
+      } catch (err) { box.querySelector('.err').textContent = err.message; }
+    };
+  });
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('button.deletesaid');
+    if (!b || !confirm('Delete this? Its words go; what answered it stays.')) return;
+    try {
+      const r = await fetch(saidUrl(b), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                          body: JSON.stringify({ delete: true }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      location.reload();
+    } catch (err) { alert(err.message); }
+  });
   async function sayIt(form) {
     const button = form.querySelector('button'), err = form.querySelector('.err');
     err.textContent = '';
@@ -236,20 +317,19 @@
       <div class="meta muted">{% if tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
         · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
         {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
+      {% if tiding.post %}
+      <!-- What the message said besides its link (Justin, 24 Oct): the post's own words, right under who posted
+           it -- not a comment: not counted, not voted on; answering it is a top-level comment. -->
+      <div class="post"><div class="words">{{ tiding.post|safe }}</div></div>
+      {% endif %}
       {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
       {% if tiding.embed %}<div class="embed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen></iframe>{% else %}<video src="{{ tiding.embed.src }}" controls preload="none"></video>{% endif %}</div>{% endif %}
-      <div class="snippet">{{ tiding.snippet }}</div>
     </span>
   </div>
 
-  <section class="comments">
-    {% for comment in tiding.comments %}
-      {% include "conversations/mood_tiding_comment.html" %}
-    {% empty %}
-      <p class="muted">Nothing said yet. Say something here, or reply to it in the Mood: both land here.</p>
-    {% endfor %}
-  </section>
-
+  <!-- The box right under the post, as HN has it (Justin, 24 Oct): what's said here is a top-level comment;
+       "reply" on a comment brings it under that one, and "cancel" back here. -->
+  <div id="sayHome"></div>
   {% if viewer %}
   <form class="say" action="/api/tidings/{{ tiding.id }}/comments/" method="post" onsubmit="sayIt(this); return false;">
     <input type="hidden" id="replyTo" name="reply_to" value="">
@@ -259,8 +339,8 @@
       <div class="suggest" id="wikiSuggest" role="listbox" hidden></div>
     </div>
     <div class="bar">
-      <button type="submit">say it</button>
-      <span class="replying" id="replyToNote"></span>
+      <button type="submit">add comment</button>
+      <span class="replying" id="replyToNote"></span><button type="button" class="cancelreply" hidden>cancel</button>
       <span class="err"></span>
     </div>
   </form>
@@ -272,6 +352,15 @@
     {% else %}<span class="muted"><a href="/moods/" target="_top">sign in</a> to say something here, or upvote</span>{% endif %}
   </p>
   {% endif %}
+
+  <section class="comments">
+    {% for comment in tiding.comments %}
+      {% include "conversations/mood_tiding_comment.html" %}
+    {% empty %}
+      <p class="muted">Nothing said yet. Say something here, or reply to it in the Mood: both land here.</p>
+    {% endfor %}
+  </section>
+
 </main>
 </body>
 </html>

@@ -3,10 +3,12 @@ is the message's replies (Justin, 20 Oct)."""
 
 import json
 import uuid
+from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
 from conversations.models import Message, Mood, ThinkingEntity, Tiding
 from conversations.services import links, mood_auth, tiding_links
@@ -257,19 +259,63 @@ class TidingTalkTests(TidingLinksTest):
         html = page.content.decode()
         self.assertIn('looking forward', html)
         # Nobody signed in here: no box that can't be typed in, but the way in -- and back to this discussion.
-        self.assertNotIn('>say it</button>', html)
-        self.assertNotIn('<textarea', html)
+        self.assertNotIn('>add comment</button>', html)
+        self.assertNotIn('<textarea id="say"', html)
         self.assertIn('sign in', html)
         with override_settings(PICKIPEDIA_OAUTH_CLIENT_ID='client-1', PICKIPEDIA_OAUTH_CLIENT_SECRET='secret-1'):
             html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
         self.assertIn(f'href="/moods/auth/wiki/?next=/moods/tidings/{tiding.id}/" target="_top"', html)
         # Signed in: the box, and [[ suggesting PickiPedia's titles.
         html = self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
-        self.assertIn('say it', html)
+        self.assertIn('>add comment</button>', html)
         self.assertIn('id="wikiSuggest"', html)
         self.assertIn('list=prefixsearch', html)
         gone = self.client.get(f'/moods/tidings/{uuid.uuid4()}/?embed=1')
         self.assertEqual(gone.status_code, 404)
+
+    def test_the_posts_own_words_are_at_the_top_but_not_a_comment(self):
+        # Justin, 24 Oct: what the message says besides its link, in full, as the post's own text.
+        said = self.say(self.skyler, 'Molly Tuttle is on the **Saturday** bill https://example.org/lineup\n\n- tent\n- capo')
+        tiding = tiding_links.promote(said, self.justin)
+        html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        post = html.split('<div class="post">')[1].split('<section class="comments">')[0]
+        # Right under who posted it, in the link's own block -- not below it, after a rule.
+        self.assertLess(html.index('class="meta muted"'), html.index('<div class="post">'))
+        self.assertLess(html.index('<div class="post">'), html.index('<section class="comments">'))
+        self.assertNotIn('class="comment post"', html)
+        self.assertIn('<strong>Saturday</strong>', post)            # drawn as the Mood draws it
+        self.assertIn('<li>capo</li>', post)                        # all of it, not 200 characters
+        self.assertNotIn('example.org/lineup', post)                # the link is the title already
+        # The box right under it, before what's been said (Justin, 24 Oct): a top-level comment by default.
+        signed_in = self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        self.assertLess(signed_in.index('<div class="post">'), signed_in.index('<form class="say"'))
+        self.assertLess(signed_in.index('<form class="say"'), signed_in.index('<section class="comments">'))
+        self.assertIn('id="replyTo" name="reply_to" value=""', signed_in)
+        self.assertLess(html.index('<p class="say signin">'), html.index('<section class="comments">'))  # signed out: the way in, there
+        self.assertNotIn('with the link', html)  # who posted it is said once, in the meta
+        [link] = [l for l in tiding_links.listed() if l['id'] == str(tiding.id)]
+        self.assertEqual(link['comments'], 0)                       # not counted
+        only_link = self.say(self.skyler, 'https://example.org/other')
+        tiding2 = tiding_links.promote(only_link, self.justin)
+        self.assertNotIn('<div class="post">', self.client.get(f'/moods/tidings/{tiding2.id}/?embed=1').content.decode())
+
+    def test_what_a_message_says_besides_its_link(self):
+        url = 'https://example.org/lineup'
+        cases = [
+            (url, ''),
+            (f'{url} !', ''),
+            (f'This one: {url}', 'This one'),
+            (f'Look at this {url}!', 'Look at this!'),
+            (f'{url} — Saturday, both stages', 'Saturday, both stages'),
+            (f'Summer reading: {url} and the rest', f'Summer reading: {url} and the rest'),  # part of a sentence: kept
+            (f'[the lineup]({url}) is out', 'the lineup is out'),
+            (f'<{url}>\nCamping too', 'Camping too'),
+            (f'Not this one: {url}-2027', f'Not this one: {url}-2027'),  # another address that starts the same
+            (f'↩ #m-{uuid.uuid4()}\nnice {url}', 'nice'),
+        ]
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(tiding_links.post_text(text, url), expected)
 
     def test_an_agents_reply_is_a_comment_too(self):
         # An agent's turn is kept as content blocks, not a string: the discussion reads its words.
@@ -441,3 +487,96 @@ class TidingRoundTwoReviewTests(TidingLinksTest):
         got = lambda client: client.get('/api/tidings/badges/', {'since': since}).json()  # noqa: E731
         self.assertEqual(got(self.client_for(self.justin)), {'tidings': 1, 'comments': 0})
         self.assertEqual(got(Client()), {'tidings': 2, 'comments': 0})
+
+
+@override_settings(MOOD_ADMINS=('justin',))
+class CommentEditingTests(TestCase):
+    """Editing and deleting what's said about a link (Justin, 21 Oct: "How about comment editing?"):
+    as in the Mood -- yours, within a day to edit and a week to delete, or anyone's deleted by an admin;
+    what goes is sealed to the recovery key first."""
+
+    def setUp(self):
+        from conversations.services import sealing
+        cache.clear()
+        links._memo.update(at=0.0, index=None)
+        self.private, public = sealing.new_pair()
+        self.keyed = override_settings(MOOD_RECOVERY_PUBLIC_KEY=public)
+        self.keyed.enable()
+        self.addCleanup(self.keyed.disable)
+        self.justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        self.skyler = ThinkingEntity.objects.create(name='skyler', is_biological_human=True)
+        self.mood = Mood.objects.create(slug='jams', title='jams')
+        said = Message.objects.create(id=uuid.uuid4(), sender=self.skyler, mood=self.mood, content='https://example.org/',
+                                      timestamp=1, source_file='mood-web')
+        self.tiding = tiding_links.promote(said, self.justin, title='A link')
+        self.said = said
+
+    def client_for(self, who, tier='key'):
+        _, token = mood_auth.enrol_device(who, 'laptop', tier=tier)
+        client = Client()
+        client.cookies[mood_auth.COOKIE] = token
+        return client
+
+    def change(self, client, kind, node_id, **body):
+        return client.post(f'/api/tidings/{self.tiding.id}/said/{kind}/{node_id}/', json.dumps(body),
+                           content_type='application/json')
+
+    def test_your_comment_on_tidings_can_be_edited_and_says_so(self):
+        from conversations.models import SealedCopy, TidingComment
+        skyler = self.client_for(self.skyler)
+        cid = skyler.post(f'/api/tidings/{self.tiding.id}/comments/', json.dumps({'text': 'frist'}),
+                          content_type='application/json').json()['comment']['id']
+        self.assertEqual(self.change(self.client_for(self.justin), 'comment', cid, text='mine now').status_code, 403)
+        done = self.change(skyler, 'comment', cid, text='**first**, I meant')
+        self.assertEqual(done.status_code, 200)
+        row = TidingComment.objects.get(id=cid)
+        self.assertEqual((row.text, row.changed), ('**first**, I meant', 'edited'))
+        self.assertEqual(SealedCopy.objects.get(message_id=row.id).kind, 'edited')  # the old words, kept sealed
+        [node] = tiding_links.tree_of(self.tiding, self.said.id)
+        self.assertEqual((node['changed'], '<strong>first</strong>' in node['html']), ('edited', True))
+        page = skyler.get(f'/moods/tidings/{self.tiding.id}/?embed=1').content.decode()
+        self.assertIn('class="editsaid"', page)
+        self.assertIn('edited', page)
+        self.assertNotIn('class="editsaid"', self.client_for(self.justin).get(f'/moods/tidings/{self.tiding.id}/?embed=1').content.decode())
+
+    def test_a_day_on_it_stays_as_it_was_said(self):
+        from conversations.models import TidingComment
+        skyler = self.client_for(self.skyler)
+        cid = skyler.post(f'/api/tidings/{self.tiding.id}/comments/', json.dumps({'text': 'old'}),
+                          content_type='application/json').json()['comment']['id']
+        TidingComment.objects.filter(id=cid).update(at=timezone.now() - timedelta(days=2))
+        self.assertEqual(self.change(skyler, 'comment', cid, text='new').status_code, 403)
+
+    def test_deleted_its_replies_stay_under_it_and_an_admin_can(self):
+        from conversations.models import TidingComment
+        skyler, justin = self.client_for(self.skyler), self.client_for(self.justin)
+        cid = skyler.post(f'/api/tidings/{self.tiding.id}/comments/', json.dumps({'text': 'hot take'}),
+                          content_type='application/json').json()['comment']['id']
+        justin.post(f'/api/tidings/{self.tiding.id}/comments/', json.dumps({'text': 'nah', 'reply_to': cid, 'reply_kind': 'comment'}),
+                    content_type='application/json')
+        self.assertEqual(self.change(justin, 'comment', cid, delete=True).status_code, 200)  # an admin, with a key
+        [node] = tiding_links.tree_of(self.tiding, self.said.id)
+        self.assertEqual((node['changed'], node['snippet'], len(node['replies'])), ('deleted', '[deleted]', 1))
+        self.assertEqual(TidingComment.objects.get(id=cid).text, '[deleted]')
+
+    def test_a_mood_reply_is_edited_as_in_the_mood_and_stays_a_reply(self):
+        reply = Message.objects.create(id=uuid.uuid4(), sender=self.skyler, mood=self.mood, timestamp=2, source_file='mood-web',
+                                       content=f'↩ #m-{self.said.id}\nnice one')
+        links._memo.update(at=0.0, index=None)
+        cache.clear()
+        skyler = self.client_for(self.skyler)
+        self.assertEqual(self.change(skyler, 'mood', reply.id, text='nicer one').status_code, 200)
+        reply.refresh_from_db()
+        self.assertEqual(reply.content, f'↩ #m-{self.said.id}\nnicer one')  # still a reply: still a comment here
+        [node] = tiding_links.tree_of(self.tiding, self.said.id)
+        self.assertEqual((node['snippet'], node['changed']), ('nicer one', 'edited'))
+        elsewhere = Message.objects.create(id=uuid.uuid4(), sender=self.skyler, mood=self.mood, timestamp=3,
+                                           source_file='mood-web', content='not under this link')
+        self.assertEqual(self.change(skyler, 'mood', elsewhere.id, text='x').status_code, 404)
+
+    def test_the_list_draws_with_comments_under_a_link(self):
+        skyler = self.client_for(self.skyler)
+        skyler.post(f'/api/tidings/{self.tiding.id}/comments/', json.dumps({'text': 'one'}), content_type='application/json')
+        page = skyler.get('/moods/tidings/?embed=1')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('1 comment', page.content.decode())

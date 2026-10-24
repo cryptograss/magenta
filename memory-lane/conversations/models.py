@@ -1542,6 +1542,10 @@ class TidingComment(models.Model):
     parent_message = models.ForeignKey(Message, models.CASCADE, null=True, blank=True, related_name='tiding_comments')
     text = models.TextField()
     at = models.DateTimeField(auto_now_add=True)
+    # Changed since: 'edited' or 'deleted' (its words then '[deleted]', its replies kept), as a Mood message's
+    # MessageChange says; what went is sealed to the recovery key (services/tiding_links.change_comment).
+    changed = models.CharField(max_length=10, blank=True, default='')
+    changed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'tiding_comments'
