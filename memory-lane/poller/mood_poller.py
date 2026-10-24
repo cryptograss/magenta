@@ -923,8 +923,15 @@ def also_asked(owed, agent, page, may_wait=True):
                 asked.append(name)
     if not asked:
         return []
-    said = '; '.join(f"{name}, {'at work here now' if working.get(name) not in (None, 'held') else 'not at work here yet'}"
-                     for name in asked)
+    # Whether each has answered since what woke this one (after a wait, say), is at work on it, or hasn't started.
+    last = max((t.get('created_at') or '' for t in owed), default='')
+    answered = {t.get('sender') for t in page.get('turns') or [] if (t.get('created_at') or '') > last}
+
+    def state(name):
+        if working.get(name) not in (None, 'held'):
+            return 'at work here now'
+        return 'has answered, below' if name in answered else 'not at work here yet'
+    said = '; '.join(f'{name}, {state(name)}' for name in asked)
     # Justin's words (24 Oct): "mentioned, and likely woken" -- whether they answer is theirs to say.
     wait = (f' If you would rather answer after them, reply with only <wait for="{asked[0]}"/>: you are woken '
             f'again once they have answered, or in {int(WAIT_FOR.total_seconds() // 60)} minutes.') if may_wait else ''

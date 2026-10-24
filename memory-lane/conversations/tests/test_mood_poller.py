@@ -2080,6 +2080,7 @@ class WaitingTest(TestCase):
         again = self.waker.woken[1][1]
         self.assertIn('You chose to wait for re. re has answered', again)
         self.assertNotIn('reply with only <wait', again)            # once a question
+        self.assertIn('re, has answered, below', again)              # not "not at work here yet"
         self.assertNotIn('m26', poller.state['waits'])
 
     def test_a_second_wait_on_the_same_question_is_not_taken(self):
