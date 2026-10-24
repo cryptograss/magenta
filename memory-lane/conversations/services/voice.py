@@ -79,11 +79,9 @@ VOICES_FOR = 3600          # seconds the voice list is cached
 FALLBACK_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb'
 _VOICE_ID = re.compile(r'^[A-Za-z0-9]{20}$')
 
-# Words a transcription should expect: instruments, the project's names.
-# The people, agents and Moods are added to these when a memo is transcribed.
-KEYTERMS = ['banjo', 'mandolin', 'dobro', 'fiddle', 'upright bass', 'bluegrass', 'flatpicking', 'Scruggs',
-            'Cryptograss', 'PickiPedia', 'magenta', 'magent', 'Mood', 'Moods', 'hunter', 'maybelle',
-            'delivery-kid', 'Ethereum', 'blockchain']
+# Words a transcription should expect (instruments, the project's names), how a name may be misheard, and how
+# a word is said: on PickiPedia, Magenta:Voice (services/voice_words.py). The people, agents and Moods are
+# added to the expected words when a memo is transcribed.
 
 _VOICE_BLOCK = re.compile(r'```voice[ \t]*\n(.*?)\n?```[ \t]*\n?', re.S)
 SETTING_RANGES = {'stability': (0.0, 1.0), 'similarity': (0.0, 1.0), 'style': (0.0, 1.0), 'speed': (0.7, 1.2)}
@@ -559,7 +557,7 @@ def speak_piece(message, by, http=requests, part=0, piece=0):
             names = {'similarity': 'similarity_boost'}
             body['voice_settings'] = {names.get(k, k): v for k, v in voice_settings.items()}
         return body
-    before = [_request_id(_key(voice_id, body_for(text))) for text in parts[max(0, piece - 3):piece]]
+    before = [_request_id(_key(voice_id, _said(body_for(text)))) for text in parts[max(0, piece - 3):piece]]
     stitch = {'previous_request_ids': [r for r in before if r]} if any(before) else {}
     url = _spoken(message.mood, by, voice_id, body_for(parts[piece]), parts[piece], http, extra=stitch,
                   who=_whose(message.sender_id), message=str(message.id), **({'piece': piece} if piece else {}))
@@ -581,13 +579,20 @@ def _request_id(key):
     return (row or {}).get('request_id') or None
 
 
+def _said(body):
+    """`body` with its words as the voice should say them (Magenta:Voice's Said as: services/voice_words.py)."""
+    from .voice_words import said
+    text = body.get('text') or ''
+    return {**body, 'text': said(text)} if text else body
+
+
 def _spoken(mood, by, voice_id, body, script, http, extra=None, who='agent', **details):
     """The URL of `body` spoken in `voice_id`: the kept one if it's been made, else made now (sent with
     `extra` too: what it's stitched onto, not part of what it is). Its fragment says how many words it
     says, and whose they are (`who`: 'agent', the narrator's too, or 'person'): the page plays each clip
     at the listener's own words a minute for one or the other, whatever the voice's own pace (Justin,
     22 Oct). A fragment never reaches the server, so the file and its caching are the same."""
-    return _spoken_file(mood, by, voice_id, body, script, http, extra, **details) + \
+    return _spoken_file(mood, by, voice_id, _said(body), script, http, extra, **details) + \
         f"#words={len((script or '').split())}&who={'person' if who == 'person' else 'agent'}"
 
 
@@ -660,7 +665,8 @@ def keyterms():
     names += [f'{colour} agent' for colour in COLOURS for agent in agents if colour[:-1] == agent.lower()]
     moods = [t for t in Mood.objects.values_list('title', flat=True) if t and len(t) <= 50]
     seen, out = set(), []
-    for term in KEYTERMS + names + moods:
+    from .voice_words import words
+    for term in words()['keyterms'] + names + moods:
         if term and term.lower() not in seen and len(term) <= 50:
             seen.add(term.lower())
             out.append(term)
@@ -853,9 +859,8 @@ def heard_again(message_id):
 # --- a mention, spoken ------------------------------------------------------------
 
 GREETINGS = r'(?:hey|hi|hello|ok|okay|yo)'
-# How a transcription may write a name it heard: only ever read as that name
+# How a transcription may write a name it heard (Magenta:Voice's Heard as): only ever read as that name
 # where a name is plainly being said to someone.
-HEARD_AS = {'magnet': 'magent'}
 # An agent is named for its colour less the last letter -- re(d), magent(a), blu(e) -- and "re" is hard to
 # say so it's heard as meant: "the red agent" is said for it (Justin, 20 Oct). Any colour here works for
 # whichever agent comes to be named that way.
@@ -872,7 +877,8 @@ def spoken_mentions(text, mentionable, aliases=None):
     `aliases`: {lowercased other name (a PickiPedia name): name here}."""
     names = {n.lower(): n.lower() for n in mentionable}
     names.update({k.lower(): v.lower() for k, v in (aliases or {}).items() if v.lower() in names})
-    names.update({k: v for k, v in HEARD_AS.items() if v in names and k not in names})
+    from .voice_words import words
+    names.update({k: v for k, v in words()['heard_as'].items() if v in names and k not in names})
     if not names or not text:
         return text
     # "the red agent" (or "red agent") is re: said by its colour. Then "at the red agent" is "at re", which

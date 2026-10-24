@@ -260,6 +260,11 @@ FACES_KEY = os.getenv('FACES_KEY', '')
 MOOD_WIKI_RULES = os.getenv('MOOD_WIKI_RULES', '1') != '0'
 # Whose revisions of those pages count (PickiPedia names, comma-separated); unset: poller/wiki_rules.EDITORS.
 MOOD_WIKI_RULES_EDITORS = [n for n in os.getenv('MOOD_WIKI_RULES_EDITORS', '').split(',') if n.strip()]
+# The voice's words (what a memo should expect, how a name may be misheard, how a word is said) from
+# PickiPedia's Magenta:Voice (conversations/services/voice_words.py); 0: the code's own lists. Off under
+# `manage.py test`: no test waits on the wiki.
+import sys as _sys  # noqa: E402
+VOICE_WORDS_FROM_WIKI = os.getenv('VOICE_WORDS_FROM_WIKI', '0' if _sys.argv[1:2] == ['test'] else '1') != '0'
 # Each person's PickiPedia name, from hunter's inventory: "<name> <WikiName>" lines.
 MOOD_WIKI_NAMES = os.getenv('MOOD_WIKI_NAMES', '')
 # Editing and deleting (conversations/services/retract.py): what's taken back is sealed to this
