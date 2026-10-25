@@ -944,11 +944,13 @@ def also_asked(owed, agent, page, may_wait=True):
         return 'has answered, below' if name in answered else 'not at work here yet'
     said = '; '.join(f'{name}, {state(name)}' for name in asked)
     # Justin's words (24 Oct): "mentioned, and likely woken" -- whether they answer is theirs to say.
-    wait = (f' If you would rather answer after them, reply with only <wait for="{asked[0]}"/>: you are woken '
-            f'again once they have answered, or in {int(WAIT_FOR.total_seconds() // 60)} minutes.') if may_wait else ''
-    return ['', f'Others mentioned, and likely woken, by what woke you: {said}. Each of you is woken on its own and '
-                'answers without waiting for the other; what they say lands in the Mood as they write it (read_mood '
-                f'shows it), if you would rather answer with it in view.{wait}']
+    wait = (f' If your answer depends on theirs, reply with only <wait for="{asked[0]}"/>: you are woken again '
+            f'once they have answered, or in {int(WAIT_FOR.total_seconds() // 60)} minutes.') if may_wait else ''
+    # Not "answers without waiting for the other": read as leave to answer in parallel, it brought two
+    # near-identical replies to one question (re and Justin, magent-self, 25 Oct). When to wait is in
+    # Cryptograss:Moods/Instructions; this says only who, and how.
+    return ['', f'Others mentioned, and likely woken, by what woke you: {said}. Each of you is woken on its own; '
+                f'what they say lands in the Mood as they write it (read_mood shows it).{wait}']
 
 
 def others_asked(owed, agent):
