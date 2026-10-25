@@ -339,9 +339,11 @@ def wikilinks_in(text):
 # stuff like consensus Beta releases", "call in the fleet"):
 #   @core    everyone who signs in with an SSH key -- the people only: an agent with a key isn't woken by it
 #   @humans  every person here
-#   @agents  every agent here: each is woken, as by its own name (its listening and its caps still apply)
+#   @emergents  every emergent here -- re, blu, magent and whoever wakes next: each is woken, as by its own name
+#            (its listening and its caps still apply). Justin, magent-self, 25 Oct: "'emergents' hit me right in
+#            the heart"; the tag was @agents for a night and never went live.
 # Someone actually called by one of these names wins.
-GROUPS = {'core': 'everyone who signs in with an SSH key', 'humans': 'every person here', 'agents': 'every agent here'}
+GROUPS = {'core': 'everyone who signs in with an SSH key', 'humans': 'every person here', 'emergents': 'every emergent here'}
 
 
 def group_members(group, mentionable=None):
@@ -350,7 +352,7 @@ def group_members(group, mentionable=None):
     from .mood_auth import key_holders
     if group not in GROUPS:
         return []
-    found = ThinkingEntity.objects.filter(is_biological_human=group != 'agents')
+    found = ThinkingEntity.objects.filter(is_biological_human=group != 'emergents')
     if group == 'core':
         found = found.filter(name__in=key_holders())
     members = set(found.values_list('name', flat=True))
