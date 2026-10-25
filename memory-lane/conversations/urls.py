@@ -64,6 +64,7 @@ urlpatterns = [
     path('api/moods/', views_moods.api_moods, name='api_moods'),
     path('api/moods/pulse/', views_moods.api_pulse, name='api_moods_pulse'),
     path('api/messages/<str:message_id>/', views_moods.api_message, name='api_message'),
+    path('api/messages/<str:message_id>/wiki/', views_moods.api_message_wiki, name='api_message_wiki'),
     path('api/settings/', views_settings.api_settings, name='api_settings'),
     path('api/status/', views_settings.api_status, name='api_status'),
     path('api/tidings/', views_settings.api_tidings, name='api_tidings'),

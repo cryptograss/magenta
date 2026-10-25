@@ -9,7 +9,8 @@ Settled with re (25 Oct), who keeps the wiki side and its documentation:
 * **Each person's notes for a sprint** are a page of their own: Magenta:Sprints/<sprint>/<person>, by
   their PickiPedia name. A sprint's page can show everyone's.
 * **A note keeps the message's words and its link**: words so it reads on its own after the message is
-  edited or gone, the link to go back to it; who said it, where and when.
+  edited or gone, the link to go back to it; who said it, where and when. Written as a card,
+  {{Magenta message}} with every word (services/wiki_embed.py), and when it was noted.
 
 People only, each to their own notes. The server's wiki bot writes them (todo_ticks.Bot), naming in the
 edit summary whose notes and from which message -- nobody's wiki password is held here. The Magenta:
@@ -17,13 +18,10 @@ namespace isn't gated for bot edits (PickiPediaVerification enforces markers in 
 a note is plain, as the person chose it.
 """
 
-import html
 import re
 
 POINTER = 'Magenta:Current sprint'
 NOTES = 'Magenta:Sprints/{sprint}/{person}'
-MAGENTA = 'https://magenta.cryptograss.live'
-MAX_WORDS = 1500      # characters of a message kept in its note
 _LINK = re.compile(r'\[\[([^\[\]|#]+)(?:#[^\[\]|]*)?(?:\|[^\[\]]*)?\]\]')
 
 
@@ -69,25 +67,10 @@ def notes_page(sprint, person):
     return NOTES.format(sprint=sprint.replace('[', '').replace(']', '').replace('|', ''), person=who)
 
 
-def _nowiki(text):
-    """Words exactly as said: no wikitext, entities for what could end the quote."""
-    return '<nowiki>' + html.escape(text, quote=False) + '</nowiki>'
-
-
-def note(message, words, noted_at):
-    """A message as a note: who said it, when (its link), where; then its words."""
-    from .wiki_auth import names
-    sender = message.sender_id
-    who = f'[[User:{names()[sender]}|{sender}]]' if sender in names() else f"'''{sender}'''"
-    slug = message.mood.slug if message.mood_id else ''
-    words = (words or '').strip()
-    if len(words) > MAX_WORDS:
-        words = words[:MAX_WORDS].rstrip() + '…'
-    quoted = '<br>'.join(_nowiki(line) for line in words.splitlines() if line.strip()) or "''(no words)''"
-    said = message.created_at.strftime('%-d %b %Y %H:%MZ')
-    return (f"* {who}, [{MAGENTA}/messages/{message.id} {said}] in [{MAGENTA}/moods/{slug}/ #{slug}] "
-            f"<small>(noted {noted_at.strftime('%-d %b %H:%MZ')})</small>\n"
-            f"<blockquote>{quoted}</blockquote>\n")
+def note(message, noted_at):
+    """A message as a note: its card, every word of it (Template:Magenta message), and when it was noted."""
+    from .wiki_embed import template_call
+    return f"{template_call(message, chars='all')}\n<small>noted {noted_at.strftime('%-d %b %Y %H:%MZ')}</small>\n\n"
 
 
 def header(sprint, sprint_page, person_page):
@@ -102,7 +85,7 @@ def add(message, person, bot=None, http=None, now=None):
     """Add `message` to `person`'s notes for the current sprint: {'sprint', 'page', 'url', 'already'}. Refused if
     there's no sprint named, no wiki bot here, or the wiki won't take it."""
     from django.utils import timezone
-    from .mood_view import pickipedia_url, prose, reply_to
+    from .mood_view import pickipedia_url
     from . import todo_ticks
     if bot is None and not todo_ticks.enabled():
         raise Refused('no wiki bot is set up here to write notes', 503)
@@ -112,11 +95,11 @@ def add(message, person, bot=None, http=None, now=None):
     bot = bot or todo_ticks.Bot(purpose='sprint notes')
     if not bot.login():
         raise Refused("the wiki bot couldn't sign in", 503)
-    entry = note(message, reply_to(prose(message.content) or '')[1], now or timezone.now())  # its words, not its ↩
+    entry = note(message, now or timezone.now())
     for _ in range(3):  # again, if someone edited it meanwhile
         revision = bot.read(page)
         text = revision['slots']['main']['content'] if revision else header(sprint, sprint_page, page)
-        if f'/messages/{message.id} ' in text:
+        if f'|id={message.id}\n' in text:
             return {'sprint': sprint, 'page': page, 'url': url, 'already': True}
         done = bot.edit(page, text.rstrip('\n') + '\n' + entry, f'A note for {person}, from #{message.mood.slug} '
                         f'(#m-{message.id}), by magenta at their ask', revision)

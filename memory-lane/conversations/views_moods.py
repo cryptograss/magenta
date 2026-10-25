@@ -450,6 +450,21 @@ def message_page(request, message_id):
 
 
 @require_GET
+def api_message_wiki(request, message_id):
+    """{"wikitext"}: the message as a card for PickiPedia, {{Magenta message|...}} with its words in it
+    (services/wiki_embed.py). ?chars=N or all: how many characters the card shows (else the template's 280)."""
+    from .models import MessageChange
+    from .services import wiki_embed
+    message = _in_a_mood(message_id)
+    if message is None or MessageChange.objects.filter(message_id=message.id, kind='deleted').exists():
+        return JsonResponse({'error': 'no such message in any Mood'}, status=404)
+    chars = request.GET.get('chars') or None
+    if chars is not None and chars != 'all' and not (chars.isdigit() and 0 < int(chars) <= 100000):
+        return JsonResponse({'error': 'chars: a number, or all'}, status=400)
+    return JsonResponse({'wikitext': wiki_embed.template_call(message, chars=chars)})
+
+
+@require_GET
 def api_message(request, message_id):
     """{"id", "mood"}: where a message is now, for whatever holds only its address (the poller)."""
     message = _in_a_mood(message_id)

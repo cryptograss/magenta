@@ -59,9 +59,9 @@ class SprintNotesTest(TestCase):
                          ('Jellyfish', 'Magenta:Sprints/Jellyfish/JMyles', False))
         page = self.bot.pages['Magenta:Sprints/Jellyfish/JMyles']
         self.assertIn('Notes for the [[Cryptograss/Jellyfish|Jellyfish]] sprint, kept by [[User:JMyles|JMyles]]', page)
-        self.assertIn(f'https://magenta.cryptograss.live/messages/{said.id} ', page)
-        self.assertIn('#magenta-interface', page)
-        self.assertIn('<nowiki>Ship the bar first.</nowiki><br><nowiki>&lt;script&gt;x&lt;/script&gt; and [[Not a link]]</nowiki>', page)
+        self.assertIn(f'{{{{Magenta message\n|id={said.id}\n|who=re\n|mood=magenta-interface\n', page)  # a card,
+        self.assertIn('|chars=all\n', page)                                                          # every word
+        self.assertIn('|text=Ship the bar first.\n&lt;script&gt;x&lt;/script&gt; and &#91;&#91;Not a link&#93;&#93;\n}}', page)
         self.assertIn("A note for justin, from #magenta-interface", self.bot.edits[0][1])
         again = sprint_notes.add(said, 'justin', bot=self.bot)
         self.assertTrue(again['already'])
@@ -72,7 +72,7 @@ class SprintNotesTest(TestCase):
         reply = self.say(self.justin, f'↩ #m-{first.id}\nThe bar.')
         sprint_notes.add(reply, 'justin', bot=self.bot)
         page = self.bot.pages['Magenta:Sprints/Jellyfish/JMyles']
-        self.assertIn('<nowiki>The bar.</nowiki>', page)
+        self.assertIn('|text=The bar.\n}}', page)
         self.assertNotIn('↩', page)
 
     def test_from_the_menu(self):
@@ -89,3 +89,23 @@ class SprintNotesTest(TestCase):
             MessageChange.objects.create(message_id=said.id, mood=self.mood, kind='deleted', by=self.justin)
             self.assertEqual(client.post(url, '{}', content_type='application/json').status_code, 410)
         self.assertEqual(Client().post(url, '{}', content_type='application/json').status_code, 401)
+
+
+class WikiEmbedTest(TestCase):
+    """⧉ Copy for PickiPedia: {{Magenta message}}, words and all (services/wiki_embed.py; Justin, 25 Oct)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.justin, _ = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})
+        cls.mood = Mood.objects.create(slug='rh', title='rh')
+
+    def test_the_call(self):
+        said = Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, timestamp=1,
+                                      eth_blockheight=26266736, content='a | b {{c}} [[d]] ~~~~ x=y & <i>')
+        with mock.patch('conversations.services.wiki_auth.names', return_value={'justin': 'JMyles'}):
+            got = Client().get(f'/api/messages/{said.id}/wiki/?chars=120').json()['wikitext']
+        self.assertTrue(got.startswith(f'{{{{Magenta message\n|id={said.id}\n|who=justin\n|user=JMyles\n|mood=rh\n|at='))
+        self.assertIn('|block=26266736\n|chars=120\n', got)
+        self.assertIn('|text=a &#124; b &#123;&#123;c&#125;&#125; &#91;&#91;d&#93;&#93; &#126;&#126;&#126;&#126; '
+                      'x&#61;y &amp; &lt;i&gt;\n}}', got)
+        self.assertEqual(Client().get(f'/api/messages/{said.id}/wiki/?chars=lots').status_code, 400)

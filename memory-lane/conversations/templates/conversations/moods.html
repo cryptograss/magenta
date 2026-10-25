@@ -4264,7 +4264,8 @@
     if (more) {
       if (msgMenu._for === more) { closeMsgMenu(); return; }
       msgMenu.innerHTML = (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
-        + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my sprint notes</button>' : '')
+        + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my sprint notes</button>'
+          + '<button type="button" role="menuitem" data-act="wiki">⧉ Copy for PickiPedia</button>' : '')
         + ((more.dataset.promote || more.dataset.note) && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
         + (more.dataset.edit ? '<button type="button" role="menuitem" data-act="edit">✎ Edit</button>' : '')
         + (more.dataset.edit && more.dataset.delete ? '<hr>' : '')
@@ -4287,6 +4288,7 @@
     if (act.dataset.act === 'edit') editMessage(el, from.dataset.more);
     else if (act.dataset.act === 'promote') promoteMessage(el, from);
     else if (act.dataset.act === 'note') noteMessage(from.dataset.more);
+    else if (act.dataset.act === 'wiki') copyForWiki(from.dataset.more);
     else deleteMessage(from.dataset.more);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !msgMenu.hidden) closeMsgMenu(); });
@@ -4304,6 +4306,16 @@
       showNote(`${done.already ? 'Already in' : 'Added to'} your ${esc(done.sprint)} notes: `
         + `<a href="${esc(done.url)}" target="_blank" rel="noopener">${esc(done.page)}</a>`, 9000, true);
     } catch (err) { showNote(`Not added: ${err.message}`, 9000); }
+  }
+  // The message as a card for PickiPedia (Template:Magenta message, words and all), onto the clipboard to paste.
+  async function copyForWiki(id) {
+    try {
+      const r = await fetch(`/api/messages/${encodeURIComponent(id)}/wiki/`);
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error || r.status);
+      await navigator.clipboard.writeText(body.wikitext);
+      showNote('Copied: paste it into any PickiPedia page. chars= sets how much of it shows (280, or all).', 8000);
+    } catch (err) { showNote(`Not copied: ${err.message}`, 8000); }
   }
   function toldChanged(done) {
     const reached = done.reached || [];
