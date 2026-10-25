@@ -842,6 +842,11 @@
   body.only-mine .work { display: none; }
   /* An agent's choices not to speak: small dots, side by side. */
   .quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 4px -10px; padding: 4px 13px; }
+  /* A wait, kept as a line: the status line's words and colours, its dot still (Justin, 25 Oct). */
+  .waitline { display: flex; align-items: center; gap: 8px; margin: 4px 0; padding: 2px 3px; font-size: 13px; color: var(--muted); }
+  .waitline .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); opacity: .35; flex: none; }
+  .waitline b { color: var(--who, var(--agent)); }
+  .waitline time { margin-left: 2px; }
   /* Each in its agent's colour (--who, agentColor): pale, full when hovered or opened. */
   .quiet .dot { --who: var(--agent); width: 9px; height: 9px; border-radius: 50%; padding: 0; cursor: pointer;
                 background: color-mix(in srgb, var(--who) 30%, var(--panel)); border: 1px solid var(--who); }
@@ -3294,6 +3299,18 @@
   });
 
   function addQuiet(q, container) {
+    // A wait for another agent stays in the thread as a line, the status line's words and colours:
+    // "magent is waiting for re to settle the schema" (Justin, 25 Oct), not a dot.
+    if (q.by !== 'screen' && /^waiting for /.test(q.reason || '')) {
+      if (container._held) delete container._held[q.sender];
+      const line = document.createElement('div');
+      line.className = 'waitline';
+      line.style.setProperty('--who', agentColor(q.sender));
+      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> is ${waitedFor(q.reason)}`
+        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      container.appendChild(line);
+      return;
+    }
     // What it thought before choosing not to speak: shown when its dot is pressed (Justin, 20 Oct).
     const thought = ((container._held || {})[q.sender] || []).map(t => t.text).filter(Boolean).join('\n\n');
     if (container._held) delete container._held[q.sender];
