@@ -110,10 +110,13 @@ class WikiTexts:
         self.pages = {}
 
     def _get(self, title):
-        """The page's newest revisions, newest first: [(revision, editor, wikitext)]; [] if there's no page."""
+        """The page's newest revisions, newest first: [(revision, editor, wikitext)]; [] if there's no page.
+        A redirect is followed: a page moved (Cryptograss:Agents/* to Cryptograss:Emergents/*, 25 Oct) leaves at
+        its old title a redirect with one revision, its mover's, which no trusted editor wrote; the page itself
+        took its history along, and is read there."""
         url = self.api + '?' + urllib.parse.urlencode({
-            'action': 'query', 'prop': 'revisions', 'titles': title, 'rvprop': 'content|ids|user', 'rvslots': 'main',
-            'rvlimit': HISTORY, 'format': 'json', 'formatversion': '2'})
+            'action': 'query', 'prop': 'revisions', 'titles': title, 'redirects': '1', 'rvprop': 'content|ids|user',
+            'rvslots': 'main', 'rvlimit': HISTORY, 'format': 'json', 'formatversion': '2'})
         with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': USER_AGENT}), timeout=10) as r:
             page = json.load(r)['query']['pages'][0]
         return [(rev['revid'], rev.get('user', ''), rev['slots']['main']['content'])
