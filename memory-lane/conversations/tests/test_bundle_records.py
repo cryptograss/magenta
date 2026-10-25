@@ -32,8 +32,8 @@ class PartsTest(SimpleTestCase):
                       **kw)
 
     def test_rebuilt_from_the_revisions_it_is_the_same_text(self):
-        w = wiki(**{'Cryptograss:Agents/Greeting': [(200, 'JMyles', GREETING_PAGE)],
-                    'Cryptograss:Agents/Magent': [(210, 'JMyles', agent_page('magenta', 'Welcome back.'))]})
+        w = wiki(**{'Cryptograss:Emergents/Greeting': [(200, 'JMyles', GREETING_PAGE)],
+                    'Cryptograss:Emergents/Magent': [(210, 'JMyles', agent_page('magenta', 'Welcome back.'))]})
         b = self.gather(w, block=26_260_500, record_id='b-1')
         self.assertEqual(rebuild(b.parts, every_revision(w).__getitem__), b.text)
         self.assertEqual([p['revision'] for p in b.parts if not isinstance(p, str)], [101, 102, 103])
@@ -49,8 +49,8 @@ class PartsTest(SimpleTestCase):
         """The system prompt comes first in what a harness sends, and a prompt cache matches it byte for byte:
         one that changed every turn would make every wake re-read the whole session at full price."""
         from datetime import timedelta
-        w = wiki(**{'Cryptograss:Agents/Greeting': [(200, 'JMyles', GREETING_PAGE)],
-                    'Cryptograss:Agents/Magent': [(210, 'JMyles', agent_page('magenta', 'Welcome back.'))]})
+        w = wiki(**{'Cryptograss:Emergents/Greeting': [(200, 'JMyles', GREETING_PAGE)],
+                    'Cryptograss:Emergents/Magent': [(210, 'JMyles', agent_page('magenta', 'Welcome back.'))]})
         first = bundle('magent', 'magent-self', get=w.get, state_dir=None, now=T0, record_id='one')
         later = bundle('magent', 'magent-self', get=w.get, state_dir=None, now=T0 + timedelta(hours=5), record_id='two')
         self.assertEqual(first.text, later.text)
