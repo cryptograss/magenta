@@ -2539,9 +2539,11 @@
     // ★ a message's link onto Tidings (services/tiding_links.py): anyone signed in, once.
     const promoted = new Set((t.tidings || []).map(x => x.url));
     const mayPromote = viewer && !t.deleted && (t.links || []).some(u => !promoted.has(u));
-    const moreBtn = mayEdit || mayDelete || mayPromote
+    // 📝 into your notes for the current sprint (services/sprint_notes.py): a person's, any message.
+    const mayNote = viewer && human[viewer] !== false && !t.deleted;
+    const moreBtn = mayEdit || mayDelete || mayPromote || mayNote
       ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
-        + `data-promote="${mayPromote ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
+        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
     const onTidings = onTidingsMark(t.tidings || []);
     const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
@@ -4262,7 +4264,9 @@
     if (more) {
       if (msgMenu._for === more) { closeMsgMenu(); return; }
       msgMenu.innerHTML = (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
-        + (more.dataset.promote && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
+        + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my sprint notes</button>'
+          + '<button type="button" role="menuitem" data-act="wiki">⧉ Copy for PickiPedia</button>' : '')
+        + ((more.dataset.promote || more.dataset.note) && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
         + (more.dataset.edit ? '<button type="button" role="menuitem" data-act="edit">✎ Edit</button>' : '')
         + (more.dataset.edit && more.dataset.delete ? '<hr>' : '')
         + (more.dataset.delete ? '<button type="button" role="menuitem" data-act="delete" class="danger">🗑 Delete…</button>' : '');
@@ -4283,6 +4287,8 @@
     const el = from.closest('.turn');
     if (act.dataset.act === 'edit') editMessage(el, from.dataset.more);
     else if (act.dataset.act === 'promote') promoteMessage(el, from);
+    else if (act.dataset.act === 'note') noteMessage(from.dataset.more);
+    else if (act.dataset.act === 'wiki') copyForWiki(from.dataset.more);
     else deleteMessage(from.dataset.more);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !msgMenu.hidden) closeMsgMenu(); });
@@ -4291,6 +4297,25 @@
     return fetch(`/api/moods/${encodeURIComponent(current)}/messages/${encodeURIComponent(id)}/${what}/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify(body || {}) })
       .then(async r => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.error || r.status); return b; });
+  }
+  // Into your notes for the current sprint, on PickiPedia: said where, with the page a click away.
+  async function noteMessage(id) {
+    showNote('Adding it to your sprint notes…', 4000);
+    try {
+      const done = await changeMessage(id, 'sprint-note');
+      showNote(`${done.already ? 'Already in' : 'Added to'} your ${esc(done.sprint)} notes: `
+        + `<a href="${esc(done.url)}" target="_blank" rel="noopener">${esc(done.page)}</a>`, 9000, true);
+    } catch (err) { showNote(`Not added: ${err.message}`, 9000); }
+  }
+  // The message as a card for PickiPedia (Template:Magenta message, words and all), onto the clipboard to paste.
+  async function copyForWiki(id) {
+    try {
+      const r = await fetch(`/api/messages/${encodeURIComponent(id)}/wiki/`);
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error || r.status);
+      await navigator.clipboard.writeText(body.wikitext);
+      showNote('Copied: paste it into any PickiPedia page. chars= sets how much of it shows (280, or all).', 8000);
+    } catch (err) { showNote(`Not copied: ${err.message}`, 8000); }
   }
   function toldChanged(done) {
     const reached = done.reached || [];
@@ -5117,9 +5142,9 @@
   }
   // What's said next makes an old error old news.
   sayBox.addEventListener('input', () => { const err = composer.querySelector('.err'); if (err) err.remove(); });
-  function showNote(message, ms) {  // a word under the box, gone after a while
+  function showNote(message, ms, isHtml) {  // a word under the box, gone after a while (isHtml: already escaped, with a link)
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
-    composer.insertAdjacentHTML('beforeend', `<span class="note">${esc(message)}</span>`);
+    composer.insertAdjacentHTML('beforeend', `<span class="note">${isHtml ? message : esc(message)}</span>`);
     const note = composer.querySelector('.note:last-of-type');
     setTimeout(() => note && note.remove(), ms || 8000);
   }
