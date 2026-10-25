@@ -181,12 +181,11 @@ class RecallTest(TestCase):
         self.assertIn('--- Agent:Re/Journal/26270000\nMoved the strings page.', text)
         self.assertNotIn('awakening', text)
         self.assertIn('# Memory bootstrap: re', text)
-        self.assertIn("## Where you've been lately", text)
-        self.assertIn('#magent-self: last spoke', text)  # where re's words are, not a stream of them
-        self.assertIn('Outside any Mood (a terminal session)', text)
+        self.assertIn("## How you've spoken, across your life", text)
+        self.assertIn('mandolin bridge', text)  # its own replies, from across its life
         self.assertNotIn('banjo', text)
         self.assertIn('justin (person)', text)
-        self.assertNotIn('Era 1', text)  # re never spoke there
+        self.assertNotIn('Era 1', text)
 
     def test_bootstrap_without_a_key_is_nobodys_and_says_its_misconfigured(self):
         self.assertTrue(tools.bootstrap_text(None).startswith('MISCONFIGURED: no memory bootstrap'))
