@@ -1363,9 +1363,18 @@ def api_my_look(request):
     except (ValueError, AssertionError):
         return JsonResponse({'error': 'expected {"art": ..., "colour": ...}'}, status=400)
     name, writes = device.entity_id, knobs.art_name(device.entity_id)
-    if body.get('art') and not knobs.art_fits(str(body['art']).strip(), writes):
-        return JsonResponse({'error': f'at most {knobs.NAME_ART_MAX} characters, with every letter of "{writes}" '
-                                      'in it, in order'}, status=400)
+    # As it will be: what's sent, over what's kept. Every letter of their name has to be seen (settings.look_problem).
+    was = knobs.looks().get(name, {})
+    try:
+        art = str(body['art'] if 'art' in body else was.get('art', '')).strip()
+        colours, backs = (str(body[f] if f in body else was.get(f, '')).strip().lower() for f in ('colours', 'backs'))
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'expected {"art": ..., "colours": ..., "backs": ...}'}, status=400)
+    if art and len(art) > knobs.NAME_ART_MAX:
+        return JsonResponse({'error': f'at most {knobs.NAME_ART_MAX} characters'}, status=400)
+    problem = knobs.look_problem(art, colours, backs, writes)
+    if problem:
+        return JsonResponse({'error': problem}, status=400)
     try:
         for key, field in (('name_art', 'art'), ('name_colours', 'colours'), ('name_backs', 'backs'), ('icon_colour', 'colour')):
             if field in body:

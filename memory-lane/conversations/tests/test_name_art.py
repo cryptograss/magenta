@@ -82,7 +82,7 @@ class LookTest(TestCase):
 
     def test_only_ansi_codes(self):
         client = self.client_for(self.justin)
-        for colours in ('99g', '#ff0000', '<b>', 'c' * 31):
+        for colours in ('99g', '#ff00', '#ff0000;x', '<b>', 'c' * 31):  # a colour of their own is fine (SafeArtTest)
             self.assertEqual(self.look(client, art='justin', colours=colours).status_code, 400, colours)
 
     # The art writes their PickiPedia name (Justin, 21 Oct: "use the pickipedia username").
@@ -94,3 +94,53 @@ class LookTest(TestCase):
             self.assertEqual(refused.status_code, 400)
             self.assertIn('JMyles', refused.json()['error'])
             self.assertEqual(self.look(client, art='-=[ jmYLES ]=-').json()['art'], '-=[ jmYLES ]=-')
+
+
+class SafeArtTest(TestCase):
+    """Justin, 25 Oct: only shapes besides the name's letters; any colour; and never a name blanked out."""
+
+    def setUp(self):
+        self.justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
+
+    def client_for(self, who):
+        _, token = mood_auth.enrol_device(who, 'laptop', tier='key')
+        client = Client()
+        client.cookies[mood_auth.COOKIE] = token
+        return client
+
+    def look(self, client, **body):
+        return client.post('/api/me/look/', json.dumps(body), content_type='application/json')
+
+    def test_only_shapes_beside_the_letters(self):
+        for art in ('░▒▓ justin ▓▒░', '♥ j.u.s.t.i.n ♥', '─┤justin├─'):
+            self.assertTrue(art_fits(art, 'justin'), art)
+        # another name beside it, numbers, look-alike letters, circled letters, letterlike symbols, combining marks
+        for art in ('justin re', 'justin 2', 'xjustin', 'justinⓡⓔ', 'justin™', 'justiñ', 'jυstin', 'justiń'):
+            self.assertFalse(art_fits(art, 'justin'), art)
+
+    def test_any_colour_of_their_own(self):
+        client = self.client_for(self.justin)
+        r = self.look(client, art='[justin]', colours='.,#c2185b,c,#1e88e5', backs='')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['colours'], '.,#c2185b,c,#1e88e5')
+        self.assertEqual(self.look(client, art='[justin]', colours='.,#c2185,c').status_code, 400)
+
+    def test_a_letter_never_blanked_out(self):
+        client = self.client_for(self.justin)
+        same = self.look(client, art='justin', colours='4' * 6, backs='4' * 6)  # red on red: gone
+        self.assertEqual(same.status_code, 400)
+        self.assertIn('hard to see', same.json()['error'])
+        near = self.look(client, art='justin', colours='#101010,' * 5 + '#101010', backs='0' * 6)  # black on near-black
+        self.assertEqual(near.status_code, 400)
+        page = self.look(client, art='justin', colours='#161417,' * 5 + '#161417')  # the dark page's own colour
+        self.assertEqual(page.status_code, 400)
+        # the shapes around it may be anything: only the name's letters must be seen
+        ok = self.look(client, art='▓justin▓', colours='0ffffff0', backs='0000000' + '0')
+        self.assertEqual(ok.status_code, 200, ok.content)
+
+    def test_one_set_before_the_rules_is_their_name_as_it_is(self):
+        from conversations.services import settings as knobs
+        knobs.change('name_art', 'justin', agent=self.justin, by=self.justin)
+        knobs.change('name_colours', '444444', agent=self.justin, by=self.justin)
+        knobs.change('name_backs', '444444', agent=self.justin, by=self.justin)
+        self.assertNotIn('justin', knobs.looks())

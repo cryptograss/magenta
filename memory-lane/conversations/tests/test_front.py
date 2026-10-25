@@ -103,7 +103,7 @@ class FrontPageTest(FrontBase):
 
     def test_a_name_as_pickipedia_has_it_in_its_own_art(self):
         from conversations.services import settings as knobs
-        knobs.change('name_art', '░ JMyles ░', agent=self.skyler, by=self.skyler)
+        knobs.change('name_art', '░ SkymanJenkins ░', agent=self.skyler, by=self.skyler)
         knobs.change('name_colours', '.dddddd', agent=self.skyler, by=self.skyler)
         with mock.patch('conversations.services.wiki_auth.names', return_value={'justin': 'JMyles', 'skyler': 'SkymanJenkins'}):
             self.say(self.justin, self.jams, 'hello')
@@ -111,7 +111,7 @@ class FrontPageTest(FrontBase):
             names = {s['who']: s['name'] for s in front.lately()}
         self.assertEqual(names['justin'], 'JMyles')  # his PickiPedia name, not the one here
         self.assertIn('class="art" title="SkymanJenkins"', names['skyler'])
-        self.assertIn('<span class="ad">J</span>', names['skyler'])  # each letter in its colour
+        self.assertIn('<span class="ad">S</span>', names['skyler'])  # each letter in its colour
 
     def test_an_archived_mood_is_not_shown(self):
         from conversations.services import settings as knobs

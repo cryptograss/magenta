@@ -90,14 +90,101 @@ PERSON_KEYS = {
 NAME_ART_MAX = 30
 
 
+# Characters that read as text though they aren't letters: circled and parenthesized letters and numbers,
+# letterlike symbols (™ ℡ ℅), squared Latin. Not decoration: with them, a name could spell another's.
+_TEXTLIKE = ((0x2100, 0x214F), (0x2460, 0x24FF), (0x2776, 0x2793), (0x3200, 0x33FF), (0x1F100, 0x1F1FF))
+
+
+def is_shape(ch):
+    """A character that may dress a name: a shape, line, block, arrow, punctuation or space -- never a letter, a
+    digit, a mark that combines with one, or a symbol that reads as either (Justin, 25 Oct: "only the shapes")."""
+    import unicodedata
+    if unicodedata.category(ch)[0] in 'LNMC':
+        return False
+    return not any(lo <= ord(ch) <= hi for lo, hi in _TEXTLIKE)
+
+
+def art_letters(art, name):
+    """The positions in `art` of `name`'s characters, in order; None if it doesn't write the name, or has any
+    other character that isn't a shape (is_shape)."""
+    want = [ch for ch in name.casefold() if not ch.isspace()]
+    at = []
+    for i, ch in enumerate(art):
+        if len(at) < len(want) and ch.casefold() == want[len(at)]:
+            at.append(i)
+        elif not is_shape(ch):
+            return None
+    return at if len(at) == len(want) else None
+
+
 def art_fits(art, name):
     """Whether `art` writes `name` -- their PickiPedia name, the one people know them by (Justin, 21 Oct) --
-    every character of it there, in order, any case (its spaces aside); on one line of printable
-    characters, at most NAME_ART_MAX."""
+    every character of it there, in order, any case (its spaces aside), and nothing else but shapes; on one
+    line, at most NAME_ART_MAX."""
     if not art or len(art) > NAME_ART_MAX or not art.isprintable():
         return False
-    letters = iter(art.casefold())
-    return all(any(c == ch for c in letters) for ch in name.casefold() if not ch.isspace())
+    return art_letters(art, name) is not None
+
+
+ANSI = ['#000000', '#0000aa', '#00aa00', '#00aaaa', '#aa0000', '#aa00aa', '#aa5500', '#aaaaaa',
+        '#555555', '#5555ff', '#55ff55', '#55ffff', '#ff5555', '#ff55ff', '#ffff55', '#ffffff']
+_CELL = re.compile(r'^(?:\.?|[0-9a-f]|#[0-9a-f]{6})$')
+# The page behind a name, and its ink, light and dark (moods.html's --bg/--panel and --ink).
+PAGES = (('#fbfaf7', '#1f1d1a'), ('#ffffff', '#1f1d1a'), ('#161417', '#ece7e1'), ('#1f1c20', '#ece7e1'))
+ON_ITS_BACK = 3.0   # a letter against a background it chose: WCAG's least for large text
+ON_THE_PAGE = 1.6   # a letter in a colour, on the page's own (either theme): never near-invisible
+
+
+def cells(codes):
+    """A colour for each character, as stored: one code each (0-f, '.'), or, once any is a colour of their own,
+    comma-separated (0-f, '.', #rrggbb) (Justin, 25 Oct: "a full regular palette")."""
+    codes = codes or ''
+    return codes.split(',') if ',' in codes or codes.startswith('#') else list(codes)
+
+
+def stored(tokens):
+    tokens = list(tokens)
+    while tokens and tokens[-1] in ('', '.'):
+        tokens.pop()
+    return ','.join(tokens) if any(len(t) > 1 for t in tokens) else ''.join(t or '.' for t in tokens)
+
+
+def hex_of(token):
+    if len(token) == 1 and token in '0123456789abcdef':
+        return ANSI[int(token, 16)]
+    return token if re.fullmatch(r'#[0-9a-f]{6}', token) else None  # anything else is refused by change()
+
+
+def contrast(a, b):
+    def lum(h):
+        def ch(v):
+            v = int(v, 16) / 255
+            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+        return 0.2126 * ch(h[1:3]) + 0.7152 * ch(h[3:5]) + 0.0722 * ch(h[5:7])
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def look_problem(art, colours, backs, name):
+    """Why this look can't be someone's, or None. Every letter of their name has to be seen (Justin, 25 Oct: a
+    taken-over account could blank its own name -- the same colour on the same background -- and draw someone
+    else's beside it): against its background, if it has one, or else against the page, light or dark."""
+    if not art:
+        return None
+    letters = art_letters(art, name) if art_fits(art, name) else None
+    if letters is None:
+        return f'every letter of "{name}", in order, and otherwise only shapes: no other letters or numbers'
+    fg, bg = cells(colours), cells(backs)
+    for i in letters:
+        f = hex_of(fg[i]) if i < len(fg) else None
+        b = hex_of(bg[i]) if i < len(bg) else None
+        if b:
+            inks = [f] if f else sorted({ink for _, ink in PAGES})
+            if any(contrast(ink, b) < ON_ITS_BACK for ink in inks):
+                return f'"{art[i]}" is hard to see on its background: every letter of your name has to stand out'
+        elif f and any(contrast(f, page) < ON_THE_PAGE for page, _ in PAGES):
+            return f'"{art[i]}" is hard to see on the page (light or dark): give it a background, or another colour'
+    return None
 
 
 def art_name(person):
@@ -182,9 +269,10 @@ def clean(key, value):
         return value
     if key in ('name_colours', 'name_backs'):
         value = str(value or '').strip().lower()
-        if len(value) > NAME_ART_MAX or not re.fullmatch(r'[.0-9a-f]*', value):
-            raise Invalid(f"{key}: at most {NAME_ART_MAX} codes, each 0-f or '.'")
-        return value.rstrip('.')
+        tokens = cells(value)
+        if len(tokens) > NAME_ART_MAX or not all(_CELL.match(t) for t in tokens):
+            raise Invalid(f"{key}: at most {NAME_ART_MAX} codes, each 0-f, #rrggbb or '.'")
+        return stored(tokens)
     if key == 'icon_colour':
         value = str(value or '').strip().lower()
         if value and not re.fullmatch(r'#[0-9a-f]{6}', value):
@@ -244,9 +332,11 @@ def looks():
     found = {}
     for row in Setting.objects.filter(key__in=list(fields), mood__isnull=True).order_by('created_at'):
         found.setdefault(row.agent_id, {'art': '', 'colours': '', 'backs': '', 'colour': ''})[fields[row.key]] = row.value or ''
-    for look in found.values():
+    for name, look in found.items():
         for codes in ('colours', 'backs'):
-            look[codes] = look[codes][:len(look['art'])].rstrip('.') if look['art'] else ''
+            look[codes] = stored(cells(look[codes])[:len(look['art'])]) if look['art'] else ''
+        if look_problem(look['art'], look['colours'], look['backs'], art_name(name)):
+            look.update(art='', colours='', backs='')  # set before the rules: their name as it is
     return {name: look for name, look in found.items() if look['art'] or look['colour']}
 
 
