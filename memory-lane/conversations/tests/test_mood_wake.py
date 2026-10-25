@@ -54,14 +54,24 @@ class MoodWakeTest(TestCase):
         # Claude Code's isMeta user line: "Already available in this conversation: ..." (magent-self, 25 Oct).
         note = [{'type': 'text', 'text': 'Already available in this conversation: compare-pages. Call it directly.'}]
         raw = line(self.session, 'user', note, entrypoint='sdk-cli', isMeta=True)
-        self.assertEqual(self.imp(raw).sender_id, 'system')
+        self.assertEqual(self.imp(raw).sender_id, 'harness')
         # Filed first as the agent's (by a stream that didn't say), the transcript's isMeta puts it right.
         uid = json.loads(raw)['uuid']
         Message.objects.filter(id=uid).update(sender=self.magent)
         self.imp(raw)
-        self.assertEqual(Message.objects.get(id=uid).sender_id, 'system')
+        self.assertEqual(Message.objects.get(id=uid).sender_id, 'harness')
         from conversations.services.mood_view import activity
         self.assertNotEqual((activity(self.mood) or {}).get('agent'), 'magent')
+
+    def test_the_mood_shows_it_as_a_note_in_the_agents_turn_not_its_words(self):
+        self.imp(line(self.session, 'assistant', [{'type': 'text', 'text': 'On it.'}],
+                      timestamp='2026-09-29T18:10:00.000Z'))
+        note = [{'type': 'text', 'text': 'Already available in this conversation: compare-pages.'}]
+        self.imp(line(self.session, 'user', note, entrypoint='sdk-cli', isMeta=True))
+        got = self.client.get('/api/moods/m26/turns/').json()
+        self.assertNotIn('Already available', ' '.join(t.get('text') or '' for t in got['turns']))
+        notes = [t for t in got.get('thoughts') or [] if t.get('harness')]
+        self.assertEqual([(n['sender'], n['text'][:17]) for n in notes], [('magent', 'Already available')])
 
     def test_the_stream_keeps_isMeta(self):
         from conversations.views_runner import stream_line

@@ -278,9 +278,10 @@ def poller_or(user, content, event):
         return get_or_create_participant('system', 'system')
     # A line Claude Code marks isMeta is its own note to the agent ("Already available in this
     # conversation: ...", a skill's text, a command's caveat): the harness said it. Filed as the user's,
-    # in a runner's session that user is the agent, and the Mood showed it as the agent's words.
+    # in a runner's session that user is the agent, and the Mood showed it as the agent's words. Kept,
+    # as the harness's, and shown as a note in the agent's turn (mood_view.HARNESS).
     if event.get('isMeta'):
-        return get_or_create_participant('system', 'system')
+        return get_or_create_participant('harness', 'system')
     return user
 
 

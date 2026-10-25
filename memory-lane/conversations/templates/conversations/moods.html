@@ -882,6 +882,7 @@
   .tdot.empty { min-width: 12px; width: 12px; height: 12px; padding: 0; }
   .work-head .what { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .work .steps .trow { margin: 4px 0; }
+  .work .steps .trow .harness { margin-right: 4px; font-size: 13px; vertical-align: middle; }  /* the harness's note, not its thinking */
   .work .steps .trow .thought { display: none; }
   .work .steps .trow.on .thought { display: block; }
   /* Images: in turns, as thumbnails on a run of work, inside a step. */
@@ -2732,7 +2733,9 @@
       else if (row.classList.contains('trow')) {
         said();
         const dot = row.querySelector('.tdot');
-        parts.push(`<span class="${dot.className.replace(' on', '')}" data-i="${i}">${esc(dot.textContent)}</span>`);
+        // The harness's note keeps its ⚙️ in the folded line too, so it never reads as the agent's thinking.
+        parts.push((row.querySelector('.harness') ? '<span class="harness" aria-hidden="true">⚙️</span>' : '')
+          + `<span class="${dot.className.replace(' on', '')}" data-i="${i}">${esc(dot.textContent)}</span>`);
       }
     });
     said();
@@ -2818,7 +2821,10 @@
   function addThought(t, container) {
     const el = document.createElement('div');
     el.className = 'thought';
-    el.title = `${t.sender} thinking · ${stamp(t.created_at)}`;
+    // A harness's note to the agent ("Already available in this conversation: ..."): kept as system
+    // information, a ring like a thought with ⚙️ beside it, never the agent's words (Justin, 25 Oct).
+    const said = t.harness ? `Claude Code's note to ${t.sender}` : `${t.sender} thinking`;
+    el.title = `${said} · ${stamp(t.created_at)}`;
     el.textContent = t.text;
     // In an agent's turn: a ring among its steps, in the order it thought and did; its words when pressed.
     const work = container.classList.contains('abody') ? workEl(t, container) : null;
@@ -2827,8 +2833,9 @@
       const row = document.createElement('div');
       row.className = 'trow';
       const what = words ? `${words.toLocaleString()} word${words === 1 ? '' : 's'}` : 'no words kept';
-      row.innerHTML = `<button type="button" class="tdot${words ? '' : ' empty'}" title="${esc(`${t.sender} thinking · ${what} · ${stamp(t.created_at)}`)}"`
-        + ` aria-label="${esc(`${t.sender} thought, ${what}`)}">${words ? esc(kTokens(words)) : ''}</button>`;
+      row.innerHTML = (t.harness ? '<span class="harness" aria-hidden="true">⚙️</span>' : '')
+        + `<button type="button" class="tdot${words ? '' : ' empty'}" title="${esc(`${said} · ${what} · ${stamp(t.created_at)}`)}"`
+        + ` aria-label="${esc(t.harness ? `${said}, ${what}` : `${t.sender} thought, ${what}`)}">${words ? esc(kTokens(words)) : ''}</button>`;
       row.appendChild(el);
       work.querySelector('.steps').appendChild(row);
       describeWork(work);
