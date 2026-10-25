@@ -22,7 +22,7 @@ from django.views.decorators.http import require_GET, require_POST
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, faces, push, servers, wiki_auth, wiki_feed, wiki_ledger, wiki_upload
 from .services import agent_commands, mood_auth
-from .services.mood_view import agent_names, turn_tools  # which tools an agent's turn had
+from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.mood_view import (
     from_wiki_tier,
     MACHINERY_SENDERS, how_payload, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
@@ -225,10 +225,15 @@ def api_mood_turns(request, slug):
     images = step_images(step_msgs)
     steps_out = [{**step_payload(m), 'images': images.get(str(m.id), [])} for m in step_msgs]
     agent_set = agent_names()
-    tools = turn_tools([m for m in agents_said if m.sender_id in agent_set])
+    wakes = turn_wakes([m for m in agents_said if m.sender_id in agent_set])
+    # Which instructions each turn was given, and whether they were new: shown by its cache mark (Justin, 25 Oct).
+    marks = bundle_marks([w['bundle'] for w in wakes.values()])
     for p in turns_out + steps_out + quiet_out + thoughts_out:
-        if p['id'] in tools:
-            p['tools'] = tools[p['id']]
+        said = wakes.get(p['id'])
+        if said and said['tools']:
+            p['tools'] = said['tools']
+        if said and said['bundle'] in marks:
+            p['bundle'] = marks[said['bundle']]
     first = min([i['created_at'] for i in turns_out + steps_out + quiet_out + thoughts_out + compactions_out
                  + events_out], default=None)
     agents = agents_in(mood)
