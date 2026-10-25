@@ -24,3 +24,5 @@ Pillow>=11,<13
 pillow-heif>=1.0,<2
 # The front page's QR code of its own address (conversations/services/front.py). Pure Python, no dependencies.
 segno>=1.6,<2
+# Where a reader's address is, for SSH-key sign-ins (conversations/services/geoip.py): DB-IP's database, read here.
+maxminddb>=2.6,<4
