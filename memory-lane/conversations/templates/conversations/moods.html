@@ -401,6 +401,14 @@
   .mood-head .meta { font-size: 12px; color: var(--muted); }
   .mood-head .meta a { color: var(--muted); }
   .mood-head { padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+  /* A thread (services: Mood.thread_of): where it came from, and the threads opened from here. */
+  .mood-head .thread { font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
+  .mood-head .thread a { color: var(--accent); }
+  .mood-head .thread button, .mood-head .meta button.newthread { font: inherit; font-size: 12px; border: 1px solid var(--line);
+                               background: none; color: var(--muted); border-radius: 6px; padding: 0 7px; cursor: pointer; margin-left: 4px; }
+  .mood-head .thread button:hover, .mood-head .meta button.newthread:hover { color: var(--accent); border-color: var(--accent); }
+  #newBox .forkchoice { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+  #newBox .forkchoice[hidden] { display: none; }
 
   /* What was said, at its own size: --text-scale is the reader's choice (the menu's text size), apart from zoom. */
   :root { --text-base: 15px; --text-scale: 1; }
@@ -1318,7 +1326,12 @@
 <form id="newBox" hidden>
   <input id="newTitle" maxlength="200" aria-label="Title" placeholder="What the new Mood is about">
   <textarea id="newDesc" rows="2" maxlength="2000" aria-label="Description" placeholder="A line or two more (optional)"></textarea>
-  <span class="hint">Its first @magent starts a new session there, briefed by the letter magent left itself.</span>
+  <div class="forkchoice" id="newThread" hidden>
+    <span class="hint">A thread of <b id="newThreadOf"></b>, with its settings and (until it has its own) its instructions:</span>
+    <label><input type="radio" name="threadKind" value="fork" checked> <b>Fork</b>: its emergents go on from where they are there, remembering all of it</label>
+    <label><input type="radio" name="threadKind" value="fresh"> <b>Fresh</b>: they start anew here</label>
+  </div>
+  <span class="hint" id="newHint">Its first @magent starts a new session there, briefed by the letter magent left itself.</span>
   <span><button type="submit">Start</button> <button type="button" id="newCancel">Cancel</button></span>
 </form>
 <div id="locked"></div>
@@ -1839,13 +1852,32 @@
       || (s.dataset.members || '').split(',').includes(me)));
   }
 
+  // A thread's line: where it was opened from, forked or fresh, and closing it (archiving); a Mood's threads.
+  function threadLine(m) {
+    const link = slug => `<a href="/moods/${encodeURIComponent(slug)}/">#${esc(slug)}</a>`;
+    const parts = [];
+    if (m.thread_of) {
+      const shut = isArchived(m.slug);
+      parts.push(`⑂ a thread of ${link(m.thread_of)}, ` + (m.forked_at
+        ? `forked ${esc(stamp(m.forked_at))}: its emergents went on from where they were there`
+        : 'started fresh') + (shut ? ' · closed' : '')
+        + (keyHolder ? `<button type="button" class="closethread" title="${shut ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${shut ? 'reopen' : 'close thread'}</button>` : ''));
+    }
+    const open = (m.threads || []).filter(t => !isArchived(t.slug)), shut = (m.threads || []).filter(t => isArchived(t.slug));
+    if (open.length) parts.push('threads: ' + open.map(t => `<a href="/moods/${encodeURIComponent(t.slug)}/" title="${esc(t.title)}">#${esc(t.slug)}</a>`).join(', ')
+      + (shut.length ? ` (and ${shut.length} closed)` : ''));
+    else if (shut.length) parts.push(`${shut.length} closed thread${shut.length === 1 ? '' : 's'}`);
+    return parts.length ? `<div class="thread">${parts.join(' · ')}</div>` : '';
+  }
+
   function renderHead(m) {
     const block = m.eth_blockheight ? 'opened at block ' + m.eth_blockheight.toLocaleString() : '';
     return `<div class="mood-head">
       <h1>${esc(m.title)}</h1>
       ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
+      ${threadLine(m)}
       <div class="meta">${block ? block + ' · ' : ''}${m.message_count} messages in the record ·
-        <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a></div>
+        <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}</div>
       <div class="people" id="people">${m.participants.map(n =>
         `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
@@ -3151,6 +3183,16 @@
       prev = null;
       return;
     }
+    if (e.type === 'thread' || (e.type === 'created' && e.from_mood)) {  // a thread opened from here; this one, from there
+      el.className = 'event';
+      const there = e.type === 'thread' ? e.to_mood : e.from_mood;
+      const how = e.kind === 'fresh' ? 'fresh' : 'forked';
+      el.innerHTML = `⑂ <b>${esc(e.by || 'someone')}</b> ${e.type === 'thread' ? 'opened a thread,' : 'opened this thread from'} `
+        + `<a href="/moods/${encodeURIComponent(there)}/">#${esc(there)}</a> (${how}) · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'interrupt' || e.type === 'created') {  // someone pressed stop; someone started this Mood
       el.className = 'event';
       el.innerHTML = e.type === 'created'
@@ -3430,11 +3472,28 @@
       if (!r.ok) { showError('pin: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
       renameBox.hidden = true;
       loadMoods();
-    } else if (e.target.closest('#newMood')) {
+    } else if (e.target.closest('#newMood') || e.target.closest('.mood-head .newthread')) {
+      // A thread (from the head's ⑂): of the Mood open now, forked by default.
+      newBox._threadOf = e.target.closest('.newthread') ? current : null;
+      document.getElementById('newThread').hidden = !newBox._threadOf;
+      document.getElementById('newHint').hidden = !!newBox._threadOf;
+      document.getElementById('newThreadOf').textContent = newBox._threadOf ? '#' + newBox._threadOf : '';
+      newBox.querySelector('input[name=threadKind][value=fork]').checked = true;
+      document.getElementById('newTitle').placeholder = newBox._threadOf ? 'What the thread is about' : 'What the new Mood is about';
+      newBox.querySelector('button[type=submit]').textContent = newBox._threadOf ? 'Open the thread' : 'Start';
       document.getElementById('newTitle').value = '';
       document.getElementById('newDesc').value = '';
       newBox.hidden = false;
       document.getElementById('newTitle').focus();
+    } else if (e.target.closest('.mood-head .closethread')) {
+      const r = await fetch(`/api/moods/${encodeURIComponent(current)}/archive/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ archived: !isArchived(current) }),
+      });
+      if (!r.ok) { showError('thread: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+      await loadMoods();
+      const line = document.querySelector('.mood-head .thread');
+      if (line && headMood) line.outerHTML = threadLine(headMood);
     } else if (e.target.closest('#newCancel')) {
       newBox.hidden = true;
     }
@@ -3444,9 +3503,11 @@
     const r = await fetch('/api/moods/new/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ title: document.getElementById('newTitle').value,
-                             description: document.getElementById('newDesc').value }),
+                             description: document.getElementById('newDesc').value,
+                             ...(newBox._threadOf ? { thread_of: newBox._threadOf,
+                                 fork: newBox.querySelector('input[name=threadKind]:checked').value === 'fork' } : {}) }),
     });
-    if (!r.ok) { showError('new Mood: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+    if (!r.ok) { showError((newBox._threadOf ? 'thread: ' : 'new Mood: ') + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     const made = await r.json();
     newBox.hidden = true;
     await loadMoods();

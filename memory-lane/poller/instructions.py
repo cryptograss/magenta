@@ -424,8 +424,12 @@ def render(b, degraded_path=DEGRADED):
 
 
 def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITORS, recovery_path=RECOVERY,
-           degraded_path=DEGRADED, block=None, fallback_path=GREETING_FALLBACK, record_id=None, others=()):
+           degraded_path=DEGRADED, block=None, fallback_path=GREETING_FALLBACK, record_id=None, others=(),
+           parent=None):
     """The agent's instructions for `mood` (or with no Mood: standing and identity alone, as a terminal gets).
+    `parent`: the Mood a thread was opened from; a thread with no instructions page of its own has that Mood's,
+    as its page and revision, so the record rebuilds it as any other (Justin, 25 Oct: threads; re: "forked
+    continuations should keep the same standing rules").
     `others`: the other agents' names, for the roster ({others} in the line), from magenta's list of agents
     (no wiki query names them); each is read from its own page at its trusted revision, in name order, so
     the instructions stay the same turn to turn."""
@@ -442,6 +446,8 @@ def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITOR
     if mood:
         layers.append(read_layer('moods', MOODS, get, cache, stamp, editors, optional=True))
         layers.append(read_layer('mood', mood_title(mood), get, cache, stamp, editors, optional=True))
+        if layers[-1].absent and parent:
+            layers[-1] = read_layer('mood', mood_title(parent), get, cache, stamp, editors, optional=True)
     cache.save()
     recovery = ''
     if any(layer.problem and not layer.text and not layer.optional for layer in layers):
