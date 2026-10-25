@@ -1,5 +1,5 @@
 Django==5.2.7
-psycopg2-binary==2.9.10
+psycopg2-binary==2.9.11
 watchdog==6.0.0
 constant-sorrow==0.1.0a9
 gunicorn==23.0.0
