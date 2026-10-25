@@ -1197,28 +1197,28 @@
       <div id="alerts" hidden>
         <span class="head">Sounds</span>
         <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
-        <label><input type="checkbox" data-sound="agent-mention"> agents mentioning me</label>
+        <label><input type="checkbox" data-sound="agent-mention"> emergents mentioning me</label>
         <label><input type="checkbox" data-sound="person"> every message from people</label>
-        <label><input type="checkbox" data-sound="agent"> every message from agents</label>
+        <label><input type="checkbox" data-sound="agent"> every message from emergents</label>
         <span class="head" id="tellHead">Notifications <button id="notify" type="button" hidden aria-label="Notifications"></button></span>
         <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
         <label><input type="checkbox" data-tell="person"> every message from people</label>
-        <label><input type="checkbox" data-tell="agent"> every message from agents</label>
+        <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
       </div>
-      <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
+      <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an emergent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
       <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
-      <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: agents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
+      <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: emergents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
       <a href="/moods/settings/#voices" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
-      <a class="settings" href="/moods/status/" data-section="status" title="Agents in every Mood, servers, backups, people, versions">status</a>
+      <a class="settings" href="/moods/status/" data-section="status" title="Emergents in every Mood, servers, backups, people, versions">status</a>
       <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
       <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
-  <a class="gear" href="/moods/settings/" data-section="settings" title="Settings: how each agent carries itself in each Mood" aria-label="Settings">⚙</a>
+  <a class="gear" href="/moods/settings/" data-section="settings" title="Settings: how each emergent carries itself in each Mood" aria-label="Settings">⚙</a>
 </header>
 <div id="lightbox" hidden role="dialog" aria-label="Picture"><button type="button" class="close" aria-label="Close">✕</button>
   <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
@@ -1262,8 +1262,8 @@
   </form>
 </dialog>
 <dialog id="noAgents">
-  <p><b>Agents can't be addressed from a PickiPedia sign-in.</b></p>
-  <p>Take <span class="who"></span> out of your message and send it again. To wake an agent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
+  <p><b>Emergents can't be addressed from a PickiPedia sign-in.</b></p>
+  <p>Take <span class="who"></span> out of your message and send it again. To wake an emergent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
   <button type="button">OK</button>
 </dialog>
 <dialog id="lookBox">
@@ -1325,7 +1325,7 @@
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
     <form id="composer" autocomplete="off">
       <div id="suggest"></div>
-      <button type="button" id="agentsBtn" title="Agents here: listening, model, effort" aria-label="Agent settings" aria-expanded="false">⚙</button>
+      <button type="button" id="agentsBtn" title="Emergents here: listening, model, effort" aria-label="Emergent settings" aria-expanded="false">⚙</button>
       <div id="tray" hidden></div>
       <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
       <!-- One field, as Signal and WhatsApp have it: ＋ and 🎙 inside it, the words between. -->
@@ -1439,7 +1439,7 @@
 
   const ICONS = {
     human: '<svg class="ico" viewBox="0 0 16 16" aria-label="person"><circle cx="8" cy="4.6" r="3"/><path d="M2.2 15c0-3.4 2.6-5.6 5.8-5.6s5.8 2.2 5.8 5.6z"/></svg>',
-    agent: '<svg class="ico" viewBox="0 0 16 16" aria-label="agent"><circle cx="8" cy="1.8" r="1.2"/><rect x="7.4" y="2" width="1.2" height="2.6"/><rect x="2.5" y="4.4" width="11" height="9.2" rx="2.4"/><rect x="0.6" y="7.6" width="1.4" height="3" rx=".6"/><rect x="14" y="7.6" width="1.4" height="3" rx=".6"/><circle cx="5.9" cy="8.6" r="1.25" fill="#fff"/><circle cx="10.1" cy="8.6" r="1.25" fill="#fff"/><rect x="5.6" y="11.1" width="4.8" height="1" rx=".5" fill="#fff"/></svg>',
+    agent: '<svg class="ico" viewBox="0 0 16 16" aria-label="emergent"><circle cx="8" cy="1.8" r="1.2"/><rect x="7.4" y="2" width="1.2" height="2.6"/><rect x="2.5" y="4.4" width="11" height="9.2" rx="2.4"/><rect x="0.6" y="7.6" width="1.4" height="3" rx=".6"/><rect x="14" y="7.6" width="1.4" height="3" rx=".6"/><circle cx="5.9" cy="8.6" r="1.25" fill="#fff"/><circle cx="10.1" cy="8.6" r="1.25" fill="#fff"/><rect x="5.6" y="11.1" width="4.8" height="1" rx=".5" fill="#fff"/></svg>',
   };
   function icon(name, isHuman) {
     const h = isHuman === undefined ? !!human[name] : isHuman;
@@ -2559,7 +2559,7 @@
     // Who's signed in how: PickiPedia ("wiki"), or an SSH key -- from the web, or a terminal on hunter itself
     // (Justin, 24 Oct: "ssh@hunter", small, in magenta).
     const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; emergents mentioned from here wake nobody">wiki</span>'
-      : t.is_human ? `<span class="tier ssh" title="${t.via === 'web' ? 'Signed in with an SSH key: may wake agents with their full tools' : 'Written in a terminal on hunter, over SSH'}">ssh@hunter</span>` : '';
+      : t.is_human ? `<span class="tier ssh" title="${t.via === 'web' ? 'Signed in with an SSH key: may wake emergents with their full tools' : 'Written in a terminal on hunter, over SSH'}">ssh@hunter</span>` : '';
     // ↩ for anyone signed in. A reply addresses a person, never an agent (only an @mention wakes one).
     const replyBtn = viewer && !t.deleted ? `<button type="button" class="replybtn" data-reply="${esc(t.id)}" title="Reply" aria-label="Reply">↩</button>` : '';
     // ✎ what you wrote here yourself; 🗑 what you wrote, or anything as an admin (services/retract.py).
@@ -2922,7 +2922,7 @@
     }
     if (e.type === 'handoff' || e.type === 'handoff-sent') {  // context taken between Moods (services/handoff.py)
       const moodA = slug => `<a class="moodlink" data-mood="${esc(slug)}" href="/moods/${encodeURIComponent(slug)}/">#${esc(slug)}</a>`;
-      const by = `<b>${esc(shown(e.by || 'an agent'))}</b>`, about = e.about ? ` about <i>${esc(e.about)}</i>` : '';
+      const by = `<b>${esc(shown(e.by || 'an emergent'))}</b>`, about = e.about ? ` about <i>${esc(e.about)}</i>` : '';
       el.className = 'event handoff';
       if (e.type === 'handoff-sent') {
         el.innerHTML = `🔀 ${by} took this to ${moodA(e.to_mood || '')}${e.about ? `: <i>${esc(e.about)}</i>` : ''} · ${esc(stamp(e.created_at))}`;
@@ -2984,7 +2984,7 @@
       const page = `https://pickipedia.xyz/wiki/${encodeURIComponent((e.page || '').replace(/ /g, '_')).replace(/%2F/g, '/').replace(/%3A/g, ':')}`;
       const task = `<a href="${esc(page)}${e.revision ? `?oldid=${esc(String(e.revision))}` : ''}" target="_blank" rel="noopener">${esc(e.task || 'a task')}</a>`;
       const how = e.by === 'schedule' ? 'on its schedule' : `by <b>${esc(shown(e.by || 'someone'))}</b>`;
-      const who = `<b>${esc(shown(e.for || 'an agent'))}</b>`;
+      const who = `<b>${esc(shown(e.for || 'an emergent'))}</b>`;
       el.className = 'event task';
       el.innerHTML = e.state === 'refused'
         ? `✗ ${who}'s task ${task} didn't start (${how}): ${esc(e.reason || '')} · ${esc(stamp(e.created_at))}`
@@ -2998,7 +2998,7 @@
       el.className = 'event';
       el.innerHTML = e.type === 'created'
         ? `✦ <b>${esc(e.by || 'someone')}</b> started this Mood · ${esc(stamp(e.created_at))}`
-        : `■ <b>${esc(e.by || 'someone')}</b> stopped ${esc(e.agent || 'the agent')} · ${esc(stamp(e.created_at))}`;
+        : `■ <b>${esc(e.by || 'someone')}</b> stopped ${esc(e.agent || 'the emergent')} · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
       return;
@@ -3011,10 +3011,10 @@
         `<a href="#m-${id}" data-reveal="${id}">${ask ? 'ask' : '#m-' + id.slice(0, 8)}</a>`);
       const word = { model: 'model', mention_effort: 'effort', listening: 'listening', verbosity: 'verbosity', discretion: 'discretion' };
       el.innerHTML = e.type === 'agent-settings'
-        ? `⚙ <b>${esc(shown(e.agent || 'an agent'))}</b> now on `
+        ? `⚙ <b>${esc(shown(e.agent || 'an emergent'))}</b> now on `
           + (e.changes || []).map(c => `${esc(word[c.key] || c.key)} <b>${esc(c.now || 'default')}</b> <span class="was">(was ${esc(c.was || 'default')})</span>`).join(', ')
           + (e.by ? ` · set by <b>${esc(shown(e.by))}</b>` : '') + (e.note ? `, ${linked(e.note)}` : '') + ` · ${esc(stamp(e.created_at))}`
-        : `⚙ ${esc(shown(e.by || 'an agent'))}'s settings block wasn't applied: ${esc(e.note || '')} · ${esc(stamp(e.created_at))}`;
+        : `⚙ ${esc(shown(e.by || 'an emergent'))}'s settings block wasn't applied: ${esc(e.note || '')} · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
       return;
@@ -3505,7 +3505,7 @@
   }
   // Which tools a turn had (mood_view.turn_tools): 👀 it could only look, 🔨 its full tools.
   const WAKE_MARKS = {
-    look: ['👀', 'Look only: it could read and search, and change nothing (a quiet wake, a post from a PickiPedia sign-in, or another agent that could only look)'],
+    look: ['👀', 'Look only: it could read and search, and change nothing (a quiet wake, a post from a PickiPedia sign-in, or another emergent that could only look)'],
     full: ['🔨', 'Full tools: shell, editing, the browser and the rest, as in its terminal'],
   };
   function wakeMark(tools) {
@@ -3810,7 +3810,7 @@
     document.getElementById('alerts').classList.toggle('bell-off', !notifying());
     const closed = pushable() ? ', even with magenta closed' : '';
     bell.title = notifying() ? `Notifying you of mentions and answers${closed} (click to stop)`
-      : `Notify me of mentions, and when an agent answers me${closed}`;
+      : `Notify me of mentions, and when an emergent answers me${closed}`;
   }
   bell.addEventListener('click', async () => {
     if (notifying()) { store.set('notify', false); pushOff(); }
@@ -4795,8 +4795,8 @@
   function agentRows(agents) {
     if (!Object.keys(agents).length) return '';
     const whole = agentsWhole();
-    const fold = `<button type="button" class="fold" aria-expanded="${whole}" aria-label="${whole ? 'Fold the agents\' settings to one line' : 'Open the agents\' settings'}"`
-        + ` title="${whole ? 'Fold to one line' : 'Open the agents\' settings'}">${whole ? '▾' : '▸'}</button>`;
+    const fold = `<button type="button" class="fold" aria-expanded="${whole}" aria-label="${whole ? 'Fold the emergents\' settings to one line' : 'Open the emergents\' settings'}"`
+        + ` title="${whole ? 'Fold to one line' : 'Open the emergents\' settings'}">${whole ? '▾' : '▸'}</button>`;
     if (!whole) {
       return fold + Object.entries(agents).map(([agent, a]) =>
         `<span class="agent gist${a.listening.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}`
@@ -4873,7 +4873,7 @@
   function renderLocked(scram) {
     document.body.classList.toggle('locked', !!scram);
     document.getElementById('locked').textContent = scram
-      ? `Locked: AZ5 by ${scram.by} at ${new Date(scram.at).toLocaleString()}. Nobody can post or sign in, and every agent is still, until it's lifted.`
+      ? `Locked: AZ5 by ${scram.by} at ${new Date(scram.at).toLocaleString()}. Nobody can post or sign in, and every emergent is still, until it's lifted.`
       : '';
   }
 
@@ -4903,7 +4903,7 @@
     const call = t.step ? taskCalls.get(t.step) : null;
     const what = !t.step ? '' : call === 'failed' ? `<div class="dim">couldn't load what started it</div>`
       : !call || call === 'loading' ? '<div class="dim">loading…</div>' : taskCall(call);
-    box.innerHTML = `<div class="label">${t.kind === 'helper' ? 'A helper agent' : 'A command'} in the background · started ${esc(stamp(new Date(t.since * 1000).toISOString()))}`
+    box.innerHTML = `<div class="label">${t.kind === 'helper' ? 'A helper' : 'A command'} in the background · started ${esc(stamp(new Date(t.since * 1000).toISOString()))}`
       + (t.step ? ` · <a href="#" data-step="${esc(t.step)}">where it started</a>` : '') + '</div>' + what;
   }
   function taskCall(d) {
@@ -5172,7 +5172,7 @@
     } else if (at.kind === 'command-agent') {
       // Which agents it's for: one, or several with commas; then (for /compact) what to keep.
       choices = people.filter(p => !p.is_human && p.name.startsWith(at.prefix)).map(p => p.name).sort()
-        .map(n => ({ insert: n + ' ', html: `${icon(n)}${esc(n)}<small>agent · more with a comma: ${esc(n)},…</small>` }));
+        .map(n => ({ insert: n + ' ', html: `${icon(n)}${esc(n)}<small>emergent · more with a comma: ${esc(n)},…</small>` }));
     } else if (at.kind === 'mood') {
       // By its name (the slug a link takes) or the words of its title; the most lately active first, as the list has them.
       const p = at.prefix;
@@ -5197,7 +5197,7 @@
           + `${g.members.length ? g.members.map(n => esc(shown(n))).join(', ') : 'nobody yet'}</small>` }))
         .concat(people.map(p => p.name).filter(n => n.startsWith(typed) || shown(n).toLowerCase().startsWith(typed))
         .sort((a, b) => (here.has(b) - here.has(a)) || a.localeCompare(b)).slice(0, 8)
-        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small>${shown(n) !== n ? esc(n) + ' · ' : ''}${human[n] ? 'person' : 'agent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
+        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small>${shown(n) !== n ? esc(n) + ' · ' : ''}${human[n] ? 'person' : 'emergent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
     }
     if (!choices.length) return closeSuggest();
     chosen = Math.min(chosen, choices.length - 1);
@@ -6035,7 +6035,7 @@
     readSpeedSel.value = String(pace.agent);
     readSpeedPeople.value = String(pace.person);
     readSpeedBtn.textContent = String(pace.agent);
-    readSpeedBtn.title = `Agents read at ${pace.agent} words a minute, people at ${pace.person}: press for agents' next`;
+    readSpeedBtn.title = `Emergents read at ${pace.agent} words a minute, people at ${pace.person}: press for emergents' next`;
     for (const a of [reader, speaking && speaking.audio]) if (a) atSpeed(a);  // what's playing changes at once
   }
   setPace('agent', pace.agent);
@@ -6439,7 +6439,7 @@
     try { localStorage.setItem('moods.signedInAs', viewer); } catch (e) {}
     userBtn.textContent = shown(viewer) + ' ▾';
     auth.innerHTML = keyHolder ? `signed in as <b>${esc(shown(viewer))}</b>`
-      : `signed in as <b>${esc(shown(viewer))}</b> with PickiPedia: you can chat and mention people. To wake agents `
+      : `signed in as <b>${esc(shown(viewer))}</b> with PickiPedia: you can chat and mention people. To wake emergents `
         + `or start and archive Moods, sign in with your SSH key (<code>magenta.sh login</code>).`;
     document.getElementById('signout').hidden = false;
     document.getElementById('devicesLink').hidden = false;
@@ -6463,7 +6463,7 @@
     signedOut.hidden = false;
     userBtn.textContent = 'read-only ▾';
     auth.innerHTML = (wikiSignin ? '<a class="wikiin" href="/moods/auth/wiki/">Sign in with PickiPedia</a> to chat.<br>' : '')
-      + 'To wake agents and run Moods, run <code>magenta.sh login</code> on a machine with your SSH key.'
+      + 'To wake emergents and run Moods, run <code>magenta.sh login</code> on a machine with your SSH key.'
       + '<form id="pasteLink"><label for="pasted">Have a sign-in link? Paste it here:</label>'
       + '<span><input id="pasted" type="url" autocomplete="off" placeholder="…/moods/login/…/"><button type="submit">Go</button></span></form>';
     // A home-screen app has no address bar, and keeps its own sign-in apart

@@ -137,7 +137,7 @@ class MoodPollerTest(TestCase):
         api._mentions.append(from_re('b', 21))
         self.clock[0] = T0 + timedelta(minutes=40)
         self.assertEqual(poller.poll_once(), [])  # the hour's one is spent: held, not dropped
-        self.assertIn('1 wakes by agents this hour already', api.holds[-1][1])
+        self.assertIn('1 wakes by emergents this hour already', api.holds[-1][1])
 
         api._mentions.append(mention('m26', dict(turn('c', 'justin', 41, '@magent and?'), is_human=True)))
         self.clock[0] = T0 + timedelta(minutes=60)
@@ -166,7 +166,7 @@ class MoodPollerTest(TestCase):
         api = FakeAPI([mention('m26', said)], sessions={'m26': ['s-local']})
         poller = self.make(api, minutes_now=0)
         self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('another agent mentioned you here', self.waker.woken[0][1])
+        self.assertIn('another emergent mentioned you here', self.waker.woken[0][1])
         # A person's, typed into a session, still gives that session its time.
         typed = dict(turn('b', 'justin', 0), via='session', is_human=True)
         poller = self.make(FakeAPI([mention('m27', typed)], sessions={'m27': ['s-local']}), minutes_now=0)
@@ -178,7 +178,7 @@ class MoodPollerTest(TestCase):
         api = FakeAPI([mention('m26', handed)], sessions={'m26': ['s-local']})
         poller = self.make(api, minutes_now=0)
         self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('another agent handed this over to you here', self.waker.woken[0][1])
+        self.assertIn('another emergent handed this over to you here', self.waker.woken[0][1])
 
     def test_a_task_wakes_at_once_with_the_tools_its_page_gives(self):
         # Started by its schedule or a person's call (memory-lane services/tasks.py): its page says
