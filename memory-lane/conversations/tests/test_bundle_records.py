@@ -12,9 +12,9 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from conversations.models import BundleRecord
 from conversations.tests.test_mood_poller import FakeAPI, FakeWaker
-from conversations.tests.test_rules_bundle import GREETING_PAGE, T0, agent_page, wiki
+from conversations.tests.test_instructions import GREETING_PAGE, T0, agent_page, wiki
 from poller.mood_poller import MoodPoller
-from poller.rules_bundle import bundle, identity_title, rebuild, rebuilt
+from poller.instructions import bundle, identity_title, rebuild, rebuilt
 
 KEYS = {'re': 're-key', 'magent': 'magent-key'}
 
@@ -38,12 +38,23 @@ class PartsTest(SimpleTestCase):
         self.assertEqual(rebuild(b.parts, every_revision(w).__getitem__), b.text)
         self.assertEqual([p['revision'] for p in b.parts if not isinstance(p, str)], [101, 102, 103])
         self.assertNotIn('Never merge', ''.join(p for p in b.parts if isinstance(p, str)))  # no copies
-        self.assertIn('bundle="b-1"', b.text.split('\n')[0])  # the agent can name the record it was given
-        self.assertIn("It's block 26,260,500.", b.text)
+        self.assertNotIn('b-1', b.text)  # the id is in the wake, not the instructions (render says why)
+        self.assertIn("It's block 26,260,500.", b.text)  # a block handed in still fills its sentence
         record = b.record()
         self.assertEqual(record['sha256'], b.sha256)
         self.assertEqual(record['block'], 26_260_500)
         self.assertEqual(record['stamps']['layers']['standing']['revision'], 101)
+
+    def test_the_same_pages_give_the_same_instructions_turn_after_turn(self):
+        """The system prompt comes first in what a harness sends, and a prompt cache matches it byte for byte:
+        one that changed every turn would make every wake re-read the whole session at full price."""
+        from datetime import timedelta
+        w = wiki(**{'Cryptograss:Agents/Greeting': [(200, 'JMyles', GREETING_PAGE)],
+                    'Cryptograss:Agents/Magent': [(210, 'JMyles', agent_page('magenta', 'Welcome back.'))]})
+        first = bundle('magent', 'magent-self', get=w.get, state_dir=None, now=T0, record_id='one')
+        later = bundle('magent', 'magent-self', get=w.get, state_dir=None, now=T0 + timedelta(hours=5), record_id='two')
+        self.assertEqual(first.text, later.text)
+        self.assertNotEqual(first.record()['gathered'], later.record()['gathered'])  # the record still says when
 
     def test_a_degraded_bundle_rebuilds_from_the_copy_it_stood_on(self):
         state = tempfile.mkdtemp()
@@ -51,7 +62,7 @@ class PartsTest(SimpleTestCase):
         self.gather(w, state=state)
         w.down = True
         b = self.gather(w, state=state)
-        self.assertIn('<rules-degraded', b.text)
+        self.assertIn('<instructions-degraded', b.text)
         again = rebuilt(b.record(), texts=every_revision(w))
         self.assertTrue(again['matches'])
         self.assertEqual(again['text'], b.text)
@@ -99,6 +110,9 @@ class RecordingAPI(FakeAPI):
         self.recorded.append(record)
         return True
 
+    def agents(self):
+        return ['blu', 'magent', 're']
+
 
 class SilentWaker(FakeWaker):
     """A harness that never started: it says nothing, then fails."""
@@ -114,25 +128,28 @@ class PollerRecordsTest(SimpleTestCase):
         state = Path(tempfile.mkdtemp()) / 'state.json'
         state.write_text(json.dumps({'since': '2026-10-21T00:00:00+00:00', 'handled': [], 'wakes': []}))
         api = RecordingAPI()
-        return MoodPoller(api, waker, agent='magent', state_path=state, consider=False, rules_bundle=True), api
+        return MoodPoller(api, waker, agent='magent', state_path=state, consider=False, instructions=True), api
 
     def test_each_turn_records_its_bundle_asked_for_made_and_delivered(self):
         w = wiki()
         poller, api = self.poller(FakeWaker())
         gather = lambda *a, **k: bundle(*a, get=w.get, state_dir=None, now=T0, **k)  # noqa: E731
-        with mock.patch('poller.rules_bundle.bundle', side_effect=gather):
+        with mock.patch('poller.instructions.bundle', side_effect=gather):
             poller.run_turn_for('magent-self', 's-local', 'You were woken')
         [record] = api.recorded
         given = poller.waker.options['system']
-        self.assertIn(f'bundle="{record["id"]}"', given)
+        self.assertNotIn(record['id'], given)
+        self.assertTrue(poller.waker.woken[0][1].endswith(
+            f"It's block 26,260,600. Your instructions this turn are bundle {record['id']} (Special:AgentBundles)."))
         self.assertTrue(record['session_id'])  # the session the turn ran as
+        self.assertEqual(sorted(record['stamps']['greeting']['roster']), ['blu', 're'])  # magenta's list, less magent
         self.assertTrue(record['requested_at'] <= record['produced_at'] <= record['delivered_at'])
         self.assertEqual(record['block'], 26_260_600)
         self.assertTrue(rebuilt(record, texts=every_revision(w))['matches'])
 
     def test_a_harness_that_never_started_has_no_delivery(self):
         poller, api = self.poller(SilentWaker())
-        with mock.patch('poller.rules_bundle.bundle', side_effect=RuntimeError('cache unreadable')):
+        with mock.patch('poller.instructions.bundle', side_effect=RuntimeError('cache unreadable')):
             outcome = poller.run_turn_for('magent-self', 's-local', 'You were woken')
         self.assertEqual(outcome[0], 'failed')
         [record] = api.recorded
@@ -180,7 +197,7 @@ class BundleAPITest(TestCase):
     def test_rebuilt_to_read_and_checked(self):
         record, texts = a_record()
         self.post(record)
-        with mock.patch('poller.rules_bundle.revision_texts', return_value=texts) as fetched:
+        with mock.patch('poller.instructions.revision_texts', return_value=texts) as fetched:
             again = self.client.get(f'/api/bundles/{record["id"]}/text/').json()
             plain = self.client.get(f'/api/bundles/{record["id"]}/text/', {'format': 'text'})
         self.assertTrue(again['matches'])
@@ -193,7 +210,43 @@ class BundleAPITest(TestCase):
         record, texts = a_record()
         self.post(record)
         del texts[104]
-        with mock.patch('poller.rules_bundle.revision_texts', return_value=texts):
+        with mock.patch('poller.instructions.revision_texts', return_value=texts):
             plain = self.client.get(f'/api/bundles/{record["id"]}/text/', {'format': 'text'})
         self.assertEqual(plain.status_code, 409)
         self.assertIn('104', plain.content.decode())
+
+
+class EveryMoodTest(SimpleTestCase):
+    """What holds in every Mood is in the instructions (Cryptograss:Moods/Instructions), never repeated in
+    the wake: no Python copy of it, and no fallback but the copy of the page the bundler keeps."""
+
+    def run_with(self, pages):
+        from poller.mood_poller import mention_opening, wake_footer
+        w = wiki(**pages)
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': '2026-10-21T00:00:00+00:00', 'handled': [], 'wakes': []}))
+        poller = MoodPoller(RecordingAPI(), FakeWaker(), agent='magent', state_path=state, consider=False,
+                            instructions=True)
+        gather = lambda *a, **k: bundle(*a, get=w.get, state_dir=None, now=T0, **k)  # noqa: E731
+        prompt = '\n'.join(mention_opening('magent-self', 'a post.') + ['[justin] hi'] + wake_footer(full=True))
+        with mock.patch('poller.instructions.bundle', side_effect=gather):
+            poller.run_turn_for('magent-self', 's-local', prompt)
+        return poller.waker.woken[0][1], poller.waker.options['system']
+
+    def test_the_instructions_say_it_and_the_wake_says_only_this_turn(self):
+        wake, system = self.run_with({'Cryptograss:Moods/Instructions': [(401, 'JMyles', 'Every Mood, kept.')]})
+        self.assertIn('<moods page="Cryptograss:Moods/Instructions" revision="401" by="JMyles">\nEvery Mood, kept.\n'
+                      '</moods>', system)
+        self.assertLess(system.index('<identity'), system.index('<moods'))
+        self.assertLess(system.index('<moods'), system.index('<mood slug'))
+        for gone in ('Etiquette:', '```handoff', '```settings', '<silent>', 'Greeting anyone', '/todo'):
+            self.assertNotIn(gone, wake)
+        self.assertIn('This turn has your full tools', wake)
+        self.assertIn('[justin] hi', wake)
+        self.assertTrue(wake.endswith('(Special:AgentBundles).\n</mood-wake>'))  # inside the wake, last
+        self.assertNotIn('\n\n\n', wake)
+
+    def test_untrusted_it_is_left_out(self):
+        _, system = self.run_with({'Cryptograss:Moods/Instructions': [(400, 'Magent', 'Every Mood.')]})
+        self.assertNotIn('<moods', system)
+        self.assertNotIn('Every Mood.', system)

@@ -1597,13 +1597,19 @@ class FaceName(models.Model):
 class YarnClip(models.Model):
     """A Yarn clip kept here: its id on Yarn, and the copy of its video stored as Media.
     Fetched once, by the server (services/yarn_kept.py), so pressing ▶ doesn't send a
-    browser to Yarn, whose Cloudflare stops people with a human check."""
+    browser to Yarn, whose Cloudflare stops people with a human check.
+
+    Or a clip of our own, cut from a local file (`magenta.sh clips save`, views_auth.api_clip_make):
+    `made_by` says whose, its id is ours (linked as /clips/<id>), and `caption` is its subtitle --
+    played from here like a kept Yarn clip, with nowhere else to fall back to."""
 
     clip = models.UUIDField(primary_key=True)
     media = models.ForeignKey(Media, models.CASCADE, related_name='yarn_clips')
     # Its captioned GIF, the card's picture: kept too, as Yarn's Cloudflare stops it as it stops the video.
     still = models.ForeignKey(Media, models.SET_NULL, null=True, blank=True, related_name='yarn_stills')
     kept_at = models.DateTimeField(auto_now_add=True)
+    made_by = models.ForeignKey('ThinkingEntity', models.SET_NULL, null=True, blank=True, related_name='clips_made')
+    caption = models.TextField(blank=True, default='')
 
     class Meta:
         db_table = 'yarn_clips'
@@ -1699,16 +1705,16 @@ class HarnessModels(models.Model):
 
 class BundleRecord(models.Model):
     """
-    The rules a turn was given (poller/rules_bundle.py), as its runner sent
+    The instructions a turn was given (poller/instructions.py), as its runner sent
     them: not the text but its parts -- the bundle's own words, and in each
     layer's place a PickiPedia page and revision -- and the text's sha256.
-    Joining the revisions' texts back in rebuilds it (rules_bundle.rebuilt),
+    Joining the revisions' texts back in rebuilds it (instructions.rebuilt),
     and the sha256 proves the rebuild. Each is one bundle action: asked for,
     made, and handed to a harness that started with it (delivered_at; none,
     it never did). Justin, magent-self, 2026-10-24.
     """
 
-    id = models.UUIDField(primary_key=True)  # the runner's, in the bundle's <rules bundle="..."> tag
+    id = models.UUIDField(primary_key=True)  # the runner's, in the bundle's <instructions bundle="..."> tag
     agent = models.CharField(max_length=60, db_index=True)
     mood = models.CharField(max_length=120, blank=True, default='', db_index=True)
     session_id = models.CharField(max_length=80, blank=True, default='')
@@ -1722,7 +1728,7 @@ class BundleRecord(models.Model):
     transform = models.CharField(max_length=200, blank=True, default='')
     stamps = models.JSONField(default=dict)     # Bundle.stamps(): each layer's page, revision, editor, problem
     commit = models.CharField(max_length=40, blank=True, default='')
-    error = models.CharField(max_length=300, blank=True, default='')  # why the recovery rules stood in
+    error = models.CharField(max_length=300, blank=True, default='')  # why the recovery instructions stood in
     recorded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

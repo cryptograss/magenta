@@ -332,6 +332,30 @@ def wikilinks_in(text):
     return out
 
 
+# Tags for a group, each mentioning all its members as if each were named (Skyler and Justin, 24 Oct: "for
+# stuff like consensus Beta releases", "call in the fleet"):
+#   @core    everyone who signs in with an SSH key -- the people only: an agent with a key isn't woken by it
+#   @humans  every person here
+#   @agents  every agent here: each is woken, as by its own name (its listening and its caps still apply)
+# Someone actually called by one of these names wins.
+GROUPS = {'core': 'everyone who signs in with an SSH key', 'humans': 'every person here', 'agents': 'every agent here'}
+
+
+def group_members(group, mentionable=None):
+    """Who `group` mentions, sorted; restricted to `mentionable` if given."""
+    from conversations.models import ThinkingEntity
+    from .mood_auth import key_holders
+    if group not in GROUPS:
+        return []
+    found = ThinkingEntity.objects.filter(is_biological_human=group != 'agents')
+    if group == 'core':
+        found = found.filter(name__in=key_holders())
+    members = set(found.values_list('name', flat=True))
+    if mentionable is not None:
+        members &= {n.lower() for n in mentionable}
+    return sorted(members)
+
+
 def mentions_in(text, mentionable):
     """Ordered, de-duplicated names mentioned in text, restricted to known ones.
 
@@ -348,9 +372,11 @@ def mentions_in(text, mentionable):
     for match in _MENTION.finditer(text):
         name = match.group(1).rstrip('.').lower()
         name = known_as.get(name, name)
-        if name in lowered and name not in seen:
-            seen.add(name)
-            out.append(name)
+        named = group_members(name, lowered) if name in GROUPS and name not in lowered else [name]
+        for name in named:
+            if name in lowered and name not in seen:
+                seen.add(name)
+                out.append(name)
     return out
 
 
@@ -505,6 +531,11 @@ def _mention(mentionable, stash=lambda markup: markup):
         if raw.endswith('.'):
             raw, trailing = raw[:-1], '.'
         who = known_as.get(raw.lower(), raw.lower())
+        if who in GROUPS and who not in lowered:
+            members = group_members(who)
+            title = html.escape(f'@{who}: {GROUPS[who]} -- ' + (', '.join(members) or 'nobody yet'), quote=True)
+            return stash(f'<span class="mention group" data-who="{who}" data-members="{",".join(members)}" '
+                         f'title="{title}">@{raw}</span>') + trailing
         if who not in lowered:
             return match.group(0)
         # A link to who it is, on PickiPedia; still a .mention, highlighted when it's you.
@@ -546,6 +577,28 @@ def yarn_clip(url):
     """The clip id when url is a Yarn clip's page, else None."""
     match = _YARN_CLIP.match(url)
     return match.group(2) if match and match.group(1) in YARN_HOSTS else None
+
+
+# A clip of our own (`magenta.sh clips save`, models.YarnClip with made_by): /clips/<id> here.
+_OWN_CLIP = re.compile(r'https?://[a-z0-9.-]+(?::\d+)?/clips/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/?$')
+
+
+def own_clip(url):
+    """The clip id when url is one of our own clips' links (any host: the record outlives a rename), else None."""
+    match = _OWN_CLIP.match(url)
+    return match.group(1) if match else None
+
+
+def own_clip_card(clip, url):
+    """Our own clip as a card, played like a kept Yarn clip (its caption on hover); None if there's no such clip."""
+    from conversations.models import YarnClip
+    found = YarnClip.objects.select_related('media', 'still').filter(clip=clip, made_by__isnull=False).first()
+    if found is None:
+        return None
+    still = f' data-still="{found.still.url}"' if found.still else ''
+    caption = html.escape(found.caption, quote=True)
+    return (f'<a class="yarn own" href="{url}" data-yarn="{clip}" data-kept="{found.media.url}"{still} '
+            f'data-own="1" title="{caption}">▶ {caption or "clip"}</a>')
 
 
 # A message's own link (its time copies it): a card, not a URL (services/links.py). /messages/<id> now;
@@ -625,6 +678,9 @@ def _link_url(match):
     own = _PERMALINK.match(url)
     if own and (card := _message_link(own.group(1))):
         return card + tail
+    own = own_clip(url)
+    if own and (card := own_clip_card(own, url)):
+        return card + tail
     clip = yarn_clip(url)
     if clip:
         # Kept here already (services/yarn_kept.py): ▶ plays our copy, never asking Yarn.
@@ -700,21 +756,25 @@ def _inline(text, mentionable=()):
 # The team's saved clips (services/clips.py) are posts too: a save or a
 # forget shows as one line, without the clip; a use shows just the clip (its
 # name stays in the record). '🎬 name <link>' is how uses were first posted.
-_YARN_SAVED = re.compile(r'^/(?:clips|yarn) save ([a-z0-9][a-z0-9_-]{0,34}) (https://\S+)$')
+_YARN_SAVED = re.compile(r'^/(?:clips|yarn) save ([a-z0-9][a-z0-9_-]{0,34}) (https?://\S+)$')
 _YARN_FORGOTTEN = re.compile(r'^/(?:clips|yarn) forget ([a-z0-9][a-z0-9_-]{0,34})$')
-_YARN_USED = re.compile(r'^(?:/clips|/yarn|🎬) [a-z0-9][a-z0-9_-]{0,34} (https://www\.yarn\.co/yarn-clip/[0-9a-f-]{36})$')
+_YARN_USED = re.compile(r'^(?:/clips|/yarn|🎬) [a-z0-9][a-z0-9_-]{0,34} (https://www\.yarn\.co/yarn-clip/[0-9a-f-]{36}'
+                        r'|https?://[a-z0-9.-]+(?::\d+)?/clips/[0-9a-f-]{36}/?)$')
 
 
 def render_html(text, mentionable=()):
     """Escape, then translate the markdown the agent writes into HTML."""
     plain = text.strip()
-    saved, forgotten, used = _YARN_SAVED.match(plain), _YARN_FORGOTTEN.match(plain), _YARN_USED.match(plain)
+    # A clip played on the first line may have words under it (services/clips.command): the clip, then them.
+    head, _, under = plain.partition('\n')
+    saved, forgotten = _YARN_SAVED.match(plain), _YARN_FORGOTTEN.match(plain)
+    used = _YARN_USED.match(plain) or (_YARN_USED.match(head.strip()) if under.strip() else None)
     if saved:
         text = f'🎬 saved **{saved[1]}**'
     elif forgotten:
         text = f'🎬 forgot **{forgotten[1]}**'
     elif used:
-        text = used[1]
+        text = used[1] + (f'\n\n{under.strip()}' if used[0] != plain and under.strip() else '')
     text = html.escape(_PLACEHOLDER_CHARS.sub('', text), quote=True)
 
     def inline(s):

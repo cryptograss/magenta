@@ -12,7 +12,7 @@ import re
 
 from django.conf import settings
 from django.db.models import Max
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
@@ -113,10 +113,13 @@ def api_moods(request):
     payloads.sort(key=lambda p: not p['pinned'])  # pinned first, each part still newest first
     people = ThinkingEntity.objects.order_by('name')
     look = knobs.looks()
+    from .services.mood_view import GROUPS, group_members
     return JsonResponse({'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
          **(look[p.name] if p.is_biological_human and p.name in look else {})}
-        for p in people]})
+        for p in people],
+        # Tags for a group (@core): what each is, and who it mentions now.
+        'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]})
 
 
 @require_GET
@@ -318,6 +321,15 @@ def _message_or_none(raw):
 
 
 @require_GET
+def own_clip(request, clip):
+    """One of our own clips' links (/clips/<id>, made with `magenta.sh clips save`): its video."""
+    from .models import YarnClip
+    found = YarnClip.objects.select_related('media').filter(clip=clip, made_by__isnull=False).first()
+    if found is None:
+        raise Http404('no such clip')
+    return HttpResponseRedirect(found.media.url)
+
+
 def media_file(request, sha256, ext):
     """A stored picture, sound or clip. Immutable by construction: the name is its hash.
     A sound or a clip answers a byte range (Range: bytes=a-b), as Safari insists on for media."""
@@ -435,6 +447,21 @@ def message_page(request, message_id):
     if message is None:
         raise Http404('no such message in any Mood')
     return redirect(f'/moods/{message.mood.slug}/#m-{message.id}')
+
+
+@require_GET
+def api_message_wiki(request, message_id):
+    """{"wikitext"}: the message as a card for PickiPedia, {{Magenta message|...}} with its words in it
+    (services/wiki_embed.py). ?chars=N or all: how many characters the card shows (else the template's 280)."""
+    from .models import MessageChange
+    from .services import wiki_embed
+    message = _in_a_mood(message_id)
+    if message is None or MessageChange.objects.filter(message_id=message.id, kind='deleted').exists():
+        return JsonResponse({'error': 'no such message in any Mood'}, status=404)
+    chars = request.GET.get('chars') or None
+    if chars is not None and chars != 'all' and not (chars.isdigit() and 0 < int(chars) <= 100000):
+        return JsonResponse({'error': 'chars: a number, or all'}, status=400)
+    return JsonResponse({'wikitext': wiki_embed.template_call(message, chars=chars)})
 
 
 @require_GET

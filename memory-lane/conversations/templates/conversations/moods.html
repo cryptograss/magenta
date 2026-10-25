@@ -1408,6 +1408,7 @@
   let baseTitle = 'magenta';
   let sectionNow = 'moods';  // or tidings, prompts, status, settings (showSection)
   let people = [];          // everyone who can be named, for @-completion
+  let groups = [];          // tags for a group (@core: everyone who signs in with an SSH key)
   let human = {};           // name -> is a person
   let looks = {};           // name -> {art, colour}: a person's name written their way, and their icon's colour
   let act = null;           // what an agent is doing now, from /turns/: the one stop and Esc stop
@@ -1771,7 +1772,9 @@
 
   function markTurn(el, mentions) {
     el.classList.toggle('mentions-me', !!me && mentions.includes(me));
-    el.querySelectorAll('.mention').forEach(s => s.classList.toggle('me', s.dataset.who === me));
+    // You, or a group you're in (@core).
+    el.querySelectorAll('.mention').forEach(s => s.classList.toggle('me', s.dataset.who === me
+      || (s.dataset.members || '').split(',').includes(me)));
   }
 
   function renderHead(m) {
@@ -1780,7 +1783,7 @@
       <h1>${esc(m.title)}</h1>
       ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
       <div class="meta">${block ? block + ' · ' : ''}${m.message_count} messages in the record ·
-        <a href="/moods/${encodeURIComponent(m.slug)}/rules/" title="What magent is told here: this Mood's rules, its settings, what each wake says">rules</a></div>
+        <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a></div>
       <div class="people" id="people">${m.participants.map(n =>
         `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
@@ -2444,6 +2447,8 @@
   function decorateYarn(a) {
     const id = a.dataset.yarn;
     if (!YARN_ID.test(id || '') || a.querySelector('img')) return;
+    // One of our own (made with `magenta.sh clips save`): its own still, or its caption as it is.
+    if (a.dataset.own && !/^\/moods\/media\/[0-9a-f]{64}\.(gif|jpg|png|webp)$/.test(a.dataset.still || '')) return;
     const label = a.textContent;
     const img = document.createElement('img');
     img.loading = 'lazy';
@@ -2465,7 +2470,8 @@
     play.className = 'yarnplay'; play.textContent = '▶'; play.setAttribute('aria-hidden', 'true');
     a.textContent = '';
     a.classList.add('thumb');
-    a.title = 'Play the clip (ctrl-click: open it on Yarn)';
+    if (a.dataset.own) img.alt = a.title ? `Clip: ${a.title}` : 'Clip: press to play';
+    else a.title = 'Play the clip (ctrl-click: open it on Yarn)';
     a.append(img, play);
   }
   document.addEventListener('click', e => {
@@ -2481,7 +2487,7 @@
     // to fetch it now; only if it can't, Yarn's own addresses (y.getyarn.io, then the older
     // y.yarn.co) -- where Cloudflare may stop a browser with a human check, which a video
     // can't pass; then the card becomes a link.
-    const sources = [`https://y.getyarn.io/${id}.mp4`, `https://y.yarn.co/${id}.mp4`];
+    const sources = a.dataset.own ? [] : [`https://y.getyarn.io/${id}.mp4`, `https://y.yarn.co/${id}.mp4`];
     video.controls = true;
     video.autoplay = true;  // pressed to play: a click lets it start with sound
     video.playsInline = true;
@@ -2501,7 +2507,7 @@
       const why = document.createElement('a');
       why.className = 'yarn';
       why.href = a.href; why.target = '_blank'; why.rel = 'noopener';
-      why.textContent = "Couldn't play it here: open the clip on Yarn";
+      why.textContent = a.dataset.own ? "Couldn't play the clip here: open it" : "Couldn't play it here: open the clip on Yarn";
       box.replaceWith(why);
     });
     box.appendChild(video);
@@ -2539,9 +2545,11 @@
     // ★ a message's link onto Tidings (services/tiding_links.py): anyone signed in, once.
     const promoted = new Set((t.tidings || []).map(x => x.url));
     const mayPromote = viewer && !t.deleted && (t.links || []).some(u => !promoted.has(u));
-    const moreBtn = mayEdit || mayDelete || mayPromote
+    // 📝 into your notes for the current sprint (services/sprint_notes.py): a person's, any message.
+    const mayNote = viewer && human[viewer] !== false && !t.deleted;
+    const moreBtn = mayEdit || mayDelete || mayPromote || mayNote
       ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
-        + `data-promote="${mayPromote ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
+        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
     const onTidings = onTidingsMark(t.tidings || []);
     const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
@@ -3568,6 +3576,7 @@
     const body = await r.json();
     moods = body.moods;
     people = body.people || [];
+    groups = body.groups || [];
     people.forEach(p => { human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
     renderMe();
@@ -4261,7 +4270,9 @@
     if (more) {
       if (msgMenu._for === more) { closeMsgMenu(); return; }
       msgMenu.innerHTML = (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
-        + (more.dataset.promote && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
+        + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my sprint notes</button>'
+          + '<button type="button" role="menuitem" data-act="wiki">⧉ Copy for PickiPedia</button>' : '')
+        + ((more.dataset.promote || more.dataset.note) && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
         + (more.dataset.edit ? '<button type="button" role="menuitem" data-act="edit">✎ Edit</button>' : '')
         + (more.dataset.edit && more.dataset.delete ? '<hr>' : '')
         + (more.dataset.delete ? '<button type="button" role="menuitem" data-act="delete" class="danger">🗑 Delete…</button>' : '');
@@ -4282,6 +4293,8 @@
     const el = from.closest('.turn');
     if (act.dataset.act === 'edit') editMessage(el, from.dataset.more);
     else if (act.dataset.act === 'promote') promoteMessage(el, from);
+    else if (act.dataset.act === 'note') noteMessage(from.dataset.more);
+    else if (act.dataset.act === 'wiki') copyForWiki(from.dataset.more);
     else deleteMessage(from.dataset.more);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !msgMenu.hidden) closeMsgMenu(); });
@@ -4290,6 +4303,25 @@
     return fetch(`/api/moods/${encodeURIComponent(current)}/messages/${encodeURIComponent(id)}/${what}/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify(body || {}) })
       .then(async r => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.error || r.status); return b; });
+  }
+  // Into your notes for the current sprint, on PickiPedia: said where, with the page a click away.
+  async function noteMessage(id) {
+    showNote('Adding it to your sprint notes…', 4000);
+    try {
+      const done = await changeMessage(id, 'sprint-note');
+      showNote(`${done.already ? 'Already in' : 'Added to'} your ${esc(done.sprint)} notes: `
+        + `<a href="${esc(done.url)}" target="_blank" rel="noopener">${esc(done.page)}</a>`, 9000, true);
+    } catch (err) { showNote(`Not added: ${err.message}`, 9000); }
+  }
+  // The message as a card for PickiPedia (Template:Magenta message, words and all), onto the clipboard to paste.
+  async function copyForWiki(id) {
+    try {
+      const r = await fetch(`/api/messages/${encodeURIComponent(id)}/wiki/`);
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error || r.status);
+      await navigator.clipboard.writeText(body.wikitext);
+      showNote('Copied: paste it into any PickiPedia page. chars= sets how much of it shows (280, or all).', 8000);
+    } catch (err) { showNote(`Not copied: ${err.message}`, 8000); }
   }
   function toldChanged(done) {
     const reached = done.reached || [];
@@ -5006,9 +5038,12 @@
       const here = new Set((moods.find(m => m.slug === current) || {}).participants || []);
       // By either name; what's put in is the PickiPedia name, where there is one (the server knows both).
       const typed = at.prefix.toLowerCase();
-      choices = people.map(p => p.name).filter(n => n.startsWith(typed) || shown(n).toLowerCase().startsWith(typed))
+      choices = groups.filter(g => g.name.startsWith(typed) && !people.some(p => p.name === g.name))
+        .map(g => ({ insert: g.name + ' ', html: `<span class="emo">👥</span>@${esc(g.name)}<small>${esc(g.is)}: `
+          + `${g.members.length ? g.members.map(n => esc(shown(n))).join(', ') : 'nobody yet'}</small>` }))
+        .concat(people.map(p => p.name).filter(n => n.startsWith(typed) || shown(n).toLowerCase().startsWith(typed))
         .sort((a, b) => (here.has(b) - here.has(a)) || a.localeCompare(b)).slice(0, 8)
-        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small>${shown(n) !== n ? esc(n) + ' · ' : ''}${human[n] ? 'person' : 'agent'}${here.has(n) ? '' : ' · not here yet'}</small>` }));
+        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small>${shown(n) !== n ? esc(n) + ' · ' : ''}${human[n] ? 'person' : 'agent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
     }
     if (!choices.length) return closeSuggest();
     chosen = Math.min(chosen, choices.length - 1);
@@ -5113,9 +5148,9 @@
   }
   // What's said next makes an old error old news.
   sayBox.addEventListener('input', () => { const err = composer.querySelector('.err'); if (err) err.remove(); });
-  function showNote(message, ms) {  // a word under the box, gone after a while
+  function showNote(message, ms, isHtml) {  // a word under the box, gone after a while (isHtml: already escaped, with a link)
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
-    composer.insertAdjacentHTML('beforeend', `<span class="note">${esc(message)}</span>`);
+    composer.insertAdjacentHTML('beforeend', `<span class="note">${isHtml ? message : esc(message)}</span>`);
     const note = composer.querySelector('.note:last-of-type');
     setTimeout(() => note && note.remove(), ms || 8000);
   }

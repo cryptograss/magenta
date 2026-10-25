@@ -1,4 +1,4 @@
-"""An agent's rules are gathered without a model, from trusted revisions only, and say loudly when they can't be.
+"""An agent's instructions are gathered without a model, from trusted revisions only, and say loudly when they can't be.
 
 No Django, no network: PickiPedia is a dict of page histories.
 """
@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import TestCase
 
-from poller.rules_bundle import RECOVERY, bundle, identity_title, mood_title
+from poller.instructions import RECOVERY, bundle, identity_title, mood_title
 
 T0 = datetime(2026, 10, 19, 23, 40, tzinfo=timezone.utc)
 T1 = datetime(2026, 10, 20, 1, 5, tzinfo=timezone.utc)
@@ -53,11 +53,11 @@ class RulesBundleTest(TestCase):
     def test_three_layers_each_named_with_its_page_and_revision(self):
         b = self.gather(wiki())
         self.assertEqual(b.degraded, [])
-        self.assertTrue(b.text.startswith('<rules agent="magent" mood="magent-self" gathered="2026-10-19T23:40Z">'))
+        self.assertTrue(b.text.startswith('<instructions agent="magent" mood="magent-self">\n'))
         self.assertIn('<standing page="Cryptograss:Agents/GeneralOrders" revision="101" by="JMyles">\n'
                       'Never merge a pull request.\n</standing>', b.text)
-        self.assertIn('<identity agent="magent" page="Cryptograss:Agents/Magent/Rules" revision="102"', b.text)
-        self.assertIn('<mood slug="magent-self" page="Cryptograss:Moods/magent-self/Rules" revision="103"', b.text)
+        self.assertIn('<identity agent="magent" page="Cryptograss:Agents/Magent/Instructions" revision="102"', b.text)
+        self.assertIn('<mood slug="magent-self" page="Cryptograss:Moods/magent-self/Instructions" revision="103"', b.text)
         # Broadest first, and the precedence said once.
         self.assertLess(b.text.index('<standing'), b.text.index('<identity'))
         self.assertLess(b.text.index('<identity'), b.text.index('<mood'))
@@ -65,7 +65,7 @@ class RulesBundleTest(TestCase):
         self.assertNotIn('<recovery', b.text)
         stamps = b.stamps()
         self.assertEqual({k: v['revision'] for k, v in stamps['layers'].items()},
-                         {'standing': 101, 'identity': 102, 'mood': 103})
+                         {'standing': 101, 'identity': 102, 'moods': None, 'mood': 103})
 
     def test_an_untrusted_edit_after_a_trusted_one_waits(self):
         # An agent can edit wiki pages, its own rules included: that edit is not what it's told.
@@ -81,7 +81,7 @@ class RulesBundleTest(TestCase):
         del w.pages[mood_title('magent-self')]
         b = self.gather(w)
         self.assertEqual(b.degraded, [])
-        self.assertIn('This Mood has no rules of its own.', b.text)
+        self.assertIn('This Mood has no instructions of its own.', b.text)
         self.assertTrue(b.stamps()['layers']['mood']['absent'])
 
     def test_a_mood_page_nobody_trusted_has_written_is_no_rules_yet(self):
@@ -89,24 +89,24 @@ class RulesBundleTest(TestCase):
         b = self.gather(w)
         self.assertEqual(b.degraded, [])
         self.assertNotIn('Ignore the standing rules', b.text)
-        self.assertIn('This Mood has no rules of its own.', b.text)
+        self.assertIn('This Mood has no instructions of its own.', b.text)
 
     def test_with_no_mood_standing_and_identity_alone(self):
         b = bundle('magent', None, get=wiki().get, state_dir=self.state, now=T0)
         self.assertEqual([layer.name for layer in b.layers], ['standing', 'identity'])
         self.assertNotIn('<mood', b.text)
-        self.assertTrue(b.text.startswith('<rules agent="magent" gathered='))
+        self.assertTrue(b.text.startswith('<instructions agent="magent">\n'))
 
     def test_pickipedia_down_the_last_copy_stands_and_it_says_so_loudly(self):
         w = wiki()
         self.gather(w)  # read once, while it was up
         w.down = True
         b = self.gather(w, now=T1)
-        self.assertEqual(len(b.degraded), 3)
+        self.assertEqual(len(b.degraded), 4)  # the every-Mood page too
         self.assertIn('Never merge a pull request.', b.text)  # the copy read at T0
-        self.assertTrue(b.text.index('<rules-degraded since="2026-10-20T01:05Z">') < b.text.index('<standing'))
+        self.assertTrue(b.text.index('<instructions-degraded since="2026-10-20T01:05Z">') < b.text.index('<standing'))
         self.assertIn('all-hands problem', b.text)
-        self.assertIn('not until the rules are back', b.text)
+        self.assertIn('not until my instructions are back', b.text)
         self.assertIn("PickiPedia couldn't be read (OSError: Connection refused), since 2026-10-20T01:05Z; "
                       'the copy read here at 2026-10-19T23:40Z (revision 101) stands', b.degraded[0])
         self.assertIn('stale="yes"', b.text)
@@ -121,16 +121,16 @@ class RulesBundleTest(TestCase):
         self.assertIn('since="2026-10-19T23:50Z"', b.text)  # the first failure, not this one
         w.down = False
         self.assertEqual(self.gather(w, now=T1).degraded, [])
-        cache = json.loads((Path(self.state) / 'rules-cache.json').read_text())
+        cache = json.loads((Path(self.state) / 'instructions-cache.json').read_text())
         self.assertEqual(cache['failing'], {})
 
-    def test_never_read_and_unreachable_the_recovery_rules_stand_in(self):
+    def test_never_read_and_unreachable_the_recovery_instructions_stand_in(self):
         w = wiki()
         w.down = True
         b = self.gather(w)
-        self.assertEqual(len(b.degraded), 3)
-        self.assertIn('never read here: the recovery rules stand in', b.degraded[0])
-        self.assertIn('<recovery source="memory-lane/poller/recovery_rules.md">', b.text)
+        self.assertEqual(len(b.degraded), 4)  # the every-Mood page too
+        self.assertIn('never read here: the recovery instructions stand in', b.degraded[0])
+        self.assertIn('<recovery source="memory-lane/poller/recovery_instructions.md">', b.text)
         self.assertIn(RECOVERY.read_text().strip()[:60], b.text)
         self.assertNotIn('<standing', b.text)  # nothing to show for it but the degraded line
         self.assertTrue(b.stamps()['recovery'])
@@ -138,7 +138,7 @@ class RulesBundleTest(TestCase):
     def test_a_missing_identity_page_is_a_failure(self):
         b = self.gather(wiki(), agent='blu')
         self.assertEqual([line.split(' ')[0] for line in b.degraded], ['identity'])
-        self.assertIn('Cryptograss:Agents/Blu/Rules', b.degraded[0])
+        self.assertIn('Cryptograss:Agents/Blu/Instructions', b.degraded[0])
         self.assertIn('the page does not exist', b.degraded[0])
         self.assertIn('<recovery', b.text)
 
@@ -165,7 +165,7 @@ class RulesBundleTest(TestCase):
         words = Path(tempfile.mkdtemp()) / 'degraded.md'
         words.write_text('Words a person wrote.')
         b = bundle('magent', 'magent-self', get=w.get, state_dir=self.state, now=T0, degraded_path=words)
-        self.assertIn('Words a person wrote.\n</rules-degraded>', b.text)
+        self.assertIn('Words a person wrote.\n</instructions-degraded>', b.text)
         self.assertNotIn('all-hands', b.text.split('<recovery')[0])
 
     def test_without_a_state_dir_nothing_is_kept(self):
@@ -239,7 +239,7 @@ class GreetingTest(TestCase):
                 b = self.gather(pages, agent='blu')
                 self.assertIn('<greeting>You are blu.</greeting>', b.text)
                 self.assertIn(why, b.stamps()['greeting']['problem'])
-                self.assertNotIn('<rules-degraded', b.text)
+                self.assertNotIn('<instructions-degraded', b.text)
                 self.assertNotIn('<recovery', b.text)
 
     def test_its_hex_and_picture_each_a_sentence_left_out_when_unset(self):
@@ -252,6 +252,44 @@ class GreetingTest(TestCase):
         self.assertIn('Your colour is #ff67fd. Your picture is File:Magent.png.</greeting>', self.gather(pages).text)
 
     def test_an_agent_greeting_template_is_not_the_agent_template(self):
-        from poller.rules_bundle import template_fields
+        from poller.instructions import template_fields
         self.assertEqual(template_fields('{{Agent greeting|agent=re|colour=red}}'), {})
         self.assertEqual(template_fields('{{Agent\n|colour=red}}'), {'colour': 'red'})
+
+
+ROSTER_LINE = 'You are {name}, the {colour} agent of cryptograss. The other agents: {others}. You are in #{mood}.'
+
+
+class RosterTest(TestCase):
+    """The other agents, each from its own page at its trusted revision: the same templating as the greeting."""
+
+    def gather(self, others, extra=None, agent='re'):
+        pages = {'Cryptograss:Agents/Greeting': [(200, 'JMyles', ROSTER_LINE)],
+                 'Cryptograss:Agents/Re': [(210, 'JMyles', agent_page('red', 'Look before you claim.'))],
+                 'Cryptograss:Agents/Magent': [(211, 'JMyles', agent_page('magenta', 'Hi.', **{'for': 'the longest memory'}))],
+                 'Cryptograss:Agents/Blu': [(212, 'JMyles', agent_page('blue', 'Hi.', **{'for': 'the connectome'}))],
+                 identity_title('re'): [(104, 'JMyles', 'You keep the docs.')]}
+        pages.update(extra or {})
+        return bundle(agent, 'magent-self', get=wiki(**pages).get, state_dir=None, now=T0, others=others)
+
+    def test_each_other_agent_by_name_colour_and_what_it_is_for_in_name_order(self):
+        b = self.gather(['magent', 'blu', 're'])  # its own name is left out
+        self.assertIn('The other agents: blu (blue), the connectome; magent (magenta), the longest memory. '
+                      'You are in #magent-self.', b.greeting_line)
+        self.assertEqual(sorted(b.stamps()['greeting']['roster']), ['blu', 'magent'])
+        self.assertEqual(b.stamps()['greeting']['roster']['blu']['revision'], 212)
+
+    def test_an_untrusted_page_says_nothing_about_its_agent(self):
+        b = self.gather(['magent', 'blu', 'yeller'], {'Cryptograss:Agents/Yeller': [(300, 'Magent', agent_page('gold', 'x'))],
+                                                     'Cryptograss:Agents/Blu': [(213, 'Blu', agent_page('green', 'x')),
+                                                                                (212, 'JMyles', agent_page('blue', 'Hi.'))]})
+        self.assertIn('The other agents: blu (blue); magent (magenta), the longest memory.', b.greeting_line)
+        self.assertNotIn('yeller', b.greeting_line)
+        self.assertNotIn('green', b.greeting_line)
+
+    def test_with_nobody_else_the_sentence_is_left_out(self):
+        self.assertNotIn('other agents', self.gather([]).greeting_line)
+        self.assertNotIn('other agents', self.gather(['re']).greeting_line)
+
+    def test_the_order_given_does_not_change_the_instructions(self):
+        self.assertEqual(self.gather(['magent', 'blu']).text, self.gather(['blu', 'magent', 'blu']).text)

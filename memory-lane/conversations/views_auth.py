@@ -286,6 +286,30 @@ def api_message_edit(request, slug, message_id):
 
 
 @require_POST
+def api_message_sprint_note(request, slug, message_id):
+    """Add a message to your own notes for the current sprint, on PickiPedia (services/sprint_notes.py). A person's."""
+    from .models import MessageChange
+    from .services import sprint_notes
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None or not device.entity.is_biological_human:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    message = Message.objects.filter(id=_uuid_or_none(message_id), mood=Mood.by_slug(slug)).first()
+    if message is None:
+        return JsonResponse({'error': 'no such message in this Mood'}, status=404)
+    if MessageChange.objects.filter(message_id=message.id, kind='deleted').exists():
+        return JsonResponse({'error': 'that message was deleted'}, status=410)
+    if not _under_limit(f'sprint-note:{device.pk}', 10):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        return JsonResponse(sprint_notes.add(message, device.entity_id))
+    except sprint_notes.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+
+
+@require_POST
 def api_message_promote(request, slug, message_id):
     """{"urls": [...]}: put those of a message's links on Tidings, each once; or {"url"?, "title"?} for one
     (its first, if no url). Anyone signed in (services/tiding_links.py)."""
@@ -647,6 +671,80 @@ def api_message_restore(request, slug, message_id):
     except retract.Refused as e:
         return JsonResponse({'error': str(e)}, status=e.status)
     return JsonResponse({'id': str(copy.message_id), 'kind': 'restored', 'copy': copy.id})
+
+
+CLIP_MAX_BYTES = 12 * 1024 * 1024   # a clip's video, as sent (a few seconds at 480p is well under)
+CLIP_CAPTION_MAX = 300
+
+
+@csrf_exempt  # authenticated by the SSH signature
+@require_POST
+def api_clip_make(request):
+    """A clip of our own, cut from a local file: `magenta.sh clips save <file> <start> <end> "<subtitle>"`
+    (tools/mood_clip.py does the cutting, with ffmpeg, where the file is).
+
+    Body: {"challenge", "signature", "name", "caption", "video" (base64 MP4), "still"? (base64 picture),
+    "mood"? (default general)}; the signature is over clip_message(challenge, origin, name, sha256 of the
+    video, caption). Kept as a YarnClip of its own (made_by: the signer), linked as /clips/<id>, and saved
+    under its name by a post of theirs, as if they'd typed /clips save: the library is read from posts.
+    """
+    import base64
+    import binascii
+    import hashlib
+    from .models import Media, YarnClip
+    from .services import clips, media as media_store
+    if len(request.body) > CLIP_MAX_BYTES * 4 // 3 + 4 * 1024 * 1024:
+        return JsonResponse({'error': 'too large'}, status=413)
+    if not _under_limit('clip', ENROLL_PER_MINUTE):
+        return JsonResponse({'error': 'too many attempts; wait a minute'}, status=429)
+    try:
+        body = json.loads(request.body)
+        challenge, signature = body['challenge'], body['signature']
+        name, caption = str(body['name']).lower(), ' '.join(str(body.get('caption') or '').split())
+        video = base64.b64decode(body['video'], validate=True)
+        still = base64.b64decode(body['still'], validate=True) if body.get('still') else None
+    except (ValueError, KeyError, AttributeError, TypeError, binascii.Error):
+        return JsonResponse({'error': 'expected challenge, signature, name, caption and video'}, status=400)
+    if not clips.NAME.match(name) or name in clips.RESERVED:
+        return JsonResponse({'error': 'a name: letters, digits, - and _, up to 35, and not save, forget or list'},
+                            status=400)
+    if len(caption) > CLIP_CAPTION_MAX:
+        return JsonResponse({'error': f'a caption of up to {CLIP_CAPTION_MAX} characters'}, status=400)
+    if not video or len(video) > CLIP_MAX_BYTES or video[4:8] != b'ftyp' or media_store.is_heif(video):
+        return JsonResponse({'error': f'an MP4 video of up to {CLIP_MAX_BYTES // (1024 * 1024)} MB'}, status=400)
+    if not mood_auth.challenge_is_fresh(challenge):
+        return JsonResponse({'error': 'challenge expired; fetch a new one'}, status=400)
+    origin = mood_auth.origin_of(request).lower().rstrip('/')
+    sha = hashlib.sha256(video).hexdigest()
+    signer = mood_auth.signer_of(mood_auth.clip_message(challenge, origin, name, sha, caption), signature) or ''
+    entity = ThinkingEntity.objects.filter(name=signer).first() if signer else None
+    if entity is None:
+        return JsonResponse({'error': 'signature not accepted'}, status=403)
+    from .views_admin import locked_response
+    from .services import settings as knobs
+    if locked_response():
+        return locked_response()
+    if knobs.banned(signer):
+        return JsonResponse({'error': 'barred for this name; ask an admin'}, status=403)
+    owner = clips.library().get(name, {}).get('by')
+    if owner and owner != signer:
+        return JsonResponse({'error': f'"{name}" is {owner}\'s clip; pick another name (--name)'}, status=409)
+    slug = str(body.get('mood') or GENERAL)
+    mood = (Mood.objects.get_or_create(slug=GENERAL, defaults={'title': '#general'})[0] if slug == GENERAL
+            else Mood.objects.filter(slug=slug).first())
+    if mood is None:
+        return JsonResponse({'error': f'no Mood "{slug}"'}, status=404)
+    kept, _ = Media.objects.get_or_create(sha256=sha, defaults={'mime': 'video/mp4', 'data': video, 'size': len(video),
+                                                                 'added_by': entity, 'license': ''})
+    picture = media_store.store(still, added_by=entity) if still else None
+    clip = YarnClip.objects.create(clip=uuid.uuid4(), media=kept, still=picture, made_by=entity, caption=caption)
+    link = clips.own_link(clip.clip, origin)
+    saved = Message.objects.create(id=uuid.uuid4(), sender=entity, mood=mood, content=f'/clips save {name} {link}',
+                                   timestamp=int(time.time() * 1000), source_file=WEB_SOURCE,
+                                   client_version='magenta-cli/clips')
+    clips.forget_cached()
+    return JsonResponse({'name': name, 'link': link, 'mood': mood.slug,
+                         'url': request.build_absolute_uri(f'/moods/{mood.slug}/#m-{saved.id}')}, status=201)
 
 
 @require_GET

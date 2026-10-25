@@ -99,8 +99,7 @@ class WakeTest(TestCase):
         self.assertTrue(line.startswith('[magent, from #a, 2026-10-07T21:05Z] the setlist'))
         self.assertIn('Salty Dog first.', line)
 
-    def test_every_wake_says_how(self):
+    def test_how_is_in_the_instructions_not_each_wake(self):
         from poller.mood_poller import wake_frames
-        for frame in wake_frames('general'):
-            if frame['kind'] != 'screen':
-                self.assertIn('```handoff', frame['text'], frame['kind'])
+        for frame in wake_frames('general'):  # Cryptograss:Moods/Instructions says how
+            self.assertNotIn('```handoff', frame['text'], frame['kind'])

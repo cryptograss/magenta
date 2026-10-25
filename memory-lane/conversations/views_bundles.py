@@ -1,10 +1,10 @@
-"""Every rules bundle an agent's turn was given, and each one rebuilt to read.
+"""Every bundle of instructions an agent's turn was given, and each one rebuilt to read.
 
-The runner (poller/mood_poller.py MoodPoller.rules_for) records each bundle it
+The runner (poller/mood_poller.py MoodPoller.instructions_for) records each bundle it
 hands a harness: its parts, the PickiPedia revisions it was made of, its
 sha256, and when it was asked for, made and delivered (BundleRecord). Reading
 is open, as the Moods are: a record holds only page titles, revision numbers
-and the bundle's own wrapper words, and the rules are public pages. Writing
+and the bundle's own wrapper words, and the instructions are public pages. Writing
 takes the agent's runner key.
 
     GET  /api/bundles/?agent=re&mood=magent-self&before=<iso>&limit=50   newest first
@@ -147,7 +147,7 @@ def api_bundle_text(request, record_id):
     with. ?format=text: the text alone (or 409, saying why it can't be had)."""
     from django.core.cache import cache
 
-    from poller.rules_bundle import rebuilt
+    from poller.instructions import rebuilt
 
     from .services.mood_view import pickipedia_url
     record = record_or_404(record_id)
