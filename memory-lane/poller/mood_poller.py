@@ -895,6 +895,26 @@ def consider_ask(discretion='normal', texts=None):
     """The discretion dial's ask: as PickiPedia has it (poller/wiki_rules.py), else as written here."""
     here = CONSIDER_ASKS.get(discretion) or CONSIDER_ASK
     return texts.dial('discretion', discretion, here) if texts else here
+# What was said while the agent was on a turn, by anyone but it (Justin, magent-self, 25 Oct 2026: "If an
+# emergent takes a long turn, and then, during that turn, there are other messages, it makes sense for them to
+# immediately wake and see if the crosstalk was relevant to what they just said, and respond if so"). One look,
+# right after the turn, never screened: whether it matters turns on what the agent just said, which only it knows.
+CROSSTALK_ASK = ('If any of it bears on what you just said -- corrects it, overtakes it, answers it, asks you '
+                 'something, or makes it moot -- say so now, briefly. If none of it does, reply with only '
+                 '<silent>a few words on why</silent>.')
+
+
+def crosstalk_opening(slug, began):
+    return [f'<mood-wake mood="{slug}" reason="crosstalk">',
+            f'While you were on your last turn here (from {began[11:16]}Z), others spoke. The Mood, newest '
+            'last; ► marks what was said meanwhile:', '']
+
+
+def crosstalk_ask(texts=None):
+    """The ask after a turn: as PickiPedia has it (Cryptograss:Moods/Dials, dial=crosstalk value=ask), else this."""
+    return texts.dial('crosstalk', 'ask', CROSSTALK_ASK) if texts else CROSSTALK_ASK
+
+
 QUIET_ASK = ('You might pick up a loose end, offer something you have been turning over, or just let it '
              'rest. Nobody is waiting on you.')
 
@@ -1064,6 +1084,11 @@ def wake_frames(slug, agent='magent', trusted='the people its runner trusts with
                                                                    'there is no screen.' if discretion == 'chatty'
                                                                    else ', if the screen lets them through.')),
          'text': '\n'.join(consider_opening(slug) + [recent, '', consider_ask(discretion, texts)] + block(verbosity, slug) + wake_footer())},
+        {'kind': 'crosstalk', 'title': 'When others spoke while it was on a turn',
+         'when': ('Right after a turn of its own ends, if anyone else -- a person or another emergent -- spoke during '
+                  'it, without asking it. Never screened; once per turn, and a look at crosstalk leaves none of its own.'),
+         'text': '\n'.join(crosstalk_opening(slug, '0000-00-00THH:MM') + [recent, '', crosstalk_ask(texts)]
+                           + block(verbosity, slug) + wake_footer())},
         {'kind': 'quiet', 'title': 'When it has been quiet a long while',
          'when': 'No word for the idle wait (doubling after each silence), and a person spoke in the last 12 hours.',
          'text': '\n'.join(quiet_opening(slug, '[N]') + ['[its last turns]', '', QUIET_ASK] + block(verbosity, slug)
@@ -1271,6 +1296,9 @@ class MoodPoller:
         # handed back to this thread through `finished`, so one thread writes.
         self.parallel = parallel
         self.running = {}  # slug -> thread
+        # slug -> when the agent's last turn there began (ISO): what's said after it is crosstalk, looked at
+        # once the turn has ended (crosstalk_once).
+        self.after_turns = {}
         self.finished = queue.Queue()
         # From the pulse, every cycle: how the agent is to carry itself in
         # each Mood (services/settings.py on memory-lane), and the budget.
@@ -1478,7 +1506,8 @@ class MoodPoller:
             self.known_as = {m['slug']: set(m.get('aliases') or ()) for m in pulse.get('moods', [])}
             self.budget = pulse.get('budget') or {}
         woken = self.poll_once()
-        considered = self.consider_once(pulse) if pulse else []
+        considered = self.crosstalk_once() if pulse else []
+        considered += self.consider_once(pulse) if pulse else []
         if pulse and self.consider_enabled:
             considered += self.greet_arrivals(pulse)
         return woken, considered
@@ -1950,6 +1979,8 @@ class MoodPoller:
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
         new_session = options.pop('new_session', None) or str(uuid.uuid4())
         answers = options.pop('answers', None)
+        crosstalk = options.pop('crosstalk', False)
+        began = self.now().isoformat()
         bundled = None
         if self.instructions:
             options['system'], bundled = self.instructions_for(slug)
@@ -2006,6 +2037,10 @@ class MoodPoller:
                 else f'replied {len(reply)} chars' if reply else f'ended without a word ({ending or "no reply"})')
         if error:
             said += f': {error}'
+        if not crosstalk and not command:
+            # What others say from here to its end is looked at once it has ended; a look at crosstalk
+            # doesn't itself leave one, so two agents' looks can't keep waking each other.
+            self.after_turns[slug] = began
         logger.info(f'{slug}: ' + (f'woke {session_id} as {new_session}' if session_id else f'started {new_session}')
                     + f'; {said}'
                     + (f'; ${cost:.4f}' if isinstance(cost, (int, float)) else '')
@@ -2153,6 +2188,46 @@ class MoodPoller:
     # a day across screens and considerations (mentions aren't counted).
 
     IDLE_REST = timedelta(hours=12)
+
+    def crosstalk_once(self):
+        """Each Mood where a turn of the agent's has ended since the last look, and anyone else spoke while it
+        ran: one look at that, asking only whether it bears on what the agent just said. [(slug, outcome)].
+        A mention among it is the mention path's, which wakes the agent with all of it (poll_once runs first);
+        a person's web post looked at here isn't looked at again by consider_mood."""
+        if not self.consider_enabled:
+            self.after_turns.clear()
+            return []
+        done = []
+        for slug, began in list(self.after_turns.items()):
+            if not self.free(slug):
+                continue  # still running (or a new turn began, which leaves its own): look after
+            self.after_turns.pop(slug, None)
+            st = self.state['consider'].get(slug)
+            if st is None or self.listening(slug) != 'on' or not self.within_budget(slug, self.look_usd(slug)):
+                continue
+            try:
+                recent = self.api.recent(slug, limit=200)
+                since = parse_time(began)
+                posts = [t for t in recent['turns'] if parse_time(t['created_at']) > since
+                         and t.get('sender') != self.agent and self.agent not in t.get('mentions', [])]
+                if not posts or any(self.agent in t.get('mentions', []) for t in recent['turns']
+                                    if parse_time(t['created_at']) > since):
+                    continue  # nothing said meanwhile; or it was asked, and the mention path answers all of it
+                web = [t for t in posts if t.get('is_human') and t.get('via') == 'web']
+                if web:
+                    st['web_seen'], st['web_seen_at'] = web[-1]['id'], web[-1]['created_at']
+                    self.save()
+                lines, cost = self.catch_up(slug, recent, posts)
+                self.spend(cost)
+                prompt = '\n'.join(crosstalk_opening(slug, began) + lines + ['', crosstalk_ask(self.texts)]
+                                   + self.extras_lines(slug) + wake_footer())
+                outcome = self.consider_wake(slug, prompt, crosstalk=True)
+            except Exception as e:  # one Mood's trouble is not every Mood's
+                logger.error(f'{slug}: looking at crosstalk failed: {e}')
+                continue
+            logger.info(f'{slug}: crosstalk during the last turn ({len(posts)} posts): {outcome}')
+            done.append((slug, outcome))
+        return done
 
     def consider_once(self, pulse=None):
         """One look at every Mood; [(slug, outcome)] for those considered."""
@@ -2389,8 +2464,9 @@ class MoodPoller:
         logger.info(f'{slug}: {who} signed in; looking whether to greet them')
         return self.consider_wake(slug, '\n'.join(lines + ['', ARRIVAL_ASK] + self.extras_lines(slug) + wake_footer()))
 
-    def consider_wake(self, slug, prompt, after=None):
-        """Wake the agent itself to consider; 'spoke', 'silent', 'failed' or 'elsewhere'."""
+    def consider_wake(self, slug, prompt, after=None, crosstalk=False):
+        """Wake the agent itself to consider; 'spoke', 'silent', 'failed' or 'elsewhere'. `crosstalk`: a look at
+        what was said during its last turn, which leaves no look of its own (crosstalk_once)."""
         sessions = self.api.sessions(slug, self.agent)
         if not sessions or not self.waker.can_wake(sessions[0]):
             return 'elsewhere'
@@ -2412,7 +2488,7 @@ class MoodPoller:
         # it ends the turn after its first response, before it can look anything up.
         cold = getattr(self.waker, 'cold_read_usd', lambda s: 0.0)(session)
         options = dict(effort=self.knob(slug, 'consider_effort', self.consider_effort), budget=self.consider_budget + cold,
-                       model=self.knob(slug, 'model'))
+                       model=self.knob(slug, 'model'), crosstalk=crosstalk)
 
         def turn():
             outcome, reply, cost = self.run_turn_for(slug, session, prompt, **options)
