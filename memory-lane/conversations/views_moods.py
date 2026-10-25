@@ -1397,6 +1397,10 @@ def api_moods_live(request):
                        for a in doing if a.get('doing') == 'held' and str(a.get('why') or '').startswith('waiting for ')]
             if waiting:
                 entry['waiting'] = waiting
+            if doing:
+                # Each at work there, as a Mood's own look has them: shown the moment it's opened, not once
+                # its first look is back (Justin, 25 Oct: they "pop up" a couple of seconds later).
+                entry['activities'] = doing
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list

@@ -1784,6 +1784,16 @@
   // --- the chain's height: from the explorer now and then, a block every 12 s between ---
   const blockEl = document.getElementById('block');
   let blockAnchor = null;
+  // A moment as its block, with commas: its own where it's stamped (eth_blockheight), else counted from the
+  // explorer's (est: about), else its time as before. {text, est}
+  function blockText(block, iso) {
+    if (block) return { text: '⛓ ' + Number(block).toLocaleString(), est: false };
+    if (blockAnchor && iso) {
+      const at = blockAnchor.height + Math.floor((new Date(iso) - new Date(blockAnchor.at)) / 1000 / blockAnchor.seconds);
+      return { text: '⛓ ≈' + at.toLocaleString(), est: true };
+    }
+    return { text: iso ? stamp(iso) : '', est: false };
+  }
   async function refreshBlock() {
     try {
       const b = await (await fetch('/api/block/')).json();
@@ -3698,12 +3708,17 @@
       ? `What ${calls} cost, as ${b._agent}'s harness reported it (${b._how.model || 'this model'}).`
       : `At API list prices (${b._how.model || 'this model'}), for ${calls}: `
         + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
-    b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
-      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${cacheMark(b)}${bundleMark(b)}`
-      // When it began, and the turn's link (to its first step, which opens the turn): click to copy.
-      + (b._firstId ? ` <span class="turnlink" data-href="#m-${esc(b._firstId)}" title="This turn's link: click to copy">${esc(stamp(b._firstAt))}</span>` : '')
+    // Folded, its heading is kept to a line (Justin, 25 Oct): which instructions and what it added to its
+    // context are shown once it's opened.
+    const open = !b.classList.contains('folded');
+    // When it began, as the block it began in (with commas; the time on hover), and the turn's link (to its
+    // first step, which opens the turn): click to copy.
+    const began = blockText(b._firstBlock, b._firstAt);
+    b.querySelector('.ahead').innerHTML = `<span class="caret">${open ? '▾' : '▸'}</span>`
+      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${cacheMark(b)}${open ? bundleMark(b) : ''}`
+      + (b._firstId ? ` <span class="turnlink" data-href="#m-${esc(b._firstId)}" title="${esc(stamp(b._firstAt))}${began.est ? ' (about this block: its own is stamped a few minutes on)' : ''} · this turn's link: click to copy">${esc(began.text)}</span>` : '')
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
-      + (added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
+      + (open && added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
       + (b._priced ? ` · <span class="spent" title="${esc(costTitle)}">${esc(usdText(b._usd))}</span>` : '')
       + (!b._ended && isWorking(b) ? ' · working…' : '')
       + `<span class="preview">${esc(b._final)}</span>`;
@@ -3840,7 +3855,7 @@
       if (agent) {
         const b = blockFor(container, agent, it.v);
         // Its first message or step (a thought has nowhere to be taken to): the turn's link.
-        if (!b._firstId && it.v.id && it.kind !== 'thought') { b._firstId = it.v.id; b._firstAt = it.v.created_at; }
+        if (!b._firstId && it.v.id && it.kind !== 'thought') { b._firstId = it.v.id; b._firstAt = it.v.created_at; b._firstBlock = it.v.block || null; }
         const body = b.querySelector('.abody');
         if (it.kind === 'turn') {
           // Never a follow-on of its own steps or notes: each message in a turn keeps its time and
@@ -4243,7 +4258,11 @@
     renderNav();
     // Nothing of the Mood just left may linger: not its agent's work, its
     // tasks, who was typing there, or its agents' settings.
-    act = null; acts = []; renderActivity();
+    // Who's at work there, as the list of Moods last heard it (/api/moods/live/): shown at once, and put
+    // right by the Mood's own look when it's back (Justin, 25 Oct: they "suddenly pop up").
+    acts = (liveData[slug] && liveData[slug].activities) || [];
+    act = [...acts].reverse().find(a => a.doing !== 'held') || acts[0] || null;
+    renderActivity();
     tasks = []; renderTasks();
     typingNow = []; renderTyping();
     agentsNow = {};  // nothing to compare with: a first drawing never glows

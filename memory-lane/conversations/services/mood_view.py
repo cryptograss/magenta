@@ -1130,6 +1130,10 @@ def how_payload(msg):
             out['usd'] = round(usd, 5)
     if msg.stop_reason:
         out['stop'] = msg.stop_reason
+    # The block it was written in, once stamped (a few minutes on): what its heading shows. Only where it was
+    # loaded: a list that asked for a few fields mustn't ask again for each row.
+    if 'eth_blockheight' not in msg.get_deferred_fields() and msg.eth_blockheight:
+        out['block'] = msg.eth_blockheight
     return out
 
 
