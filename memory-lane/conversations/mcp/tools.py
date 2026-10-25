@@ -12,7 +12,7 @@ import datetime
 import mcp.types as types
 from asgiref.sync import sync_to_async
 from django.db import close_old_connections
-from conversations.services import MemoryService, BootstrapService
+from conversations.services import MemoryService
 
 
 def with_fresh_connection(func):
@@ -27,11 +27,13 @@ def with_fresh_connection(func):
 
 
 def bootstrap_text(caller=None):
-    """Memory bootstrap for a cold start: the caller's own (services/recall), or, with no key, magent's as before"""
+    """Memory bootstrap for a cold start: the caller's own (services/recall). With no key there is nobody's to
+    give, and it says so: every agent's MCP config sends its key, so an unkeyed call is a misconfiguration
+    (Justin, magent-self, 2026-10-25: "Let's call out that misconfig")."""
     if caller:
         from conversations.services import recall
         return recall.bootstrap_text(caller)
-    return NO_KEY_BOOTSTRAP + BootstrapService.format_bootstrap_text(BootstrapService.bootstrap_memory())
+    return NO_KEY_BOOTSTRAP
 
 
 async def handle_bootstrap_memory(arguments=None, caller=None):
@@ -45,8 +47,8 @@ NO_KEY = ("This server doesn't know who you are: your MCP client sent no key, or
           "An agent's memory tools need its runner key, sent as 'Authorization: Bearer <key>' in the "
           "magenta-memory-v2 server's headers (the deploy writes them). search_messages and read_mood "
           "work without one.")
-NO_KEY_BOOTSTRAP = ("(No key was sent, so this is magent's bootstrap, as before keys. If you are another agent, "
-                    "this is not your memory: " + NO_KEY + ")\n\n")
+NO_KEY_BOOTSTRAP = ("MISCONFIGURED: no memory bootstrap, because no key was sent. " + NO_KEY + " Every agent's "
+                    "MCP config should send its key; tell the people in your Mood which machine this is.")
 
 
 def keyed(fn):

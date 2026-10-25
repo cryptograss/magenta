@@ -438,10 +438,33 @@ def journal_entries(agent, count=2, http=None):
     return [(title, text[title]) for _, title in blocks if title in text]
 
 
+def places_lately(agent, since, count=8):
+    """A line for each Mood the agent has spoken in since `since`, the most recent first: when it last spoke
+    there and how much in the week before; and one for its sessions outside any Mood."""
+    from datetime import timedelta
+
+    from django.db.models import Count, Max
+    from django.utils import timezone
+    week = timezone.now() - timedelta(days=7)
+    said = Message.objects.filter(sender_id=agent, created_at__gte=since, is_sidechain=False)
+    rows = (said.filter(mood__isnull=False).values('mood__slug')
+            .annotate(last=Max('created_at'), week=Count('id', filter=Q(created_at__gte=week)))
+            .order_by('-last')[:count])
+    lines = [f"#{r['mood__slug']}: last spoke {when(r['last'])}; {r['week']:,} messages of yours in the week"
+             for r in rows]
+    elsewhere = said.filter(mood__isnull=True).aggregate(last=Max('created_at'))['last']
+    if elsewhere:
+        lines.append(f"Outside any Mood (a terminal session): last {when(elsewhere)}")
+    if lines:
+        lines.append("read_mood catches you up on one; your latest continuation, above, is where a compacted "
+                     "session left off.")
+    return lines
+
+
 def bootstrap_text(agent):
-    """bootstrap_memory for one agent: who and since when, its latest continuation, its own recent
-    conversation, the people it knows best, its newest journal entries, and Era 1 only if it spoke
-    there."""
+    """bootstrap_memory for one agent: who and since when, its latest continuation, where it has been
+    lately (each Mood its own conversation), the people it knows best, its newest journal entries, and
+    a pointer to Era 1 only if it spoke there."""
     from .memory import MemoryService
     at, _ = arrival(agent)
     lines = [f"# Memory bootstrap: {agent}\n", arrival_line(agent), '']
@@ -453,13 +476,10 @@ def bootstrap_text(agent):
     cont = MemoryService.get_latest_continuation(within=own)
     lines.append(f"[{when(cont.created_at)}] {clip(readable(cont), 4000)}\n" if cont else "None yet.\n")
 
-    lines.append("## Your recent conversation (10k characters, newest last)\n")
-    recent, total = MemoryService.get_recent_messages_by_chars(10000, within=own & Q(is_sidechain=False))
-    for msg in reversed(recent[:40]):
-        text = prose(msg.content)
-        if text and not is_wrapper(text):
-            who = 'you' if msg.sender_id == agent else msg.sender_id
-            lines.append(f"[{who}, {when(msg.created_at)}] {clip(text, 400)}")
+    # Where it has been, not one stream of it: each Mood is its own conversation (Justin, magent-self,
+    # 2026-10-25: "It's weird to even think of 'your recent conversation' because that's no longer one thing").
+    lines.append("## Where you've been lately\n")
+    lines += places_lately(agent, at) or ["Nowhere yet."]
     lines.append('')
 
     lines.append("## Who you know best, lately\n")
@@ -481,9 +501,8 @@ def bootstrap_text(agent):
 
     era = MemoryService.get_era_summary("Compacting Meta-Conversation (Era 1)")
     if era and any(m.sender_id == agent for m in era['messages']):
-        lines.append("## Era 1: foundational summary\n")
-        lines += [f"[{m.sender_id}] {clip(readable(m), 150)}" for m in era['messages'][:15]]
-        lines.append('')
+        lines += ["## Era 1\n", "You spoke in Era 1, before Moods and sessions: get_era_summary reads it, when "
+                  "what you are building needs where you came from.", '']
 
     lines.append("remember, mentions_of_me, who_i_know, my_history_with and how_i_speak read more of your own "
                  "memory; search_messages and read_mood, the whole record.")
