@@ -17,6 +17,7 @@ urlpatterns = [
     path('moods/tidings/', views_settings.tidings_page, name='mood_tidings'),
     path('moods/tidings/<str:tiding_id>/', views_settings.tiding_page, name='mood_tiding'),
     path('moods/prompts/', views_settings.prompts_page, name='mood_prompts'),
+    path('moods/<slug:slug>/instructions/', views_settings.instructions_page, name='mood_instructions'),
     path('moods/<slug:slug>/rules/', views_settings.rules_page, name='mood_rules'),
     path('moods/manifest.webmanifest', views_moods.app_manifest, name='mood_app_manifest'),
     path('moods/sw.js', views_moods.app_service_worker, name='mood_app_sw'),

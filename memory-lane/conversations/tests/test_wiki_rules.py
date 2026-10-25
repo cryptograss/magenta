@@ -3,7 +3,7 @@ only as a trusted editor last made or verified it, and never by the agent itself
 
 from django.test import TestCase
 
-from poller.mood_poller import CONSIDER_ASKS, VERBOSITY_LINES, consider_ask, rules_block, wake_frames
+from poller.mood_poller import CONSIDER_ASKS, VERBOSITY_LINES, consider_ask, wake_extras, wake_frames
 from poller.wiki_rules import DIALS, WikiTexts, blocks
 
 DIALS_PAGE = '''Texts the runner sends for each setting. Edit them here.
@@ -58,8 +58,8 @@ class ReadTest(TestCase):
     def test_the_wikis_text_else_the_codes(self):
         self.assertEqual(consider_ask('reserved', self.texts), 'Speak only when it [[Cryptograss:Moods|matters]].')
         self.assertEqual(consider_ask('normal', self.texts), CONSIDER_ASKS['normal'])  # not on the page
-        self.assertIn('Keep it short.', '\n'.join(rules_block('', 'brief', 'm26', self.texts)))
-        self.assertIn(VERBOSITY_LINES['thorough'], '\n'.join(rules_block('', 'thorough', 'm26', self.texts)))
+        self.assertIn('Keep it short.', '\n'.join(wake_extras('brief', 'm26', self.texts)))
+        self.assertIn(VERBOSITY_LINES['thorough'], '\n'.join(wake_extras('thorough', 'm26', self.texts)))
 
     def test_asked_at_most_every_few_minutes_and_a_wiki_down_changes_nothing(self):
         for _ in range(5):

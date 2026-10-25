@@ -1,6 +1,7 @@
-"""Notices (mentions, answers), recent changes, search, and the rules page."""
+"""Notices (mentions, answers), recent changes, search, and the instructions page."""
 
 import time
+from unittest import mock
 import uuid
 
 from django.test import TestCase, override_settings
@@ -110,25 +111,37 @@ class NoticesTest(TestCase):
         self.assertEqual([h['text'] for h in here], ['Who has the CAPO tonight?'])
         self.assertEqual(self.client.get('/api/search/?q=c').status_code, 400)
 
-    def test_the_rules_page_shows_what_each_wake_says_and_this_moods_rules(self):
-        knobs.change('rules', 'Keep it short after midnight.', mood=self.m26, agent=self.magent, by=self.justin)
-        page = self.client.get('/moods/m26/rules/').content.decode()
+    def test_the_instructions_page_shows_them_and_what_each_wake_says(self):
+        found = {'text': '<instructions agent="magent" mood="m26">Keep it short after midnight.</instructions>',
+                 'layers': [{'page': 'Cryptograss:Moods/m26/Instructions', 'url': 'https://pickipedia.xyz/wiki/x',
+                             'revision': None, 'by': None, 'problem': None, 'absent': True}]}
+        with mock.patch('conversations.views_settings.instructions_now', return_value=found):
+            page = self.client.get('/moods/m26/instructions/').content.decode()
         self.assertIn('Keep it short after midnight.', page)
+        self.assertIn('none yet, which is ordinary', page)
+        self.assertIn('Special:AgentBundles?agent=magent&amp;mood=m26', page)
         for title in ('full tools', 'look, not touch', 'nobody asks it', 'quiet a long while', 'The screen'):
             self.assertIn(title, page)
-        self.assertIn('&lt;silent&gt;a few words on why&lt;/silent&gt;', page)  # the wake's own words, escaped
+        self.assertIn('This turn has your full tools', page)  # the wake's own words
+
+    def test_the_old_address_goes_there_and_only_an_agent_names_the_pages(self):
+        old = self.client.get('/moods/m26/rules/?agent=magent')
+        self.assertEqual((old.status_code, old['Location']), (301, '/moods/m26/instructions/?agent=magent'))
+        with mock.patch('conversations.views_settings.instructions_now', return_value=None) as gathered:
+            self.client.get('/moods/m26/instructions/?agent=justin')
+        gathered.assert_called_once_with('magent', 'm26')  # a person isn't an agent with pages
 
 
 class WakeFramesTest(TestCase):
-    """The rules page and the poller say the same thing: one source."""
+    """The instructions page and the poller say the same thing: one source."""
 
     def test_the_frames_are_built_from_what_the_poller_sends(self):
-        from poller.mood_poller import CONSIDER_ASK, rules_block, wake_footer, wake_frames
-        frames = {f['kind']: f['text'] for f in wake_frames('m26', rules='Be brief.')}
+        from poller.mood_poller import CONSIDER_ASK, wake_extras, wake_footer, wake_frames
+        frames = {f['kind']: f['text'] for f in wake_frames('m26')}
         self.assertTrue(frames['mention-full'].endswith('\n'.join(wake_footer(full=True))))
         self.assertTrue(frames['mention-look'].endswith('\n'.join(wake_footer(full=False))))
         self.assertIn(CONSIDER_ASK, frames['consider'])
-        self.assertIn('\n'.join(rules_block('Be brief.')), frames['quiet'])
+        self.assertIn('\n'.join(wake_extras(slug='m26')), frames['quiet'])
 
     def test_the_dials_show_as_they_are_sent(self):
         from poller.mood_poller import CONSIDER_ASKS, VERBOSITY_LINES, wake_frames
