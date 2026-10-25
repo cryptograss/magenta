@@ -361,6 +361,9 @@
                                 font: 15px ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace; }
   #lookBox .charsChart button:hover { background: var(--accent); color: #fff; }
   #lookBox .swatches button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
+  #lookBox .swatches .break { flex-basis: 100%; height: 0; }
+  #lookBox .swatches .any { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); margin-left: 4px; }
+  #lookBox .swatches .any input { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
   #lookBox .swatches button.on { outline: 2px solid var(--accent); outline-offset: 1px; }
   #lookBox .swatches .none { background: linear-gradient(135deg, transparent 45%, var(--muted) 45% 55%, transparent 55%), var(--panel); }
   #lookBox { max-width: min(460px, 92vw); max-height: 92vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
@@ -1264,7 +1267,7 @@
 <dialog id="lookBox">
   <form method="dialog">
     <p><b>How your name will be displayed</b></p>
-    <label for="lookArt">At most 30 characters, with every letter of <b class="artname"></b> in them, in order (any case)</label>
+    <label for="lookArt">At most 30 characters: every letter of <b class="artname"></b>, in order (any case), dressed in shapes: no other letters or numbers</label>
     <input type="text" id="lookArt" maxlength="30" spellcheck="false" autocomplete="off">
     <button type="button" class="charsLink" aria-expanded="false">▸ the characters</button>
     <div class="charsChart" hidden role="grid" aria-label="The characters: press one to put it in your name"></div>
@@ -1449,11 +1452,18 @@
   }
   // Each character in its colours: a code each for its letter and its background (0-f, ANSI's sixteen;
   // '.' or none for the page's own).
+  // Or, once any is a colour of their own, comma-separated, each 0-f, #rrggbb or '.' (settings.cells).
+  const cellsOf = codes => Array.isArray(codes) ? codes : !codes ? [] : codes.includes(',') || codes[0] === '#' ? codes.split(',') : Array.from(codes);
+  const storedOf = tokens => {
+    const t = tokens.slice(); while (t.length && (t[t.length - 1] === '.' || !t[t.length - 1])) t.pop();
+    return t.some(x => x.length > 1) ? t.join(',') : t.map(x => x || '.').join('');
+  };
   function artHtml(art, colours, backs) {
-    const fg = colours || '', bg = backs || '', ok = c => /[0-9a-f]/.test(c || '');
+    const fg = cellsOf(colours), bg = cellsOf(backs), code = c => /^[0-9a-f]$/.test(c || ''), own = c => /^#[0-9a-f]{6}$/.test(c || '');
     return Array.from(art).map((ch, i) => {
-      const cls = [ok(fg[i]) ? 'a' + fg[i] : '', ok(bg[i]) ? 'b' + bg[i] : ''].filter(Boolean).join(' ');
-      return cls ? `<span class="${cls}">${esc(ch)}</span>` : esc(ch);
+      const cls = [code(fg[i]) ? 'a' + fg[i] : '', code(bg[i]) ? 'b' + bg[i] : ''].filter(Boolean).join(' ');
+      const style = [own(fg[i]) ? 'color: ' + fg[i] : '', own(bg[i]) ? 'background: ' + bg[i] : ''].filter(Boolean).join('; ');
+      return cls || style ? `<span${cls ? ` class="${cls}"` : ''}${style ? ` style="${style}"` : ''}>${esc(ch)}</span>` : esc(ch);
     }).join('');
   }
 
@@ -6491,11 +6501,39 @@
   const lookBox = document.getElementById('lookBox'), lookArt = document.getElementById('lookArt'),
         lookColour = document.getElementById('lookColour');
   // Every character of their PickiPedia name (shown) in order, any case, its spaces aside: as settings.art_fits.
-  const artFits = (art, name) => {
-    const want = Array.from(name.toLowerCase()).filter(c => !/\s/.test(c));
-    let i = 0; for (const c of art.toLowerCase()) if (c === want[i]) i++;
-    return i === want.length;
+  // And nothing else but shapes (settings.is_shape): no other letters, numbers, or symbols that read as them.
+  const TEXTLIKE = [[0x2100, 0x214F], [0x2460, 0x24FF], [0x2776, 0x2793], [0x3200, 0x33FF], [0x1F100, 0x1F1FF]];
+  const isShape = ch => !/[\p{L}\p{N}\p{M}\p{C}]/u.test(ch) && !TEXTLIKE.some(([lo, hi]) => ch.codePointAt(0) >= lo && ch.codePointAt(0) <= hi);
+  const artLetters = (art, name) => {
+    const want = Array.from(name.toLowerCase()).filter(c => !/\s/.test(c)), at = [];
+    const chars = Array.from(art);
+    for (let i = 0; i < chars.length; i++) {
+      if (at.length < want.length && chars[i].toLowerCase() === want[at.length]) at.push(i);
+      else if (!isShape(chars[i])) return null;
+    }
+    return at.length === want.length ? at : null;
   };
+  const artFits = (art, name) => artLetters(art, name) !== null;
+  // Every letter of the name seen, as settings.look_problem has it (Justin, 25 Oct: no blanking your own name).
+  const lum = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const PAGES = [['#fbfaf7', '#1f1d1a'], ['#ffffff', '#1f1d1a'], ['#161417', '#ece7e1'], ['#1f1c20', '#ece7e1']];
+  function lookProblem(art, colours, backs, name) {
+    if (!art) return '';
+    const letters = artLetters(art, name);
+    if (!letters) return `every letter of "${name}", in order, and otherwise only shapes: no other letters or numbers`;
+    const hex = t => /^[0-9a-f]$/.test(t || '') ? ANSI[parseInt(t, 16)] : /^#[0-9a-f]{6}$/.test(t || '') ? t : null;
+    const fg = cellsOf(colours), bg = cellsOf(backs), chars = Array.from(art);
+    for (const i of letters) {
+      const f = hex(fg[i]), b = hex(bg[i]);
+      if (b && (f ? [f] : ['#1f1d1a', '#ece7e1']).some(ink => contrast(ink, b) < 3))
+        return `"${chars[i]}" is hard to see on its background: every letter of your name has to stand out`;
+      if (!b && f && PAGES.some(([page]) => contrast(f, page) < 1.6))
+        return `"${chars[i]}" is hard to see on the page (light or dark): give it a background, or another colour`;
+    }
+    return '';
+  }
   // The sixteen, as a BBS knew them, in CGA's order: each swatch says which.
   const ANSI_NAMES = ['black', 'blue', 'green', 'cyan', 'red', 'magenta', 'brown', 'light grey',
                       'dark grey', 'light blue', 'light green', 'light cyan', 'light red', 'light magenta', 'yellow', 'white'];
@@ -6508,8 +6546,19 @@
   let lookCodes = [], lookBacks = [], lookBrush = 'c', painting = false;
   const layerNow = () => lookBox.querySelector('input[name=lookLayer]:checked').value;  // letters (fg) or backgrounds (bg)
   const swatches = lookBox.querySelector('.swatches'), paint = lookBox.querySelector('.paint');
+  // And a fuller palette after them -- twelve hues, four shades each, and greys -- and any colour at all (Justin, 25 Oct).
+  const hsl = (h, s, l) => { const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    return '#' + [0, 8, 4].map(n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)))).toString(16).padStart(2, '0')).join(''); };
+  const MORE = [0.25, 0.42, 0.6, 0.8].flatMap(l => Array.from({ length: 12 }, (_, i) => hsl(i * 30, 0.75, l)))
+    .concat(['#202020', '#404040', '#606060', '#808080', '#a0a0a0', '#c0c0c0', '#e0e0e0', '#f4f4f4']);
   swatches.innerHTML = '<button type="button" class="none" data-code="." title="none: the page\'s own colour"></button>'
-    + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${ANSI_NAMES[i]} · ${c}"></button>`).join('');
+    + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${ANSI_NAMES[i]} · ${c}"></button>`).join('')
+    + '<span class="break"></span>' + MORE.map(c => `<button type="button" data-code="${c}" style="background: ${c}" title="${c}"></button>`).join('')
+    + '<label class="any" title="Any colour">any <input type="color" value="#c2185b"></label>';
+  swatches.querySelector('.any input').addEventListener('input', e => {
+    lookBrush = e.target.value.toLowerCase();
+    swatches.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  });
   // The characters: pressed, one goes into your name where the cursor is (at most 30, as ever).
   const chars = lookBox.querySelector('.charsChart'), charsLink = lookBox.querySelector('.charsLink');
   chars.innerHTML = Array.from(CP437).map((ch, i) => i === 0 || i === 255 || ch === ' '
@@ -6540,7 +6589,7 @@
     const chars = Array.from(lookArt.value.trim());
     lookCodes = chars.map((_, i) => lookCodes[i] || '.');
     lookBacks = chars.map((_, i) => lookBacks[i] || '.');
-    paint.innerHTML = chars.map((ch, i) => `<span data-i="${i}" class="art">${artHtml(ch, lookCodes[i], lookBacks[i]).replace(/^(?!<span)(.*)$/, '<span>$1</span>')}</span>`).join('');
+    paint.innerHTML = chars.map((ch, i) => `<span data-i="${i}" class="art">${artHtml(ch, [lookCodes[i]], [lookBacks[i]]).replace(/^(?!<span)(.*)$/, '<span>$1</span>')}</span>`).join('');
   }
   // Every character from where the pointer was to where it is: a quick drag misses none between.
   let laidLast = null;
@@ -6557,10 +6606,10 @@
   function previewLook(painted) {
     const art = lookArt.value.trim();
     if (!painted) drawPaint();
-    const ok = !art || artFits(art, shown(viewer));
+    const problem = lookProblem(art, lookCodes, lookBacks, shown(viewer)), ok = !problem;
     lookBox.querySelector('.preview').innerHTML = ICONS.human.replace('<svg ', `<svg style="color: ${lookColour.value}" `)
-      + (art ? `<span class="art">${artHtml(art, lookCodes.join(''), lookBacks.join(''))}</span>` : esc(shown(viewer)));
-    lookBox.querySelector('.why').textContent = ok ? '' : `every letter of "${shown(viewer)}" has to be in it, in order`;
+      + (art ? `<span class="art">${artHtml(art, lookCodes, lookBacks)}</span>` : esc(shown(viewer)));
+    lookBox.querySelector('.why').textContent = problem;
     lookBox.querySelector('.save').disabled = !ok;
   }
   lookArt.addEventListener('input', () => previewLook());
@@ -6574,7 +6623,7 @@
     lookBox.close();
     location.reload();  // every name of yours drawn again, as you have it now
   }
-  lookBox.querySelector('.save').addEventListener('click', () => saveLook({ art: lookArt.value.trim(), colours: lookCodes.join(''), backs: lookBacks.join(''), colour: lookColour.value }));
+  lookBox.querySelector('.save').addEventListener('click', () => saveLook({ art: lookArt.value.trim(), colours: storedOf(lookCodes), backs: storedOf(lookBacks), colour: lookColour.value }));
   lookBox.querySelector('.plain').addEventListener('click', () => saveLook({ art: '', colours: '', backs: '', colour: '' }));
   document.getElementById('lookLink').addEventListener('click', e => {
     e.preventDefault();
@@ -6582,8 +6631,8 @@
     // Started from their PickiPedia name: every character already there, in order, to dress up.
     lookArt.value = mine.art || shown(viewer);
     lookBox.querySelector('.artname').textContent = shown(viewer);
-    lookCodes = Array.from(mine.colours || '');
-    lookBacks = Array.from(mine.backs || '');
+    lookCodes = cellsOf(mine.colours || '');
+    lookBacks = cellsOf(mine.backs || '');
     lookColour.value = mine.colour || getComputedStyle(document.body).getPropertyValue('--human').trim() || '#2a5d9f';
     previewLook();
     lookBox.showModal();
