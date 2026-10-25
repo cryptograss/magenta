@@ -294,6 +294,12 @@ class Mood(models.Model):
         null=True, blank=True,
         help_text='Block height at which this Mood was opened'
     )
+    # A thread (Justin, 25 Oct: "make a thread, and then choose either fresh context or to fork the existing
+    # context"): a Mood like any other, opened from another. Forked, `forked_at` is when, and each agent's
+    # first wake here resumes its session there as it stood then (views_moods.api_mood_sessions); fresh, it's
+    # empty. Closing one is archiving it.
+    thread_of = models.ForeignKey('self', models.SET_NULL, null=True, blank=True, related_name='threads')
+    forked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'moods'

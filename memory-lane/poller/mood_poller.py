@@ -344,6 +344,11 @@ class StreamPoster:
         if event.get('type') in STREAMED or (event.get('type') == 'system' and event.get('subtype') in STREAMED_SYSTEM):
             self.queue.put(event)
 
+    def claim(self):
+        """Tell the Mood this session is its own, before the turn starts: a post with no events, which the
+        stream claims for its Mood as it does any (views_runner.api_stream). True if it took."""
+        return bool(self.send([]))
+
     def close(self, wait=60):
         """Send what's queued, then stop."""
         self.queue.put(None)
@@ -1973,6 +1978,11 @@ class MoodPoller:
             poster.full_tools = bool(options.get('full'))
             if answers:
                 poster.answers = list(answers)
+        if poster is not None and hasattr(poster, 'claim'):
+            # Its session is this Mood's before it starts: a fork repeats the history it copied under that
+            # history's ids, and the watcher, seeing them first, would file it where they were (a thread's
+            # parent Mood; MoodSession.claim_by_history).
+            poster.claim()
         stop = self.stop_check(slug, options.pop('since', None))
         heard = {}  # when the harness first spoke: it had started, with its instructions in hand
         on_event = poster.put if poster else None
