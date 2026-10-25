@@ -1050,9 +1050,19 @@ def wake_said(text):
     return '' if look == full else 'look' if look > full else 'full'
 
 
+BUNDLE_SAID = re.compile(r'Your instructions this turn are bundle ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})')
+
+
 def turn_tools(messages):
     """{message id (str): 'look' or 'full'} for agents' messages in a Mood, by the last wake
     before each in its session. One with no wake within reach is left out."""
+    return {mid: said['tools'] for mid, said in turn_wakes(messages).items() if said['tools']}
+
+
+def turn_wakes(messages):
+    """{message id (str): {'tools': 'look', 'full' or '', 'bundle': the instructions' record id or ''}} for agents'
+    messages in a Mood, by the last wake before each in its session (the poller's turn line names the bundle,
+    mood_poller.turn_line). One with no wake within reach is left out."""
     from datetime import timedelta
     from django.db.models import TextField
     from django.db.models.functions import Cast, Right
@@ -1067,12 +1077,27 @@ def turn_tools(messages):
                                                  created_at__lte=max(m.created_at for m in messages))
                           .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL))
                           .order_by('created_at').values_list('session_id', 'created_at', 'tail')):
-        wakes.setdefault(str(sid), []).append((at, wake_said(tail or '')))
+        bundle = BUNDLE_SAID.search(tail or '')
+        wakes.setdefault(str(sid), []).append((at, {'tools': wake_said(tail or ''),
+                                                    'bundle': bundle.group(1) if bundle else ''}))
     found = {}
     for m in messages:  # as text: a row just made holds its session as it was given, a row read as a UUID
-        before = [kind for at, kind in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]
-        if before and before[-1]:
+        before = [said for at, said in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]
+        if before and (before[-1]['tools'] or before[-1]['bundle']):
             found[str(m.id)] = before[-1]
+    return found
+
+
+def bundle_marks(ids):
+    """{record id: {'id', 'sha' (its sha256's first 8), 'new' (whether it differs from the agent's bundle before
+    it in that Mood)}} for the instructions bundles named (BundleRecord): what a turn's heading shows beside its
+    cache mark, since a changed bundle is the usual reason a turn read its context cold (Justin, 25 Oct)."""
+    from conversations.models import BundleRecord
+    found = {}
+    for r in BundleRecord.objects.filter(id__in=[i for i in set(ids) if i]):
+        before = (BundleRecord.objects.filter(agent=r.agent, mood=r.mood, requested_at__lt=r.requested_at)
+                  .order_by('-requested_at').values_list('sha256', flat=True).first())
+        found[str(r.id)] = {'id': str(r.id), 'sha': r.sha256[:8], 'new': before is not None and before != r.sha256}
     return found
 
 

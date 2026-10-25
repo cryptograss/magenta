@@ -640,6 +640,10 @@
   .ahead .turnlink { flex: none; font-size: 11.5px; color: var(--muted); cursor: copy; }
   .ahead .turnlink:hover { text-decoration: underline; }
   .ahead .turnlink[data-copied]::after { content: ' link copied'; color: var(--accent); font-size: 11px; }
+  /* 🔥 or 🧊: whether a turn's first call read its context from the cache; and its instructions' checksum */
+  .ahead .cachemark { flex: none; font-size: .8em; margin-left: 2px; cursor: help; }
+  .ahead .bundlemark { flex: none; font: 10.5px ui-monospace, monospace; color: var(--muted); margin-left: 4px; cursor: pointer; }
+  .ahead .bundlemark:hover { text-decoration: underline; }
   .ahead .preview { display: none; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                     color: var(--ink); font-size: 13.5px; }
   .aturn.folded .ahead .preview { display: block; }
@@ -3444,7 +3448,7 @@
     const by = Math.max(container._askedAt || 0, (container._askedOf || {})[agent] || 0);
     const asked = by && by <= at && at - by < 6 * 3600 ? by : at;
     Object.assign(b, { _agent: agent, _start: asked, _end: at, _out: 0, _ctx: 0, _read: 0, _cached: 0, _calls: 0, _seen: new Set(),
-                       _usd: 0, _priced: false, _first: null, _lastOut: 0, _how: {}, _ended: false, _final: '' });
+                       _usd: 0, _priced: false, _first: null, _firstCached: 0, _lastOut: 0, _how: {}, _ended: false, _final: '' });
     b.innerHTML = '<button type="button" class="ahead"></button><div class="aspent"></div><div class="abody"></div>';
     container.appendChild(b);
     held.forEach(t => { addThought(t, b.querySelector('.abody')); tally(b, t); });
@@ -3459,7 +3463,7 @@
       if (!b._seen.has(usage)) {
         b._seen.add(usage); b._out += v.out; b._read += v.ctx || 0; b._cached += v.cached || 0; b._calls++;
         if (v.usd != null) { b._usd += v.usd; b._priced = true; if (v.paid) b._paid = true; }
-        if (b._first === null && v.ctx) b._first = v.ctx;
+        if (b._first === null && v.ctx) { b._first = v.ctx; b._firstCached = v.cached || 0; }
         b._lastOut = v.out;
       }
       if (v.ctx) b._ctx = v.ctx;
@@ -3467,6 +3471,30 @@
     if (v.model) b._how.model = v.model;
     if (v.effort) b._how.effort = v.effort;
     if (v.tools) b._tools = v.tools;
+    if (v.bundle) b._bundle = v.bundle;
+  }
+  // Whether a turn's first call read its context back from the cache (🔥, warm) or afresh (🧊, cold): its
+  // instructions and everything before them unchanged and still cached, or not (Justin, 25 Oct). A harness that
+  // reports no cache reads at all (Pi, on some vendors) gets no mark rather than a wrong one.
+  function cacheMark(b) {
+    if (!b._first || (b._paid && !b._cached)) return '';
+    const warm = b._firstCached * 2 >= b._first;
+    const why = warm ? `A cache hit: its first call read ${b._firstCached.toLocaleString()} of ${b._first.toLocaleString()} tokens `
+        + `from the cache. Its instructions were the same as last time, byte for byte, and still cached.`
+      : `A cache miss: its first call read ${(b._first - b._firstCached).toLocaleString()} of ${b._first.toLocaleString()} tokens `
+        + `afresh. Its instructions changed (a new bundle, marked ✱), or the cache had expired since its last call, `
+        + `or something before them did (its harness, its tools, its model).`;
+    return ` <span class="cachemark" title="${esc(why)}">${warm ? '🔥' : '🧊'}</span>`;
+  }
+  // Which instructions it was given: the bundle's checksum, small, opening the bundle rebuilt on PickiPedia.
+  function bundleMark(b) {
+    const x = b._bundle;
+    if (!x) return '';
+    const title = `Its instructions this turn: bundle ${x.id}, sha256 ${x.sha}…, `
+      + (x.new ? 'new since its last turn in this Mood (✱).' : 'the same as its last turn in this Mood.')
+      + ' Click to read them, rebuilt from PickiPedia and checked.';
+    return ` <span class="bundlemark" data-href="https://pickipedia.xyz/wiki/Special:AgentBundles/${esc(x.id)}" title="${esc(title)}">`
+      + `${esc(x.sha)}${x.new ? '✱' : ''}</span>`;
   }
   // Which tools a turn had (mood_view.turn_tools): 👀 it could only look, 🔨 its full tools.
   const WAKE_MARKS = {
@@ -3507,7 +3535,7 @@
       : `At API list prices (${b._how.model || 'this model'}), for ${calls}: `
         + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
     b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
-      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}`
+      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${cacheMark(b)}${bundleMark(b)}`
       // When it began, and the turn's link (to its first step, which opens the turn): click to copy.
       + (b._firstId ? ` <span class="turnlink" data-href="#m-${esc(b._firstId)}" title="This turn's link: click to copy">${esc(stamp(b._firstAt))}</span>` : '')
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
@@ -3548,6 +3576,8 @@
     if (!head) return;
     const link = e.target.closest('.turnlink');
     if (link) { copyLink(link, link.dataset.href); return; }  // the turn's time: its link, copied
+    const bundle = e.target.closest('.bundlemark');
+    if (bundle) { window.open(bundle.dataset.href, '_blank', 'noopener'); return; }  // its instructions, rebuilt
     const b = head.closest('.aturn');
     b.classList.toggle('folded');
     drawBlockHead(b);
