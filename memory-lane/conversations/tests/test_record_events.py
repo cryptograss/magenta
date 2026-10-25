@@ -277,3 +277,59 @@ class AgentClipsTest(TestCase):
         self.reply('/clips forget huh')
         clips.forget_cached()
         self.assertEqual(sorted(clips.library()), ['huh'])
+
+
+@override_settings(MOOD_RUNNER_KEYS={'magent': KEY}, TOOL_RESULT_CONTENT_CHARS=20000)
+class AgentReactsTest(TestCase):
+    """An agent's reply that is only <react emoji="..." to="..."/> is a reaction on that post, not a line:
+    where it has nothing to add, a nod (Justin, magent-self, 2026-10-25)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        for name, human in (('justin', True), ('magent', False), ('re', False)):
+            ThinkingEntity.objects.update_or_create(name=name, defaults={'is_biological_human': human})
+        cls.mood = Mood.objects.create(slug='m26')
+        cls.older = Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=cls.mood, timestamp=1,
+                                           content='An older answer.')
+        cls.answer = Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=cls.mood, timestamp=2,
+                                            content='The cache is the provider\'s, not ours.')
+        Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=cls.mood, timestamp=3,
+                               content='<silent>nothing to add</silent>')  # a dot is never what's reacted to
+        cls.asked = Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=cls.mood, timestamp=4,
+                                           content='@magent @re where is the cache?')
+
+    reply = AgentClipsTest.reply
+
+    def reactions(self):
+        from conversations.services import reactions
+        return reactions.in_mood(self.mood)
+
+    def test_any_emoji_on_that_ones_newest_post_and_the_reply_a_dot(self):
+        self.assertEqual(self.reply('<react emoji="🎻" to="re"/>'), ['<silent>reacted 🎻 to re</silent>'])
+        self.assertEqual(self.reactions(), {str(self.answer.id): {'🎻': ['magent']}})
+        self.assertEqual(self.reply('<react to="Justin" emoji="👍🏽"/>', events_v1=False),
+                         ['<silent>reacted 👍🏽 to justin</silent>'])
+        self.assertEqual(self.reactions()[str(self.asked.id)], {'👍🏽': ['magent']})
+
+    def test_by_message_id_or_its_start(self):
+        self.reply(f'<react emoji="🙏" to="#m-{self.older.id}"/>')
+        self.reply(f'<react emoji="🔥" to="{str(self.older.id)[:8]}"/>')
+        self.assertEqual(self.reactions()[str(self.older.id)], {'🙏': ['magent'], '🔥': ['magent']})
+
+    def test_said_once_reacts_once_and_the_same_again_takes_nothing_back(self):
+        self.reply('<react emoji="🎻" to="re"/>')
+        self.reply('<react emoji="🎻" to="re"/>')
+        self.assertEqual(self.reactions(), {str(self.answer.id): {'🎻': ['magent']}})
+        from conversations.services import reactions
+        self.assertEqual(Message.objects.filter(source_file=reactions.SOURCE).count(), 1)
+
+    def test_nothing_there_is_said_and_words_are_left_as_said(self):
+        self.assertEqual(self.reply('<react emoji="🎻" to="nobody"/>'),
+                         ['<silent>meant to react 🎻 to nobody, found nothing there</silent>'])
+        for text in ('<react emoji="yes" to="re"/>', 'I agree <react emoji="🎻" to="re"/>'):
+            self.assertEqual(self.reply(text), [text])
+        self.assertEqual(self.reactions(), {})
+
+    def test_the_poller_counts_it_as_silent(self):
+        from poller.mood_poller import _SILENT_REPLY
+        self.assertTrue(_SILENT_REPLY.match('<react emoji="🎻" to="re"/>'))

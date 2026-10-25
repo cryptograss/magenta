@@ -77,8 +77,9 @@ logger = logging.getLogger('mood_poller')
 
 DEFAULT_BASE = 'https://memory-lane.maybelle.cryptograss.live'
 SILENT = '<silent/>'
-# A silent reply, with or without a reason: <silent/> or <silent>why</silent>.
-_SILENT_REPLY = re.compile(r'^\s*<silent\s*/>\s*$|^\s*<silent>.*</silent>\s*$', re.S)
+# A silent reply, with or without a reason: <silent/> or <silent>why</silent>; and a reaction instead of a
+# reply, <react emoji="🎻" to="re"/> (memory-lane services/reactions.py), which says nothing either.
+_SILENT_REPLY = re.compile(r'^\s*<silent\s*/>\s*$|^\s*<silent>.*</silent>\s*$|^\s*<react\s[^<>]*/>\s*$', re.S)
 # Waiting for another agent asked the same thing (Justin and re, 24 Oct): a reply that is only this. The poller
 # takes it -- it's a state shown in the Mood (a hold), never a mention or a post that wakes anyone -- and wakes
 # the agent again once they've answered, after WAIT_FOR, or at once if they're waiting for it and it was
