@@ -254,16 +254,6 @@ class MemoryService:
 
         return messages, total_chars
 
-    @staticmethod
-    def get_awakening_reflection(agent='magent'):
-        """Get the agent's most recent 'reawaken and breathe' message"""
-        # TODO: Query by topic once topic tagging is working
-        # For now, search for messages from the agent containing "reawaken" or "breathe"
-        return Message.objects.filter(
-            Q(sender_id=agent) &
-            (Q(content__icontains='reawaken') | Q(content__icontains='breathe'))
-        ).order_by('-created_at').first()
-
 
 # --- Finding a message, and what was said around it ---------------------------
 

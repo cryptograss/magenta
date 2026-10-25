@@ -39,7 +39,7 @@ def create_mcp_server():
         return [
             types.Tool(
                 name="bootstrap_memory",
-                description="Your memory, on waking: who you are and since when, your latest continuation, your own recent conversation, who you know best, your last awakening reflection, and Era 1 if you spoke there. " + MINE + " With no key, magent's, as before keys.",
+                description="Your memory, on waking: who you are and since when, your latest continuation, your own recent conversation, who you know best, your newest journal entries, and Era 1 if you spoke there. " + MINE + " With no key, magent's, as before keys.",
                 inputSchema={
                     "type": "object",
                     "properties": {},

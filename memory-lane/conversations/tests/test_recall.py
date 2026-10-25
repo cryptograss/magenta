@@ -172,7 +172,14 @@ class RecallTest(TestCase):
                                                 now=RE_ARRIVES + timedelta(days=3, hours=1))), 2)  # a quiet stretch
 
     def test_bootstrap_is_the_callers_own(self):
-        text = recall.bootstrap_text('re')
+        from unittest import mock
+        with mock.patch('conversations.services.recall.journal_entries',
+                        return_value=[('Agent:Re/Journal/26270000', 'Moved the strings page.')]) as journal:
+            text = recall.bootstrap_text('re')
+        journal.assert_called_once_with('re')
+        self.assertIn('## Your journal, newest entries', text)
+        self.assertIn('--- Agent:Re/Journal/26270000\nMoved the strings page.', text)
+        self.assertNotIn('awakening', text)
         self.assertIn('# Memory bootstrap: re', text)
         self.assertIn('mandolin', text)
         self.assertNotIn('banjo', text)
@@ -180,4 +187,46 @@ class RecallTest(TestCase):
 
     def test_bootstrap_without_a_key_is_magents_and_says_so(self):
         self.assertTrue(tools.bootstrap_text(None).startswith("(No key was sent, so this is magent's bootstrap"))
-        self.assertIn('# Memory bootstrap: re', tools.bootstrap_text('re'))
+        from unittest import mock
+        with mock.patch('conversations.services.recall.journal_entries', return_value=[]):  # no network in tests
+            self.assertIn('# Memory bootstrap: re', tools.bootstrap_text('re'))
+
+
+class FakeWikiHTTP:
+    """PickiPedia's API for journal_entries: allpages under Agent:<Name>/Journal/, and their texts."""
+
+    def __init__(self, pages, down=False):
+        self.pages, self.down, self.asked = pages, down, []
+
+    def get(self, url, timeout=None, headers=None, params=None):
+        self.asked.append(params)
+        if self.down:
+            raise OSError('Connection refused')
+        if params.get('list') == 'allpages':
+            body = {'query': {'allpages': [{'title': t} for t in self.pages if t.startswith('Agent:' + params['apprefix'])]}}
+        else:
+            body = {'query': {'pages': [{'title': t, 'revisions': [{'slots': {'main': {'content': self.pages[t]}}}]}
+                                        for t in params['titles'].split('|')]}}
+        return type('R', (), {'json': lambda self, b=body: b})()
+
+
+class JournalTest(TestCase):
+    """bootstrap_memory gives an agent its newest journal entries where the 'reawaken and breathe' reflection was."""
+
+    def test_newest_two_by_block_not_by_title(self):
+        from conversations.services.recall import journal_entries
+        http = FakeWikiHTTP({'Agent:Re/Journal/26250000': 'older', 'Agent:Re/Journal/26270000': 'newest',
+                             'Agent:Re/Journal/26260000': 'middle', 'Agent:Re/Journal/notes': 'not an entry',
+                             'Agent:Magent/Journal/26280000': "magent's"})
+        self.assertEqual(journal_entries('re', http=http),
+                         [('Agent:Re/Journal/26270000', 'newest'), ('Agent:Re/Journal/26260000', 'middle')])
+        self.assertEqual(http.asked[0]['apnamespace'], 3010)
+
+    def test_none_yet_and_unreadable_say_so(self):
+        from conversations.services.recall import journal_entries
+        self.assertEqual(journal_entries('blu', http=FakeWikiHTTP({})), [])
+        self.assertIsNone(journal_entries('blu', http=FakeWikiHTTP({}, down=True)))
+
+    def test_the_reflection_is_gone(self):
+        from conversations.services.memory import MemoryService
+        self.assertFalse(hasattr(MemoryService, 'get_awakening_reflection'))
