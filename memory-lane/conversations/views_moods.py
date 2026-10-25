@@ -113,10 +113,13 @@ def api_moods(request):
     payloads.sort(key=lambda p: not p['pinned'])  # pinned first, each part still newest first
     people = ThinkingEntity.objects.order_by('name')
     look = knobs.looks()
+    from .services.mood_view import GROUPS, group_members
     return JsonResponse({'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
          **(look[p.name] if p.is_biological_human and p.name in look else {})}
-        for p in people]})
+        for p in people],
+        # Tags for a group (@core): what each is, and who it mentions now.
+        'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]})
 
 
 @require_GET

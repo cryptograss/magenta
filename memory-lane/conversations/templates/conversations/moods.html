@@ -1402,6 +1402,7 @@
   let baseTitle = 'magenta';
   let sectionNow = 'moods';  // or tidings, prompts, status, settings (showSection)
   let people = [];          // everyone who can be named, for @-completion
+  let groups = [];          // tags for a group (@core: everyone who signs in with an SSH key)
   let human = {};           // name -> is a person
   let looks = {};           // name -> {art, colour}: a person's name written their way, and their icon's colour
   let act = null;           // what an agent is doing now, from /turns/: the one stop and Esc stop
@@ -1765,7 +1766,9 @@
 
   function markTurn(el, mentions) {
     el.classList.toggle('mentions-me', !!me && mentions.includes(me));
-    el.querySelectorAll('.mention').forEach(s => s.classList.toggle('me', s.dataset.who === me));
+    // You, or a group you're in (@core).
+    el.querySelectorAll('.mention').forEach(s => s.classList.toggle('me', s.dataset.who === me
+      || (s.dataset.members || '').split(',').includes(me)));
   }
 
   function renderHead(m) {
@@ -3565,6 +3568,7 @@
     const body = await r.json();
     moods = body.moods;
     people = body.people || [];
+    groups = body.groups || [];
     people.forEach(p => { human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
     renderMe();
@@ -5003,9 +5007,12 @@
       const here = new Set((moods.find(m => m.slug === current) || {}).participants || []);
       // By either name; what's put in is the PickiPedia name, where there is one (the server knows both).
       const typed = at.prefix.toLowerCase();
-      choices = people.map(p => p.name).filter(n => n.startsWith(typed) || shown(n).toLowerCase().startsWith(typed))
+      choices = groups.filter(g => g.name.startsWith(typed) && !people.some(p => p.name === g.name))
+        .map(g => ({ insert: g.name + ' ', html: `<span class="emo">👥</span>@${esc(g.name)}<small>${esc(g.is)}: `
+          + `${g.members.length ? g.members.map(n => esc(shown(n))).join(', ') : 'nobody yet'}</small>` }))
+        .concat(people.map(p => p.name).filter(n => n.startsWith(typed) || shown(n).toLowerCase().startsWith(typed))
         .sort((a, b) => (here.has(b) - here.has(a)) || a.localeCompare(b)).slice(0, 8)
-        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small>${shown(n) !== n ? esc(n) + ' · ' : ''}${human[n] ? 'person' : 'agent'}${here.has(n) ? '' : ' · not here yet'}</small>` }));
+        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small>${shown(n) !== n ? esc(n) + ' · ' : ''}${human[n] ? 'person' : 'agent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
     }
     if (!choices.length) return closeSuggest();
     chosen = Math.min(chosen, choices.length - 1);

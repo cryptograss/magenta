@@ -327,6 +327,30 @@ def wikilinks_in(text):
     return out
 
 
+# Tags for a group, each mentioning all its members as if each were named (Skyler and Justin, 24 Oct: "for
+# stuff like consensus Beta releases", "call in the fleet"):
+#   @core    everyone who signs in with an SSH key -- the people only: an agent with a key isn't woken by it
+#   @humans  every person here
+#   @agents  every agent here: each is woken, as by its own name (its listening and its caps still apply)
+# Someone actually called by one of these names wins.
+GROUPS = {'core': 'everyone who signs in with an SSH key', 'humans': 'every person here', 'agents': 'every agent here'}
+
+
+def group_members(group, mentionable=None):
+    """Who `group` mentions, sorted; restricted to `mentionable` if given."""
+    from conversations.models import ThinkingEntity
+    from .mood_auth import key_holders
+    if group not in GROUPS:
+        return []
+    found = ThinkingEntity.objects.filter(is_biological_human=group != 'agents')
+    if group == 'core':
+        found = found.filter(name__in=key_holders())
+    members = set(found.values_list('name', flat=True))
+    if mentionable is not None:
+        members &= {n.lower() for n in mentionable}
+    return sorted(members)
+
+
 def mentions_in(text, mentionable):
     """Ordered, de-duplicated names mentioned in text, restricted to known ones.
 
@@ -343,9 +367,11 @@ def mentions_in(text, mentionable):
     for match in _MENTION.finditer(text):
         name = match.group(1).rstrip('.').lower()
         name = known_as.get(name, name)
-        if name in lowered and name not in seen:
-            seen.add(name)
-            out.append(name)
+        named = group_members(name, lowered) if name in GROUPS and name not in lowered else [name]
+        for name in named:
+            if name in lowered and name not in seen:
+                seen.add(name)
+                out.append(name)
     return out
 
 
@@ -500,6 +526,11 @@ def _mention(mentionable, stash=lambda markup: markup):
         if raw.endswith('.'):
             raw, trailing = raw[:-1], '.'
         who = known_as.get(raw.lower(), raw.lower())
+        if who in GROUPS and who not in lowered:
+            members = group_members(who)
+            title = html.escape(f'@{who}: {GROUPS[who]} -- ' + (', '.join(members) or 'nobody yet'), quote=True)
+            return stash(f'<span class="mention group" data-who="{who}" data-members="{",".join(members)}" '
+                         f'title="{title}">@{raw}</span>') + trailing
         if who not in lowered:
             return match.group(0)
         # A link to who it is, on PickiPedia; still a .mention, highlighted when it's you.
