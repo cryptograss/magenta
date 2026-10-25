@@ -2553,7 +2553,7 @@
     const named = page ? `<a href="${esc(page)}" target="_blank" rel="noopener" title="${esc(shown(t.sender))} on PickiPedia">${nameHtml(t.sender)}</a>` : nameHtml(t.sender);
     // Who's signed in how: PickiPedia ("wiki"), or an SSH key -- from the web, or a terminal on hunter itself
     // (Justin, 24 Oct: "ssh@hunter", small, in magenta).
-    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; @agents from here wake nobody">wiki</span>'
+    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; emergents mentioned from here aren't woken">wiki</span>'
       : t.is_human ? `<span class="tier ssh" title="${t.via === 'web' ? 'Signed in with an SSH key: may wake agents with their full tools' : 'Written in a terminal on hunter, over SSH'}">ssh@hunter</span>` : '';
     // ↩ for anyone signed in. A reply addresses a person, never an agent (only an @mention wakes one).
     const replyBtn = viewer && !t.deleted ? `<button type="button" class="replybtn" data-reply="${esc(t.id)}" title="Reply" aria-label="Reply">↩</button>` : '';
