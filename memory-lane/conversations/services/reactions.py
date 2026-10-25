@@ -26,9 +26,13 @@ PALETTE = ['👍', '❤️', '😂', '🎉', '🙏', '👀', '🔥', '💯', '�
 MAX_EMOJI = 16  # characters: an emoji with its modifiers and joiners, never words
 
 
+KEYCAP = re.compile('^[0-9#*]\uFE0F?\u20E3$')  # #️⃣ 1️⃣ *️⃣: an ASCII character, made a key
+
+
 def valid(emoji):
-    """An emoji, not words or markup: non-ASCII throughout, short."""
-    return bool(emoji) and len(emoji) <= MAX_EMOJI and all(ord(c) > 127 for c in emoji) and not emoji.isspace()
+    """An emoji, not words or markup: non-ASCII throughout (but for a keycap), short."""
+    return bool(emoji) and len(emoji) <= MAX_EMOJI and not emoji.isspace() and (
+        all(ord(c) > 127 for c in emoji) or bool(KEYCAP.match(emoji)))
 
 
 def toggle(message, by, emoji):

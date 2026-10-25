@@ -705,6 +705,32 @@
   #reactPicker[hidden] { display: none; }
   #reactPicker button { font-size: 18px; border: 0; background: none; cursor: pointer; padding: 2px 4px; border-radius: 6px; }
   #reactPicker button:hover { background: var(--code); }
+  #reactPicker button.more { font-size: 15px; color: var(--muted); }
+  /* Every emoji (tools/emoji_data.py): searched by name, by Unicode's groups, in your skin tone. */
+  #emojiPicker { position: fixed; z-index: 60; width: min(360px, calc(100vw - 16px)); height: min(400px, calc(100vh - 16px));
+                 display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
+                 border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.22); overflow: hidden; }
+  #emojiPicker[hidden] { display: none; }
+  #emojiPicker .ep-top { display: flex; gap: 6px; align-items: center; padding: 7px 8px 5px; }
+  #emojiPicker .ep-top input { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid var(--line);
+                               border-radius: 6px; background: var(--bg); color: var(--ink); }
+  #emojiPicker .ep-tones { display: flex; gap: 2px; }
+  #emojiPicker .ep-tones button { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); padding: 0; cursor: pointer; }
+  #emojiPicker .ep-tones button.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #emojiPicker .ep-tabs { display: flex; justify-content: space-between; padding: 0 6px; border-bottom: 1px solid var(--line); }
+  #emojiPicker .ep-tabs button { font-size: 17px; border: 0; background: none; cursor: pointer; padding: 3px 2px 4px; opacity: .65;
+                                 border-bottom: 2px solid transparent; }
+  #emojiPicker .ep-tabs button:hover, #emojiPicker .ep-tabs button.on { opacity: 1; border-bottom-color: var(--accent); }
+  #emojiPicker .ep-grid { flex: 1; overflow-y: auto; padding: 0 6px 6px; }
+  #emojiPicker .ep-grid h4 { position: sticky; top: 0; margin: 0; padding: 6px 2px 3px; font-size: 11.5px; font-weight: 600;
+                             color: var(--muted); background: var(--panel); }
+  #emojiPicker .ep-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); }
+  #emojiPicker .ep-cells button { font-size: 22px; line-height: 1; height: 38px; border: 0; background: none; cursor: pointer;
+                                  border-radius: 6px; padding: 0; }
+  #emojiPicker .ep-cells button:hover, #emojiPicker .ep-cells button:focus-visible { background: var(--code); }
+  #emojiPicker .ep-name { padding: 4px 10px 6px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line);
+                          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 25px; }
+  #emojiPicker .ep-none { color: var(--muted); font-size: 13px; padding: 14px 4px; }
   /* Context taken from another Mood: one line, the context beneath on demand. */
   .event.handoff summary { cursor: pointer; list-style: none; }
   .event.handoff .body { text-align: left; font-size: 13.5px; color: var(--ink); background: var(--code); border-radius: 6px;
@@ -731,7 +757,7 @@
   #composer .field:focus-within { border-color: var(--accent); }
   #composer.dropping .field { outline: 2px dashed var(--accent); }
   #composer .field textarea { border: 0; border-radius: 0; background: none; outline: none; padding: 9px 6px; resize: none; }
-  #composer .field #attach, #composer .field #memoBtn { flex: none; border: 0; border-radius: 50%; background: none;
+  #composer .field #attach, #composer .field #memoBtn, #composer .field #emojiBtn { flex: none; border: 0; border-radius: 50%; background: none;
                                                         min-width: 38px; height: 38px; padding: 0 8px; margin-bottom: 1px; }
   #composer .field #memoBtn.recording { border-radius: 19px; }
   /* Pictures with the words: thumbnails above the field, each with how far up it is and ✕ (renderTray). */
@@ -1327,6 +1353,7 @@
       <div class="field">
         <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
         <textarea id="say" placeholder="Say something. @name to address someone; [[Page]] links PickiPedia. Enter sends; Ctrl+Enter for a new line." rows="2"></textarea>
+        <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
       <button type="submit" id="send" aria-label="Send"><span class="label">Send</span><span class="wait"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z" fill="currentColor"/></svg></button>
@@ -2649,6 +2676,120 @@
       + `<span class="txt"><b>${esc(c.title)}</b>${c.description ? `<span class="desc">${esc(c.description)}</span>` : ''}`
       + `<small>${esc(c.site)}</small></span></a>`).join('') + '</div>');
   }
+  // --- every emoji Unicode has (/api/emoji/, tools/emoji_data.py; Justin, 25 Oct: "the full unicode gamut"):
+  // asked for once, the first time it's wanted. A picker -- search, Unicode's groups, your skin tone, the ones
+  // you used lately -- for reactions (＋ after the quick ten) and the composer (🙂); and :name finds them all.
+  let emojiData = null;
+  function allEmoji() {
+    if (!emojiData) {
+      emojiData = fetch('/api/emoji/').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(d => {
+        d.list = d.groups.flatMap(([group, items]) => items.map(([e, name, tones, more]) => {
+          const key = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+          return { e, name, tones: tones || null, group, key, words: key.split('_'), also: (more || '').split(/[^a-z0-9]+/).filter(Boolean) };
+        }));
+        return d;
+      }).catch(err => { emojiData = null; throw err; });
+    }
+    return emojiData;
+  }
+  // Found by its name or the words CLDR gives it (👋: hello, bye, wave): every word typed starting one of them.
+  const emojiMatches = (item, words) => words.every(w => item.words.some(k => k.startsWith(w)) || item.also.some(k => k.startsWith(w)));
+  // Those found by their own name first, then by a word for them; shorter names before longer.
+  const emojiRank = (words, p) => (a, b) => {
+    const byName = item => words.every(w => item.words.some(k => k.startsWith(w)));
+    return (b.key.startsWith(p) - a.key.startsWith(p)) || (byName(b) - byName(a)) || a.key.length - b.key.length;
+  };
+  const TONE_DOTS = ['#ffcc22', '#f7dece', '#f3d2a2', '#d5ab88', '#af7e57', '#7c533e'];
+  const emojiPicker = document.createElement('div');
+  emojiPicker.id = 'emojiPicker';
+  emojiPicker.hidden = true;
+  emojiPicker.setAttribute('role', 'dialog');
+  emojiPicker.setAttribute('aria-label', 'Emoji');
+  emojiPicker.innerHTML = '<div class="ep-top"><input type="search" placeholder="Search emoji" aria-label="Search emoji" autocomplete="off">'
+    + '<span class="ep-tones" role="radiogroup" aria-label="Skin tone">' + TONE_DOTS.map((c, i) =>
+      `<button type="button" data-tone="${i}" style="background: ${c}" title="${i ? 'skin tone ' + i : 'no skin tone'}" aria-label="${i ? 'skin tone ' + i : 'no skin tone'}"></button>`).join('')
+    + '</span></div><div class="ep-tabs"></div><div class="ep-grid"></div><div class="ep-name"></div>';
+  document.body.appendChild(emojiPicker);
+  const epSearch = emojiPicker.querySelector('input'), epGrid = emojiPicker.querySelector('.ep-grid'),
+        epTabs = emojiPicker.querySelector('.ep-tabs'), epName = emojiPicker.querySelector('.ep-name');
+  let emojiPick = null, emojiOpener = null;
+  const toned = item => { const t = store.get('emojiTone', 0); return t && item.tones ? item.tones[t - 1] : item.e; };
+  const cellsHtml = items => '<div class="ep-cells">' + items.map(item =>
+    `<button type="button" data-e="${esc(toned(item))}" title="${esc(item.name)}">${esc(toned(item))}</button>`).join('') + '</div>';
+  async function drawEmoji() {
+    let d;
+    try { d = await allEmoji(); } catch (err) { epGrid.innerHTML = '<div class="ep-none">Couldn\'t load the emoji.</div>'; return; }
+    emojiPicker.querySelectorAll('.ep-tones button').forEach(b => b.classList.toggle('on', +b.dataset.tone === store.get('emojiTone', 0)));
+    const words = epSearch.value.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    epTabs.hidden = !!words.length;
+    if (words.length) {
+      const found = d.list.filter(item => emojiMatches(item, words)).sort(emojiRank(words, words.join('_'))).slice(0, 240);
+      epGrid.innerHTML = found.length ? cellsHtml(found) : '<div class="ep-none">None by that name.</div>';
+      return;
+    }
+    const byE = new Map(d.list.map(item => [item.e, item]));
+    const recent = store.get('emojiRecent', []).map(e => byE.get(e)).filter(Boolean);
+    const sections = (recent.length ? [['Lately', recent]] : []).concat(d.groups.map(([group]) => [group, d.list.filter(i => i.group === group)]));
+    epTabs.innerHTML = sections.map(([group, items], i) =>
+      `<button type="button" data-section="${i}" title="${esc(group)}">${group === 'Lately' ? '🕘' : esc(items[0].e)}</button>`).join('');
+    epGrid.innerHTML = sections.map(([group, items], i) => `<h4 data-section="${i}">${esc(group)}</h4>${cellsHtml(items)}`).join('');
+  }
+  function openEmojiPicker(anchor, onPick) {
+    emojiPick = onPick;
+    emojiOpener = anchor;
+    epSearch.value = '';
+    emojiPicker.hidden = false;
+    const box = anchor.getBoundingClientRect(), w = emojiPicker.offsetWidth, h = emojiPicker.offsetHeight;
+    emojiPicker.style.left = Math.max(8, Math.min(box.left, innerWidth - w - 8)) + 'px';
+    emojiPicker.style.top = (box.top - h - 6 >= 8 ? box.top - h - 6 : Math.min(box.bottom + 6, innerHeight - h - 8)) + 'px';
+    drawEmoji().then(() => { epGrid.scrollTop = 0; });
+    if (!COARSE) epSearch.focus();
+  }
+  const closeEmojiPicker = () => { emojiPicker.hidden = true; emojiPick = null; };
+  epSearch.addEventListener('input', drawEmoji);
+  epSearch.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); epGrid.querySelector('button[data-e]')?.click(); }
+  });
+  emojiPicker.addEventListener('click', e => {
+    const cell = e.target.closest('button[data-e]');
+    if (cell) {
+      const chosen = cell.dataset.e, pick = emojiPick;
+      const base = cell.title;  // kept lately by its untoned form, drawn in the tone of the moment
+      allEmoji().then(d => {
+        const item = d.list.find(i => i.name === base);
+        store.set('emojiRecent', [item ? item.e : chosen, ...store.get('emojiRecent', []).filter(x => x !== (item ? item.e : chosen))].slice(0, 32));
+      });
+      closeEmojiPicker();
+      if (pick) pick(chosen);
+      return;
+    }
+    const tone = e.target.closest('.ep-tones button');
+    if (tone) { store.set('emojiTone', +tone.dataset.tone); drawEmoji(); return; }
+    const tab = e.target.closest('.ep-tabs button');
+    if (tab) epGrid.scrollTop = epGrid.querySelector(`h4[data-section="${tab.dataset.section}"]`).offsetTop - epGrid.offsetTop;
+  });
+  epGrid.addEventListener('mouseover', e => {
+    const cell = e.target.closest('button[data-e]');
+    epName.textContent = cell ? cell.dataset.e + '  ' + cell.title : '';
+  });
+  document.addEventListener('pointerdown', e => {
+    if (!emojiPicker.hidden && !emojiPicker.contains(e.target) && !(emojiOpener && emojiOpener.contains(e.target))
+        && !e.target.closest('#reactPicker')) closeEmojiPicker();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !emojiPicker.hidden) closeEmojiPicker(); });
+  // In the composer: put where the cursor was, as if typed.
+  const emojiBtn = document.getElementById('emojiBtn');
+  emojiBtn.addEventListener('click', () => {
+    if (!emojiPicker.hidden) { closeEmojiPicker(); return; }
+    const at = sayBox.selectionStart ?? sayBox.value.length, to = sayBox.selectionEnd ?? at;
+    openEmojiPicker(emojiBtn, emoji => {
+      sayBox.value = sayBox.value.slice(0, at) + emoji + sayBox.value.slice(to);
+      sayBox.focus();
+      sayBox.setSelectionRange(at + emoji.length, at + emoji.length);
+      sayBox.dispatchEvent(new Event('input'));
+    });
+  });
+
   // --- reactions (services/reactions.py): chips under a message, who on hover;
   // pressing one adds yours or takes it back. Each look at the Mood brings them all.
   let reactionsNow = {};
@@ -2681,7 +2822,8 @@
   const picker = document.createElement('div');
   picker.id = 'reactPicker';
   picker.hidden = true;
-  picker.innerHTML = PALETTE.map(e => `<button type="button" data-emoji="${e}">${e}</button>`).join('');
+  picker.innerHTML = PALETTE.map(e => `<button type="button" data-emoji="${e}">${e}</button>`).join('')
+    + '<button type="button" class="more" title="Every emoji" aria-label="Every emoji">＋</button>';
   document.body.appendChild(picker);
   document.addEventListener('click', e => {
     const chip = e.target.closest('.reacts .chip[data-emoji]');
@@ -2697,6 +2839,11 @@
     }
     const pick = e.target.closest('#reactPicker button[data-emoji]');
     if (pick && picker._for) react(picker._for, pick.dataset.emoji);
+    const more = e.target.closest('#reactPicker .more');
+    if (more && picker._for) {
+      const turn = picker._for;
+      openEmojiPicker(turn.querySelector('.addreact') || more, emoji => react(turn, emoji));
+    }
     picker.hidden = true;
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') picker.hidden = true; });
@@ -5147,10 +5294,27 @@
       choices = hits.map(m => ({ insert: m.slug + ' ', html: `<span class="emo">#</span>${esc(m.slug)}`
         + `<small>${m.title && m.title !== m.slug ? esc(m.title) : ''}${m.archived ? (m.title && m.title !== m.slug ? ' · ' : '') + 'archived' : ''}</small>` }));
     } else if (at.kind === 'emoji') {
-      const hits = EMOJI.filter(([name]) => name.startsWith(at.prefix))
-        .concat(at.prefix ? EMOJI.filter(([name]) => !name.startsWith(at.prefix) && name.includes(at.prefix)) : [])
-        .slice(0, 8);
-      choices = hits.map(([name, char]) => ({ insert: char, html: `<span class="emo">${char}</span>:${esc(name)}:` }));
+      // The favourites by their short names first, then every emoji Unicode has, by any word of its name.
+      const p = at.prefix.toLowerCase(), words = p.split(/[_+-]+/).filter(Boolean);
+      const hits = EMOJI.filter(([name]) => name.startsWith(p))
+        .concat(p ? EMOJI.filter(([name]) => !name.startsWith(p) && name.includes(p)) : []);
+      if (emojiData && words.length) {
+        emojiData.then(d => {
+          const still = wordAtCaret();
+          if (!still || still.kind !== 'emoji' || still.prefix !== at.prefix) return;
+          const seen = new Set(hits.map(([, ch]) => ch));
+          const more = d.list.filter(item => !seen.has(item.e) && emojiMatches(item, words)).sort(emojiRank(words, p));
+          choices = hits.concat(more.map(item => [item.key, toned(item)])).slice(0, 8)
+            .map(([name, char]) => ({ insert: char, html: `<span class="emo">${char}</span>:${esc(name)}:` }));
+          if (!choices.length) return closeSuggest();
+          chosen = Math.min(chosen, choices.length - 1);
+          suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
+          suggest.classList.add('on');
+        }).catch(() => {});
+        return;
+      }
+      if (!emojiData && words.length) allEmoji().then(() => { const still = wordAtCaret(); if (still && still.kind === 'emoji') showSuggest(); }).catch(() => {});
+      choices = hits.slice(0, 8).map(([name, char]) => ({ insert: char, html: `<span class="emo">${char}</span>:${esc(name)}:` }));
     } else {
       const here = new Set((moods.find(m => m.slug === current) || {}).participants || []);
       // By either name; what's put in is the PickiPedia name, where there is one (the server knows both).

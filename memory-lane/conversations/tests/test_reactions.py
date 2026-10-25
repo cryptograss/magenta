@@ -51,3 +51,25 @@ class ReactionsTest(TestCase):
         self.assertEqual(page['reactions'], {str(self.message.id): {'👍': ['skyler']}})
         self.assertEqual([t['id'] for t in page['turns']], [str(self.message.id)])
         self.assertEqual(page['events'], [])
+
+
+class EveryEmojiTest(TestCase):
+    """Justin, 25 Oct: "the full unicode gamut" -- every emoji, for the picker and :name, and any as a reaction."""
+
+    def test_the_whole_list_grouped_named_and_toned(self):
+        r = Client().get('/api/emoji/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('max-age', r['Cache-Control'])
+        data = r.json()
+        found = {e[0]: e for _, items in data['groups'] for e in items}
+        self.assertGreater(len(found), 1800)
+        self.assertEqual(found['🪕'][1], 'banjo')
+        self.assertEqual(len(found['👋'][2]), 5)  # its five skin tones
+        self.assertIn('wave', found['👋'][3])     # and the words people find it by
+        self.assertNotIn('Component', [g for g, _ in data['groups']])
+
+    def test_any_of_them_is_a_reaction_keycaps_too(self):
+        for emoji in ('#️⃣', '1️⃣', '*️⃣', '👨‍👩‍👧‍👦', '🏳️‍🌈', '🇯🇵', '👋🏽'):
+            self.assertTrue(reactions.valid(emoji), emoji)
+        for words in ('#', '12', '#⃣x', 'a⃣'):
+            self.assertFalse(reactions.valid(words), words)
