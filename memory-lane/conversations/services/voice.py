@@ -663,7 +663,8 @@ def keyterms():
     from conversations.models import Mood, ThinkingEntity
     names = list(ThinkingEntity.objects.values_list('name', flat=True))
     agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
-    names += [f'{colour} agent' for colour in COLOURS for agent in agents if colour[:-1] == agent.lower()]
+    names += [f'{colour} {kind}' for colour in COLOURS for agent in agents if colour[:-1] == agent.lower()
+              for kind in ('emergent', 'agent')]  # either, as people say it (emergent since 25 Oct)
     moods = [t for t in Mood.objects.values_list('title', flat=True) if t and len(t) <= 50]
     seen, out = set(), []
     from .voice_words import words
@@ -882,11 +883,11 @@ def spoken_mentions(text, mentionable, aliases=None):
     names.update({k: v for k, v in words()['heard_as'].items() if v in names and k not in names})
     if not names or not text:
         return text
-    # "the red agent" (or "red agent") is re: said by its colour. Then "at the red agent" is "at re", which
+    # "the red emergent" or "the red agent" (or without "the") is re: said by its colour. Then "at the red agent" is "at re", which
     # the rule below makes @re; "Red agent, ..." opens with its name, as a name said to someone does.
     by_colour = {colour: names[colour[:-1]] for colour in COLOURS if colour[:-1] in names}
     if by_colour:
-        said = re.compile(rf'\b(?:the\s+)?({"|".join(by_colour)})\s+agent\b', re.I)
+        said = re.compile(rf'\b(?:the\s+)?({"|".join(by_colour)})\s+(?:emergent|agent)\b', re.I)
         text = said.sub(lambda m: by_colour[m.group(1).lower()], text)
     alternatives = '|'.join(re.escape(n) for n in sorted(names, key=len, reverse=True))
     name = rf'(?P<name>{alternatives})(?![\w@-])'

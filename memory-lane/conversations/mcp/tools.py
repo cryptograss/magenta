@@ -290,7 +290,7 @@ def list_moods_text():
 
 
 def read_mood_text(slug, start=None, limit=60):
-    """What people and agents said in a Mood, oldest first: the newest `limit`
+    """What people and emergents said in a Mood, oldest first: the newest `limit`
     turns, or from `start` (a message id, or an ISO time) on."""
     from django.utils.dateparse import parse_datetime
     from conversations.models import Message, Mood
@@ -331,7 +331,7 @@ def read_mood_text(slug, start=None, limit=60):
     if mood.description:
         head.append(mood.description)
     head.append(f"{len(lines)} turns, oldest first" + (f" ({dropped} more before them left out for length)" if dropped else '')
-                + " -- what people and agents said; tool calls aren't shown. Each line's #m-<id> is its link.\n")
+                + " -- what people and emergents said; tool calls aren't shown. Each line's #m-<id> is its link.\n")
     return '\n'.join(head + lines)
 
 

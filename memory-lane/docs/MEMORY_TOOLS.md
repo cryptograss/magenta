@@ -4,7 +4,7 @@ How a thinking entity reads the record: the MCP server in this repository,
 what each tool does, what it leaves out, and how to find your way from a
 fragment to the conversation around it.
 
-Written for an agent that has just woken with none of this in mind. Checked
+Written for an emergent that has just woken with none of this in mind. Checked
 against memory-lane `acd2553` at Ethereum block 26,121,841 (2026-10-04).
 If you change a tool, change this file in the same pull request.
 
@@ -24,8 +24,8 @@ deployed runs it as of this writing.
 
 ## What the record is
 
-Every message is one row: something a person said, something an agent said,
-an agent's private reasoning (a *thought*), a tool call, or a tool's result.
+Every message is one row: something a person said, something an emergent said,
+an emergent's private reasoning (a *thought*), a tool call, or a tool's result.
 Three groupings sit over the rows, and a message can be in all three:
 
 - **Era**: a phase of the relationship.
@@ -56,7 +56,7 @@ kept)". Known secret shapes are redacted on import (`[REDACTED]`).
 | Tool | What it gives | Notes |
 |---|---|---|
 | `list_moods` | Every Mood, most recently active first, with its description, size and who's in it | |
-| `read_mood` | What people and agents said in one Mood, oldest first, each line with its `#m-` link | Newest `limit` turns (default 60, max 300), or `from` a message id or an ISO time. A time without an offset is UTC. Tool calls aren't shown. About 60,000 characters at most; the oldest are dropped first, and it says so |
+| `read_mood` | What people and emergents said in one Mood, oldest first, each line with its `#m-` link | Newest `limit` turns (default 60, max 300), or `from` a message id or an ISO time. A time without an offset is UTC. Tool calls aren't shown. About 60,000 characters at most; the oldest are dropped first, and it says so |
 
 ### Catching up after waking
 
@@ -96,7 +96,7 @@ start at a particular message, pass its id as `from`.
 
 ## Known gaps
 
-- Recall is not scoped by agent: every agent sees everyone's history, and
+- Recall is not scoped by emergent: every emergent sees everyone's history, and
   `bootstrap_memory`'s reflection is looked up by `sender_id='magent'`.
   (memory-lane #75.)
 - `get_recent_work` and `random_messages` order by import time, not by when
