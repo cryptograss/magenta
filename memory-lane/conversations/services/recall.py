@@ -404,10 +404,44 @@ def how_i_speak_text(agent, count=12):
 
 # --- bootstrap_memory, per agent --------------------------------------------------
 
+AGENT_NAMESPACE = 3010  # PickiPedia's Agent: namespace (its LocalSettings.php): each agent writes only its own
+
+
+def journal_prefix(agent):
+    return f'Agent:{agent[:1].upper()}{agent[1:]}/Journal/'
+
+
+def journal_entries(agent, count=2, http=None):
+    """[(title, wikitext)]: the agent's newest journal entries, Agent:<Name>/Journal/<block>, newest first
+    by block; [] with none, None if PickiPedia can't be read. Its own words, in its own namespace."""
+    import requests
+
+    from .mood_view import pickipedia_url
+    http = http or requests
+    api, headers = f'{pickipedia_url()}/api.php', {'User-Agent': 'memory-lane (magenta)'}
+    prefix = journal_prefix(agent).split(':', 1)[1]
+    try:
+        found = http.get(api, timeout=5, headers=headers, params={
+            'action': 'query', 'list': 'allpages', 'apnamespace': AGENT_NAMESPACE, 'apprefix': prefix,
+            'aplimit': 500, 'format': 'json', 'formatversion': '2'}).json()['query']['allpages']
+        blocks = sorted(((int(p['title'].rsplit('/', 1)[1].replace(',', '')), p['title']) for p in found
+                         if re.fullmatch(r'[\d,]+', p['title'].rsplit('/', 1)[1])), reverse=True)[:count]
+        if not blocks:
+            return []
+        pages = http.get(api, timeout=5, headers=headers, params={
+            'action': 'query', 'prop': 'revisions', 'rvprop': 'content', 'rvslots': 'main',
+            'titles': '|'.join(title for _, title in blocks), 'format': 'json', 'formatversion': '2'}).json()
+        text = {p['title']: p['revisions'][0]['slots']['main']['content']
+                for p in pages['query']['pages'] if p.get('revisions')}
+    except Exception:  # noqa: BLE001 -- the rest of the bootstrap stands without it
+        return None
+    return [(title, text[title]) for _, title in blocks if title in text]
+
+
 def bootstrap_text(agent):
     """bootstrap_memory for one agent: who and since when, its latest continuation, its own recent
-    conversation, the people it knows best, its last awakening reflection, and Era 1 only if it
-    spoke there."""
+    conversation, the people it knows best, its newest journal entries, and Era 1 only if it spoke
+    there."""
     from .memory import MemoryService
     at, _ = arrival(agent)
     lines = [f"# Memory bootstrap: {agent}\n", arrival_line(agent), '']
@@ -434,10 +468,16 @@ def bootstrap_text(agent):
               f"{when(k['last'])}" for k in known] or ["Nobody yet."]
     lines.append('')
 
-    awakening = MemoryService.get_awakening_reflection(agent)
-    if awakening:
-        lines += ["## Your last awakening reflection\n", f"[{when(awakening.created_at)}] "
-                  f"{clip(readable(awakening), 1500)}", '']
+    # Its journal, where the "reawaken and breathe" reflection was: that was only its newest message with
+    # either word in it (Justin, magent-self, 2026-10-25: "We're going to drop that completely, right?").
+    lines.append("## Your journal, newest entries\n")
+    entries = journal_entries(agent)
+    if entries is None:
+        lines.append(f"PickiPedia couldn't be read just now: your journal is at {journal_prefix(agent)}<block>.\n")
+    elif not entries:
+        lines.append(f"No entries yet: your journal is at {journal_prefix(agent)}<block>.\n")
+    for title, text in entries or []:
+        lines += [f"--- {title}", clip(text, 3000), '']
 
     era = MemoryService.get_era_summary("Compacting Meta-Conversation (Era 1)")
     if era and any(m.sender_id == agent for m in era['messages']):

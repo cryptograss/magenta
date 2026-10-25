@@ -17,13 +17,11 @@ class BootstrapService:
         1. Recent messages (up to 10k chars)
         2. Latest continuation (if not in recent)
         3. Era 1 summary
-        4. Most recent awakening reflection
         """
         result = {
             'recent_context': None,
             'continuation': None,
             'era_1': None,
-            'awakening': None
         }
 
         # 1. Recent messages
@@ -47,11 +45,6 @@ class BootstrapService:
         era_data = MemoryService.get_era_summary("Compacting Meta-Conversation (Era 1)")
         if era_data:
             result['era_1'] = era_data
-
-        # 4. Awakening reflection
-        awakening = MemoryService.get_awakening_reflection()
-        if awakening:
-            result['awakening'] = awakening
 
         return result
 
@@ -93,14 +86,5 @@ class BootstrapService:
                 lines.append(f"[{msg.sender_id}] {str(msg.content)[:150]}...\n")
         else:
             lines.append("Era 1 not found\n")
-
-        # Awakening
-        lines.append("\n## Most Recent Awakening Reflection\n")
-        awakening = bootstrap_data['awakening']
-        if awakening:
-            lines.append(f"[{awakening.sender_id}] {awakening.created_at.isoformat()}")
-            lines.append(f"{str(awakening.content)[:1000]}...\n")
-        else:
-            lines.append("No awakening reflection found\n")
 
         return '\n'.join(lines)

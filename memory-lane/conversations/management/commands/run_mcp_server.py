@@ -121,7 +121,7 @@ class Command(BaseCommand):
                 ),
                 types.Tool(
                     name="bootstrap_memory",
-                    description="Complete memory bootstrap: recent messages (10k chars), latest continuation (if not included), Era 1 summary, and most recent 'reawaken and breathe' reflection",
+                    description="Complete memory bootstrap: recent messages (10k chars), latest continuation (if not included), and Era 1 summary",
                     inputSchema={
                         "type": "object",
                         "properties": {},
@@ -289,21 +289,6 @@ class Command(BaseCommand):
                             result += f"[{msg.sender_id}] {str(msg.content)[:150]}...\n\n"
                     except Era.DoesNotExist:
                         result += "Era 1 not found\n\n"
-
-                    # 4. Most recent "reawaken and breathe" message
-                    result += "\n## Most Recent Awakening Reflection\n\n"
-                    # TODO: Query by topic once we have topic tagging working
-                    # For now, search for recent messages from magent containing "reawaken" or "breathe"
-                    awakening = Message.objects.filter(
-                        Q(sender_id='magent') &
-                        (Q(content__icontains='reawaken') | Q(content__icontains='breathe'))
-                    ).order_by('-created_at').first()
-
-                    if awakening:
-                        result += f"[{awakening.sender_id}] {awakening.created_at.isoformat()}\n"
-                        result += f"{str(awakening.content)[:1000]}...\n\n"
-                    else:
-                        result += "No awakening reflection found (search for 'reawaken' or 'breathe')\n\n"
 
                     return result
 
