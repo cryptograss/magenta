@@ -116,6 +116,8 @@ class SpeakersTest(TestCase):
         # Waiting for another agent asked too, said as thinking is (Justin, 24 Oct).
         voice.narrate_thinking(self.mood, 'magent', 'justin', waiting='re', http=self.fake)
         self.assertEqual(self.fake.asked[-1][2]['json']['text'], 'Magent is waiting for Re.')
+        voice.narrate_thinking(self.mood, 'magent', 'justin', waiting='re', waiting_to='settle the schema', http=self.fake)
+        self.assertEqual(self.fake.asked[-1][2]['json']['text'], 'Magent is waiting for Re to settle the schema.')
 
     def test_without_the_list_everyone_is_the_house_voice_and_nothing_is_kept(self):
         class Closed(FakeEleven):

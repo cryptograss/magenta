@@ -1490,10 +1490,13 @@ def api_narrate(request):
     waiting = str(body.get('waiting') or '')
     if waiting and not re.fullmatch(r'[\w.-]+(?:,\s*[\w.-]+)*', waiting):
         return JsonResponse({'error': 'waiting: agents\' names'}, status=400)
+    waiting_to = ' '.join(str(body.get('to') or '').split()[:8]) if waiting else ''
+    if re.search(r'[<>]', waiting_to):
+        return JsonResponse({'error': 'to: a few words'}, status=400)
     try:
         return JsonResponse({'url': voice.narrate_thinking(mood, agent.name, device.entity_id,
                                                            where=bool(body.get('where')), still=still,
-                                                           waiting=waiting)})
+                                                           waiting=waiting, waiting_to=waiting_to)})
     except voice.VoiceError as e:
         return JsonResponse({'error': str(e)}, status=e.status)
 

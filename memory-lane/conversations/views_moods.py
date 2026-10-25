@@ -1369,8 +1369,9 @@ def api_moods_live(request):
             doing = activities(mood)
             working = [a['agent'] for a in doing if a.get('doing') != 'held']
             # An agent waiting for another asked too (poller's _WAIT_REPLY): read aloud as thinking is.
-            waiting = [{'agent': a['agent'], 'for': a['why'][len('waiting for '):]} for a in doing
-                       if a.get('doing') == 'held' and str(a.get('why') or '').startswith('waiting for ')]
+            # 'waiting for re to settle the schema': for 're', to 'settle the schema'.
+            waiting = [{'agent': a['agent'], **dict(zip(('for', 'to'), a['why'][len('waiting for '):].split(' to ', 1)))}
+                       for a in doing if a.get('doing') == 'held' and str(a.get('why') or '').startswith('waiting for ')]
             if waiting:
                 entry['waiting'] = waiting
             if working:
