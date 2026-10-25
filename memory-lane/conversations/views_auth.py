@@ -249,6 +249,12 @@ def api_say(request, slug):
         return JsonResponse({'note': note})
     if posted != said:
         text = f'↩ #m-{answering}\n{posted}' if answering else posted
+    # /poll: refused, saying why, if it can't be a poll (services/polls.py).
+    from .services import polls
+    try:
+        polls.parse(text)
+    except polls.Refused as e:
+        return JsonResponse({'error': str(e)}, status=400)
 
     recent = Message.objects.filter(sender=device.entity, source_file=WEB_SOURCE,
                                     created_at__gt=timezone.now() - timedelta(minutes=1)).count()
@@ -272,6 +278,7 @@ def api_say(request, slug):
     if memo:
         text = voice.with_transcript(text, voice.heard(memo))
     message = post(text)
+    polls.note_posted(message)
     if text.startswith('/clips '):
         clips.forget_cached()  # the library has a new save, or one fewer
     from .services import yarn_kept
@@ -609,6 +616,59 @@ def api_react(request, slug, message_id):
         return JsonResponse({'error': 'slow down'}, status=429)
     on = reactions.toggle(message, device.entity_id, emoji)
     return JsonResponse({'on': on, 'reactions': reactions.in_mood(message.mood, [message.id]).get(str(message.id), {})})
+
+
+def _poll_in(request, slug, message_id):
+    """(device, poll), or a JsonResponse saying why not."""
+    from .services import polls
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to vote'}, status=401)
+    mood = Mood.by_slug(slug)
+    poll = polls.poll_message(mood, _uuid_or_none(message_id)) if mood and _uuid_or_none(message_id) else None
+    if poll is None:
+        return JsonResponse({'error': 'no such poll in this Mood'}, status=404)
+    return device, poll
+
+
+@require_POST
+def api_poll_vote(request, slug, message_id):
+    """{"choice"}: vote in a poll, or change your vote; your own choice again takes it back
+    (services/polls.py). Any sign-in. Answers the poll as it now stands: {"poll", "mine"}."""
+    from .services import polls
+    found = _poll_in(request, slug, message_id)
+    if isinstance(found, JsonResponse):
+        return found
+    device, poll = found
+    try:
+        choice = json.loads(request.body).get('choice')
+    except (ValueError, AttributeError):
+        choice = None
+    if not isinstance(choice, str):
+        return JsonResponse({'error': 'expected {"choice": ...}'}, status=400)
+    if not _under_limit(f'vote:{device.pk}', 40):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        mine = polls.vote(poll, device.entity_id, choice)
+    except polls.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'mine': mine, 'poll': polls.poll_state(poll)})
+
+
+@require_POST
+def api_poll_close(request, slug, message_id):
+    """Close a poll, or open it again: whoever asked it (or an admin). {"closed", "poll"}."""
+    from .services import polls
+    found = _poll_in(request, slug, message_id)
+    if isinstance(found, JsonResponse):
+        return found
+    device, poll = found
+    if not polls.may_close(poll, device):
+        return JsonResponse({'error': f'only {poll.sender_id}, who asked it, closes this poll'}, status=403)
+    return JsonResponse({'closed': polls.close(poll, device.entity_id), 'poll': polls.poll_state(poll)})
 
 
 # What was taken back, for an admin's page to open with the recovery key

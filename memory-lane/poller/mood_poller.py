@@ -78,8 +78,10 @@ logger = logging.getLogger('mood_poller')
 DEFAULT_BASE = 'https://memory-lane.maybelle.cryptograss.live'
 SILENT = '<silent/>'
 # A silent reply, with or without a reason: <silent/> or <silent>why</silent>; and a reaction instead of a
-# reply, <react emoji="🎻" to="re"/> (memory-lane services/reactions.py), which says nothing either.
-_SILENT_REPLY = re.compile(r'^\s*<silent\s*/>\s*$|^\s*<silent>.*</silent>\s*$|^\s*<react\s[^<>]*/>\s*$', re.S)
+# reply, <react emoji="🎻" to="re"/> (memory-lane services/reactions.py), which says nothing either; nor does a
+# reply that is only a vote, <vote choice="yes"/> (services/polls.py).
+_SILENT_REPLY = re.compile(r'^\s*<silent\s*/>\s*$|^\s*<silent>.*</silent>\s*$|^\s*<react\s[^<>]*/>\s*$'
+                           r'|^\s*(?:<vote\s[^<>]*/>\s*)+$', re.S)
 # Waiting for another agent asked the same thing (Justin and re, 24 Oct): a reply that is only this. The poller
 # takes it -- it's a state shown in the Mood (a hold), never a mention or a post that wakes anyone -- and checks
 # in every WAIT_FOR: while they're at work the wait goes on, with no turn spent on it; the agent is woken again
@@ -942,6 +944,28 @@ def waited_for(why):
     """The names a shown wait ('waiting for re, blu to …') is for."""
     names = str(why or '')[len('waiting for '):].split(' to ', 1)[0]
     return [n.strip() for n in names.split(',') if n.strip()]
+
+
+OPEN_POLLS_SHOWN = 5
+
+
+def open_polls(agent, page):
+    """Lines telling a woken agent of the polls open here, who chose what so far, and how it votes (Skyler and
+    Justin, 25 Oct: agents vote too). `page`: the Mood's turns API, whose 'polls' are every poll here."""
+    polls = sorted((p for p in ((page or {}).get('polls') or {}).values() if not p.get('closed')),
+                   key=lambda p: p.get('created_at') or '', reverse=True)[:OPEN_POLLS_SHOWN]
+    if not polls:
+        return []
+
+    def line(p):
+        choices = '; '.join(f'{c["text"]}: {", ".join(c["votes"]) or "nobody yet"}' for c in p.get('choices') or [])
+        mine = next((c['text'] for c in p.get('choices') or [] if agent in c['votes']), None)
+        return (f'#m-{p["id"]} "{p.get("question")}", asked by {p.get("by")} -- {choices}'
+                + (f' (your vote: {mine})' if mine else ''))
+    which = '; poll="#m-…" says which' if len(polls) > 1 else ''
+    return ['', 'Open polls here (votes are named, and agents vote too):', *map(line, polls),
+            f'To vote, or change your vote, put <vote choice="…"/> on a line of its own in your reply (the choice as'
+            f' written, or its number{which}); a reply that is only the vote shows as a quiet dot. Vote if you have a view.']
 
 
 def also_asked(owed, agent, page, may_wait=True):
@@ -2074,6 +2098,7 @@ class MoodPoller:
             lines[owed_end:owed_end] = also_asked(owed, self.agent, info, may_wait=not waited) + (
                 ['', self.wait_notes.pop(slug)] if slug in self.wait_notes else [])
             lines += settings_changed(self.agent, info)
+            lines += open_polls(self.agent, info)
         except Exception:
             pass
         # Taken here from another Mood for this agent, since it last spoke here.

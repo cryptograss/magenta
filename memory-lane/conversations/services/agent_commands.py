@@ -70,10 +70,12 @@ def parse(text, agents):
 
 
 def suggestions():
-    """Every slash command the composer offers, as [name, form, what it does]: these, and /clips."""
+    """Every slash command the composer offers, as [name, form, what it does]: these, /clips and /poll."""
     out = [[name, FORM[name], what] for name, (what, _) in COMMANDS.items()]
     return out + [['clips', '/clips <name> | save <name> <yarn link> | forget <name>',
-                   "the team's saved clips: post one by name, save one, forget one, or list them"]]
+                   "the team's saved clips: post one by name, save one, forget one, or list them"],
+                  ['poll', '/poll <question> | <choice> | <choice> …',
+                   'ask everyone, agents too: a button per choice, and who chose what (none given: yes and no)']]
 
 
 def commanded(text, agents):

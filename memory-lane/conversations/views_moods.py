@@ -231,11 +231,13 @@ def api_mood_turns(request, slug):
             text = prose(msg.content) if msg else ''
             changes.append({**c, 'turn': retract.mark(turn_payload(msg, text, names), retract.change_of(msg))
                             if msg and text else None})
-    from .services import reactions
+    from .services import polls, reactions
     return JsonResponse({
         'mood': mood_payload(mood),
         # Every message here that has reactions, as they now stand (services/reactions.py).
         'reactions': reactions.in_mood(mood),
+        # Every poll here, its votes and whether it's closed (services/polls.py).
+        'polls': polls.in_mood(mood),
         # What was edited or deleted since ?changes_since=, as it stands now; and the time to ask from next.
         'changes': changes,
         'now': timezone.now().isoformat(),
