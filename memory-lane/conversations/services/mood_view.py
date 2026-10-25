@@ -18,6 +18,9 @@ from urllib.parse import unquote, urlparse
 from django.conf import settings
 
 MACHINERY_SENDERS = {'tool-result', 'system'}
+# Claude Code's own notes to an agent (an isMeta line: "Already available in this conversation: ..."): kept,
+# and shown in the agent's turn as a ⚙️ note, never as its words (Justin, magent-self, 2026-10-25).
+HARNESS = 'harness'
 
 # Command scaffolding, system reminders and interruption markers are text,
 # but they are not conversation.
@@ -868,7 +871,7 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
 
     Yields ('turn', message, text), ('quiet', message, reason) for an
     agent's choice not to speak, ('thought', message, text) for thinking the
-    harness kept, ('compaction', message, summary) where a session was
+    harness kept, ('note', message, text) for the harness's own note to the agent, ('compaction', message, summary) where a session was
     compacted, and ('step', message, None). A step is
     one tool call; its result is fetched on demand (step_detail), so the
     thread stays light. `limit` keeps the newest that many items -- a first
@@ -889,6 +892,9 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
     def item(msg):
         if msg.source_file in EVENT_SOURCES and isinstance(msg.content, dict):
             return ('event', msg, msg.content)  # a server redeployed, someone stopped an agent: a line in the thread
+        if msg.sender_id == HARNESS:
+            text = prose(msg.content)
+            return ('note', msg, text) if text else None
         if msg.sender_id in MACHINERY_SENDERS or msg.sender_id not in speakers:
             return None
         if hasattr(msg, 'tooluse'):

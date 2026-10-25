@@ -140,6 +140,16 @@ def _watchers(request, mood):
     return {'watchers': watchers.now_watching(mood.slug, admin=device is not None and device.tier == 'key')}
 
 
+def note_agent(msg, _agents=None):
+    """The agent whose session a harness note is in: the first agent to speak in it; None if none has."""
+    if not msg.session_id:
+        return None
+    agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
+    first = (Message.objects.filter(session_id=msg.session_id, sender_id__in=list(agents))
+             .order_by('created_at').values_list('sender_id', flat=True).first())
+    return first
+
+
 @require_GET
 def api_mood_turns(request, slug):
     """The readable conversation in one Mood.
@@ -181,6 +191,12 @@ def api_mood_turns(request, slug):
         elif kind == 'thought':
             thoughts_out.append({**how_payload(msg), 'id': str(msg.id), 'sender': msg.sender_id,
                                  'created_at': msg.created_at.isoformat(), 'text': text})
+        elif kind == 'note':
+            # The harness's note to an agent: in that agent's turn, beside its thinking, marked as the harness's.
+            agent = note_agent(msg)
+            if agent:
+                thoughts_out.append({'id': str(msg.id), 'sender': agent, 'harness': True,
+                                     'created_at': msg.created_at.isoformat(), 'text': text})
         elif kind == 'event':
             events_out.append({'id': str(msg.id), 'created_at': msg.created_at.isoformat(),
                                **{k: text.get(k) for k in ('type', 'server', 'state', 'commit', 'by', 'note', 'took', 'agent',
