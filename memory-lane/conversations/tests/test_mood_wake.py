@@ -50,6 +50,25 @@ class MoodWakeTest(TestCase):
         msg = self.imp(line(self.session, 'user', notice))  # no origin, as older transcripts have it
         self.assertEqual(msg.sender_id, 'system')
 
+    def test_the_harnesss_own_note_is_the_harness_not_the_agent(self):
+        # Claude Code's isMeta user line: "Already available in this conversation: ..." (magent-self, 25 Oct).
+        note = [{'type': 'text', 'text': 'Already available in this conversation: compare-pages. Call it directly.'}]
+        raw = line(self.session, 'user', note, entrypoint='sdk-cli', isMeta=True)
+        self.assertEqual(self.imp(raw).sender_id, 'system')
+        # Filed first as the agent's (by a stream that didn't say), the transcript's isMeta puts it right.
+        uid = json.loads(raw)['uuid']
+        Message.objects.filter(id=uid).update(sender=self.magent)
+        self.imp(raw)
+        self.assertEqual(Message.objects.get(id=uid).sender_id, 'system')
+        from conversations.services.mood_view import activity
+        self.assertNotEqual((activity(self.mood) or {}).get('agent'), 'magent')
+
+    def test_the_stream_keeps_isMeta(self):
+        from conversations.views_runner import stream_line
+        event = {'type': 'user', 'uuid': str(uuid.uuid4()), 'isMeta': True, 'session_id': str(self.session),
+                 'message': {'role': 'user', 'content': 'a note'}}
+        self.assertTrue(json.loads(stream_line(event, '2026-10-25T12:51:00Z'))['isMeta'])
+
     def test_a_person_typing_the_wrapper_is_still_that_person(self):
         msg = self.imp(line(self.session, 'user', WAKE, entrypoint='cli'))
         self.assertEqual(msg.sender_id, 'justin')
