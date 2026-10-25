@@ -1,16 +1,16 @@
 """An agent's instructions for one Mood, gathered without a model: Artificial Dumb
 (https://pickipedia.xyz/wiki/PickiPedia:Artificial_Dumb).
 
-First, one line naming the agent (Justin, magent-self, 2026-10-24: "you are
+First, one line naming the emergent (Justin, magent-self, 2026-10-24: "you are
 <name>, the <color> agent. <greeting>"), so the "you" of everything after it
-is already someone. Its wording is Cryptograss:Agents/Greeting, the line with
-blanks; each agent's colour and greeting are on its own page,
-Cryptograss:Agents/<Name>, as Semantic MediaWiki properties (Template:Agent),
+is already someone. Its wording is Cryptograss:Emergents/Greeting, the line with
+blanks; each emergent's colour and greeting are on its own page,
+Cryptograss:Emergents/<Name>, as Semantic MediaWiki properties (Template:Emergent),
 the only place they are written, and queryable from there by anything else
 (a User: page, magenta):
 
-    You are {name}, the {colour} agent of cryptograss. {greeting}    (the Greeting page)
-    {{Agent|colour=red|greeting=...|image=...}}                       (Cryptograss:Agents/Re)
+    You are {name}, the {colour} emergent of cryptograss. {greeting}  (the Greeting page)
+    {{Emergent|colour=red|greeting=...|image=...}}                    (Cryptograss:Emergents/Re)
 
 {name}, {mood} and {block} are data, filled here: the name from --agent only
 (the agent's page is found by it, and never names it, so no page can rename
@@ -31,10 +31,10 @@ constraints. Within them, General Orders is the standing layer that binds.
 
 Then its layers, each a page on PickiPedia:
 
-    standing   Cryptograss:Agents/GeneralOrders         what every agent keeps
-    identity   Cryptograss:Agents/<Name>/Instructions   who this agent is, how it works
-    moods      Cryptograss:Moods/Instructions           what it keeps in every Mood (with a Mood only)
-    mood       Cryptograss:Moods/<slug>/Instructions    how it carries itself there
+    standing   Cryptograss:Emergents/GeneralOrders         what every emergent keeps
+    identity   Cryptograss:Emergents/<Name>/Instructions   who this emergent is, how it works
+    moods      Cryptograss:Moods/Instructions              what it keeps in every Mood (with a Mood only)
+    mood       Cryptograss:Moods/<slug>/Instructions       how it carries itself there
 
 Each page is sent whole, as its wikitext, less <!-- comments -->: what you see
 on the page is what the agent is told, and talk about the instructions goes on the
@@ -94,13 +94,14 @@ try:
 except ImportError:  # run as a script from its own directory, as deployed
     from wiki_rules import API, EDITORS, USER_AGENT, WikiTexts, page_url
 
-STANDING = 'Cryptograss:Agents/GeneralOrders'
-# What every agent keeps in every Mood (etiquette, silence, greeting, handoffs, settings, to-do lists), read when
+STANDING = 'Cryptograss:Emergents/GeneralOrders'
+# What every emergent keeps in every Mood (etiquette, silence, greeting, handoffs, settings, to-do lists), read when
 # it is woken in one; until a trusted revision is here, the wake goes on carrying the old words.
 MOODS = 'Cryptograss:Moods/Instructions'
-GREETING = 'Cryptograss:Agents/Greeting'
+GREETING = 'Cryptograss:Emergents/Greeting'
 GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
-AGENT_TEMPLATE = 'Agent'
+AGENT_TEMPLATE = 'Emergent'
+EMERGENT_TEMPLATES = ('Emergent', 'Agent')  # both accepted while trusted revisions still say {{Agent|...}}
 AGENT_FIELDS = ('colour', 'hex', 'greeting', 'image')  # what an agent's own page may put in its line
 ROSTER_FIELDS = ('colour', 'for')  # what each other agent's page puts in the roster: '<name> (<colour>), <for>'
 BLANK = re.compile(r'(?<!\{)\{([a-z]+)\}(?!\})')
@@ -122,11 +123,14 @@ def layer_body(wikitext):
 
 
 def agent_title(agent):
-    return f'Cryptograss:Agents/{agent[:1].upper()}{agent[1:]}'
+    return f'Cryptograss:Emergents/{agent[:1].upper()}{agent[1:]}'
+
+
+emergent_title = agent_title
 
 
 def identity_title(agent):
-    return f'Cryptograss:Agents/{agent[:1].upper()}{agent[1:]}/Instructions'
+    return f'Cryptograss:Emergents/{agent[:1].upper()}{agent[1:]}/Instructions'
 
 
 def mood_title(slug):
@@ -277,11 +281,18 @@ def attrs(layer):
     return ' '.join(found)
 
 
-def template_fields(text, name=AGENT_TEMPLATE):
-    """{field: value} from the first {{<name>|...}} in a page's text; {} if there is none."""
-    head = '{{' + name
-    at = next((i for i in range(len(text)) if text.startswith(head, i)
-               and text[i + len(head):i + len(head) + 1] in ('|', '}', '\n')), -1)
+def template_fields(text, name=EMERGENT_TEMPLATES):
+    """{field: value} from the first {{Emergent|...}} (or {{Agent|...}}) in a page's text; {} if there is none."""
+    names = (name,) if isinstance(name, str) else tuple(name)
+    heads = ['{{' + n for n in names]
+    at, head = -1, ''
+    for i in range(len(text)):
+        for h in heads:
+            if text.startswith(h, i) and text[i + len(h):i + len(h) + 1] in ('|', '}', '\n'):
+                at, head = i, h
+                break
+        if at >= 0:
+            break
     if at < 0:
         return {}
     depth, j = 0, at

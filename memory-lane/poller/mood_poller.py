@@ -601,7 +601,10 @@ class ClaudeCodeWaker:
             # a look-only turn couldn't run a workflow anyway.
             cmd += ['--settings', json.dumps({'ultracode': True})]
         if system:  # its instructions (MoodPoller.instructions_for): after Claude Code's own, never in the history
-            cmd += ['--append-system-prompt', system]
+            # Snapshot off: Claude Code 2.1.302 defaults to recording the system prompt on a session's
+            # first request and replaying that snapshot on every --resume, ignoring a new --append-system-prompt
+            # until compaction (caught by re in #emergence, 2026-10-25).
+            cmd += ['--system-prompt-snapshot', 'off', '--append-system-prompt', system]
         return cmd + ['--', prompt]
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, grant=(), budget=None, effort=None,

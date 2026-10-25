@@ -51,8 +51,10 @@ class RulesPromptTest(SimpleTestCase):
         self.assertEqual(pi[-1], 'hi')
         claude = ClaudeCodeWaker(claude='claude').command('old', 'new', 'hi', system=RULES)
         self.assertEqual(claude[claude.index('--append-system-prompt') + 1], RULES)
+        self.assertEqual(claude[claude.index('--system-prompt-snapshot') + 1], 'off')
         self.assertEqual(claude[-2:], ['--', 'hi'])
         self.assertNotIn('--append-system-prompt', PiWaker(pi='pi', session_dir='/tmp/s').command('o', 'n', 'hi'))
+        self.assertNotIn('--system-prompt-snapshot', ClaudeCodeWaker(claude='claude').command('o', 'n', 'hi'))
 
     def test_the_old_flag_still_turns_them_on(self):
         from poller.mood_poller import build_parser
