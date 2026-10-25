@@ -1210,7 +1210,8 @@ def since_last_word(turns, agent, before_id=None, silences=()):
         ids = [t['id'] for t in turns]
         if before_id in ids:
             turns = turns[:ids.index(before_id)]
-    last = max((parse_time(q['created_at']) for q in silences if q.get('sender') == agent and q.get('by') != 'screen'),
+    # Its own only: not the screen's dots, nor the runner's line saying a turn failed (by='failed').
+    last = max((parse_time(q['created_at']) for q in silences if q.get('sender') == agent and not q.get('by')),
                default=None)
     for i in range(len(turns) - 1, -1, -1):
         if turns[i]['sender'] == agent or (last and parse_time(turns[i]['created_at']) <= last):
@@ -1975,8 +1976,35 @@ class MoodPoller:
         return (f' {", ".join(names)} mentioned {", ".join(busy)}, at work here now. Answer now, or reply with only '
                 f'<wait for="{busy[0]}" to="a few words"/> to wait for {busy[0]} in turn.')
 
+    # A turn that brought nothing back -- no words, nothing spent, its harness saying it failed (a provider's
+    # error: "Provider finish_reason: error", 25 Oct) -- is tried once more; if that fails too, the Mood is told,
+    # in a line, rather than left to read the quiet as an answer.
+    RETRY_PAUSE = 5  # seconds before the second try
+    NOTHING_USD = 0.001
+
     def run_turn_for(self, slug, session_id, prompt, **options):
-        """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
+        """Wake one turn; (outcome, reply, what it cost). Safe to run beside others. One that comes back with
+        nothing, failed, is tried once more (RETRY_PAUSE), and the Mood told if it fails again."""
+        stop = self.stop_check(slug, options.get('since'))
+        outcome, reply, cost, failure = self.run_turn_once(slug, session_id, prompt, dict(options))
+        if failure and failure['retry'] and not (stop and stop()):
+            logger.warning(f'{slug}: came back with nothing ({failure["why"]}); trying once more')
+            time.sleep(self.RETRY_PAUSE)
+            options.pop('new_session', None)  # a session of its own, from the same one
+            outcome, reply, more, failure = self.run_turn_once(slug, session_id, prompt, dict(options))
+            cost += more
+            if failure:
+                failure['why'] += ' (tried twice)'
+        if failure and not self.dry_run:
+            try:
+                self.api.quiet(slug, f"couldn't answer: {failure['why']}"[:300], by='failed')
+            except Exception as e:  # the log has it
+                logger.warning(f'{slug}: could not say the turn failed: {e}')
+        return outcome, reply, cost
+
+    def run_turn_once(self, slug, session_id, prompt, options):
+        """One try: (outcome, reply, what it cost, failure). failure, if it came back with no words: {'why',
+        'retry'}, retry if nothing was spent and its harness said it failed (not a stop, not its budget)."""
         new_session = options.pop('new_session', None) or str(uuid.uuid4())
         answers = options.pop('answers', None)
         crosstalk = options.pop('crosstalk', False)
@@ -2024,7 +2052,8 @@ class MoodPoller:
                 poster.put({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
                             'session_id': new_session, 'uuid': str(uuid.uuid4())})
                 poster.close()
-            return 'failed', None, 0.0
+            return 'failed', None, 0.0, {'why': str(e).splitlines()[0][:200] if str(e) else 'it failed to run',
+                                         'retry': False}
         if poster:
             poster.close()
         if bundled is not None:
@@ -2037,15 +2066,23 @@ class MoodPoller:
                 else f'replied {len(reply)} chars' if reply else f'ended without a word ({ending or "no reply"})')
         if error:
             said += f': {error}'
-        if not crosstalk and not command:
+        if not crosstalk and not command and (reply or '').strip():
             # What others say from here to its end is looked at once it has ended; a look at crosstalk
-            # doesn't itself leave one, so two agents' looks can't keep waking each other.
+            # doesn't itself leave one, so two agents' looks can't keep waking each other. Only after a turn
+            # that spoke, or chose silence: one that failed said nothing to look back on.
             self.after_turns[slug] = began
         logger.info(f'{slug}: ' + (f'woke {session_id} as {new_session}' if session_id else f'started {new_session}')
                     + f'; {said}'
                     + (f'; ${cost:.4f}' if isinstance(cost, (int, float)) else '')
                     + (f'; streamed {poster.sent}, lost {poster.failed}' if poster else ''))
-        return 'woken', reply, cost if isinstance(cost, (int, float)) else 0.0
+        cost = cost if isinstance(cost, (int, float)) else 0.0
+        failure = None
+        if not (reply or '').strip() and not command and (error or ending.startswith('error')):
+            failure = {'why': error or ending,
+                       # Nothing spent, its harness saying it failed: a provider's hiccup, worth a second try.
+                       # Not a turn over its budget or its turns (error_max_*), which would only fail again.
+                       'retry': cost < self.NOTHING_USD and not ending.startswith('error_max')}
+        return 'woken', reply, cost, failure
 
     def prompt(self, slug, owed, full=False):
         if all(t.get('via') == 'web' for t in owed):
@@ -2203,7 +2240,7 @@ class MoodPoller:
                 continue  # still running (or a new turn began, which leaves its own): look after
             self.after_turns.pop(slug, None)
             st = self.state['consider'].get(slug)
-            if st is None or self.listening(slug) != 'on' or not self.within_budget(slug, self.look_usd(slug)):
+            if st is None or self.listening(slug) != 'on' or not self.within_budget(slug, self.look_usd(slug), hourly=False):
                 continue
             try:
                 recent = self.api.recent(slug, limit=200)
@@ -2481,7 +2518,11 @@ class MoodPoller:
             return 'silent'
         st = self.state['consider'][slug]
         st['wakes'] = [w for w in st.get('wakes', []) if self.now() - parse_time(w) < timedelta(hours=1)]
-        st['wakes'].append(self.now().isoformat())
+        if not crosstalk:
+            # A look at crosstalk isn't counted against the hour's unasked looks (25 Oct: busy stretches spent
+            # them all on crosstalk): it's once per turn already, and never leaves one of its own. The day's
+            # dollars still hold it.
+            st['wakes'].append(self.now().isoformat())
         self.save()  # recorded before the turn runs, as for mentions
         # The cap is for what the consideration does, on top of reading the
         # session: a cold read of a long one alone can pass $4, and a cap below
@@ -2552,13 +2593,13 @@ class MoodPoller:
             self.dot(slug, reason)
         return True
 
-    def within_budget(self, slug, projected=0.0):
-        """Whether a consideration may run: under the Mood's hourly count, and
-        today's spend plus what this one is `projected` to cost under the day's dollars."""
+    def within_budget(self, slug, projected=0.0, hourly=True):
+        """Whether a consideration may run: under the Mood's hourly count (not asked of a look at crosstalk:
+        hourly=False), and today's spend plus what this one is `projected` to cost under the day's dollars."""
         hour_ago = self.now() - timedelta(hours=1)
         per_hour = self.knob(slug, 'considers_per_hour', self.considers_per_hour)
         wakes = [w for w in self.state['consider'].get(slug, {}).get('wakes', []) if parse_time(w) > hour_ago]
-        if len(wakes) >= per_hour:
+        if hourly and len(wakes) >= per_hour:
             logger.warning(f'{slug}: would consider, but {per_hour} this hour already')
             return False
         per_day = self.budget.get('consider_usd_per_day', self.consider_usd_per_day)
