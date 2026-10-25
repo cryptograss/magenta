@@ -286,6 +286,30 @@ def api_message_edit(request, slug, message_id):
 
 
 @require_POST
+def api_message_sprint_note(request, slug, message_id):
+    """Add a message to your own notes for the current sprint, on PickiPedia (services/sprint_notes.py). A person's."""
+    from .models import MessageChange
+    from .services import sprint_notes
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None or not device.entity.is_biological_human:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    message = Message.objects.filter(id=_uuid_or_none(message_id), mood=Mood.by_slug(slug)).first()
+    if message is None:
+        return JsonResponse({'error': 'no such message in this Mood'}, status=404)
+    if MessageChange.objects.filter(message_id=message.id, kind='deleted').exists():
+        return JsonResponse({'error': 'that message was deleted'}, status=410)
+    if not _under_limit(f'sprint-note:{device.pk}', 10):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        return JsonResponse(sprint_notes.add(message, device.entity_id))
+    except sprint_notes.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+
+
+@require_POST
 def api_message_promote(request, slug, message_id):
     """{"urls": [...]}: put those of a message's links on Tidings, each once; or {"url"?, "title"?} for one
     (its first, if no url). Anyone signed in (services/tiding_links.py)."""

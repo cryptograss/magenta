@@ -1,0 +1,127 @@
+"""A message, added to your notes for the current sprint (Justin, 24 Oct: "Add this message to my current
+sprint notes ... sometimes a message is just the perfect little snapshot of what to note").
+
+Settled with re (25 Oct), who keeps the wiki side and its documentation:
+
+* **The current sprint** is whatever one page names: Magenta:Current sprint. A link there
+  ([[Cryptograss/Jellyfish]]) names the sprint by its page's last part ("Jellyfish"); plain words name
+  it as they are. Moving that pointer is a sprint's whole lifecycle; nothing here keeps dates.
+* **Each person's notes for a sprint** are a page of their own: Magenta:Sprints/<sprint>/<person>, by
+  their PickiPedia name. A sprint's page can show everyone's.
+* **A note keeps the message's words and its link**: words so it reads on its own after the message is
+  edited or gone, the link to go back to it; who said it, where and when.
+
+People only, each to their own notes. The server's wiki bot writes them (todo_ticks.Bot), naming in the
+edit summary whose notes and from which message -- nobody's wiki password is held here. The Magenta:
+namespace isn't gated for bot edits (PickiPediaVerification enforces markers in the main namespace), so
+a note is plain, as the person chose it.
+"""
+
+import html
+import re
+
+POINTER = 'Magenta:Current sprint'
+NOTES = 'Magenta:Sprints/{sprint}/{person}'
+MAGENTA = 'https://magenta.cryptograss.live'
+MAX_WORDS = 1500      # characters of a message kept in its note
+_LINK = re.compile(r'\[\[([^\[\]|#]+)(?:#[^\[\]|]*)?(?:\|[^\[\]]*)?\]\]')
+
+
+class Refused(Exception):
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+def sprint_from(text):
+    """(name, its page or None) from the pointer page's text; (None, None) if it names nothing."""
+    from .mood_view import wiki_title
+    text = re.sub(r'<!--.*?-->|<noinclude>.*?</noinclude>', '', text or '', flags=re.S)
+    link = _LINK.search(text)
+    if link:
+        page = wiki_title(link.group(1))
+        return page.rsplit('/', 1)[-1].strip(), page
+    for line in text.splitlines():
+        words = re.sub(r"[*#:;=']|\{\{[^{}]*\}\}|<[^>]*>", '', line).strip()
+        if words:
+            return words[:80], None
+    return None, None
+
+
+def current(http=None):
+    """(name, page or None) of the sprint Magenta:Current sprint names now; Refused if it names none."""
+    import requests
+    from .todo import Unreadable, _raw
+    try:
+        text = _raw(POINTER, http or requests)
+    except (Unreadable, OSError) as e:
+        raise Refused(f"couldn't read {POINTER}: {e}", 503)
+    name, page = sprint_from(text)
+    if not name:
+        raise Refused(f'no current sprint: {POINTER} names none yet', 409)
+    return name, page
+
+
+def notes_page(sprint, person):
+    """Magenta:Sprints/<sprint>/<their PickiPedia name>."""
+    from .wiki_auth import names
+    who = names().get(person) or person[:1].upper() + person[1:]
+    return NOTES.format(sprint=sprint.replace('[', '').replace(']', '').replace('|', ''), person=who)
+
+
+def _nowiki(text):
+    """Words exactly as said: no wikitext, entities for what could end the quote."""
+    return '<nowiki>' + html.escape(text, quote=False) + '</nowiki>'
+
+
+def note(message, words, noted_at):
+    """A message as a note: who said it, when (its link), where; then its words."""
+    from .wiki_auth import names
+    sender = message.sender_id
+    who = f'[[User:{names()[sender]}|{sender}]]' if sender in names() else f"'''{sender}'''"
+    slug = message.mood.slug if message.mood_id else ''
+    words = (words or '').strip()
+    if len(words) > MAX_WORDS:
+        words = words[:MAX_WORDS].rstrip() + '…'
+    quoted = '<br>'.join(_nowiki(line) for line in words.splitlines() if line.strip()) or "''(no words)''"
+    said = message.created_at.strftime('%-d %b %Y %H:%MZ')
+    return (f"* {who}, [{MAGENTA}/messages/{message.id} {said}] in [{MAGENTA}/moods/{slug}/ #{slug}] "
+            f"<small>(noted {noted_at.strftime('%-d %b %H:%MZ')})</small>\n"
+            f"<blockquote>{quoted}</blockquote>\n")
+
+
+def header(sprint, sprint_page, person_page):
+    named = f'[[{sprint_page}|{sprint}]]' if sprint_page else f"'''{sprint}'''"
+    person = person_page.rsplit('/', 1)[-1]
+    return (f'Notes for the {named} sprint, kept by [[User:{person}|{person}]]: messages from magenta they chose '
+            f'to note, each with its words and its link. Added from a message\'s ⋯ menu, "Add to my sprint notes"; '
+            f'see [[Magenta:Sprints]]. Edit freely.\n\n')
+
+
+def add(message, person, bot=None, http=None, now=None):
+    """Add `message` to `person`'s notes for the current sprint: {'sprint', 'page', 'url', 'already'}. Refused if
+    there's no sprint named, no wiki bot here, or the wiki won't take it."""
+    from django.utils import timezone
+    from .mood_view import pickipedia_url, prose, reply_to
+    from . import todo_ticks
+    if bot is None and not todo_ticks.enabled():
+        raise Refused('no wiki bot is set up here to write notes', 503)
+    sprint, sprint_page = current(http)
+    page = notes_page(sprint, person)
+    url = f"{pickipedia_url()}/wiki/{page.replace(' ', '_')}"
+    bot = bot or todo_ticks.Bot(purpose='sprint notes')
+    if not bot.login():
+        raise Refused("the wiki bot couldn't sign in", 503)
+    entry = note(message, reply_to(prose(message.content) or '')[1], now or timezone.now())  # its words, not its ↩
+    for _ in range(3):  # again, if someone edited it meanwhile
+        revision = bot.read(page)
+        text = revision['slots']['main']['content'] if revision else header(sprint, sprint_page, page)
+        if f'/messages/{message.id} ' in text:
+            return {'sprint': sprint, 'page': page, 'url': url, 'already': True}
+        done = bot.edit(page, text.rstrip('\n') + '\n' + entry, f'A note for {person}, from #{message.mood.slug} '
+                        f'(#m-{message.id}), by magenta at their ask', revision)
+        if (done.get('edit') or {}).get('result') == 'Success':
+            return {'sprint': sprint, 'page': page, 'url': url, 'already': False}
+        if (done.get('error') or {}).get('code') not in ('editconflict', 'articleexists', 'missingtitle'):
+            raise Refused(f"the wiki didn't take it: {(done.get('error') or {}).get('info') or done}", 502)
+    raise Refused('the page kept changing; try again', 409)

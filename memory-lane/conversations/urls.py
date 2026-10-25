@@ -40,6 +40,8 @@ urlpatterns = [
     path('api/moods/<slug:slug>/say/', views_auth.api_say, name='api_mood_say'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/edit/', views_auth.api_message_edit, name='api_message_edit'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/promote/', views_auth.api_message_promote, name='api_message_promote'),
+    path('api/moods/<slug:slug>/messages/<str:message_id>/sprint-note/', views_auth.api_message_sprint_note,
+         name='api_message_sprint_note'),
     path('api/tidings/badges/', views_settings.api_tidings_badges, name='api_tidings_badges'),
     path('api/tidings/<str:tiding_id>/', views_auth.api_tiding, name='api_tiding'),
     path('api/tidings/<str:tiding_id>/comments/', views_auth.api_tiding_comment, name='api_tiding_comment'),
