@@ -137,7 +137,7 @@ class MoodPollerTest(TestCase):
         api._mentions.append(from_re('b', 21))
         self.clock[0] = T0 + timedelta(minutes=40)
         self.assertEqual(poller.poll_once(), [])  # the hour's one is spent: held, not dropped
-        self.assertIn('1 wakes by agents this hour already', api.holds[-1][1])
+        self.assertIn('1 wakes by emergents this hour already', api.holds[-1][1])
 
         api._mentions.append(mention('m26', dict(turn('c', 'justin', 41, '@magent and?'), is_human=True)))
         self.clock[0] = T0 + timedelta(minutes=60)
@@ -166,7 +166,7 @@ class MoodPollerTest(TestCase):
         api = FakeAPI([mention('m26', said)], sessions={'m26': ['s-local']})
         poller = self.make(api, minutes_now=0)
         self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('another agent mentioned you here', self.waker.woken[0][1])
+        self.assertIn('another emergent mentioned you here', self.waker.woken[0][1])
         # A person's, typed into a session, still gives that session its time.
         typed = dict(turn('b', 'justin', 0), via='session', is_human=True)
         poller = self.make(FakeAPI([mention('m27', typed)], sessions={'m27': ['s-local']}), minutes_now=0)
@@ -178,7 +178,7 @@ class MoodPollerTest(TestCase):
         api = FakeAPI([mention('m26', handed)], sessions={'m26': ['s-local']})
         poller = self.make(api, minutes_now=0)
         self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('another agent handed this over to you here', self.waker.woken[0][1])
+        self.assertIn('another emergent handed this over to you here', self.waker.woken[0][1])
 
     def test_a_task_wakes_at_once_with_the_tools_its_page_gives(self):
         # Started by its schedule or a person's call (memory-lane services/tasks.py): its page says
@@ -2198,3 +2198,78 @@ class WaitingTest(TestCase):
         self.assertIn('more was said to you meanwhile', prompt)
         self.assertIn('which first?', prompt)                       # the question it waited on, still answered
         self.assertIn('and the other thing?', prompt)
+
+
+class CrosstalkTest(TestCase):
+    """What others said while the agent was on a turn: one look right after it, asking only whether it bears on
+    what the agent just said (Justin, magent-self, 25 Oct 2026)."""
+
+    def setUp(self):
+        self.clock = [T0]
+        self.api = ConsiderAPI()
+        self.waker = FakeWaker(reply='<silent>nothing in it touches what I said</silent>')
+        self.screen = FakeScreen()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        self.poller = MoodPoller(self.api, self.waker, state_path=state, now=lambda: self.clock[0], screen=self.screen)
+        self.poller.consider_once()  # first sight
+
+    def at(self, minutes):
+        self.clock[0] = T0 + timedelta(minutes=minutes)
+
+    def long_turn(self, began=1):
+        """A mention answered from minute `began`; what's added to the Mood next was said during it."""
+        self.at(began)
+        self.poller.run_turn_for('m26', 's-local', '<mood-wake mood="m26">\n@magent the schema?\n</mood-wake>')
+        self.waker.woken.clear()
+
+    def test_what_others_said_meanwhile_is_looked_at_once_the_turn_ends(self):
+        self.long_turn()
+        self.api.add(post('r', 2, sender='re', via='session', text='The schema needs a weekday, not a date.')
+                     | {'is_human': False})
+        self.api.add(post('s', 3, text='we moved the jam to Thursdays btw'))
+        self.api.add(post('m', 4, sender='magent', via='session', text='Here is the schema, with a date.')
+                     | {'is_human': False})
+        self.at(5)
+        self.assertEqual(self.poller.crosstalk_once(), [('m26', 'silent')])
+        [(session, prompt)] = self.waker.woken
+        self.assertIn('reason="crosstalk"', prompt)
+        self.assertIn('While you were on your last turn here (from 18:01Z)', prompt)
+        self.assertIn('► [re', prompt)  # another emergent's post counts, which the consider loop never looked at
+        self.assertIn('► [skyler', prompt)
+        self.assertNotIn('► [magent', prompt)  # its own answer isn't crosstalk
+        self.assertIn('bears on what you just said', prompt)
+        self.assertEqual(self.screen.prompts, [])  # never screened: only the agent knows what it just said
+        self.assertEqual(self.poller.consider_once(), [])  # skyler's post isn't looked at a second time
+        self.assertEqual(self.poller.crosstalk_once(), [])  # once
+
+    def test_a_look_at_crosstalk_leaves_no_look_of_its_own(self):
+        self.long_turn()
+        self.api.add(post('s', 2, text='we moved the jam to Thursdays btw'))
+        self.at(3)
+        self.poller.crosstalk_once()
+        self.api.add(post('s2', 4, text='and the bus leaves at noon'))
+        self.at(5)
+        self.assertEqual(self.poller.after_turns, {})  # two agents' looks can't keep waking each other
+
+    def test_nothing_said_meanwhile_no_look(self):
+        self.long_turn()
+        self.at(3)
+        self.assertEqual(self.poller.crosstalk_once(), [])
+        self.assertEqual(self.waker.woken, [])
+
+    def test_a_mention_meanwhile_is_the_mention_paths(self):
+        self.long_turn()
+        self.api.add(post('s', 2, text='@magent and the bus?', mentions=['magent']))
+        self.api.add(post('s2', 3, text='also, Thursdays now'))
+        self.at(4)
+        self.assertEqual(self.poller.crosstalk_once(), [])
+        self.assertEqual(self.waker.woken, [])
+
+    def test_not_where_it_isnt_listening(self):
+        self.api.settings = {'listening': {'mode': 'mentions'}}
+        self.poller.settings = {'m26': self.api.settings}
+        self.long_turn()
+        self.api.add(post('s', 2, text='we moved the jam to Thursdays btw'))
+        self.at(3)
+        self.assertEqual(self.poller.crosstalk_once(), [])
+        self.assertEqual(self.waker.woken, [])

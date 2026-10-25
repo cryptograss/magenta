@@ -161,7 +161,7 @@ def from_message(message):
         return []  # once per message: the stream, then its transcript
     try:
         if message.sender_id not in (knobs.global_value(GRANT) or []):
-            raise Refused(f'{message.sender_id} may not set agents\' settings (the {GRANT} setting names who may)')
+            raise Refused(f'{message.sender_id} may not set emergents\' settings (the {GRANT} setting names who may)')
         if turn_tools([message]).get(str(message.id)) != 'full':
             raise Refused('only on a turn woken with full tools, by someone signed in with an SSH key')
         wake = _wake_before(message)
@@ -178,7 +178,7 @@ def from_message(message):
                 raise Refused(f'no Mood {slug!r}')
             for who, knob, value in changes:
                 if who not in agents:
-                    raise Refused(f'{who!r} is not an agent here')
+                    raise Refused(f'{who!r} is not an emergent here')
                 if knob == 'model':
                     was = knobs.resolve(mood.slug, who)['model']
                     new = vendor(value)

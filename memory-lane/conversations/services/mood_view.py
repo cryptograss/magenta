@@ -18,6 +18,9 @@ from urllib.parse import unquote, urlparse
 from django.conf import settings
 
 MACHINERY_SENDERS = {'tool-result', 'system'}
+# Claude Code's own notes to an agent (an isMeta line: "Already available in this conversation: ..."): kept,
+# and shown in the agent's turn as a ⚙️ note, never as its words (Justin, magent-self, 2026-10-25).
+HARNESS = 'harness'
 
 # Command scaffolding, system reminders and interruption markers are text,
 # but they are not conversation.
@@ -336,9 +339,11 @@ def wikilinks_in(text):
 # stuff like consensus Beta releases", "call in the fleet"):
 #   @core    everyone who signs in with an SSH key -- the people only: an agent with a key isn't woken by it
 #   @humans  every person here
-#   @agents  every agent here: each is woken, as by its own name (its listening and its caps still apply)
+#   @emergents  every emergent here -- re, blu, magent and whoever wakes next: each is woken, as by its own name
+#            (its listening and its caps still apply). Justin, magent-self, 25 Oct: "'emergents' hit me right in
+#            the heart"; the tag was @agents for a night and never went live.
 # Someone actually called by one of these names wins.
-GROUPS = {'core': 'everyone who signs in with an SSH key', 'humans': 'every person here', 'agents': 'every agent here'}
+GROUPS = {'core': 'everyone who signs in with an SSH key', 'humans': 'every person here', 'emergents': 'every emergent here'}
 
 
 def group_members(group, mentionable=None):
@@ -347,7 +352,7 @@ def group_members(group, mentionable=None):
     from .mood_auth import key_holders
     if group not in GROUPS:
         return []
-    found = ThinkingEntity.objects.filter(is_biological_human=group != 'agents')
+    found = ThinkingEntity.objects.filter(is_biological_human=group != 'emergents')
     if group == 'core':
         found = found.filter(name__in=key_holders())
     members = set(found.values_list('name', flat=True))
@@ -868,7 +873,7 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
 
     Yields ('turn', message, text), ('quiet', message, reason) for an
     agent's choice not to speak, ('thought', message, text) for thinking the
-    harness kept, ('compaction', message, summary) where a session was
+    harness kept, ('note', message, text) for the harness's own note to the agent, ('compaction', message, summary) where a session was
     compacted, and ('step', message, None). A step is
     one tool call; its result is fetched on demand (step_detail), so the
     thread stays light. `limit` keeps the newest that many items -- a first
@@ -889,6 +894,9 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
     def item(msg):
         if msg.source_file in EVENT_SOURCES and isinstance(msg.content, dict):
             return ('event', msg, msg.content)  # a server redeployed, someone stopped an agent: a line in the thread
+        if msg.sender_id == HARNESS:
+            text = prose(msg.content)
+            return ('note', msg, text) if text else None
         if msg.sender_id in MACHINERY_SENDERS or msg.sender_id not in speakers:
             return None
         if hasattr(msg, 'tooluse'):
@@ -1050,9 +1058,19 @@ def wake_said(text):
     return '' if look == full else 'look' if look > full else 'full'
 
 
+BUNDLE_SAID = re.compile(r'Your instructions this turn are bundle ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})')
+
+
 def turn_tools(messages):
     """{message id (str): 'look' or 'full'} for agents' messages in a Mood, by the last wake
     before each in its session. One with no wake within reach is left out."""
+    return {mid: said['tools'] for mid, said in turn_wakes(messages).items() if said['tools']}
+
+
+def turn_wakes(messages):
+    """{message id (str): {'tools': 'look', 'full' or '', 'bundle': the instructions' record id or ''}} for agents'
+    messages in a Mood, by the last wake before each in its session (the poller's turn line names the bundle,
+    mood_poller.turn_line). One with no wake within reach is left out."""
     from datetime import timedelta
     from django.db.models import TextField
     from django.db.models.functions import Cast, Right
@@ -1067,12 +1085,27 @@ def turn_tools(messages):
                                                  created_at__lte=max(m.created_at for m in messages))
                           .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL))
                           .order_by('created_at').values_list('session_id', 'created_at', 'tail')):
-        wakes.setdefault(str(sid), []).append((at, wake_said(tail or '')))
+        bundle = BUNDLE_SAID.search(tail or '')
+        wakes.setdefault(str(sid), []).append((at, {'tools': wake_said(tail or ''),
+                                                    'bundle': bundle.group(1) if bundle else ''}))
     found = {}
     for m in messages:  # as text: a row just made holds its session as it was given, a row read as a UUID
-        before = [kind for at, kind in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]
-        if before and before[-1]:
+        before = [said for at, said in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]
+        if before and (before[-1]['tools'] or before[-1]['bundle']):
             found[str(m.id)] = before[-1]
+    return found
+
+
+def bundle_marks(ids):
+    """{record id: {'id', 'sha' (its sha256's first 8), 'new' (whether it differs from the agent's bundle before
+    it in that Mood)}} for the instructions bundles named (BundleRecord): what a turn's heading shows beside its
+    cache mark, since a changed bundle is the usual reason a turn read its context cold (Justin, 25 Oct)."""
+    from conversations.models import BundleRecord
+    found = {}
+    for r in BundleRecord.objects.filter(id__in=[i for i in set(ids) if i]):
+        before = (BundleRecord.objects.filter(agent=r.agent, mood=r.mood, requested_at__lt=r.requested_at)
+                  .order_by('-requested_at').values_list('sha256', flat=True).first())
+        found[str(r.id)] = {'id': str(r.id), 'sha': r.sha256[:8], 'new': before is not None and before != r.sha256}
     return found
 
 

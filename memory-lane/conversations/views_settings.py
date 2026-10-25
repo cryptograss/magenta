@@ -168,6 +168,18 @@ def prompts_page(request):
 
 
 @require_GET
+def api_emoji(request):
+    """Every emoji Unicode has, grouped and named (conversations/data/emoji.json, from tools/emoji_data.py): the
+    page's picker and :name completion ask for it once, and keep it."""
+    import os
+    from django.http import HttpResponse
+    with open(os.path.join(os.path.dirname(__file__), 'data', 'emoji.json'), 'rb') as f:
+        response = HttpResponse(f.read(), content_type='application/json; charset=utf-8')
+    response['Cache-Control'] = 'public, max-age=604800'
+    return response
+
+
+@require_GET
 def api_tidings(request):
     from .services import tidings
     device = mood_auth.device_for(request)

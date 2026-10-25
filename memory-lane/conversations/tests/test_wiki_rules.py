@@ -1,6 +1,10 @@
 """What a wake says for each setting of a Mood's dials, read from PickiPedia: word for word,
 only as a trusted editor last made or verified it, and never by the agent itself."""
 
+import io
+import json
+from unittest import mock
+
 from django.test import TestCase
 
 from poller.mood_poller import CONSIDER_ASKS, VERBOSITY_LINES, consider_ask, wake_extras, wake_frames
@@ -90,3 +94,18 @@ class ReadTest(TestCase):
         self.assertIn('Speak only when it', consider['text'])
         mention = next(f for f in wake_frames('m26', verbosity='brief', texts=self.texts) if f['kind'] == 'mention-full')
         self.assertIn('Keep it short.', mention['text'])
+
+
+class RedirectTest(TestCase):
+    """A moved page is read where it went, with its history (Cryptograss:Agents/* to /Emergents/*, 25 Oct)."""
+
+    def test_a_redirect_is_followed(self):
+        moved = {'query': {'redirects': [{'from': 'Cryptograss:Agents/GeneralOrders',
+                                          'to': 'Cryptograss:Emergents/GeneralOrders'}],
+                           'pages': [{'title': 'Cryptograss:Emergents/GeneralOrders', 'revisions': [
+                               {'revid': 11, 'user': 'Magent', 'slots': {'main': {'content': 'Be direct.'}}},
+                               {'revid': 10, 'user': 'JMyles', 'slots': {'main': {'content': 'Be direct.'}}}]}]}}
+        with mock.patch('urllib.request.urlopen', return_value=io.BytesIO(json.dumps(moved).encode())) as opened:
+            history = WikiTexts(api='https://wiki.test/api.php')._get('Cryptograss:Agents/GeneralOrders')
+        self.assertIn('redirects=1', opened.call_args[0][0].full_url)
+        self.assertEqual([(r, u) for r, u, _ in history], [(11, 'Magent'), (10, 'JMyles')])  # the move, then Justin

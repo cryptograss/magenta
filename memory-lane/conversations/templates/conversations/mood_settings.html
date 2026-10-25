@@ -85,12 +85,12 @@
   <span class="who" id="who"></span>
 </header>
 <main>
-  <h1>How each agent carries itself in each Mood</h1>
-  <p class="lede">The most specific setting wins: one agent in one Mood, then everyone in that Mood, then the agent
+  <h1>How each emergent carries itself in each Mood</h1>
+  <p class="lede">The most specific setting wins: one emergent in one Mood, then everyone in that Mood, then the emergent
     everywhere, then the defaults. Grey italic values are inherited. Every change is kept below, with who made it.</p>
   <div id="scram"></div>
   <div class="cards" id="cards">Loading…</div>
-  <h3>Every Mood, every agent</h3>
+  <h3>Every Mood, every emergent</h3>
   <div class="cards" id="global"></div>
   <h3 id="voices">Voices: who is read in which</h3>
   <div id="voicesList" class="voices">Loading…</div>
@@ -171,7 +171,7 @@
     }
     document.getElementById('cards').innerHTML = cards.join('') || 'No Moods yet.';
     const globals = state.agents.map(a => card(`${a}, everywhere`, `unless a Mood says otherwise`, everywhere(a), null, a));
-    globals.push(`<div class="card"><h2>Budget</h2><div class="sub">for all agents together</div>`
+    globals.push(`<div class="card"><h2>Budget</h2><div class="sub">for all emergents together</div>`
       + `<div class="row"><label title="${esc(state.global_knobs.consider_usd_per_day.help)}">$ a day</label>`
       + `<span><input type="number" min="0" step="0.5" data-key="consider_usd_per_day" data-mood="" data-agent="" value="${esc(state.global.consider_usd_per_day)}" ${viewer ? '' : 'disabled'}><span class="status"></span></span></div></div>`);
     document.getElementById('global').innerHTML = globals.join('');
@@ -209,7 +209,7 @@
         const has = (voiceData.speakers || {})[p.name] || '';
         const may = p.narrator ? keyHolder : (p.name === viewer || keyHolder);
         const unset = p.narrator ? 'given at its first word' : p.name === 'magent' ? 'the house voice' : 'given at their first reading';
-        return `<div class="vrow" data-name="${esc(p.name)}"><span class="who">${esc(p.shown)}${p.narrator || p.human ? '' : ' <span class="note">agent</span>'}</span>`
+        return `<div class="vrow" data-name="${esc(p.name)}"><span class="who">${esc(p.shown)}${p.narrator || p.human ? '' : ' <span class="note">emergent</span>'}</span>`
           + `<span class="now">${has ? esc(voiceName(has)) : `<i>${unset}</i>`}`
           + (has ? ` <button type="button" class="hear" data-id="${esc(VOICE_ID.test(has) ? has : (voiceData.voices || []).find(o => o.name === voiceName(has))?.voice_id || '')}" title="Hear this voice">▷</button>` : '')
           + (has && may ? ` <button type="button" class="unset" title="Back to ${esc(unset)}">×</button>` : '') + '</span>'
