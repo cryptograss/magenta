@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('conversations', '0038_own_clips'),
+        ('conversations', '0039_harness_notes_are_the_harness'),
     ]
 
     operations = [
