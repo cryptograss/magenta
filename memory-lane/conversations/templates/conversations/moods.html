@@ -880,6 +880,9 @@
   .waitline .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); opacity: .35; flex: none; }
   .waitline b { color: var(--who, var(--agent)); }
   .waitline time { margin-left: 2px; }
+  /* A turn that came back with nothing, twice: said plainly, in the error colour, its dot hollow. */
+  .waitline.failed { color: var(--err, #c0392b); }
+  .waitline.failed .dot { background: none; border: 1.5px solid var(--who, var(--agent)); opacity: .7; }
   /* Each in its agent's colour (--who, agentColor): pale, full when hovered or opened. */
   .quiet .dot { --who: var(--agent); width: 9px; height: 9px; border-radius: 50%; padding: 0; cursor: pointer;
                 background: color-mix(in srgb, var(--who) 30%, var(--panel)); border: 1px solid var(--who); }
@@ -3478,6 +3481,17 @@
       line.className = 'waitline';
       line.style.setProperty('--who', agentColor(q.sender));
       line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> is ${waitedFor(q.reason)}`
+        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      container.appendChild(line);
+      return;
+    }
+    // A turn that came back with nothing, tried twice (the runner says so, by="failed"): a line, not a dot --
+    // it isn't a choice not to speak, and whoever asked should know to ask again.
+    if (q.by === 'failed') {
+      const line = document.createElement('div');
+      line.className = 'waitline failed';
+      line.style.setProperty('--who', agentColor(q.sender));
+      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> ${esc(q.reason || "couldn't answer")}`
         + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
       container.appendChild(line);
       return;
