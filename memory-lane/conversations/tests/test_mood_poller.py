@@ -818,6 +818,14 @@ class MentionContextTest(TestCase):
         lines = also_asked(owed, 'magent', page)
         self.assertIn('Others mentioned, and likely woken, by what woke you: re, at work here now; blu, not at work here yet.', lines[1])
         self.assertIn('read_mood', lines[1])
+        # Two asked: the offer shows the one-name wait and, after it, the wait on both (26 Oct: a wake per reveal).
+        self.assertIn('<wait for="re" to="a few words"/>', lines[1])
+        self.assertIn('<wait for="re,blu" to="a few words"/>', lines[1])
+        self.assertIn('woken once the last has answered', lines[1])
+        # One asked: no second form to offer.
+        one = also_asked([dict(owed[0], mentions=['magent', 're'])], 'magent', page)
+        self.assertIn('<wait for="re" to="a few words"/>', one[1])
+        self.assertNotIn('all of them', one[1])
         self.assertEqual(also_asked([dict(owed[0], mentions=['magent', 'skyler'])], 'magent', page), [])  # a person isn't
         self.assertEqual(also_asked(owed, 'magent', None), [])  # nothing known: nothing said
         # re writing to magent, naming itself ("when your @re landed"): re isn't asked, it's asking.
