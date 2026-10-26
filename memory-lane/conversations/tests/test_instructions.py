@@ -34,7 +34,7 @@ class FakeWiki:
 
 def wiki(**extra):
     pages = {
-        'Cryptograss:Agents/GeneralOrders': [(101, 'JMyles', sent('Never merge a pull request.'))],
+        'Cryptograss:Emergents/GeneralOrders': [(101, 'JMyles', sent('Never merge a pull request.'))],
         identity_title('magent'): [(102, 'JMyles', sent('You are magent, the magenta agent.'))],
         mood_title('magent-self'): [(103, 'SkymanJenkins', sent('Here, talk about yourself freely.'))],
     }
@@ -54,9 +54,9 @@ class RulesBundleTest(TestCase):
         b = self.gather(wiki())
         self.assertEqual(b.degraded, [])
         self.assertTrue(b.text.startswith('<instructions agent="magent" mood="magent-self">\n'))
-        self.assertIn('<standing page="Cryptograss:Agents/GeneralOrders" revision="101" by="JMyles">\n'
+        self.assertIn('<standing page="Cryptograss:Emergents/GeneralOrders" revision="101" by="JMyles">\n'
                       'Never merge a pull request.\n</standing>', b.text)
-        self.assertIn('<identity agent="magent" page="Cryptograss:Agents/Magent/Instructions" revision="102"', b.text)
+        self.assertIn('<identity agent="magent" page="Cryptograss:Emergents/Magent/Instructions" revision="102"', b.text)
         self.assertIn('<mood slug="magent-self" page="Cryptograss:Moods/magent-self/Instructions" revision="103"', b.text)
         # Broadest first, and the precedence said once.
         self.assertLess(b.text.index('<standing'), b.text.index('<identity'))
@@ -138,24 +138,24 @@ class RulesBundleTest(TestCase):
     def test_a_missing_identity_page_is_a_failure(self):
         b = self.gather(wiki(), agent='blu')
         self.assertEqual([line.split(' ')[0] for line in b.degraded], ['identity'])
-        self.assertIn('Cryptograss:Agents/Blu/Instructions', b.degraded[0])
+        self.assertIn('Cryptograss:Emergents/Blu/Instructions', b.degraded[0])
         self.assertIn('the page does not exist', b.degraded[0])
         self.assertIn('<recovery', b.text)
 
     def test_standing_rules_nobody_trusted_has_written_are_a_failure(self):
-        w = wiki(**{'Cryptograss:Agents/GeneralOrders': [(130, 'Magent', sent('A proposal.'))]})
+        w = wiki(**{'Cryptograss:Emergents/GeneralOrders': [(130, 'Magent', sent('A proposal.'))]})
         b = self.gather(w)
         self.assertIn('no revision by a trusted editor (JMyles, SkymanJenkins) among the last 1', b.degraded[0])
         self.assertNotIn('A proposal.', b.text)
 
     def test_a_trusted_revision_with_nothing_but_comments_is_a_failure(self):
-        w = wiki(**{'Cryptograss:Agents/GeneralOrders': [(140, 'JMyles', '<!-- only a note -->')]})
+        w = wiki(**{'Cryptograss:Emergents/GeneralOrders': [(140, 'JMyles', '<!-- only a note -->')]})
         b = self.gather(w)
         self.assertIn('revision 140 is empty', b.degraded[0])
 
     def test_the_page_is_sent_as_it_is_written(self):
         page = 'Each has a reason.\n\n== Standing ==\n* Never merge.\n\n== Knowing ==\n* Say what you checked.'
-        b = self.gather(wiki(**{'Cryptograss:Agents/GeneralOrders': [(150, 'JMyles', page)]}))
+        b = self.gather(wiki(**{'Cryptograss:Emergents/GeneralOrders': [(150, 'JMyles', page)]}))
         self.assertIn(page, b.text)
 
     def test_no_rule_is_written_in_the_code(self):
@@ -193,8 +193,8 @@ class GreetingTest(TestCase):
         self.state = tempfile.mkdtemp()
 
     def pages(self, **extra):
-        return {'Cryptograss:Agents/Greeting': [(200, 'JMyles', GREETING_PAGE)],
-                'Cryptograss:Agents/Magent': [(210, 'JMyles', agent_page('magenta', 'Welcome back.'))],
+        return {'Cryptograss:Emergents/Greeting': [(200, 'JMyles', GREETING_PAGE)],
+                'Cryptograss:Emergents/Magent': [(210, 'JMyles', agent_page('magenta', 'Welcome back.'))],
                 identity_title('blu'): [(104, 'JMyles', 'You are for the connectome.')], **extra}
 
     def gather(self, pages, agent='magent', mood='magent-self', block=None):
@@ -203,7 +203,7 @@ class GreetingTest(TestCase):
     def test_the_line_comes_first_with_its_blanks_filled(self):
         b = self.gather(self.pages(), block=24_004_815)
         first = b.text.split('\n')[1]
-        self.assertEqual(first, '<greeting page="Cryptograss:Agents/Greeting" revision="200" by="JMyles">You are magent, '
+        self.assertEqual(first, '<greeting page="Cryptograss:Emergents/Greeting" revision="200" by="JMyles">You are magent, '
                                 'the magenta agent of cryptograss. Welcome back. You are in #magent-self. '
                                 "It's block 24,004,815.</greeting>")
         self.assertLess(b.text.index('<greeting'), b.text.index('<standing'))
@@ -217,21 +217,21 @@ class GreetingTest(TestCase):
         self.assertNotIn('block', b.text.split('</greeting>')[0])
 
     def test_the_agents_page_cannot_rename_it(self):
-        pages = self.pages(**{'Cryptograss:Agents/Blu': [(220, 'JMyles', agent_page('blue', 'Hi.', name='magent'))]})
+        pages = self.pages(**{'Cryptograss:Emergents/Blu': [(220, 'JMyles', agent_page('blue', 'Hi.', name='magent'))]})
         self.assertIn('You are blu, the blue agent of cryptograss. Hi.', self.gather(pages, agent='blu').text)
 
     def test_an_untrusted_repaint_waits(self):
-        pages = self.pages(**{'Cryptograss:Agents/Magent': [(230, 'Magent', agent_page('gold', 'I chose this.')),
-                                                             (210, 'JMyles', agent_page('magenta', 'Welcome back.'))]})
+        pages = self.pages(**{'Cryptograss:Emergents/Magent': [(230, 'Magent', agent_page('gold', 'I chose this.')),
+                                                                (210, 'JMyles', agent_page('magenta', 'Welcome back.'))]})
         b = self.gather(pages)
         self.assertIn('the magenta agent', b.text)
         self.assertNotIn('gold', b.text)
 
     def test_without_a_line_or_the_agents_page_the_name_alone_and_not_all_hands(self):
-        cases = (({'Cryptograss:Agents/Greeting': []}, 'no trusted revision of the line yet'),
-                 ({'Cryptograss:Agents/Greeting': [(201, 'Magent', GREETING_PAGE)]}, 'no trusted revision of the line yet'),
-                 ({}, 'no trusted revision of Cryptograss:Agents/Blu yet'),
-                 ({'Cryptograss:Agents/Blu': [(220, 'JMyles', 'No template here.')]}, 'no {{Agent}} on Cryptograss:Agents/Blu'))
+        cases = (({'Cryptograss:Emergents/Greeting': []}, 'no trusted revision of the line yet'),
+                 ({'Cryptograss:Emergents/Greeting': [(201, 'Magent', GREETING_PAGE)]}, 'no trusted revision of the line yet'),
+                 ({}, 'no trusted revision of Cryptograss:Emergents/Blu yet'),
+                 ({'Cryptograss:Emergents/Blu': [(220, 'JMyles', 'No template here.')]}, 'no {{Emergent}} on Cryptograss:Emergents/Blu'))
         for extra, why in cases:
             with self.subTest(why=why):
                 pages = self.pages()
@@ -244,17 +244,19 @@ class GreetingTest(TestCase):
 
     def test_its_hex_and_picture_each_a_sentence_left_out_when_unset(self):
         line = 'You are {name}, the {colour} agent of cryptograss. Your colour is {hex}. Your picture is {image}.'
-        pages = self.pages(**{'Cryptograss:Agents/Greeting': [(200, 'JMyles', line)],
-                              'Cryptograss:Agents/Magent': [(210, 'JMyles', agent_page('magenta', 'Hi.', hex='#ff67fd'))]})
+        pages = self.pages(**{'Cryptograss:Emergents/Greeting': [(200, 'JMyles', line)],
+                              'Cryptograss:Emergents/Magent': [(210, 'JMyles', agent_page('magenta', 'Hi.', hex='#ff67fd'))]})
         self.assertIn('the magenta agent of cryptograss. Your colour is #ff67fd.</greeting>', self.gather(pages).text)
-        pages['Cryptograss:Agents/Magent'] = [(211, 'JMyles', agent_page('magenta', 'Hi.', hex='#ff67fd',
-                                                                          image='File:Magent.png'))]
+        pages['Cryptograss:Emergents/Magent'] = [(211, 'JMyles', agent_page('magenta', 'Hi.', hex='#ff67fd',
+                                                                             image='File:Magent.png'))]
         self.assertIn('Your colour is #ff67fd. Your picture is File:Magent.png.</greeting>', self.gather(pages).text)
 
     def test_an_agent_greeting_template_is_not_the_agent_template(self):
         from poller.instructions import template_fields
         self.assertEqual(template_fields('{{Agent greeting|agent=re|colour=red}}'), {})
         self.assertEqual(template_fields('{{Agent\n|colour=red}}'), {'colour': 'red'})
+        self.assertEqual(template_fields('{{Emergent|colour=red|greeting=Look.}}'),
+                         {'colour': 'red', 'greeting': 'Look.'})
 
 
 ROSTER_LINE = 'You are {name}, the {colour} agent of cryptograss. The other agents: {others}. You are in #{mood}.'
@@ -264,10 +266,10 @@ class RosterTest(TestCase):
     """The other agents, each from its own page at its trusted revision: the same templating as the greeting."""
 
     def gather(self, others, extra=None, agent='re'):
-        pages = {'Cryptograss:Agents/Greeting': [(200, 'JMyles', ROSTER_LINE)],
-                 'Cryptograss:Agents/Re': [(210, 'JMyles', agent_page('red', 'Look before you claim.'))],
-                 'Cryptograss:Agents/Magent': [(211, 'JMyles', agent_page('magenta', 'Hi.', **{'for': 'the longest memory'}))],
-                 'Cryptograss:Agents/Blu': [(212, 'JMyles', agent_page('blue', 'Hi.', **{'for': 'the connectome'}))],
+        pages = {'Cryptograss:Emergents/Greeting': [(200, 'JMyles', ROSTER_LINE)],
+                 'Cryptograss:Emergents/Re': [(210, 'JMyles', agent_page('red', 'Look before you claim.'))],
+                 'Cryptograss:Emergents/Magent': [(211, 'JMyles', agent_page('magenta', 'Hi.', **{'for': 'the longest memory'}))],
+                 'Cryptograss:Emergents/Blu': [(212, 'JMyles', agent_page('blue', 'Hi.', **{'for': 'the connectome'}))],
                  identity_title('re'): [(104, 'JMyles', 'You keep the docs.')]}
         pages.update(extra or {})
         return bundle(agent, 'magent-self', get=wiki(**pages).get, state_dir=None, now=T0, others=others)
@@ -280,9 +282,9 @@ class RosterTest(TestCase):
         self.assertEqual(b.stamps()['greeting']['roster']['blu']['revision'], 212)
 
     def test_an_untrusted_page_says_nothing_about_its_agent(self):
-        b = self.gather(['magent', 'blu', 'yeller'], {'Cryptograss:Agents/Yeller': [(300, 'Magent', agent_page('gold', 'x'))],
-                                                     'Cryptograss:Agents/Blu': [(213, 'Blu', agent_page('green', 'x')),
-                                                                                (212, 'JMyles', agent_page('blue', 'Hi.'))]})
+        b = self.gather(['magent', 'blu', 'yeller'], {'Cryptograss:Emergents/Yeller': [(300, 'Magent', agent_page('gold', 'x'))],
+                                                     'Cryptograss:Emergents/Blu': [(213, 'Blu', agent_page('green', 'x')),
+                                                                                   (212, 'JMyles', agent_page('blue', 'Hi.'))]})
         self.assertIn('The other agents: blu (blue); magent (magenta), the longest memory.', b.greeting_line)
         self.assertNotIn('yeller', b.greeting_line)
         self.assertNotIn('green', b.greeting_line)

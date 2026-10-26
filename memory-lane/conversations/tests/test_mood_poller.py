@@ -2242,6 +2242,26 @@ class CrosstalkTest(TestCase):
         self.assertEqual(self.poller.consider_once(), [])  # skyler's post isn't looked at a second time
         self.assertEqual(self.poller.crosstalk_once(), [])  # once
 
+    def test_what_its_prompt_already_showed_is_not_crosstalk(self):
+        # Justin, 26 Oct: a post made as the agent was being woken landed after its turn began, but was in its
+        # prompt; the look after it read nothing new.
+        self.at(1)
+        self.poller.run_turn_for('m26', 's-local', '<mood-wake mood="m26">\n[justin, 2026-09-29T18:01Z] Yessss\n'
+                                                   '[justin, 2026-09-29T18:01Z] and it\'s fun to read now\n</mood-wake>')
+        self.waker.woken.clear()
+        self.api.add(post('y', 2, sender='justin', text="and it's fun to read now"))
+        self.at(3)
+        self.assertEqual(self.poller.crosstalk_once(), [])
+        self.assertEqual(self.waker.woken, [])
+
+    def test_what_it_didnt_see_still_is(self):
+        self.at(1)
+        self.poller.run_turn_for('m26', 's-local', '<mood-wake mood="m26">\n[justin, 2026-09-29T18:01Z] Yessss\n</mood-wake>')
+        self.waker.woken.clear()
+        self.api.add(post('y', 2, sender='justin', text='the bus moved to ten'))
+        self.at(3)
+        self.assertEqual(self.poller.crosstalk_once(), [('m26', 'silent')])
+
     def test_a_look_at_crosstalk_leaves_no_look_of_its_own(self):
         self.long_turn()
         self.api.add(post('s', 2, text='we moved the jam to Thursdays btw'))

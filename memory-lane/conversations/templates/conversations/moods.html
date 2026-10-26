@@ -874,8 +874,12 @@
              background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 3px 14px; cursor: pointer; }
   body.only-mine .work { display: none; }
   /* An agent's choices not to speak: small dots, side by side. */
-  .quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 4px -10px; padding: 4px 13px; }
+  /* Tight above and below (Justin, 26 Oct: "take up less vertical space"). */
+  .quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 1px 0 1px -10px; padding: 1px 13px; }
   /* A wait, kept as a line: the status line's words and colours, its dot still (Justin, 25 Oct). */
+  /* Why an unasked turn or dot happened (WHY_MARKS): a small word beside the name; a crosstalk dot ringed. */
+  .whymark { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 5px; margin-left: 4px; white-space: nowrap; cursor: help; }
+  .quiet .dot.crosstalk { box-shadow: 0 0 0 1.5px var(--panel), 0 0 0 2.5px var(--who, var(--agent)); }
   .waitline { display: flex; align-items: center; gap: 8px; margin: 4px 0; padding: 2px 3px; font-size: 13px; color: var(--muted); }
   .waitline .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); opacity: .35; flex: none; }
   .waitline b { color: var(--who, var(--agent)); }
@@ -887,8 +891,8 @@
   /* The runner's quick screen let this pass; the agent itself never looked. */
   .quiet .dot.screened { background: transparent; border-style: dashed; }
   /* One that thought before passing grows to hold how many words: still filled, as a quiet dot is. */
-  .quiet .dot.n { width: auto; min-width: 22px; height: 22px; border-radius: 11px; padding: 0 5px; font-family: inherit;
-                  font-size: 10.5px; font-weight: 600; line-height: 20px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .quiet .dot.n { width: auto; min-width: 17px; height: 17px; border-radius: 9px; padding: 0 4px; font-family: inherit;
+                  font-size: 9.5px; font-weight: 600; line-height: 15px; font-variant-numeric: tabular-nums; color: var(--ink); }
   .quiet .dot.n:hover, .quiet .dot.n.on { color: #fff; }
   .quiet .dot.screened:hover, .quiet .dot.screened.on { background: transparent; border-color: var(--who); }
   .quiet .why { flex-basis: 100%; font-size: 13px; color: var(--muted); font-style: italic; }
@@ -1437,6 +1441,28 @@
     return 'waiting for ' + names.split(/,\s*/).map(n => `<b style="color: ${agentColor(n)}">${esc(n)}</b>`).join(', ')
       + (to ? ' to ' + esc(to) : '');
   }
+  function humanDuration(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return s + ' s';
+    const m = Math.round(s / 60);
+    if (m < 60) return m + ' min';
+    return Math.round(m / 60) + ' h';
+  }
+  // When an agent whose arrival was waited for posts, flip its preceding waitline to past tense
+  // with elapsed time: "magent waited for 12 s for re to set up the joke" (Justin, 25 Oct).
+  function resolveWaits(container, agentName, resolvedAt) {
+    const resolvedMs = new Date(resolvedAt).getTime();
+    container.querySelectorAll('.waitline[data-waiting-for]').forEach(line => {
+      if (!line.dataset.waitingFor.split(',').includes(agentName)) return;
+      const dur = humanDuration(resolvedMs - new Date(line.dataset.waitAt).getTime());
+      const verbSpan = line.querySelector('.wait-verb');
+      if (verbSpan) {
+        const rest = waitedFor(line.dataset.waitReason).replace(/^waiting for /, '');
+        verbSpan.innerHTML = `waited for ${esc(dur)} for ` + rest;
+      }
+      delete line.dataset.waitingFor;
+    });
+  }
   function agentColor(name) {
     if (AGENT_COLORS[name]) return AGENT_COLORS[name];
     let h = 0;
@@ -1854,9 +1880,9 @@
     return `<div class="mood-head">
       <h1>${esc(m.title)}</h1>
       ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
-      <div class="meta">${block ? block + ' · ' : ''}${m.message_count} messages in the record ·
+      <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record · ' : ''}
         <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a></div>
-      <div class="people" id="people">${m.participants.map(n =>
+      <div class="people" id="people">${(m.participants || []).map(n =>
         `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
   }
@@ -3487,7 +3513,11 @@
       const line = document.createElement('div');
       line.className = 'waitline';
       line.style.setProperty('--who', agentColor(q.sender));
-      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> is ${waitedFor(q.reason)}`
+      const waitForNames = String(q.reason || '').replace(/^waiting for /, '').split(/ to /)[0].split(/,\s*/);
+      line.dataset.waitingFor = waitForNames.join(',');
+      line.dataset.waitAt = q.created_at;
+      line.dataset.waitReason = q.reason || '';
+      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> <span class="wait-verb">is ${waitedFor(q.reason)}</span>`
         + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
       container.appendChild(line);
       return;
@@ -3507,8 +3537,10 @@
       ? `screened for ${q.sender}: let pass without waking it · ${stamp(q.created_at)}`
       : `${q.sender} chose not to speak · ${stamp(q.created_at)}`
         + (q.tools === 'look' ? ' · looking only' : q.tools === 'full' ? ' · with full tools' : '')
+        + (WHY_MARKS[q.why] ? ` · woken by: ${WHY_MARKS[q.why][0]} (${WHY_MARKS[q.why][1]})` : '')
         + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
-    dot.dataset.why = q.reason || '(no reason given)';
+    dot.dataset.why = q.reason || '(no reason given)';  // what woke it is in its title, shown with this
+    if (q.why === 'crosstalk') dot.classList.add('crosstalk');
     if (thought) {
       dot.dataset.thought = thought;
       const words = wordsIn(thought);
@@ -3645,6 +3677,7 @@
     if (v.model) b._how.model = v.model;
     if (v.effort) b._how.effort = v.effort;
     if (v.tools) b._tools = v.tools;
+    if (v.why) b._why = v.why;
     if (v.bundle) b._bundle = v.bundle;
   }
   // Whether a turn's first call read its context back from the cache (🔥, warm) or afresh (🧊, cold): its
@@ -3675,6 +3708,19 @@
     look: ['👀', 'Look only: it could read and search, and change nothing (a quiet wake, a post from a PickiPedia sign-in, or another emergent that could only look)'],
     full: ['🔨', 'Full tools: shell, editing, the browser and the rest, as in its terminal'],
   };
+  // Why it was woken, when nobody asked it (mood_view.turn_wakes; Justin, 26 Oct: "it needs to be clear that
+  // the look was triggered by the crosstalk rule"): a small word beside its name, the rule on hover.
+  const WHY_MARKS = {
+    crosstalk: ['↺ crosstalk', 'A look at what others said here while it was on its last turn, which it hadn\'t seen: '
+      + 'once, right after that turn ended, asking only whether it bears on what it had just said (the crosstalk rule)'],
+    consider: ['unasked', 'Not asked: it looked in of its own accord, as this Mood\'s discretion dial allows'],
+    quiet: ['quiet look', 'Not asked: the Mood had been quiet a while, and it looked in to see if anything wanted picking up'],
+    arrival: ['arrival', 'Someone signed in here, and it looked in to greet them if there was reason to'],
+  };
+  function whyMark(why) {
+    const m = WHY_MARKS[why];
+    return m ? ` <span class="whymark" title="${esc(m[1])}">${esc(m[0])}</span>` : '';
+  }
   function wakeMark(tools) {
     const m = WAKE_MARKS[tools];
     return m ? ` <span class="wake" title="${esc(m[1])}">${m[0]}</span>` : '';
@@ -3715,7 +3761,7 @@
     // first step, which opens the turn): click to copy.
     const began = blockText(b._firstBlock, b._firstAt);
     b.querySelector('.ahead').innerHTML = `<span class="caret">${open ? '▾' : '▸'}</span>`
-      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${cacheMark(b)}${open ? bundleMark(b) : ''}`
+      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${whyMark(b._why)}${cacheMark(b)}${open ? bundleMark(b) : ''}`
       + (b._firstId ? ` <span class="turnlink" data-href="#m-${esc(b._firstId)}" title="${esc(stamp(b._firstAt))}${began.est ? ' (about this block: its own is stamped a few minutes on)' : ''} · this turn's link: click to copy">${esc(began.text)}</span>` : '')
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
       + (open && added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
@@ -3862,6 +3908,7 @@
           // its link (Justin, 19 Oct: replies with nowhere to take their address from).
           prev = null;
           body.appendChild(turnEl(it.v, isNew));
+          resolveWaits(container, agent, it.v.created_at);
           // Naming another agent wakes it: its turn is timed from here.
           (it.v.mentions || []).filter(n => n !== agent).forEach(n => {
             (container._askedOf ||= {})[n] = new Date(it.v.created_at).getTime() / 1000;
@@ -4427,7 +4474,7 @@
     let kept = full ? null : keptOf(slug);
     if (!full && !kept) return;  // grown only from a whole first page
     kept = kept || { has_earlier: !!data.has_earlier, version: KEPT_VERSION };
-    if (data.mood) kept.mood = data.mood;
+    if (data.mood) kept.mood = { ...(kept.mood || {}), ...data.mood };  // a poll's is only its name: the rest stays
     for (const k of KEPT_KINDS) {
       const byId = new Map((kept[k] || []).map(v => [v.id, v]));
       for (const v of data[k] || []) byId.set(v.id, v);
@@ -4493,7 +4540,7 @@
       showMoodName(data.mood);
     } else if (headMood && data.mood && data.mood.title !== headMood.title) {
       // Someone renamed it: say so in place, without redrawing the thread.
-      showMoodName(data.mood);
+      showMoodName({ ...headMood, ...data.mood });
       loadMoods();
     }
     acts = data.activities || (data.activity ? [data.activity] : []);

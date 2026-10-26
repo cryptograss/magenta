@@ -221,15 +221,16 @@ class EndpointsTest(TestCase):
     def test_said_no_or_signed_out_or_not_theirs(self):
         wiki = FakePickiPedia(user='SkymanJenkins')
         client = self.client_for(self.skyler, 'wiki')
+        # Every ask under the fake wiki: the later ones reached the real PickiPedia (magenta#104).
         with mock.patch('requests.Session', lambda: wiki):
             state = parse_qs(urlparse(self.ask(client).json()['go']).query)['state'][0]
-        said_no = client.get(f'/moods/auth/wiki/upload?error=access_denied&state={state}')
-        self.assertEqual(said_no.status_code, 400)
-        self.assertIn("allow it on PickiPedia, so nothing went up", said_no.content.decode())
-        self.assertEqual(self.ask(Client()).status_code, 401)
-        self.assertEqual(self.ask(self.client_for(self.justin, 'key')).status_code, 200)  # skyler's picture: anyone may
-        with override_settings(PICKIPEDIA_UPLOAD_CLIENT_ID=''):
-            self.assertEqual(self.ask(client).status_code, 503)
+            said_no = client.get(f'/moods/auth/wiki/upload?error=access_denied&state={state}')
+            self.assertEqual(said_no.status_code, 400)
+            self.assertIn("allow it on PickiPedia, so nothing went up", said_no.content.decode())
+            self.assertEqual(self.ask(Client()).status_code, 401)
+            self.assertEqual(self.ask(self.client_for(self.justin, 'key')).status_code, 200)  # skyler's picture: anyone may
+            with override_settings(PICKIPEDIA_UPLOAD_CLIENT_ID=''):
+                self.assertEqual(self.ask(client).status_code, 503)
         self.assertEqual(wiki.uploads, [])
 
     def test_a_pictures_license_is_its_sharers_to_choose(self):

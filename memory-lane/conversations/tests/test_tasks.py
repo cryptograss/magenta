@@ -32,11 +32,14 @@ class TaskPageTest(TestCase):
     def test_the_template_holds_its_settings_and_the_rest_is_the_prompt(self):
         task = tasks.parse('blu', 'Connect', 41, 'JMyles', CONNECT)
         self.assertEqual((task.mood, task.schedule, task.cap, task.tools), ('connectome', 'mondays 09:00', 2.0, 'full'))
-        self.assertEqual(task.title, 'Cryptograss:Agents/Blu/Tasks/Connect')
+        self.assertEqual(task.title, 'Cryptograss:Emergents/Blu/Tasks/Connect')
         self.assertTrue(task.prompt.startswith('Connect these pickers'))
         self.assertNotIn('for people', task.prompt)  # comments aren't sent
         self.assertEqual(task.blanks, ['names'])
         self.assertEqual(tasks.parse('blu', 'X', 1, 'JMyles', 'Just this.').tools, 'look')
+        renamed = tasks.parse('blu', 'Connect', 42, 'JMyles', CONNECT.replace('{{Agent task|', '{{Emergent task|'))
+        self.assertEqual((renamed.mood, renamed.schedule, renamed.cap, renamed.tools),
+                         ('connectome', 'mondays 09:00', 2.0, 'full'))
 
     def test_only_a_trusted_revision_counts(self):
         pages = {tasks.title('blu', 'Connect'): [(43, 'Blu', CONNECT.replace('tools=full', 'tools=full|cap=500')),

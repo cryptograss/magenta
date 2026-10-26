@@ -239,6 +239,8 @@ class PromptsQueriesTests(TidingsTests):
     def asked(self):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
+        from django.core.cache import cache
+        cache.delete_many([f'tidings:prompts:{tidings.PROMPTS_PER_HUMAN}'])  # the scan itself, not its kept copy
         with CaptureQueriesContext(connection) as queries:
             tidings.prompts_state()
         return len(queries)
