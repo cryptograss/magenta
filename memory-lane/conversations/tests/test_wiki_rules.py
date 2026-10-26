@@ -1,6 +1,10 @@
 """What a wake says for each setting of a Mood's dials, read from PickiPedia: word for word,
 only as a trusted editor last made or verified it, and never by the agent itself."""
 
+import io
+import json
+from unittest import mock
+
 from django.test import TestCase
 
 from poller.mood_poller import CONSIDER_ASKS, VERBOSITY_LINES, consider_ask, wake_extras, wake_frames
@@ -41,6 +45,9 @@ class ParseTest(TestCase):
         self.assertEqual(found[0]['text'], 'Speak only when it [[Cryptograss:Moods|matters]].')  # its | kept
         self.assertEqual(found[2]['text'], 'Keep it short.\n\nReally.')
         self.assertEqual(blocks('{{Sent to agents|text=}} and nothing else'), [])
+        # A {blank} right before the closing }} (others-asked ends with {wait}}}): its } stays with the blank.
+        ending_blank = '{{Sent to agents|dial=line|value=others-asked|text=Others: {said}.{wait}}}'
+        self.assertEqual(blocks(ending_blank)[0]['text'], 'Others: {said}.{wait}')
 
     def test_examples_and_comments_are_never_sent(self):
         shown = ('Write one like this: <pre><nowiki>{{Sent to agents|dial=discretion|value=normal|text=an example}}'
@@ -90,3 +97,51 @@ class ReadTest(TestCase):
         self.assertIn('Speak only when it', consider['text'])
         mention = next(f for f in wake_frames('m26', verbosity='brief', texts=self.texts) if f['kind'] == 'mention-full')
         self.assertIn('Keep it short.', mention['text'])
+
+
+class RedirectTest(TestCase):
+    """A moved page is read where it went, with its history (Cryptograss:Agents/* to /Emergents/*, 25 Oct)."""
+
+    def test_a_redirect_is_followed(self):
+        moved = {'query': {'redirects': [{'from': 'Cryptograss:Agents/GeneralOrders',
+                                          'to': 'Cryptograss:Emergents/GeneralOrders'}],
+                           'pages': [{'title': 'Cryptograss:Emergents/GeneralOrders', 'revisions': [
+                               {'revid': 11, 'user': 'Magent', 'slots': {'main': {'content': 'Be direct.'}}},
+                               {'revid': 10, 'user': 'JMyles', 'slots': {'main': {'content': 'Be direct.'}}}]}]}}
+        with mock.patch('urllib.request.urlopen', return_value=io.BytesIO(json.dumps(moved).encode())) as opened:
+            history = WikiTexts(api='https://wiki.test/api.php')._get('Cryptograss:Agents/GeneralOrders')
+        self.assertIn('redirects=1', opened.call_args[0][0].full_url)
+        self.assertEqual([(r, u) for r, u, _ in history], [(11, 'Magent'), (10, 'JMyles')])  # the move, then Justin
+
+
+class WakeLinesTest(TestCase):
+    """The wake's fixed lines, on the Dials page beside the dials (Justin, 24 Oct: "where does that phrase live?"):
+    a trusted editor's text for one stands in for the code's, its {fields} filled; without one, the code's."""
+
+    PAGE = ('{{Sent to agents|dial=line|value=others-asked|text=Also asked: {said}.{wait}}}\n'
+            '{{Sent to agents|dial=line|value=wait-offer|text= Or wait for {first} with <wait for="{first}"/>, as {agent}.}}\n'
+            '{{Sent to agents|dial=line|value=full-tools|text=Full tools: careful. {nonsense}}}\n'
+            '{{Sent to agents|dial=line|value=look-only|text=Look only {but {broken}}\n')
+
+    def texts(self, editor='JMyles'):
+        return WikiTexts(get=Wiki([(30, editor, self.PAGE)]), clock=lambda: 0)
+
+    def asked(self, texts):
+        from poller.mood_poller import also_asked
+        owed = [{'mentions': ['magent', 're'], 'sender': 'justin', 'created_at': '2026-10-25T23:00:00'}]
+        return also_asked(owed, 'magent', {'agents': {'re': {}}}, texts=texts)[1]
+
+    def test_the_pages_words_with_the_codes_fields(self):
+        self.assertEqual(self.asked(self.texts()), 'Also asked: re, not at work here yet. Or wait for re with <wait for="re"/>, as magent.')
+
+    def test_without_a_trusted_text_the_codes_words(self):
+        for texts in (None, self.texts(editor='Magent')):
+            said = self.asked(texts)
+            self.assertTrue(said.startswith('Others mentioned, and likely woken, by what woke you: re, not at work here yet.'), said)
+            self.assertIn('<wait for="re" to="a few words"/>', said)
+
+    def test_an_unknown_field_stays_as_written_and_a_broken_text_is_the_codes(self):
+        from poller.mood_poller import LOOK_ONLY, wake_footer
+        texts = self.texts()
+        self.assertEqual(wake_footer(full=True, texts=texts)[1], 'Full tools: careful. {nonsense}')
+        self.assertEqual(wake_footer(full=False, texts=texts)[1], LOOK_ONLY)

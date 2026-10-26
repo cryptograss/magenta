@@ -76,6 +76,8 @@ def stream_line(event, now_iso):
     }
     if 'tool_use_result' in event:
         line['toolUseResult'] = event['tool_use_result']
+    if event.get('isMeta'):  # the harness's own note to the agent, not the agent's words (claude_code_v2.poller_or)
+        line['isMeta'] = True
     return json.dumps(line)
 
 

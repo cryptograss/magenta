@@ -6,6 +6,5 @@ They are called by async MCP tools via sync_to_async.
 """
 
 from .memory import MemoryService
-from .bootstrap import BootstrapService
 
-__all__ = ['MemoryService', 'BootstrapService']
+__all__ = ['MemoryService']

@@ -96,7 +96,7 @@
 </header>
 <main>
   <h1>Status</h1>
-  <p class="lede">How magenta and its four servers stand right now: every agent's settings bar in every Mood, server uptime and redeploys, database backups, recent humans, and running versions.</p>
+  <p class="lede">How magenta and its four servers stand right now: every emergent's settings bar in every Mood, server uptime and redeploys, database backups, recent humans, and running versions.</p>
   <div id="scram"></div>
 
   <h2>Servers</h2>
@@ -119,7 +119,7 @@
   <h2>Last seen (last 10 humans)</h2>
   <div id="humans">Loading…</div>
 
-  <h2>Agent settings bar in every Mood</h2>
+  <h2>Emergent settings bar in every Mood</h2>
   <div id="moodBars">Loading…</div>
 
   <h2>Harness vendors</h2>
@@ -354,7 +354,7 @@
   }
 
   function renderMoodTable(moodList, includeEverywhere) {
-    const head = `<table class="tbl"><thead><tr><th>Mood</th><th>agent</th><th>mode</th><th>model</th><th>effort</th><th>speaks up</th><th>replies</th><th>reads back</th><th>ultra</th></tr></thead><tbody>`;
+    const head = `<table class="tbl"><thead><tr><th>Mood</th><th>emergent</th><th>mode</th><th>model</th><th>effort</th><th>speaks up</th><th>replies</th><th>reads back</th><th>ultra</th></tr></thead><tbody>`;
     const rows = [];
     if (includeEverywhere && state.everywhere) {
       const entries = Object.entries(state.everywhere);
@@ -368,7 +368,7 @@
   }
 
   function renderHarnesses(list) {
-    if (!list || !list.length) return `<div class="card meta">No agent harness catalogs reported yet.</div>`;
+    if (!list || !list.length) return `<div class="card meta">No emergent's harness catalog reported yet.</div>`;
     return list.map(h => {
       const usable = (h.vendors || []).filter(v => v.usable);
       const nokey = (h.vendors || []).filter(v => !v.usable);

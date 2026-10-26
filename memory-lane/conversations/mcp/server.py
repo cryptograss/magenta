@@ -73,7 +73,7 @@ def create_mcp_server():
             ),
             types.Tool(
                 name="who_i_know",
-                description="Everyone you have exchanged words with since you arrived, people and agents, most recent first: how many messages, first and last. " + MINE,
+                description="Everyone you have exchanged words with since you arrived, people and emergents, most recent first: how many messages, first and last. " + MINE,
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -83,7 +83,7 @@ def create_mcp_server():
             ),
             types.Tool(
                 name="my_history_with",
-                description="What you and one person or agent said to each other: their words in your conversations, yours in theirs, and @mentions between you in Moods with the answers. Newest last. " + MINE,
+                description="What you and one person or emergent said to each other: their words in your conversations, yours in theirs, and @mentions between you in Moods with the answers. Newest last. " + MINE,
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -186,12 +186,12 @@ def create_mcp_server():
             ),
             types.Tool(
                 name="list_moods",
-                description="List the Moods (memory-lane's Moods: the conversations people and agents share, each about one thing), most recently active first, with what each is about, its size and who's in it.",
+                description="List the Moods (memory-lane's Moods: the conversations people and emergents share, each about one thing), most recently active first, with what each is about, its size and who's in it.",
                 inputSchema={"type": "object", "properties": {}}
             ),
             types.Tool(
                 name="read_mood",
-                description="Read what people and agents said in one Mood, oldest first: its newest turns, or everything from a message (its id, as in a #m-<id> link) or a time on. Use it to catch up on a Mood you weren't woken in.",
+                description="Read what people and emergents said in one Mood, oldest first: its newest turns, or everything from a message (its id, as in a #m-<id> link) or a time on. Use it to catch up on a Mood you weren't woken in.",
                 inputSchema={
                     "type": "object",
                     "properties": {
