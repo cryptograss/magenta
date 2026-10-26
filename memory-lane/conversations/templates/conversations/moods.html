@@ -482,7 +482,7 @@
   .mention { background: var(--code); border-radius: 4px; padding: 0 4px; font-weight: 600; }
   a.mention { color: inherit; text-decoration: none; }  /* to their PickiPedia page (mood_view.mention_page) */
   a.mention:hover { text-decoration: underline; }
-  /* Each @name in its own colour (Skyler, 26 Oct): an emergent's, or the colour a person chose for their icon. */
+  /* Each @name its own way (Skyler, 26 Oct): an emergent's in its colour; a person's in their name art (markTurn). */
   .turn .body .mention.tagged, .mention.tagged { color: var(--tag); background: color-mix(in srgb, var(--tag) 15%, transparent); }
   .turn .body .mention.tagged.me, .mention.tagged.me { background: var(--mention); color: inherit; }  /* yours: gold, as before */
   .mention.me { background: var(--mention); }
@@ -1888,11 +1888,12 @@
     // You, or a group you're in (@core).
     el.querySelectorAll('.mention').forEach(s => s.classList.toggle('me', s.dataset.who === me
       || (s.dataset.members || '').split(',').includes(me)));
-    // Who's tagged, at a glance: an emergent in its colour (it wakes), a person in their icon's; a group stays plain.
+    // Who's tagged, at a glance: an emergent in its colour (it wakes); a person written their own way, as their name
+    // is above their messages (Justin, 26 Oct: the icon's colour is kept to mean something else); a group stays plain.
     el.querySelectorAll('.mention[data-who]:not(.group)').forEach(s => {
       const who = s.dataset.who;
-      const tag = human[who] === false ? agentColor(who) : human[who] ? ((looks[who] || {}).colour || 'var(--human)') : '';
-      if (tag) { s.style.setProperty('--tag', tag); s.classList.add('tagged'); }
+      if (human[who] === false) { s.style.setProperty('--tag', agentColor(who)); s.classList.add('tagged'); }
+      else if (human[who] && (looks[who] || {}).art && !s.querySelector('.art')) s.innerHTML = '@' + nameHtml(who);
     });
   }
 
