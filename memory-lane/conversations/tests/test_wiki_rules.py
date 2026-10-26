@@ -45,6 +45,9 @@ class ParseTest(TestCase):
         self.assertEqual(found[0]['text'], 'Speak only when it [[Cryptograss:Moods|matters]].')  # its | kept
         self.assertEqual(found[2]['text'], 'Keep it short.\n\nReally.')
         self.assertEqual(blocks('{{Sent to agents|text=}} and nothing else'), [])
+        # A {blank} right before the closing }} (others-asked ends with {wait}}}): its } stays with the blank.
+        ending_blank = '{{Sent to agents|dial=line|value=others-asked|text=Others: {said}.{wait}}}'
+        self.assertEqual(blocks(ending_blank)[0]['text'], 'Others: {said}.{wait}')
 
     def test_examples_and_comments_are_never_sent(self):
         shown = ('Write one like this: <pre><nowiki>{{Sent to agents|dial=discretion|value=normal|text=an example}}'

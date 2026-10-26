@@ -572,8 +572,14 @@ class ClaudeCodeWaker:
                 full=False, ultracode=False, system=None):
         # No session to resume (a new Mood's first turn): start one.
         resume = ['--resume', session_id, '--fork-session'] if session_id else []
+        # Snapshot off on every wake: Claude Code 2.1.302+ defaults to recording
+        # the system prompt on a session's first request and replaying that
+        # snapshot on every --resume (caught by re in #emergence, 2026-10-25).
+        # Passing it even when system is None means a poller restarted without
+        # --instructions won't silently fall back to an older recorded snapshot.
         cmd = [self.claude, '-p', *resume,
                '--session-id', new_session_id,
+               '--system-prompt-snapshot', 'off',
                # Every event on stdout as it happens: what the runner posts to
                # the Mood, and the turn's exact end (the result event).
                '--output-format', 'stream-json', '--verbose']
@@ -601,10 +607,7 @@ class ClaudeCodeWaker:
             # a look-only turn couldn't run a workflow anyway.
             cmd += ['--settings', json.dumps({'ultracode': True})]
         if system:  # its instructions (MoodPoller.instructions_for): after Claude Code's own, never in the history
-            # Snapshot off: Claude Code 2.1.302 defaults to recording the system prompt on a session's
-            # first request and replaying that snapshot on every --resume, ignoring a new --append-system-prompt
-            # until compaction (caught by re in #emergence, 2026-10-25).
-            cmd += ['--system-prompt-snapshot', 'off', '--append-system-prompt', system]
+            cmd += ['--append-system-prompt', system]
         return cmd + ['--', prompt]
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, grant=(), budget=None, effort=None,
