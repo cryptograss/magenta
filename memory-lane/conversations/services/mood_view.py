@@ -1629,16 +1629,24 @@ def last_said(mood, scan=200):
     return oldest  # nothing said in the latest `scan` rows: as good a guess as any
 
 
-def mood_payload(mood):
+def mood_payload(mood, light=False):
+    """A Mood as the page shows it. `light`: its name and description only, for a poll for what's new -- the
+    count of everything it ever said, and everyone who ever spoke there, read the whole of a big Mood, and a
+    poll every few seconds was paying for them each time (Justin, 25 Oct: "it takes several seconds")."""
+    head = {
+        'slug': mood.slug,
+        'title': mood.title or mood.slug,
+        'description': mood.description,
+        'eth_blockheight': mood.eth_blockheight,
+    }
+    if light:
+        return head
     # What was said, not the system's own rows (a redeploy announced in every
     # Mood, a rename, a turn's tally): those mustn't make a Mood look active.
     said = mood.messages.exclude(sender_id='system')
     last = last_said(mood)
     return {
-        'slug': mood.slug,
-        'title': mood.title or mood.slug,
-        'description': mood.description,
-        'eth_blockheight': mood.eth_blockheight,
+        **head,
         'message_count': said.count(),
         'last_at': last.isoformat() if last else None,
         'participants': sorted(e.name for e in mood.thinking_entities()),

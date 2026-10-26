@@ -426,3 +426,26 @@ class DeployNoticesFollowRenamesTest(TestCase):
         listed = [{**s, 'moods': ['delivery-kid']} if s['name'] == 'delivery-kid' else s for s in servers.SERVERS]
         with mock.patch.object(servers, 'SERVERS', listed):
             self.assertEqual(servers.moods_for('delivery-kid'), [mood])
+
+
+class LookTimingTest(TestCase):
+    """A look at a Mood says where its time went (Server-Timing), and a poll for what's new doesn't count
+    everything the Mood ever said (Justin, 25 Oct: switching to a Mood "takes several seconds")."""
+
+    def test_where_the_time_went_and_a_poll_is_light(self):
+        from django.test import Client
+        from conversations.models import Message, Mood, ThinkingEntity
+        import uuid as _uuid
+        justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
+        mood = Mood.objects.create(slug='timing')
+        first = Message.objects.create(id=_uuid.uuid4(), sender=justin, mood=mood, content='hello', timestamp=1,
+                                       source_file='mood-web')
+        full = Client().get('/api/moods/timing/turns/')
+        laps = [part.split(';')[0].strip() for part in full['Server-Timing'].split(',')]
+        for lap in ('timeline', 'agents', 'mood', 'activities', 'total'):
+            self.assertIn(lap, laps)
+        self.assertEqual(full.json()['mood']['message_count'], 1)
+        poll = Client().get(f'/api/moods/timing/turns/?after={first.id}').json()['mood']
+        self.assertEqual(poll['title'], 'timing')
+        self.assertNotIn('message_count', poll)
+        self.assertNotIn('participants', poll)

@@ -1848,9 +1848,9 @@
     return `<div class="mood-head">
       <h1>${esc(m.title)}</h1>
       ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
-      <div class="meta">${block ? block + ' · ' : ''}${m.message_count} messages in the record ·
+      <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record · ' : ''}
         <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a></div>
-      <div class="people" id="people">${m.participants.map(n =>
+      <div class="people" id="people">${(m.participants || []).map(n =>
         `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
   }
@@ -4428,7 +4428,7 @@
     let kept = full ? null : keptOf(slug);
     if (!full && !kept) return;  // grown only from a whole first page
     kept = kept || { has_earlier: !!data.has_earlier, version: KEPT_VERSION };
-    if (data.mood) kept.mood = data.mood;
+    if (data.mood) kept.mood = { ...(kept.mood || {}), ...data.mood };  // a poll's is only its name: the rest stays
     for (const k of KEPT_KINDS) {
       const byId = new Map((kept[k] || []).map(v => [v.id, v]));
       for (const v of data[k] || []) byId.set(v.id, v);
@@ -4494,7 +4494,7 @@
       showMoodName(data.mood);
     } else if (headMood && data.mood && data.mood.title !== headMood.title) {
       // Someone renamed it: say so in place, without redrawing the thread.
-      showMoodName(data.mood);
+      showMoodName({ ...headMood, ...data.mood });
       loadMoods();
     }
     acts = data.activities || (data.activity ? [data.activity] : []);

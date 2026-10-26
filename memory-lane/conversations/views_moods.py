@@ -150,6 +150,44 @@ def note_agent(msg, _agents=None):
     return first
 
 
+class LookClock:
+    """Where a look at a Mood spends its time, as a Server-Timing header (a browser's network panel shows it;
+    so does curl -I): Justin, 25 Oct, "it takes several seconds to display" -- every /turns/ took about two
+    seconds, even one asking only for what's new. A look slower than SLOW is logged, with its laps."""
+    SLOW = 1.0  # seconds
+
+    def __init__(self):
+        import time
+        self.now = time.perf_counter
+        self.start = self.mark = self.now()
+        self.laps = []
+
+    def lap(self, name):
+        """The time since the last lap (or the start), as `name`."""
+        now = self.now()
+        self.laps.append((name, now - self.mark))
+        self.mark = now
+
+    def __call__(self, name, fn, *args, **kwargs):
+        """fn(*args, **kwargs), timed as `name`."""
+        self.lap('_')  # what came between
+        value = fn(*args, **kwargs)
+        self.lap(name)
+        return value
+
+    def header(self):
+        laps = [(n, t) for n, t in self.laps if n != '_' or t >= 0.005]
+        total = self.now() - self.start
+        return ', '.join([f'{n if n != "_" else "between"};dur={t * 1000:.0f}' for n, t in laps] + [f'total;dur={total * 1000:.0f}'])
+
+    def report(self, response, what):
+        response['Server-Timing'] = self.header()
+        if self.now() - self.start >= self.SLOW:
+            import logging
+            logging.getLogger(__name__).warning('slow %s: %s', what, response['Server-Timing'])
+        return response
+
+
 @require_GET
 def api_mood_turns(request, slug):
     """The readable conversation in one Mood.
@@ -158,6 +196,7 @@ def api_mood_turns(request, slug):
     contract. An unknown `after` is treated as "everything", so a client
     that has fallen out of sync recovers rather than stalls.
     """
+    clock = LookClock()
     mood = Mood.by_slug_or_404(slug)
     if mood.slug in wiki_feed.feed_moods():
         wiki_feed.nudge()  # what's new on PickiPedia, as lines here (at most once a minute, in the background)
@@ -180,7 +219,7 @@ def api_mood_turns(request, slug):
     if request.GET.get('limit', '').isdigit():  # e.g. the runner wanting recent context only
         limit = max(1, min(int(request.GET['limit']), PAGE))
 
-    names = known_names()
+    names = clock('names', known_names)
     turns_out, step_msgs, quiet_out, thoughts_out, compactions_out, events_out = [], [], [], [], [], []
     agents_said = []  # agents' messages: which tools each turn had (👀 or 🔨 by its name)
     for kind, msg, text in timeline(mood, after=after, before=before, limit=limit, start=start):
@@ -222,12 +261,15 @@ def api_mood_turns(request, slug):
                               'created_at': msg.created_at.isoformat(), **text})
         else:
             step_msgs.append(msg)
+    clock.lap('timeline')  # the messages, read and drawn
     images = step_images(step_msgs)
     steps_out = [{**step_payload(m), 'images': images.get(str(m.id), [])} for m in step_msgs]
+    clock.lap('steps')
     agent_set = agent_names()
     wakes = turn_wakes([m for m in agents_said if m.sender_id in agent_set])
     # Which instructions each turn was given, and whether they were new: shown by its cache mark (Justin, 25 Oct).
     marks = bundle_marks([w['bundle'] for w in wakes.values()])
+    clock.lap('wakes')
     for p in turns_out + steps_out + quiet_out + thoughts_out:
         said = wakes.get(p['id'])
         if said and said['tools']:
@@ -238,7 +280,7 @@ def api_mood_turns(request, slug):
             p['bundle'] = marks[said['bundle']]
     first = min([i['created_at'] for i in turns_out + steps_out + quiet_out + thoughts_out + compactions_out
                  + events_out], default=None)
-    agents = agents_in(mood)
+    agents = clock('agents', agents_in, mood)
     # Edited or deleted (services/retract.py): shown as they stand now.
     from django.utils import timezone
     from .models import MessageChange
@@ -254,16 +296,18 @@ def api_mood_turns(request, slug):
             text = prose(msg.content) if msg else ''
             changes.append({**c, 'turn': retract.mark(turn_payload(msg, text, names), retract.change_of(msg))
                             if msg and text else None})
+    clock.lap('changes')
     from .services import reactions
-    return JsonResponse({
-        'mood': mood_payload(mood),
+    return clock.report(JsonResponse({
+        # A poll for what's new: its name only (a rename shows at once); the rest is a first look's.
+        'mood': clock('mood', mood_payload, mood, light=after is not None),
         # Every message here that has reactions, as they now stand (services/reactions.py).
-        'reactions': reactions.in_mood(mood),
+        'reactions': clock('reactions', reactions.in_mood, mood),
         # What was edited or deleted since ?changes_since=, as it stands now; and the time to ask from next.
         'changes': changes,
         'now': timezone.now().isoformat(),
         # Changes when a to-do list may have (a merge GitHub told of, a wiki edit): ask for it again.
-        'todo_stamp': todo_stamp(),
+        'todo_stamp': clock('todo', todo_stamp),
         # Prose only: the poller reads an agent turn here as an answer, so a
         # tool call must never appear in this list.
         'turns': turns_out,
@@ -276,22 +320,22 @@ def api_mood_turns(request, slug):
         'compactions': compactions_out,
         # Things that happened around the conversation: a server redeployed.
         'events': events_out,
-        'has_earlier': bool(limit) and first is not None and mood.messages.filter(
-            is_sidechain=False, created_at__lt=first).exists(),
-        'activity': activity(mood),
+        'has_earlier': clock('earlier', lambda: bool(limit) and first is not None and mood.messages.filter(
+            is_sidechain=False, created_at__lt=first).exists()),
+        'activity': clock('activity', activity, mood),
         # Every agent at work here, each with its own line on the page.
-        'activities': activities(mood),
+        'activities': clock('activities', activities, mood),
         # Who reads without signing in: how many, to everyone; their addresses, to an SSH-key sign-in.
-        **_watchers(request, mood),
+        **clock('watchers', _watchers, request, mood),
         # What an agent started in the background here and is still running.
-        'tasks': background_tasks(mood),
+        'tasks': clock('tasks', background_tasks, mood),
         # Whether each agent is listening here (the hush menu in the head).
         'listening': {name: a['listening'] for name, a in agents.items()},
         # Each agent here: listening, model, effort, and how full its context is.
         'agents': agents,
-        'scram': settings_scram(),
-        'typing': typing_in(mood.slug),
-    })
+        'scram': clock('scram', settings_scram),
+        'typing': clock('typing', typing_in, mood.slug),
+    }), f'look at #{mood.slug}' + (' (what is new)' if after is not None else ''))
 
 
 PAGE = 400
