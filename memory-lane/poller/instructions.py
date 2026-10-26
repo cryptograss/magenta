@@ -68,7 +68,7 @@ the bundle"): not its text, but its parts -- the words this file wrote, as
 they were, and in each layer's place only its page and revision -- with a
 sha256 of the whole. Joining the revisions' texts back in (rebuild) gives the
 bundle again, byte for byte, without this code at that commit: the
-transformation from a revision to its part is only layer_body(). A revision
+transformation from a revision to its part is only layer_body() (or, for an older record, the one it names). A revision
 deleted from the wiki since can't be rebuilt, and rebuild says so.
 
     python poller/instructions.py magent magent-self      # what magent is told there
@@ -112,14 +112,29 @@ COMMENTS = re.compile(r'<!--.*?-->', re.S)
 STATE = '~/.local/state/magenta'
 CACHE_FILE = 'instructions-cache.json'
 MAGENTA = 'https://memory-lane.maybelle.cryptograss.live'  # where bundles are recorded
-# How a revision becomes its part of a bundle, named in each record: a rebuild applies the same.
-TRANSFORM = 'layer_body: the wikitext less <!-- comments -->, stripped'
-
+# How a revision becomes its part of a bundle, named in each record: a rebuild applies the one its record names.
+TRANSFORM = ('layer_body: the wikitext less <!-- comments -->, {{verified|X}} as [✓ verified: X] and '
+             '{{source|X}} as [✓ source: X], stripped')
+TRANSFORM_V1 = 'layer_body: the wikitext less <!-- comments -->, stripped'
+# A person's verification, as the wiki marks it (Template:Verified, Template:Source): read as raw wikitext
+# it was a template call in the prompt; it says someone in a position to know vouched, and by what (Justin,
+# 26 Oct: "the wiki needs to reflect that"), so it's kept, in words.
+VERIFIED = re.compile(r'\{\{\s*(verified|source)\s*\|([^{}]*)\}\}', re.I)
 
 
 def layer_body(wikitext):
     """A revision's wikitext as it goes into a bundle."""
+    text = COMMENTS.sub('', wikitext or '')
+    text = VERIFIED.sub(lambda m: f'[✓ {m.group(1).lower()}: {m.group(2).strip()}]', text)
+    return text.strip()
+
+
+def layer_body_v1(wikitext):
+    """As bundles recorded before 26 Oct were made."""
     return COMMENTS.sub('', wikitext or '').strip()
+
+
+TRANSFORMS = {TRANSFORM: layer_body, TRANSFORM_V1: layer_body_v1}
 
 
 def agent_title(agent):
@@ -372,9 +387,11 @@ def assemble(out):
     return parts
 
 
-def rebuild(parts, revision_text):
-    """A recorded bundle's text again: `revision_text(revision)` gives that revision's wikitext."""
-    return ''.join(part if isinstance(part, str) else layer_body(revision_text(part['revision'])) for part in parts)
+def rebuild(parts, revision_text, transform=TRANSFORM):
+    """A recorded bundle's text again: `revision_text(revision)` gives that revision's wikitext; `transform`,
+    as its record names it (one recorded before any was named: the first)."""
+    body = TRANSFORMS.get(transform or TRANSFORM_V1, layer_body)
+    return ''.join(part if isinstance(part, str) else body(revision_text(part['revision'])) for part in parts)
 
 
 def revision_texts(revisions, api=API):
@@ -400,7 +417,7 @@ def rebuilt(record, texts=None, api=API):
     missing = sorted({r for r in revisions if r not in texts})
     if missing:
         return {'text': None, 'sha256': None, 'matches': False, 'missing': missing}
-    text = rebuild(record['parts'], texts.__getitem__)
+    text = rebuild(record['parts'], texts.__getitem__, record.get('transform'))
     sha = hashlib.sha256(text.encode()).hexdigest()
     return {'text': text, 'sha256': sha, 'matches': sha == record['sha256'], 'missing': []}
 

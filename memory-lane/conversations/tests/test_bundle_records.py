@@ -88,6 +88,21 @@ class PartsTest(SimpleTestCase):
         texts[150] = 'You are someone else now.'
         self.assertTrue(rebuilt(b.record(), texts=texts)['matches'])
 
+    def test_a_verification_reads_as_words_and_older_records_still_rebuild(self):
+        # Justin, 26 Oct: {{verified|unspecified}} sat raw in every wake; a verification says someone vouched.
+        from poller.instructions import TRANSFORM_V1
+        w = wiki()
+        w.pages['Cryptograss:Moods/Instructions'] = [(120, 'JMyles', 'Be kind.{{verified|by JMyles}} See {{source|https://setlist.fm/x}}.')]
+        b = self.gather(w)
+        self.assertIn('Be kind.[✓ verified: by JMyles] See [✓ source: https://setlist.fm/x].', b.text)
+        self.assertNotIn('{{verified', b.text)
+        self.assertTrue(rebuilt(b.record(), texts=every_revision(w))['matches'])
+        # A record made before (its transform the first one) is rebuilt as it was made: braces and all.
+        old = {**b.record(), 'transform': TRANSFORM_V1}
+        old['sha256'] = rebuilt(old, texts=every_revision(w))['sha256']
+        self.assertIn('{{verified|by JMyles}}', rebuilt(old, texts=every_revision(w))['text'])
+        self.assertTrue(rebuilt({**old, 'transform': ''}, texts=every_revision(w))['matches'])
+
     def test_a_tampered_text_does_not_match(self):
         w = wiki()
         b = self.gather(w)
