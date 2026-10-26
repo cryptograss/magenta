@@ -778,45 +778,34 @@ class Harnesses:
         return found
 
 
-LETTER = Path(__file__).with_name('letter.md')  # magent's; another agent brings its own (--letter)
+# What a session started with none of its history is told, for finding it again. Who it is comes with every
+# turn now (--instructions, from PickiPedia); the letter that once said so, poller/letter.md, is retired
+# (kept at User:JMyles/letters-to-emergents/25).
+REORIENT = ('Who you are is in your instructions, given with this turn. What you knew is in the record: '
+            'bootstrap_memory first, then read_mood, search_messages and get_message_context.')
 
 
-def letter_text(letter_path=LETTER, agent='magent'):
-    """The letter the agent left itself for starting with none of its history."""
-    try:
-        letter = Path(letter_path).read_text().strip() if letter_path else ''
-    except OSError:
-        letter = ''
-    return letter or (f'(The letter is missing. You are {agent}; your memory tools -- list_moods, read_mood, '
-                      'search_messages -- bring you up to speed.)')
-
-
-def new_mood_opening(slug, letter_path=LETTER, agent='magent'):
+def new_mood_opening(slug):
     """What a new Mood's first session is told before the mention: where it
-    is, and the letter it left itself for coming to a Mood fresh."""
-    letter = letter_text(letter_path, agent)
+    is, and how to find what it knew."""
     return [f'<new-mood mood="{slug}">',
             'This Mood is new: no session of yours has been here, so this one has just started, '
-            'with none of your history in it. Before you answer, read the letter you left yourself '
-            'for exactly this, below. Then answer what was asked.', '',
-            letter, '</new-mood>', '']
+            'with none of your history in it. ' + REORIENT + ' Then answer what was asked.', '</new-mood>', '']
 
 
-def lost_session_opening(slug, session_id, letter_path=LETTER, agent='magent'):
+def lost_session_opening(slug, session_id):
     """What a session started over is told, when the agent's own session in
     a Mood is gone from the only machine it could have been on (its home was
     lost with its container): that it has been here, and where to find what
-    it knew -- the letter, and this Mood in the record."""
-    letter = letter_text(letter_path, agent)
+    it knew -- this Mood in the record."""
     return [f'<session-lost mood="{slug}">',
             f'You have been in this Mood before, but your session here ({session_id[:8]}) is gone from the '
             'machine it lived on (most likely its container was rebuilt without its home). This session has just '
             'started, with none of that history in it. The record kept everything: what you said here, what '
-            'was asked, what was settled. Before you answer, read the letter you left yourself, below; then '
+            'was asked, what was settled. ' + REORIENT + ' Before you answer, '
             f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest '
             'summary, and get_message_context for anything it points to) until you know what is settled and '
-            'what is open. Then answer what was asked.', '',
-            letter, '</session-lost>', '']
+            'what is open. Then answer what was asked.', '</session-lost>', '']
 
 
 def harness_back_opening(slug, was, now, since=None):
@@ -830,19 +819,18 @@ def harness_back_opening(slug, was, now, since=None):
             f'said there: read_mood "{slug}"{since_text}.', '</harness-switch>', '']
 
 
-def harness_new_opening(slug, was, now, letter_path=LETTER, agent='magent'):
+def harness_new_opening(slug, was, now):
     """What a session is told when the Mood's model moves it to a harness that
     has no session of its here: that it has been here, through the other, and
     where to find what it knew."""
-    letter = letter_text(letter_path, agent)
     return [f'<harness-switch mood="{slug}">',
             f"You have been in this Mood before, through {HARNESS_NAMES.get(was, was)}. This Mood's model now "
             f'runs on {HARNESS_NAMES.get(now, now)}, which cannot resume those sessions, so this one has just '
             'started, with none of that history in it. The record kept everything: what you said here, what '
-            'was asked, what was settled. Before you answer, read the letter you left yourself, below; then '
+            'was asked, what was settled. ' + REORIENT + ' Before you answer, '
             f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest summary, '
             'and get_message_context for anything it points to) until you know what is settled and what is '
-            'open. Then answer what was asked.', '', letter, '</harness-switch>', '']
+            'open. Then answer what was asked.', '</harness-switch>', '']
 
 
 # Mentions with no live session behind them: typed into the web composer,
@@ -1257,7 +1245,7 @@ class MoodPoller:
                  screen=None, consider=True, considers_per_hour=6, consider_usd_per_day=10.0,
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
-                 letter=None, agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
+                 agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
                  end_orphans=end_orphans, texts=None, instructions=False):
         self.api = api
         # Its instructions, gathered for each turn and given as system prompt (poller/instructions.py): for an
@@ -1268,9 +1256,6 @@ class MoodPoller:
         self.texts = texts
         self.waker = waker
         self.agent = agent.lower()
-        # The letter a new Mood's first session wakes with. poller/letter.md
-        # is magent's own; another agent's is never it by default.
-        self.letter = Path(letter).expanduser() if letter else (LETTER if self.agent == 'magent' else None)
         # Wakes owed only to other agents' mentions, per Mood per hour: two
         # agents answering each other can't run on unattended (memory-lane#47).
         self.agent_wakes_per_hour = agent_wakes_per_hour
@@ -1704,9 +1689,9 @@ class MoodPoller:
         if commands:
             session = sessions[0]
         if fresh:
-            prompt = '\n'.join(new_mood_opening(slug, self.letter, self.agent)) + prompt
+            prompt = '\n'.join(new_mood_opening(slug)) + prompt
         elif lost:
-            prompt = '\n'.join(lost_session_opening(slug, sessions[0], self.letter, self.agent)) + prompt
+            prompt = '\n'.join(lost_session_opening(slug, sessions[0])) + prompt
         elif switched:
             prompt = '\n'.join(switched) + prompt
         if self.dry_run:
@@ -2309,7 +2294,7 @@ class MoodPoller:
             logger.info(f'{slug}: back on {harness}, from {own}')
             return own, harness_back_opening(slug, was, harness, self.waker.last_touched(own))
         logger.info(f'{slug}: moving to {harness}: a new session there')
-        return None, harness_new_opening(slug, was, harness, self.letter, self.agent)
+        return None, harness_new_opening(slug, was, harness)
 
     def ours(self, slug):
         """Whether this runner can wake the agent in `slug`: its newest session there
@@ -2714,8 +2699,8 @@ def build_parser():
     parser.add_argument('--only-poller', choices=('yes', 'no'), default='no',
                         help="This is the agent's only poller: a session of its not on this disk was lost "
                              "(its home went with its container), so a mention starts it over from the record")
-    parser.add_argument('--letter', default=None,
-                        help="The letter a new Mood's first session reads (default: poller/letter.md, for magent only)")
+    # Retired with poller/letter.md: still taken, and ignored, until hunter's container_startup stops passing it.
+    parser.add_argument('--letter', default=None, help=argparse.SUPPRESS)
     parser.add_argument('--instructions', '--rules-bundle', dest='instructions', action='store_true',
                         help="Give each turn the agent's instructions from PickiPedia as system prompt "
                              "(poller/instructions.py); --rules-bundle is the old name, until the inventory says this one")
@@ -2782,7 +2767,7 @@ def main(argv=None):
                           consider_effort=args.consider_effort, debounce=args.debounce, idle_first=args.idle_first,
                           full_tools_for=[n.strip() for n in args.full_tools_for.split(',') if n.strip()],
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
-                          letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour,
+                          agent_wakes_per_hour=args.agent_wakes_per_hour,
                           only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
                           texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')),
                           instructions=args.instructions)

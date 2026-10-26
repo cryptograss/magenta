@@ -1627,7 +1627,7 @@ class SinceLastWordTest(TestCase):
 
 
 class NewMoodTest(TestCase):
-    """A Mood with no session anywhere: a runner answering every Mood starts one, briefed by the letter."""
+    """A Mood with no session anywhere: a runner answering every Mood starts one, pointed at its memory."""
 
     def run_for(self, sessions, **kwargs):
         api = FakeAPI([mention('fresh', dict(turn('a', 'justin', 10, '@magent hello, new place'), via='web'))],
@@ -1638,29 +1638,26 @@ class NewMoodTest(TestCase):
         poller = MoodPoller(api, self.waker, state_path=state, now=lambda: T0 + timedelta(minutes=30), **kwargs)
         return poller.poll_once()
 
-    def test_its_first_mention_starts_a_session_with_the_letter(self):
+    def test_its_first_mention_starts_a_session_pointed_at_its_memory(self):
         self.assertEqual(self.run_for([]), ['fresh'])
         session, prompt = self.waker.woken[0]
         self.assertIsNone(session)  # nothing to resume: a new one
         self.assertTrue(prompt.startswith('<new-mood mood="fresh">'))
-        self.assertIn('Dear me,', prompt)  # poller/letter.md, beside the poller
+        self.assertIn('bootstrap_memory', prompt)
+        self.assertNotIn('letter', prompt)  # retired: who it is comes with its instructions
         self.assertIn('[justin, 2026-09-29T18:10Z] @magent hello, new place', prompt)
 
-    def test_another_agent_wakes_with_its_own_letter_never_magents(self):
-        letter = Path(tempfile.mkdtemp()) / 'LETTER.md'
-        letter.write_text('Dear re,\nRead the code before the docs.')
-        api = FakeAPI([mention('fresh', dict(turn('a', 'justin', 10, '@re hello, new place'), via='web'))],
+    def test_no_agent_is_told_its_letter_is_missing(self):
+        # blu, 26 Oct, on its first Claude Code session: "the letter I should have left myself is missing".
+        api = FakeAPI([mention('fresh', dict(turn('a', 'justin', 10, '@blu hello, new place'), via='web'))],
                       sessions={'fresh': []})
-        for kwargs, has, lacks in (({'letter': letter}, 'Dear re,', 'Dear me,'),
-                                   ({}, 'You are re;', 'Dear me,')):
-            waker = FakeWaker()
-            state = Path(tempfile.mkdtemp()) / 'state.json'
-            state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
-            MoodPoller(api, waker, agent='re', state_path=state, now=lambda: T0 + timedelta(minutes=30),
-                       **kwargs).poll_once()
-            prompt = waker.woken[0][1]
-            self.assertIn(has, prompt)
-            self.assertNotIn(lacks, prompt)
+        waker = FakeWaker()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        MoodPoller(api, waker, agent='blu', state_path=state, now=lambda: T0 + timedelta(minutes=30)).poll_once()
+        prompt = waker.woken[0][1]
+        self.assertNotIn('letter', prompt.lower())
+        self.assertIn('Who you are is in your instructions', prompt)
 
     def test_a_moods_own_container_never_starts_one_unless_told(self):
         self.assertEqual(self.run_for([], moods=['fresh']), [])
@@ -1680,7 +1677,7 @@ class NewMoodTest(TestCase):
         self.assertTrue(prompt.startswith('<session-lost mood="fresh">'))
         self.assertIn('your session here (s-gone-1)', prompt)
         self.assertIn('read_mood "fresh"', prompt)
-        self.assertIn('Dear me,', prompt)  # and the letter
+        self.assertIn('bootstrap_memory', prompt)  # and where what it knew is
         self.assertIn('[justin, 2026-09-29T18:10Z] @magent hello, new place', prompt)
 
     def test_a_session_still_on_disk_is_resumed_by_an_only_poller_as_ever(self):
