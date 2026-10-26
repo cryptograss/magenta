@@ -778,9 +778,11 @@
   #composer .field:focus-within { border-color: var(--accent); }
   #composer.dropping .field { outline: 2px dashed var(--accent); }
   #composer .field textarea { border: 0; border-radius: 0; background: none; outline: none; padding: 9px 6px; resize: none; }
-  #composer .field #attach, #composer .field #memoBtn, #composer .field #emojiBtn { flex: none; border: 0; border-radius: 50%; background: none;
+  #composer .field #attach, #composer .field #memoBtn, #composer .field #emojiBtn, #composer .field #sayHelp { flex: none; border: 0; border-radius: 50%; background: none;
                                                         min-width: 38px; height: 38px; padding: 0 8px; margin-bottom: 1px; }
   #composer .field #memoBtn.recording { border-radius: 19px; }
+  #composer .field #sayHelp { min-width: 28px; padding: 0 6px; color: var(--muted); font-size: 13px; font-weight: 600; cursor: help; opacity: .7; }
+  #composer .field #sayHelp:hover { opacity: 1; color: var(--accent); }
   /* Pictures with the words: thumbnails above the field, each with how far up it is and ✕ (renderTray). */
   #tray { flex: 0 0 100%; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0; scrollbar-width: thin; }
   #tray[hidden] { display: none; }
@@ -1378,7 +1380,9 @@
       <!-- One field, as Signal and WhatsApp have it: ＋ and 🎙 inside it, the words between. -->
       <div class="field">
         <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
-        <textarea id="say" placeholder="Say something. @name to address someone; [[Page]] links PickiPedia. Enter sends; Ctrl+Enter for a new line." rows="2"></textarea>
+        <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
+        <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
+        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @agents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
@@ -5553,7 +5557,6 @@
     sayBox.style.height = sayBox.scrollHeight + 2 + 'px';
   }
   // Short: a phone's box is narrow, and a placeholder can't wrap or end in an ellipsis there.
-  if (phone) { sayBox.placeholder = 'Say something…'; sayBox.rows = 1; }
   sayBox.addEventListener('input', fitSay);
   addEventListener('resize', fitSay);  // turning the phone rewraps what's typed
 
@@ -5583,6 +5586,7 @@
   }
   // What's said next makes an old error old news.
   sayBox.addEventListener('input', () => { const err = composer.querySelector('.err'); if (err) err.remove(); });
+  document.getElementById('sayHelp').addEventListener('click', e => { showNote(e.currentTarget.title, 9000); sayBox.focus(); });
   function showNote(message, ms, isHtml) {  // a word under the box, gone after a while (isHtml: already escaped, with a link)
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
     composer.insertAdjacentHTML('beforeend', `<span class="note">${isHtml ? message : esc(message)}</span>`);
