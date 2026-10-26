@@ -2319,6 +2319,7 @@ class MoodPoller:
             self.state['consider'][slug] = {
                 'web_seen': web and web['id'], 'web_seen_at': web and web['created_at'],
                 'newest_seen': newest and newest['id'],
+                'emergent_seen': newest and newest['id'], 'emergent_seen_at': newest and newest['created_at'],
                 # From now, not from the last word: a runner just started (or
                 # deployed) shouldn't greet every quiet Mood at once.
                 'quiet_since': now.isoformat(),
@@ -2335,15 +2336,33 @@ class MoodPoller:
         busy = bool(m.get('typing')) or m.get('activity') is not None
         debounce = timedelta(seconds=self.knob(slug, 'consider_after', self.debounce.total_seconds()))
 
-        if web and web['id'] != st['web_seen']:
-            if busy or now - parse_time(web['created_at']) < debounce:
+        # Another emergent's words are something to consider too, as a person's are (Justin, 26 Oct: "I _want_
+        # emergent messages to trigger consideration ... it's quite plausible that during that time you'll actually
+        # discover something useful"). Never its own; the wakes and the harness's notes aren't anyone's words.
+        if 'emergent_seen' not in st:  # first sight of this rule: what was said before now isn't owed a look
+            st['emergent_seen'] = newest and newest['id']
+            st['emergent_seen_at'] = newest and newest['created_at']
+            self.save()
+        emergent = (newest and newest['id'] != st.get('emergent_seen')
+                    and newest.get('sender') not in (self.agent, 'mood-poller', 'harness')
+                    and not (human and newest['id'] == human['id']))
+        fresh_web = web and web['id'] != st['web_seen']
+        if fresh_web or emergent:
+            latest = max(parse_time(x['created_at']) for x in ([web] if fresh_web else []) + ([newest] if emergent else []))
+            if busy or now - latest < debounce:
                 return None  # let them finish
             recent = self.api.recent(slug, limit=200)
             seen_at = parse_time(st['web_seen_at']) if st.get('web_seen_at') else None
-            posts = [t for t in recent['turns'] if t.get('is_human') and t.get('via') == 'web'
-                     and (seen_at is None or parse_time(t['created_at']) > seen_at)]
-            st['web_seen'], st['web_seen_at'] = web['id'], web['created_at']
-            st['idle_after'] = None  # a person spoke: back to the first wait
+            agent_seen_at = parse_time(st['emergent_seen_at']) if st.get('emergent_seen_at') else None
+            posts = [t for t in recent['turns']
+                     if (t.get('is_human') and t.get('via') == 'web' and (seen_at is None or parse_time(t['created_at']) > seen_at))
+                     or (not t.get('is_human') and t.get('sender') != self.agent
+                         and (agent_seen_at is None or parse_time(t['created_at']) > agent_seen_at))]
+            if fresh_web:
+                st['web_seen'], st['web_seen_at'] = web['id'], web['created_at']
+                st['idle_after'] = None  # a person spoke: back to the first wait
+            if newest:
+                st['emergent_seen'], st['emergent_seen_at'] = newest['id'], newest['created_at']
             self.save()
             # A mention is answered by the mention path, whose prompt carries
             # the conversation around it; only what came after is left.

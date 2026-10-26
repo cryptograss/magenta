@@ -1090,6 +1090,24 @@ class ConsiderLoopTest(TestCase):
         self.assertIn('► [skyler', prompt)
         self.assertEqual(self.waker.options, {'effort': 'medium', 'budget': 3.0, 'model': None})
 
+    def test_another_emergents_words_are_considered_too(self):
+        # Justin, 26 Oct: "I _want_ emergent messages to trigger consideration" -- no guard, people there or not.
+        api = ConsiderAPI()
+        poller = self.make(api, FakeScreen('pass'))
+        api.add(post('r', 1, sender='re', via='session', text='The schema wants a weekday, not a date.') | {'is_human': False})
+        self.at(minutes=2)
+        self.assertEqual(poller.consider_once(), [('m26', 'silent')])
+        self.assertIn('► [re', self.waker.woken[0][1])
+        self.assertEqual(poller.consider_once(), [])  # once
+
+    def test_never_its_own(self):
+        api = ConsiderAPI()
+        poller = self.make(api, FakeScreen('pass'))
+        api.add(post('m', 1, sender='magent', via='session', text='Here is the schema.') | {'is_human': False})
+        self.at(minutes=2)
+        self.assertEqual(poller.consider_once(), [])
+        self.assertEqual(self.waker.woken, [])
+
     def test_speaking_up_is_an_outcome_too(self):
         api = ConsiderAPI()
         poller = self.make(api, FakeScreen('pass'), waker=FakeWaker(reply='It was Kuba, I think.'))
