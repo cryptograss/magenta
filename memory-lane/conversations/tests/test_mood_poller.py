@@ -1694,7 +1694,22 @@ class NewMoodTest(TestCase):
         MoodPoller(api, waker, agent='blu', state_path=state, now=lambda: T0 + timedelta(minutes=30)).poll_once()
         prompt = waker.woken[0][1]
         self.assertNotIn('letter', prompt.lower())
-        self.assertIn('Who you are is in your instructions', prompt)
+        # Without --instructions, none came with the turn: its memory says who it is (blu's edge case).
+        self.assertIn('Who you are, bootstrap_memory tells you', prompt)
+        self.assertNotIn('in your instructions', prompt)
+
+    def test_with_instructions_a_fresh_session_is_told_they_say_who_it_is(self):
+        api = FakeAPI([mention('fresh', dict(turn('a', 'justin', 10, '@blu hello, new place'), via='web'))],
+                      sessions={'fresh': []})
+        waker = FakeWaker()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(api, waker, agent='blu', state_path=state, now=lambda: T0 + timedelta(minutes=30),
+                            instructions=True)
+        poller.instructions_for = lambda slug: ('(system)', None)
+        poller.turn_line = lambda bundled: ''
+        poller.poll_once()
+        self.assertIn('Who you are is in your instructions, given with this turn', waker.woken[0][1])
 
     def test_a_moods_own_container_never_starts_one_unless_told(self):
         self.assertEqual(self.run_for([], moods=['fresh']), [])

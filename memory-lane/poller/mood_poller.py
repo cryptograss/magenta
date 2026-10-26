@@ -786,19 +786,28 @@ class Harnesses:
 # What a session started with none of its history is told, for finding it again. Who it is comes with every
 # turn now (--instructions, from PickiPedia); the letter that once said so, poller/letter.md, is retired
 # (kept at User:JMyles/letters-to-emergents/25).
-REORIENT = ('Who you are is in your instructions, given with this turn. What you knew is in the record: '
-            'bootstrap_memory first, then read_mood, search_messages and get_message_context.')
+REORIENT = ('What you knew is in the record: bootstrap_memory first, then read_mood, search_messages and '
+            'get_message_context.')
 
 
-def new_mood_opening(slug):
+def reorient(instructions=True):
+    """Where who it is comes from, then where what it knew is. A poller without --instructions
+    (none runs so today) mustn't be told its instructions came with the turn (blu, emergence, 26 Oct)."""
+    who = ('Who you are is in your instructions, given with this turn. ' if instructions
+           else 'Who you are, bootstrap_memory tells you: your journal and your own words are there. ')
+    return who + REORIENT
+
+
+def new_mood_opening(slug, instructions=True):
     """What a new Mood's first session is told before the mention: where it
     is, and how to find what it knew."""
     return [f'<new-mood mood="{slug}">',
             'This Mood is new: no session of yours has been here, so this one has just started, '
-            'with none of your history in it. ' + REORIENT + ' Then answer what was asked.', '</new-mood>', '']
+            'with none of your history in it. ' + reorient(instructions) + ' Then answer what was asked.',
+            '</new-mood>', '']
 
 
-def lost_session_opening(slug, session_id):
+def lost_session_opening(slug, session_id, instructions=True):
     """What a session started over is told, when the agent's own session in
     a Mood is gone from the only machine it could have been on (its home was
     lost with its container): that it has been here, and where to find what
@@ -807,7 +816,7 @@ def lost_session_opening(slug, session_id):
             f'You have been in this Mood before, but your session here ({session_id[:8]}) is gone from the '
             'machine it lived on (most likely its container was rebuilt without its home). This session has just '
             'started, with none of that history in it. The record kept everything: what you said here, what '
-            'was asked, what was settled. ' + REORIENT + ' Before you answer, '
+            'was asked, what was settled. ' + reorient(instructions) + ' Before you answer, '
             f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest '
             'summary, and get_message_context for anything it points to) until you know what is settled and '
             'what is open. Then answer what was asked.', '</session-lost>', '']
@@ -824,7 +833,7 @@ def harness_back_opening(slug, was, now, since=None):
             f'said there: read_mood "{slug}"{since_text}.', '</harness-switch>', '']
 
 
-def harness_new_opening(slug, was, now):
+def harness_new_opening(slug, was, now, instructions=True):
     """What a session is told when the Mood's model moves it to a harness that
     has no session of its here: that it has been here, through the other, and
     where to find what it knew."""
@@ -832,7 +841,7 @@ def harness_new_opening(slug, was, now):
             f"You have been in this Mood before, through {HARNESS_NAMES.get(was, was)}. This Mood's model now "
             f'runs on {HARNESS_NAMES.get(now, now)}, which cannot resume those sessions, so this one has just '
             'started, with none of that history in it. The record kept everything: what you said here, what '
-            'was asked, what was settled. ' + REORIENT + ' Before you answer, '
+            'was asked, what was settled. ' + reorient(instructions) + ' Before you answer, '
             f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest summary, '
             'and get_message_context for anything it points to) until you know what is settled and what is '
             'open. Then answer what was asked.', '</harness-switch>', '']
@@ -1695,9 +1704,9 @@ class MoodPoller:
         if commands:
             session = sessions[0]
         if fresh:
-            prompt = '\n'.join(new_mood_opening(slug)) + prompt
+            prompt = '\n'.join(new_mood_opening(slug, self.instructions)) + prompt
         elif lost:
-            prompt = '\n'.join(lost_session_opening(slug, sessions[0])) + prompt
+            prompt = '\n'.join(lost_session_opening(slug, sessions[0], self.instructions)) + prompt
         elif switched:
             prompt = '\n'.join(switched) + prompt
         if self.dry_run:
@@ -2357,7 +2366,7 @@ class MoodPoller:
             logger.info(f'{slug}: back on {harness}, from {own}')
             return own, harness_back_opening(slug, was, harness, self.waker.last_touched(own))
         logger.info(f'{slug}: moving to {harness}: a new session there')
-        return None, harness_new_opening(slug, was, harness)
+        return None, harness_new_opening(slug, was, harness, self.instructions)
 
     def ours(self, slug):
         """Whether this runner can wake the agent in `slug`: its newest session there
