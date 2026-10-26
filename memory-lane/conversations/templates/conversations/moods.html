@@ -1441,6 +1441,28 @@
     return 'waiting for ' + names.split(/,\s*/).map(n => `<b style="color: ${agentColor(n)}">${esc(n)}</b>`).join(', ')
       + (to ? ' to ' + esc(to) : '');
   }
+  function humanDuration(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return s + ' s';
+    const m = Math.round(s / 60);
+    if (m < 60) return m + ' min';
+    return Math.round(m / 60) + ' h';
+  }
+  // When an agent whose arrival was waited for posts, flip its preceding waitline to past tense
+  // with elapsed time: "magent waited for 12 s for re to set up the joke" (Justin, 25 Oct).
+  function resolveWaits(container, agentName, resolvedAt) {
+    const resolvedMs = new Date(resolvedAt).getTime();
+    container.querySelectorAll('.waitline[data-waiting-for]').forEach(line => {
+      if (!line.dataset.waitingFor.split(',').includes(agentName)) return;
+      const dur = humanDuration(resolvedMs - new Date(line.dataset.waitAt).getTime());
+      const verbSpan = line.querySelector('.wait-verb');
+      if (verbSpan) {
+        const rest = waitedFor(line.dataset.waitReason).replace(/^waiting for /, '');
+        verbSpan.innerHTML = `waited for ${esc(dur)} for ` + rest;
+      }
+      delete line.dataset.waitingFor;
+    });
+  }
   function agentColor(name) {
     if (AGENT_COLORS[name]) return AGENT_COLORS[name];
     let h = 0;
@@ -3481,7 +3503,11 @@
       const line = document.createElement('div');
       line.className = 'waitline';
       line.style.setProperty('--who', agentColor(q.sender));
-      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> is ${waitedFor(q.reason)}`
+      const waitForNames = String(q.reason || '').replace(/^waiting for /, '').split(/ to /)[0].split(/,\s*/);
+      line.dataset.waitingFor = waitForNames.join(',');
+      line.dataset.waitAt = q.created_at;
+      line.dataset.waitReason = q.reason || '';
+      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> <span class="wait-verb">is ${waitedFor(q.reason)}</span>`
         + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
       container.appendChild(line);
       return;
@@ -3867,6 +3893,7 @@
           // its link (Justin, 19 Oct: replies with nowhere to take their address from).
           prev = null;
           body.appendChild(turnEl(it.v, isNew));
+          resolveWaits(container, agent, it.v.created_at);
           // Naming another agent wakes it: its turn is timed from here.
           (it.v.mentions || []).filter(n => n !== agent).forEach(n => {
             (container._askedOf ||= {})[n] = new Date(it.v.created_at).getTime() / 1000;
