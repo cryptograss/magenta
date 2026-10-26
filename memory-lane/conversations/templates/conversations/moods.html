@@ -493,8 +493,9 @@
   a.mention:hover { text-decoration: underline; }
   /* Each @name its own way (Skyler, 26 Oct): an emergent's in its colour; a person's in their name art (markTurn). */
   .turn .body .mention.tagged, .mention.tagged { color: var(--tag); background: color-mix(in srgb, var(--tag) 15%, transparent); }
-  .turn .body .mention.tagged.me, .mention.tagged.me { background: var(--mention); color: inherit; }  /* yours: gold, as before */
-  .mention.me { background: var(--mention); }
+  .turn .body .mention.named, .mention.named { background: none; padding: 0; }  /* a person in their own name art, bare */
+  /* Yours: a gold underline, no fill (Justin, 26 Oct: the fill read grey behind name art). */
+  .turn .body .mention.me, .mention.me { background: none; color: inherit; box-shadow: inset 0 -2px 0 var(--for-me); border-radius: 0; }
   .wake { font-size: .85em; margin-left: 2px; cursor: help; }  /* 👀 or 🔨: which tools a turn had */
   .mention .wake { margin-left: 3px; }
   .turn.new { animation: arrive .6s ease-out; }
@@ -1920,7 +1921,7 @@
     el.querySelectorAll('.mention[data-who]:not(.group)').forEach(s => {
       const who = s.dataset.who;
       if (human[who] === false) { s.style.setProperty('--tag', agentColor(who)); s.classList.add('tagged'); }
-      else if (human[who] && (looks[who] || {}).art && !s.querySelector('.art')) s.innerHTML = '@' + nameHtml(who);
+      else if (human[who] && (looks[who] || {}).art && !s.querySelector('.art')) { s.innerHTML = '@' + nameHtml(who); s.classList.add('named'); }
     });
   }
 
