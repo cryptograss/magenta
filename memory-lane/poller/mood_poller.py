@@ -910,6 +910,12 @@ CROSSTALK_ASK = ('If any of it bears on what you just said -- corrects it, overt
                  '<silent>a few words on why</silent>.')
 
 
+def seen_in(turn, prompt):
+    """Whether a post is in a wake's prompt, as the wake writes posts ([sender, time] text): its first words there."""
+    text = _WRAPPER_TAG.sub(r'‹\1\2', turn.get('text') or '').strip()
+    return bool(prompt and text) and f"[{turn.get('sender')}, " in prompt and text[:80] in prompt
+
+
 def crosstalk_opening(slug, began):
     return [f'<mood-wake mood="{slug}" reason="crosstalk">',
             f'While you were on your last turn here (from {began[11:16]}Z), others spoke. The Mood, newest '
@@ -2046,7 +2052,7 @@ class MoodPoller:
         if not crosstalk and not command:
             # What others say from here to its end is looked at once it has ended; a look at crosstalk
             # doesn't itself leave one, so two agents' looks can't keep waking each other.
-            self.after_turns[slug] = began
+            self.after_turns[slug] = (began, prompt)  # and what it was shown: that, it saw
         logger.info(f'{slug}: ' + (f'woke {session_id} as {new_session}' if session_id else f'started {new_session}')
                     + f'; {said}'
                     + (f'; ${cost:.4f}' if isinstance(cost, (int, float)) else '')
@@ -2204,7 +2210,8 @@ class MoodPoller:
             self.after_turns.clear()
             return []
         done = []
-        for slug, began in list(self.after_turns.items()):
+        for slug, kept in list(self.after_turns.items()):
+            began, shown = kept if isinstance(kept, tuple) else (kept, '')
             if not self.free(slug):
                 continue  # still running (or a new turn began, which leaves its own): look after
             self.after_turns.pop(slug, None)
@@ -2214,8 +2221,11 @@ class MoodPoller:
             try:
                 recent = self.api.recent(slug, limit=200)
                 since = parse_time(began)
+                # Only what the turn didn't see: a post made as it was being woken can land after it began and
+                # still be in its prompt (Justin, 26 Oct: a look "and as best I can tell, there was no crosstalk").
                 posts = [t for t in recent['turns'] if parse_time(t['created_at']) > since
-                         and t.get('sender') != self.agent and self.agent not in t.get('mentions', [])]
+                         and t.get('sender') != self.agent and self.agent not in t.get('mentions', [])
+                         and not seen_in(t, shown)]
                 if not posts or any(self.agent in t.get('mentions', []) for t in recent['turns']
                                     if parse_time(t['created_at']) > since):
                     continue  # nothing said meanwhile; or it was asked, and the mention path answers all of it
