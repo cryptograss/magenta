@@ -74,16 +74,21 @@ def blocks(wikitext):
         at = text.find(head, i)
         if at < 0:
             return out
-        depth, j = 0, at
+        depth, single, j = 0, 0, at
         while j < len(text):
             two = text[j:j + 2]
             if two == '{{':
                 depth, j = depth + 1, j + 2
+            elif single and text[j] == '}' and (two != '}}' or text[j:j + 3] == '}}}'):
+                # A {blank} right before the closing }} (e.g. ...{wait}}}): its } isn't half of }}.
+                single, j = single - 1, j + 1
             elif two == '}}':
                 depth, j = depth - 1, j + 2
                 if not depth:
                     break
             else:
+                if text[j] == '{':
+                    single += 1
                 j += 1
         body = text[at + len(head):j - 2]
         fields = {'dial': '', 'value': '', 'text': ''}
