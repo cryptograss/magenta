@@ -161,7 +161,7 @@ _PLACEHOLDER_CHARS = re.compile(r'[\x00\x01\x02]')
 _TRAILING_PUNCT = '.,;:!?)]\'"'
 _HEADING = re.compile(r'^#{1,6}\s+(.+)$')
 _BULLET = re.compile(r'^\s*[-*–]\s+(.*)$')
-_NUMBERED = re.compile(r'^\s*\d+[.)]\s+(.*)$')
+_NUMBERED = re.compile(r'^\s*(\d+)[.)]\s+(.*)$')
 _TABLE_SEP_CELL = re.compile(r'^:?-+:?$')
 
 
@@ -808,11 +808,18 @@ def render_html(text, mentionable=()):
             blocks.append('<p>' + inline('<br>'.join(paragraph)) + '</p>')
             paragraph.clear()
 
+    list_start = 1
+
     def flush_list():
         nonlocal list_tag
         if list_items:
-            items = ''.join(f'<li>{inline(i)}</li>' for i in list_items)
-            blocks.append(f'<{list_tag}>{items}</{list_tag}>')
+            def li(text, subs):
+                sub = ''.join(f'<li>{inline(t)}</li>' for t in subs)
+                return f'<li>{inline("<br>".join(text))}' + (f'<ul>{sub}</ul>' if sub else '') + '</li>'
+            items = ''.join(li(*i) for i in list_items)
+            # A list split by a blank line, a note or a sub-list goes on counting where it was.
+            start = f' start="{list_start}"' if list_tag == 'ol' and list_start != 1 else ''
+            blocks.append(f'<{list_tag}{start}>{items}</{list_tag}>')
             list_items.clear()
         list_tag = None
 
@@ -827,11 +834,15 @@ def render_html(text, mentionable=()):
             blocks.append(f'<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>')
         table_rows.clear()
 
-    for line in text.split('\n'):
+    lines = text.split('\n')
+    for n, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
             flush_paragraph()
-            flush_list()
+            # A blank line between numbered items (a loose list) keeps the list.
+            ahead = next((l for l in lines[n + 1:] if l.strip()), '')
+            if not (list_tag == 'ol' and _NUMBERED.match(ahead)):
+                flush_list()
             flush_table()
             continue
         if stripped.startswith('|') and stripped.endswith('|'):
@@ -846,19 +857,37 @@ def render_html(text, mentionable=()):
             blocks.append(stripped)
             continue
         heading = _HEADING.match(stripped)
+        wiki = lambda l: l.strip().startswith('# ')
+        if heading and wiki(line) and (n and wiki(lines[n - 1]) or n + 1 < len(lines) and wiki(lines[n + 1])):
+            numbered = re.match(r'#\s+(.+)', stripped)  # two or more '# ' lines together: the wiki's numbered list
+            flush_paragraph()
+            if list_tag != 'ol':
+                flush_list()
+                list_tag, list_start = 'ol', 1
+            list_items.append(([numbered.group(1)], []))
+            continue
         if heading:
             flush_paragraph()
             flush_list()
             blocks.append(f'<h4>{inline(heading.group(1))}</h4>')
             continue
         bullet, numbered = _BULLET.match(line), _NUMBERED.match(line)
+        indented = line[:1] in (' ', '\t')
+        if list_items and indented and list_tag == 'ol' and bullet:
+            list_items[-1][1].append(bullet.group(1))  # a sub-point of the numbered item above
+            continue
         if bullet or numbered:
             flush_paragraph()
             tag = 'ul' if bullet else 'ol'
             if list_tag != tag:
                 flush_list()
                 list_tag = tag
-            list_items.append((bullet or numbered).group(1))
+                if numbered:
+                    list_start = int(numbered.group(1))
+            list_items.append(([bullet.group(1) if bullet else numbered.group(2)], []))
+            continue
+        if list_items and indented and not list_items[-1][1]:
+            list_items[-1][0].append(stripped)  # the item's own next line
             continue
         flush_list()
         paragraph.append(stripped)
