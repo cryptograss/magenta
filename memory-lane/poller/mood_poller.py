@@ -997,7 +997,11 @@ OTHERS_ASKED = ('Others mentioned, and likely woken, by what woke you: {said}. E
 WAIT_OFFER = ('If you would rather answer after them, reply with only <wait for="{first}" to="a few words"/>, '
               'the words saying what you wait for them to do ("settle the schema"), shown and read aloud as '
               '"{agent} is waiting for {first} to settle the schema": you are woken again once they have answered, '
-              'or have finished without answering; while they are at work, the wait goes on.')
+              'or have finished without answering; while they are at work, the wait goes on.{also}')
+# When more than one other agent was asked: one wait on all of them, not a wake per answer (the rock-paper-scissors
+# night, 26 Oct: "mention me when you've both revealed" cost a wake each; the parser took "re,blu" all along).
+WAIT_ALL = (' To wait for all of them at once, name them together: <wait for="{all}" to="a few words"/>; you are '
+            'woken once the last has answered.')
 
 
 def also_asked(owed, agent, page, may_wait=True, texts=None):
@@ -1025,7 +1029,9 @@ def also_asked(owed, agent, page, may_wait=True, texts=None):
         return 'has answered, below' if name in answered else 'not at work here yet'
     said = '; '.join(f'{name}, {state(name)}' for name in asked)
     # Justin's words (24 Oct): "mentioned, and likely woken" -- whether they answer is theirs to say.
-    wait = ' ' + wake_line(texts, 'wait-offer', WAIT_OFFER, first=asked[0], agent=agent).strip() if may_wait else ''
+    also = wake_line(texts, 'wait-all', WAIT_ALL, all=','.join(asked)) if len(asked) > 1 else ''
+    wait = (' ' + wake_line(texts, 'wait-offer', WAIT_OFFER, first=asked[0], agent=agent, also=also).strip()
+            if may_wait else '')
     return ['', wake_line(texts, 'others-asked', OTHERS_ASKED, said=said, wait=wait)]
 
 
