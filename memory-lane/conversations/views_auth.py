@@ -1018,7 +1018,7 @@ def api_task(request, name, task):
     POST {"params": {"names": [...]}, "mood": "connectome"} -- mood only to run it somewhere
     other than its page says.
 
-    The task is its PickiPedia page, Cryptograss:Agents/<Name>/Tasks/<Task>, at its newest
+    The task is its PickiPedia page, Cryptograss:Emergents/<Name>/Tasks/<Task>, at its newest
     trusted revision (services/tasks.py). Started, it is a line in the Mood that wakes the
     agent there; refused there (over its cap, a blank unfilled), a line that says why. 201
     with the line either way; 400 if it can't be put anywhere.

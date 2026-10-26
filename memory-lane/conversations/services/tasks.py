@@ -1,8 +1,8 @@
-"""An agent's tasks: work it is woken for by a schedule or by a person's call, not by a mention.
+"""An emergent's tasks: work it is woken for by a schedule or by a person's call, not by a mention.
 
-A task is a PickiPedia page, Cryptograss:Agents/<Name>/Tasks/<Task>:
+A task is a PickiPedia page, Cryptograss:Emergents/<Name>/Tasks/<Task>:
 
-    {{Agent task|mood=connectome|schedule=mondays 09:00|cap=2|tools=full}}
+    {{Emergent task|mood=connectome|schedule=mondays 09:00|cap=2|tools=full}}
     Connect these pickers to the people they have played with: {names}.
     ...
 
@@ -42,7 +42,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 SOURCE = 'task'
-TEMPLATE = 'Agent task'
+TEMPLATE = 'Emergent task'
+TEMPLATES = ('Emergent task', 'Agent task')  # both accepted while trusted revisions still say {{Agent task|...}}
 COMMENTS = re.compile(r'<!--.*?-->', re.S)
 BLANK = re.compile(r'(?<!\{)\{([a-z][a-z0-9_]*)\}(?!\})')
 NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 _-]{0,60}$')
@@ -60,7 +61,7 @@ class Refused(Exception):
 
 
 def title(agent, task):
-    return f'Cryptograss:Agents/{agent[:1].upper()}{agent[1:]}/Tasks/{task}'
+    return f'Cryptograss:Emergents/{agent[:1].upper()}{agent[1:]}/Tasks/{task}'
 
 
 @dataclass
@@ -81,10 +82,17 @@ class Task:
 # --- the page -------------------------------------------------------------------
 
 def template_fields(wikitext):
-    """({setting: value}, the page without the template) for its {{Agent task|...}}; ({}, page) if none."""
+    """({setting: value}, the page without the template) for its {{Emergent task|...}} (or {{Agent task|...}}); ({}, page) if none."""
     from poller.wiki_rules import _split_top
-    head = '{{' + TEMPLATE
-    at = wikitext.find(head)
+    heads = ['{{' + n for n in TEMPLATES]
+    at, head = -1, ''
+    for i in range(len(wikitext)):
+        for h in heads:
+            if wikitext.startswith(h, i) and wikitext[i + len(h):i + len(h) + 1] in ('|', '}', '\n'):
+                at, head = i, h
+                break
+        if at >= 0:
+            break
     if at < 0:
         return {}, wikitext
     depth, j = 0, at
