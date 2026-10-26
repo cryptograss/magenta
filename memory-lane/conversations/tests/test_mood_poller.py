@@ -10,7 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import TestCase
 
-from poller.mood_poller import SILENT, WAIT_FOR, ClaudeCodeWaker, Harnesses, MoodPoller, parse_time, project_dir_name
+from poller.mood_poller import (SILENT, WAIT_FOR, ClaudeCodeWaker, Harnesses, MoodPoller, parse_time, project_dir_name,
+                                since_last_word)
 
 T0 = datetime(2026, 9, 29, 18, 0, tzinfo=timezone.utc)
 
@@ -2308,3 +2309,88 @@ class CrosstalkTest(TestCase):
         self.at(3)
         self.assertEqual(self.poller.crosstalk_once(), [])
         self.assertEqual(self.waker.woken, [])
+
+
+class FlakyWaker(FakeWaker):
+    """A harness whose provider fails `failures` times -- no words, nothing spent, "Provider finish_reason:
+    error" (re and blu in #emergence, 25 Oct) -- then answers."""
+
+    def __init__(self, failures=1, reply='here now', ending='error', cost=0.0):
+        super().__init__(reply=reply)
+        self.failures, self.ending, self.cost = failures, ending, cost
+
+    def wake(self, session_id, prompt, new_session_id=None, on_event=None, stop=None, **options):
+        self.woken.append((session_id, prompt))
+        if self.failures > 0:
+            self.failures -= 1
+            self.last_result = {'subtype': self.ending, 'run_cost_usd': self.cost,
+                                **({'error': 'Provider finish_reason: error'} if self.ending == 'error' else {})}
+            return new_session_id or 'fork-x', ''
+        self.last_result = {'subtype': 'success', 'run_cost_usd': 0.02}
+        return new_session_id or 'fork-1', self.reply
+
+
+class FailedTurnTest(TestCase):
+    """A turn that comes back with nothing is tried once more; failing again, the Mood is told in a line; and a
+    failed turn leaves no crosstalk look behind it (25 Oct)."""
+
+    def setUp(self):
+        MoodPoller.RETRY_PAUSE = 0
+        self.api = ConsiderAPI()
+
+    def tearDown(self):
+        MoodPoller.RETRY_PAUSE = 5
+
+    def poller(self, waker):
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        return MoodPoller(self.api, waker, state_path=state, now=lambda: T0)
+
+    def test_a_provider_hiccup_is_tried_once_more(self):
+        waker = FlakyWaker(failures=1)
+        outcome, reply, _ = self.poller(waker).run_turn_for('m26', 's-local', '<mood-wake mood="m26">\nhi\n</mood-wake>')
+        self.assertEqual((outcome, reply), ('woken', 'here now'))
+        self.assertEqual([s for s, _ in waker.woken], ['s-local', 's-local'])  # from the same session, twice
+        self.assertEqual(self.api.quiets, [])
+
+    def test_failing_twice_the_mood_is_told(self):
+        waker = FlakyWaker(failures=2)
+        poller = self.poller(waker)
+        outcome, reply, _ = poller.run_turn_for('m26', 's-local', '<mood-wake mood="m26">\nhi\n</mood-wake>')
+        self.assertEqual(reply, '')
+        self.assertEqual(len(waker.woken), 2)  # never a third
+        self.assertEqual(self.api.quiets, [('m26', "couldn't answer: Provider finish_reason: error (tried twice)", 'failed')])
+        self.assertEqual(poller.after_turns, {})  # it said nothing: no crosstalk look after it
+
+    def test_over_its_budget_is_not_tried_again_but_said(self):
+        waker = FlakyWaker(failures=1, ending='error_max_budget_usd', cost=0.75)
+        self.poller(waker).run_turn_for('m26', 's-local', '<mood-wake mood="m26">\nhi\n</mood-wake>')
+        self.assertEqual(len(waker.woken), 1)
+        self.assertEqual(self.api.quiets, [('m26', "couldn't answer: error_max_budget_usd", 'failed')])
+
+    def test_a_turn_that_spoke_leaves_its_crosstalk_look(self):
+        poller = self.poller(FlakyWaker(failures=0))
+        poller.run_turn_for('m26', 's-local', '<mood-wake mood="m26">\nhi\n</mood-wake>')
+        self.assertIn('m26', poller.after_turns)
+
+    def test_the_failure_line_is_not_the_agents_last_word(self):
+        turns = [{'id': 'a', 'sender': 'justin', 'created_at': (T0 + timedelta(minutes=1)).isoformat()}]
+        failed = [{'sender': 'magent', 'by': 'failed', 'created_at': (T0 + timedelta(minutes=2)).isoformat()}]
+        self.assertEqual(since_last_word(turns, 'magent', silences=failed), turns)
+
+
+class CrosstalkCapTest(TestCase):
+    """A look at crosstalk isn't counted against the hour's unasked looks, nor stopped by them (25 Oct: "would
+    consider, but 6 this hour already" in busy stretches); the day's dollars still hold it."""
+
+    def test_crosstalk_looks_leave_the_hours_count_alone(self):
+        api, waker = ConsiderAPI(), FakeWaker(reply='<silent>no</silent>')
+        poller = MoodPoller(api, waker, state_path=Path(tempfile.mkdtemp()) / 's.json', now=lambda: T0, screen=FakeScreen())
+        poller.consider_once()
+        for _ in range(3):
+            poller.consider_wake('m26', '<mood-wake mood="m26" reason="crosstalk">\n</mood-wake>', crosstalk=True)
+        self.assertEqual(len(waker.woken), 3)  # they ran
+        self.assertEqual(poller.state['consider']['m26'].get('wakes', []), [])  # and weren't counted
+        st = poller.state['consider']['m26']
+        st['wakes'] = [T0.isoformat()] * poller.considers_per_hour  # the hour's unasked looks, all spent
+        self.assertFalse(poller.within_budget('m26'))
+        self.assertTrue(poller.within_budget('m26', hourly=False))
