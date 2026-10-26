@@ -1082,8 +1082,8 @@ def api_new_mood(request):
 
     Its slug comes from the title (made unique), and never changes. Nothing
     else is needed here: the first @mention there wakes an agent in a new
-    session (a runner that starts new ones; see poller/letter.md for what
-    that session is told). A system row says who started it.
+    session (a runner that starts new ones; see new_mood_opening in
+    poller/mood_poller.py for what that session is told). A system row says who started it.
     """
     from .models import ConversationParticipant
     from .services.mood_view import NEW_MOOD_SOURCE
