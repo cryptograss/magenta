@@ -154,3 +154,28 @@ class TidingsPageTests(TidingsTests):
         self.assertEqual(self.client.get(f'/moods/media/{sound.sha256}.webm/preview').status_code, 404)
         self.assertEqual(self.client.get(f'/moods/media/{fake_sha(99)}.png/preview').status_code, 404)
         self.assertEqual(self.client.get('/moods/media/not-a-sha.png/preview').status_code, 404)
+
+class KeptTest(TidingsTests):
+    """Tidings' pictures and Prompts are kept a while, not read afresh at every look (Justin, 21 Oct: 1.5-2.6 s);
+    the pictures' copy goes the moment a picture is stored or posted, a face named, a post edited or deleted."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_kept_then_read_afresh_when_a_picture_is_posted(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        import uuid as _uuid
+        from conversations.models import Media, Message, Mood, ThinkingEntity
+        justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
+        mood = Mood.objects.create(slug='pics')
+        self.assertEqual(tidings.picture_tidings(), [])
+        with CaptureQueriesContext(connection) as asked:
+            self.assertEqual(tidings.picture_tidings(), [])
+        self.assertEqual(len(asked), 0)  # kept
+        png = b'\x89PNG\r\n\x1a\n' + b'\x00' * 32
+        media = Media.objects.create(sha256='a' * 64, mime='image/png', data=png, size=len(png), added_by=justin)
+        Message.objects.create(id=_uuid.uuid4(), sender=justin, mood=mood, timestamp=1, source_file='mood-web',
+                               content=f'look ![x]({media.url})')
+        self.assertEqual([p['sha256'] for p in tidings.picture_tidings()], ['a' * 64])  # posted: read afresh
