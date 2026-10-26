@@ -15,7 +15,7 @@
   :root {
     --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
     --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1;
-    --human: #2a5d9f; --agent: #b8106b; --code: #f3efe8; --mention: #fff3c4;
+    --human: #2a5d9f; --agent: #b8106b; --code: #f3efe8; --mention: #fff3c4; --for-me: #d9a400;
     --hover: #f6f3ee; --warn-ink: #7a4b00; --warn-bg: #ffe9b0; --dot-edge: #d6cfc2; --err: #b3261e;
   }
   /* Dark, when the system is: the same tokens, night colours. */
@@ -23,7 +23,7 @@
     :root {
       --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
       --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b;
-      --human: #86b4f0; --agent: #ef5aa6; --code: #29252c; --mention: #4a3f12;
+      --human: #86b4f0; --agent: #ef5aa6; --code: #29252c; --mention: #4a3f12; --for-me: #c99a1e;
       --hover: #262228; --warn-ink: #ffd27a; --warn-bg: #3b2c08; --dot-edge: #4d4652; --err: #ff8a80;
     }
   }
@@ -434,6 +434,10 @@
   /* Every message an agent says in the Mood carries its colour down the margin (--who), whoever it's
      for (Justin, 18 Oct): not its thinking, steps, silences or compactions, which aren't .turn.agent. */
   .turn.agent { border-left-color: var(--who, var(--agent)); }
+  /* For you (it names you, or a group you're in, or replies to you): the other three edges, in the gold of your
+     highlighted @name, so the left keeps its sender's colour (Justin, 26 Oct). */
+  .turn.mentions-me, .turn.for-me { box-shadow: inset 0 2px 0 var(--for-me), inset -2px 0 0 var(--for-me), inset 0 -2px 0 var(--for-me);
+                                    border-top-color: transparent; padding-right: 10px; border-radius: 0 6px 6px 0; }
   body.only-mine .turn:not(.mentions-me) { display: none; }
   .turn .who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
   .turn .who .name { font-weight: 700; }
@@ -478,6 +482,9 @@
   .mention { background: var(--code); border-radius: 4px; padding: 0 4px; font-weight: 600; }
   a.mention { color: inherit; text-decoration: none; }  /* to their PickiPedia page (mood_view.mention_page) */
   a.mention:hover { text-decoration: underline; }
+  /* Each @name its own way (Skyler, 26 Oct): an emergent's in its colour; a person's in their name art (markTurn). */
+  .turn .body .mention.tagged, .mention.tagged { color: var(--tag); background: color-mix(in srgb, var(--tag) 15%, transparent); }
+  .turn .body .mention.tagged.me, .mention.tagged.me { background: var(--mention); color: inherit; }  /* yours: gold, as before */
   .mention.me { background: var(--mention); }
   .wake { font-size: .85em; margin-left: 2px; cursor: help; }  /* 👀 or 🔨: which tools a turn had */
   .mention .wake { margin-left: 3px; }
@@ -1881,6 +1888,13 @@
     // You, or a group you're in (@core).
     el.querySelectorAll('.mention').forEach(s => s.classList.toggle('me', s.dataset.who === me
       || (s.dataset.members || '').split(',').includes(me)));
+    // Who's tagged, at a glance: an emergent in its colour (it wakes); a person written their own way, as their name
+    // is above their messages (Justin, 26 Oct: the icon's colour is kept to mean something else); a group stays plain.
+    el.querySelectorAll('.mention[data-who]:not(.group)').forEach(s => {
+      const who = s.dataset.who;
+      if (human[who] === false) { s.style.setProperty('--tag', agentColor(who)); s.classList.add('tagged'); }
+      else if (human[who] && (looks[who] || {}).art && !s.querySelector('.art')) s.innerHTML = '@' + nameHtml(who);
+    });
   }
 
   function renderHead(m) {
