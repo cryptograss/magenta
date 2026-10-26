@@ -1103,12 +1103,44 @@ def api_new_mood(request):
         return JsonResponse({'error': 'a title, please'}, status=400)
     if len(title) > 200 or len(description) > 2000:
         return JsonResponse({'error': 'at most 200 characters for a title, 2000 for a description'}, status=400)
-    mood = Mood.objects.create(slug=Mood.free_slug(title), title=title, description=description)
+    # A thread (Justin, 25 Oct): opened from a Mood, forked (its emergents go on from where they were there) or
+    # fresh (they start anew), with that Mood's settings carried over.
+    parent = None
+    if body.get('thread_of'):
+        parent = Mood.by_slug(str(body['thread_of']))
+        if parent is None:
+            return JsonResponse({'error': 'no such Mood to open a thread from'}, status=404)
+    fork = bool(parent) and body.get('fork', True) is not False
+    from django.utils import timezone as tz
+    mood = Mood.objects.create(slug=Mood.free_slug(title), title=title, description=description,
+                               thread_of=parent, forked_at=tz.now() if fork else None)
     system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+    kind = ('fork' if fork else 'fresh') if parent else None
     Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=NEW_MOOD_SOURCE,
-                           content={'type': 'created', 'by': device.entity_id, 'title': title},
+                           content={'type': 'created', 'by': device.entity_id, 'title': title,
+                                    **({'from_mood': parent.slug, 'kind': kind} if parent else {})},
                            timestamp=int(time.time() * 1000))
-    return JsonResponse({'slug': mood.slug, 'title': mood.title, 'description': mood.description}, status=201)
+    if parent:
+        _carry_settings(parent, mood, device.entity)
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=parent, source_file=NEW_MOOD_SOURCE,
+                               content={'type': 'thread', 'by': device.entity_id, 'title': title, 'to_mood': mood.slug,
+                                        'kind': kind},
+                               timestamp=int(time.time() * 1000))
+    return JsonResponse({'slug': mood.slug, 'title': mood.title, 'description': mood.description,
+                         **({'thread_of': parent.slug, 'kind': kind} if parent else {})}, status=201)
+
+
+def _carry_settings(parent, thread, by):
+    """A thread starts with its Mood's settings as they stand -- each agent's listening, model, effort and the
+    rest -- as rows of its own, noted as carried; not the Mood's own flags (archived, pinned)."""
+    from .models import Setting
+    from .services import settings as knobs
+    newest = {}
+    for row in Setting.objects.filter(mood=parent).exclude(key__in=list(knobs.MOOD_KEYS)).order_by('created_at'):
+        newest[(row.key, row.agent_id)] = row
+    for row in newest.values():
+        Setting.objects.create(mood=thread, agent_id=row.agent_id, key=row.key, value=row.value, set_by=by,
+                               note=f'carried from #{parent.slug} into its thread')
 
 
 @require_POST
