@@ -874,7 +874,8 @@
              background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 3px 14px; cursor: pointer; }
   body.only-mine .work { display: none; }
   /* An agent's choices not to speak: small dots, side by side. */
-  .quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 4px -10px; padding: 4px 13px; }
+  /* Tight above and below (Justin, 26 Oct: "take up less vertical space"). */
+  .quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 1px 0 1px -10px; padding: 1px 13px; }
   /* A wait, kept as a line: the status line's words and colours, its dot still (Justin, 25 Oct). */
   /* Why an unasked turn or dot happened (WHY_MARKS): a small word beside the name; a crosstalk dot ringed. */
   .whymark { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 5px; margin-left: 4px; white-space: nowrap; cursor: help; }
@@ -890,8 +891,8 @@
   /* The runner's quick screen let this pass; the agent itself never looked. */
   .quiet .dot.screened { background: transparent; border-style: dashed; }
   /* One that thought before passing grows to hold how many words: still filled, as a quiet dot is. */
-  .quiet .dot.n { width: auto; min-width: 22px; height: 22px; border-radius: 11px; padding: 0 5px; font-family: inherit;
-                  font-size: 10.5px; font-weight: 600; line-height: 20px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .quiet .dot.n { width: auto; min-width: 17px; height: 17px; border-radius: 9px; padding: 0 4px; font-family: inherit;
+                  font-size: 9.5px; font-weight: 600; line-height: 15px; font-variant-numeric: tabular-nums; color: var(--ink); }
   .quiet .dot.n:hover, .quiet .dot.n.on { color: #fff; }
   .quiet .dot.screened:hover, .quiet .dot.screened.on { background: transparent; border-color: var(--who); }
   .quiet .why { flex-basis: 100%; font-size: 13px; color: var(--muted); font-style: italic; }
