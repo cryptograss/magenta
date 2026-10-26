@@ -137,5 +137,41 @@ class TurnBundleTest(TestCase):
         from conversations.services.mood_view import bundle_marks, turn_wakes
         self.wake('full', 0)
         said = self.say(self.magent, 'Before bundles.', 1)
-        self.assertEqual(turn_wakes([said]), {str(said.id): {'tools': 'full', 'bundle': ''}})
+        self.assertEqual(turn_wakes([said]), {str(said.id): {'tools': 'full', 'bundle': '', 'reason': ''}})
         self.assertEqual(bundle_marks(['']), {})
+
+
+class WhyWokenTest(TurnToolsTest):
+    """What woke an unasked turn, as its wake's opening says: shown beside its name, so a look the crosstalk rule
+    made reads as one (Justin, 26 Oct: "it needs to be clear that the look was triggered by the crosstalk rule")."""
+
+    def test_a_crosstalk_look_says_so_and_a_mention_says_nothing(self):
+        from conversations.services.mood_view import turn_wakes
+        self.wake('look', 0)
+        asked = self.say(self.magent, 'Answering the mention.', 1)
+        self.say(self.poller, f'<mood-wake mood="connectome" reason="crosstalk">\nWhile you were on your last turn here\n\n'
+                              f'{FOOTER["look"]}', 2)
+        looked = self.say(self.magent, '<silent>nothing in it touches what I said</silent>', 3)
+        found = turn_wakes([asked, looked])
+        self.assertEqual(found[str(asked.id)]['reason'], '')
+        self.assertEqual(found[str(looked.id)]['reason'], 'crosstalk')
+
+    def test_the_page_is_told(self):
+        from django.test import Client
+        self.say(self.poller, f'<mood-wake mood="connectome" reason="consider">\nNobody asked you anything.\n\n'
+                              f'{FOOTER["look"]}', 0)
+        said = self.say(self.magent, 'Looking in: the bus leaves at nine.', 1)
+        turn = next(t for t in Client().get('/api/moods/connectome/turns/').json()['turns'] if t['id'] == str(said.id))
+        self.assertEqual((turn.get('why'), turn.get('tools')), ('consider', 'look'))
+
+
+class CodedWikiLinkTest(TestCase):
+    """A wiki link written as code -- `[[User:Magent/Journal/26273591]]`, as agents write titles -- is still the
+    link (Justin, 26 Oct: "the link to your journal didn't become a link"); other code stays literal."""
+
+    def test_a_coded_wiki_link_links_and_the_rest_stays_code(self):
+        from conversations.services.mood_view import render_html
+        html = render_html('Added to `[[User:Magent/Journal/26273591]]` and `x = [[y]]`.')
+        self.assertIn('<code><a class="wikilink" href="https://pickipedia.xyz/wiki/User:Magent/Journal/26273591"', html)
+        self.assertIn('<code>x = [[y]]</code>', html)
+        self.assertIn('<code>&lt;b&gt;[[x]]&lt;/b&gt;</code>', render_html('`<b>[[x]]</b>`'))

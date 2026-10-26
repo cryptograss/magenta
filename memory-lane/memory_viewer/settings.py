@@ -314,3 +314,6 @@ SECURE_HSTS_SECONDS = 0 if DEBUG else 365 * 24 * 3600  # this host only, no subd
 import sys as _sys  # noqa: E402
 GEOIP_PATH = os.getenv('GEOIP_PATH', '')
 GEOIP_FETCH = os.getenv('GEOIP_FETCH', '0' if _sys.argv[1:2] == ['test'] else '1') != '0'
+
+# The network shut, and no background thread writing into a test's database (memory_viewer/test_runner.py).
+TEST_RUNNER = 'memory_viewer.test_runner.Runner'

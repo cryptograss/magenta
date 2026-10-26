@@ -721,16 +721,7 @@ OWN_HOSTS = {'magenta.cryptograss.live', 'memory-lane.maybelle.cryptograss.live'
 
 
 def _inline(text, mentionable=()):
-    # Inline code is literal: lift it out so nothing below formats it.
-    codes = []
-
-    def keep(match):
-        codes.append(match.group(1))
-        return f'\x01{len(codes) - 1}\x01'
-
-    text = _INLINE_CODE.sub(keep, text)
-
-    # Each linker's output is lifted out too, so no later pass ever reads
+    # Each linker's output is lifted out, so no later pass ever reads
     # markup: a URL inside an href, say, must not be linked again -- that
     # would let text break out of the attribute.
     made = []
@@ -738,6 +729,20 @@ def _inline(text, mentionable=()):
     def stash(markup):
         made.append(markup)
         return f'\x02{len(made) - 1}\x02'
+
+    # Inline code is literal: lift it out so nothing below formats it. But for a span that is only a wiki
+    # link -- `[[User:Magent/Journal/26273591]]`, as agents write titles -- which is still the link, in code's
+    # type (Justin, 26 Oct: "the link to your journal didn't become a link").
+    codes = []
+
+    def keep(match):
+        whole = _WIKILINK.fullmatch(match.group(1).strip())
+        if whole:
+            return stash(f'<code>{_wikilink(whole)}</code>')
+        codes.append(match.group(1))
+        return f'\x01{len(codes) - 1}\x01'
+
+    text = _INLINE_CODE.sub(keep, text)
 
     text = _IMAGE.sub(lambda m: stash(_image(m)), text)
     text = _WIKILINK.sub(lambda m: stash(_wikilink(m)), text)
@@ -1067,27 +1072,36 @@ def turn_tools(messages):
     return {mid: said['tools'] for mid, said in turn_wakes(messages).items() if said['tools']}
 
 
+# Why a wake was made, as its opening says (<mood-wake mood="..." reason="crosstalk">); a mention says none.
+# Read from the stored record, whose text is JSON: its quotes may come escaped (reason=\"crosstalk\").
+WAKE_REASON = re.compile(r'<mood-wake\b[^>]*?\breason=\\?"([a-z-]{1,20})\\?"')
+
+
 def turn_wakes(messages):
-    """{message id (str): {'tools': 'look', 'full' or '', 'bundle': the instructions' record id or ''}} for agents'
-    messages in a Mood, by the last wake before each in its session (the poller's turn line names the bundle,
-    mood_poller.turn_line). One with no wake within reach is left out."""
+    """{message id (str): {'tools': 'look', 'full' or '', 'bundle': the instructions' record id or '', 'reason': why
+    it was woken ('crosstalk', 'consider', 'quiet', 'arrival'; '' for a mention)}} for agents' messages in a Mood,
+    by the last wake before each in its session (the poller's turn line names the bundle, mood_poller.turn_line).
+    One with no wake within reach is left out."""
     from datetime import timedelta
     from django.db.models import TextField
-    from django.db.models.functions import Cast, Right
+    from django.db.models.functions import Cast, Left, Right
     from conversations.models import Message
     messages = [m for m in messages if m.session_id]
     if not messages:
         return {}
     reach = timedelta(seconds=WAKE_REACH)
     wakes = {}
-    for sid, at, tail in (Message.objects.filter(session_id__in={m.session_id for m in messages}, sender_id=WAKE_SENDER,
+    for sid, at, tail, head in (Message.objects.filter(session_id__in={m.session_id for m in messages}, sender_id=WAKE_SENDER,
                                                  created_at__gte=min(m.created_at for m in messages) - reach,
                                                  created_at__lte=max(m.created_at for m in messages))
-                          .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL))
-                          .order_by('created_at').values_list('session_id', 'created_at', 'tail')):
+                          .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL),
+                                    head=Left(Cast('content', TextField()), 300))
+                          .order_by('created_at').values_list('session_id', 'created_at', 'tail', 'head')):
         bundle = BUNDLE_SAID.search(tail or '')
+        reason = WAKE_REASON.search(head or '')
         wakes.setdefault(str(sid), []).append((at, {'tools': wake_said(tail or ''),
-                                                    'bundle': bundle.group(1) if bundle else ''}))
+                                                    'bundle': bundle.group(1) if bundle else '',
+                                                    'reason': reason.group(1) if reason else ''}))
     found = {}
     for m in messages:  # as text: a row just made holds its session as it was given, a row read as a UUID
         before = [said for at, said in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]
@@ -1615,16 +1629,24 @@ def last_said(mood, scan=200):
     return oldest  # nothing said in the latest `scan` rows: as good a guess as any
 
 
-def mood_payload(mood):
+def mood_payload(mood, light=False):
+    """A Mood as the page shows it. `light`: its name and description only, for a poll for what's new -- the
+    count of everything it ever said, and everyone who ever spoke there, read the whole of a big Mood, and a
+    poll every few seconds was paying for them each time (Justin, 25 Oct: "it takes several seconds")."""
+    head = {
+        'slug': mood.slug,
+        'title': mood.title or mood.slug,
+        'description': mood.description,
+        'eth_blockheight': mood.eth_blockheight,
+    }
+    if light:
+        return head
     # What was said, not the system's own rows (a redeploy announced in every
     # Mood, a rename, a turn's tally): those mustn't make a Mood look active.
     said = mood.messages.exclude(sender_id='system')
     last = last_said(mood)
     return {
-        'slug': mood.slug,
-        'title': mood.title or mood.slug,
-        'description': mood.description,
-        'eth_blockheight': mood.eth_blockheight,
+        **head,
         'message_count': said.count(),
         'last_at': last.isoformat() if last else None,
         'participants': sorted(e.name for e in mood.thinking_entities()),
