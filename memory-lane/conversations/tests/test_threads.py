@@ -109,3 +109,59 @@ class ForkedThreadTest(TestCase):
         self.assertEqual((body['session_id'], body['events']), ('f0f0f0f0-0000-4000-8000-000000000000', []))
         self.assertEqual(http.post.call_args.args[0], 'http://ml/api/moods/jams-setlist/stream/')
         poster.close(wait=1)
+
+
+@override_settings(MOOD_RUNNER_KEYS={'magent': KEY})
+class OpenThreadTest(TestCase):
+    """Opening a thread from the page: forked or fresh, its Mood's settings carried, a line in both, and the
+    thread's emergents given its Mood's instructions until it has its own."""
+
+    def setUp(self):
+        from conversations.services import mood_auth
+        from conversations.services import settings as knobs
+        self.justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
+        self.magent = ThinkingEntity.objects.update_or_create(name='magent', defaults={'is_biological_human': False})[0]
+        self.jams = Mood.objects.create(slug='jams', title='jams')
+        knobs.change('mention_effort', 'low', mood=self.jams, agent=self.magent, by=self.justin)
+        knobs.change('archived', True, mood=self.jams, by=self.justin)  # the Mood's own flag: never carried
+        _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
+        self.client.cookies[mood_auth.COOKIE] = token
+
+    def open(self, **body):
+        return self.client.post('/api/moods/new/', json.dumps({'title': 'Setlist', **body}), content_type='application/json')
+
+    def test_forked_by_default_with_its_settings_and_a_line_in_both(self):
+        from conversations.services import settings as knobs
+        made = self.open(thread_of='jams').json()
+        self.assertEqual((made['thread_of'], made['kind']), ('jams', 'fork'))
+        thread = Mood.objects.get(slug=made['slug'])
+        self.assertEqual(thread.thread_of, self.jams)
+        self.assertIsNotNone(thread.forked_at)
+        self.assertEqual(knobs.resolve(thread.slug, 'magent')['mention_effort'], 'low')
+        self.assertNotIn(thread.slug, knobs.archived_slugs())
+        here = self.client.get(f'/api/moods/{thread.slug}/turns/').json()
+        self.assertEqual((here['mood']['thread_of'], bool(here['mood']['forked_at'])), ('jams', True))
+        self.assertEqual([(e['type'], e.get('from_mood'), e.get('kind')) for e in here['events']], [('created', 'jams', 'fork')])
+        there = self.client.get('/api/moods/jams/turns/').json()
+        self.assertEqual([(e['type'], e.get('to_mood')) for e in there['events']], [('thread', thread.slug)])
+        self.assertEqual(there['mood']['threads'], [{'slug': thread.slug, 'title': 'Setlist'}])
+
+    def test_fresh_and_nowhere(self):
+        fresh = Mood.objects.get(slug=self.open(thread_of='jams', fork=False).json()['slug'])
+        self.assertIsNone(fresh.forked_at)
+        self.assertEqual(self.open(thread_of='nowhere').status_code, 404)
+        plain = self.open().json()
+        self.assertNotIn('thread_of', plain)
+
+    def test_its_mood_instructions_until_it_has_its_own(self):
+        from poller.instructions import bundle
+        pages = {'Cryptograss:Moods/jams/Instructions': [(7, 'JMyles', 'Keep it to the tunes.')]}
+        get = lambda title: pages.get(title, [(1, 'JMyles', 'Be kind.')] if 'Moods/' not in title or title.endswith('Moods/Instructions') else [])
+        import tempfile
+        b = bundle('magent', 'setlist', get=get, state_dir=tempfile.mkdtemp(), parent='jams')
+        self.assertIn('Keep it to the tunes.', b.text)
+        self.assertIn('Cryptograss:Moods/jams/Instructions', json.dumps(b.record()))
+        pages['Cryptograss:Moods/setlist/Instructions'] = [(9, 'JMyles', 'Only the setlist.')]
+        b = bundle('magent', 'setlist', get=get, state_dir=tempfile.mkdtemp(), parent='jams')
+        self.assertIn('Only the setlist.', b.text)
+        self.assertNotIn('Keep it to the tunes.', b.text)

@@ -1806,6 +1806,22 @@ class MoodPoller:
             self.replies[flight] = self.last_reply
         return outcome
 
+    THREAD_OF_FOR = 600  # seconds a Mood's parent is remembered: it never changes, but a Mood is made a thread once
+
+    def thread_of(self, slug):
+        """The Mood `slug` was opened from as a thread, or None: from the Mood's own look, remembered a while."""
+        known = getattr(self, '_thread_of', None)
+        if known is None:
+            known = self._thread_of = {}
+        if slug in known and self.now().timestamp() - known[slug][1] < self.THREAD_OF_FOR:
+            return known[slug][0]
+        try:
+            parent = ((self.api.recent(slug, limit=1) or {}).get('mood') or {}).get('thread_of')
+        except Exception:  # can't ask: its own instructions, or none, as before
+            return known.get(slug, (None,))[0]
+        known[slug] = (parent, self.now().timestamp())
+        return parent
+
     def instructions_for(self, slug):
         """(text, record): this agent's instructions for `slug`, as its harness takes them
         (--append-system-prompt), gathered fresh for each turn, so a page saved on PickiPedia holds
@@ -1820,7 +1836,7 @@ class MoodPoller:
                 from instructions import bundle
             # No block: it would change the instructions every turn (instructions.render says why); the wake
             # carries it instead.
-            b = bundle(self.agent, slug, record_id=record_id, others=self.other_agents())
+            b = bundle(self.agent, slug, record_id=record_id, others=self.other_agents(), parent=self.thread_of(slug))
             text, record = b.text, b.record()
         except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery instructions stand
             logger.error(f'{slug}: instructions not gathered ({e}); the recovery instructions stand in')

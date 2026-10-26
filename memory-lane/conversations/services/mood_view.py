@@ -1620,6 +1620,7 @@ def mood_payload(mood):
     # Mood, a rename, a turn's tally): those mustn't make a Mood look active.
     said = mood.messages.exclude(sender_id='system')
     last = last_said(mood)
+    from conversations.models import Mood
     return {
         'slug': mood.slug,
         'title': mood.title or mood.slug,
@@ -1628,4 +1629,9 @@ def mood_payload(mood):
         'message_count': said.count(),
         'last_at': last.isoformat() if last else None,
         'participants': sorted(e.name for e in mood.thinking_entities()),
+        # A thread: where it was opened from, and when its emergents went on from there (forked; none: fresh).
+        **({'thread_of': Mood.objects.filter(pk=mood.thread_of_id).values_list('slug', flat=True).first(),
+            'forked_at': mood.forked_at.isoformat() if mood.forked_at else None} if mood.thread_of_id else {}),
+        # Threads opened from here, newest first (closing one archives it).
+        'threads': [{'slug': s, 'title': t or s} for s, t in mood.threads.order_by('-created_at').values_list('slug', 'title')],
     }
