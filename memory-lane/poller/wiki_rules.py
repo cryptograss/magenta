@@ -152,3 +152,24 @@ class WikiTexts:
         """The text for one setting of a dial (discretion=reserved), else `fallback`."""
         _, found = self.page(DIALS)
         return next((b['text'] for b in found if b['dial'] == key and b['value'] == value), fallback)
+
+    def line(self, name, fallback, **fields):
+        """One of the wake's fixed lines, as the Dials page has it ({{Sent to agents|dial=line|value=<name>|text=...}};
+        Justin, 24 Oct: "where does that phrase live?"), else `fallback`; its {fields} filled in. A field the page
+        names that the code has none of stays as written; a text that can't be filled is the fallback's."""
+        return said(self.dial('line', name, fallback), fallback, fields)
+
+
+class _Kept(dict):
+    def __missing__(self, key):
+        return '{' + key + '}'
+
+
+def said(text, fallback, fields):
+    """`text` with its {fields} filled; `fallback` filled, if text can't be."""
+    for candidate in (text, fallback):
+        try:
+            return candidate.format_map(_Kept(fields))
+        except (ValueError, IndexError, AttributeError):
+            continue
+    return fallback
