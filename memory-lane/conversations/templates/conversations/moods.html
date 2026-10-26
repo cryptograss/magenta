@@ -876,6 +876,9 @@
   /* An agent's choices not to speak: small dots, side by side. */
   .quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 4px -10px; padding: 4px 13px; }
   /* A wait, kept as a line: the status line's words and colours, its dot still (Justin, 25 Oct). */
+  /* Why an unasked turn or dot happened (WHY_MARKS): a small word beside the name; a crosstalk dot ringed. */
+  .whymark { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 5px; margin-left: 4px; white-space: nowrap; cursor: help; }
+  .quiet .dot.crosstalk { box-shadow: 0 0 0 1.5px var(--panel), 0 0 0 2.5px var(--who, var(--agent)); }
   .waitline { display: flex; align-items: center; gap: 8px; margin: 4px 0; padding: 2px 3px; font-size: 13px; color: var(--muted); }
   .waitline .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); opacity: .35; flex: none; }
   .waitline b { color: var(--who, var(--agent)); }
@@ -3497,8 +3500,10 @@
       ? `screened for ${q.sender}: let pass without waking it · ${stamp(q.created_at)}`
       : `${q.sender} chose not to speak · ${stamp(q.created_at)}`
         + (q.tools === 'look' ? ' · looking only' : q.tools === 'full' ? ' · with full tools' : '')
+        + (WHY_MARKS[q.why] ? ` · woken by: ${WHY_MARKS[q.why][0]} (${WHY_MARKS[q.why][1]})` : '')
         + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
-    dot.dataset.why = q.reason || '(no reason given)';
+    dot.dataset.why = q.reason || '(no reason given)';  // what woke it is in its title, shown with this
+    if (q.why === 'crosstalk') dot.classList.add('crosstalk');
     if (thought) {
       dot.dataset.thought = thought;
       const words = wordsIn(thought);
@@ -3635,6 +3640,7 @@
     if (v.model) b._how.model = v.model;
     if (v.effort) b._how.effort = v.effort;
     if (v.tools) b._tools = v.tools;
+    if (v.why) b._why = v.why;
     if (v.bundle) b._bundle = v.bundle;
   }
   // Whether a turn's first call read its context back from the cache (🔥, warm) or afresh (🧊, cold): its
@@ -3665,6 +3671,19 @@
     look: ['👀', 'Look only: it could read and search, and change nothing (a quiet wake, a post from a PickiPedia sign-in, or another emergent that could only look)'],
     full: ['🔨', 'Full tools: shell, editing, the browser and the rest, as in its terminal'],
   };
+  // Why it was woken, when nobody asked it (mood_view.turn_wakes; Justin, 26 Oct: "it needs to be clear that
+  // the look was triggered by the crosstalk rule"): a small word beside its name, the rule on hover.
+  const WHY_MARKS = {
+    crosstalk: ['↺ crosstalk', 'A look at what others said here while it was on its last turn, which it hadn\'t seen: '
+      + 'once, right after that turn ended, asking only whether it bears on what it had just said (the crosstalk rule)'],
+    consider: ['unasked', 'Not asked: it looked in of its own accord, as this Mood\'s discretion dial allows'],
+    quiet: ['quiet look', 'Not asked: the Mood had been quiet a while, and it looked in to see if anything wanted picking up'],
+    arrival: ['arrival', 'Someone signed in here, and it looked in to greet them if there was reason to'],
+  };
+  function whyMark(why) {
+    const m = WHY_MARKS[why];
+    return m ? ` <span class="whymark" title="${esc(m[1])}">${esc(m[0])}</span>` : '';
+  }
   function wakeMark(tools) {
     const m = WAKE_MARKS[tools];
     return m ? ` <span class="wake" title="${esc(m[1])}">${m[0]}</span>` : '';
@@ -3699,7 +3718,7 @@
       : `At API list prices (${b._how.model || 'this model'}), for ${calls}: `
         + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
     b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
-      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${cacheMark(b)}${bundleMark(b)}`
+      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${whyMark(b._why)}${cacheMark(b)}${bundleMark(b)}`
       // When it began, and the turn's link (to its first step, which opens the turn): click to copy.
       + (b._firstId ? ` <span class="turnlink" data-href="#m-${esc(b._firstId)}" title="This turn's link: click to copy">${esc(stamp(b._firstAt))}</span>` : '')
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')

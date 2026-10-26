@@ -181,9 +181,9 @@ class RenderHtmlTest(TestCase):
         self.assertIn('<a href="https://example.com/b" target="_blank" rel="noopener">https://example.com/b</a>, ok', out)
 
     def test_inline_code_is_literal(self):
-        out = render_html('write `**bold**` and `[[x]]` and `https://a.b` literally')
+        out = render_html('write `**bold**` and `x = [[x]]` and `https://a.b` literally')
         self.assertIn('<code>**bold**</code>', out)
-        self.assertIn('<code>[[x]]</code>', out)
+        self.assertIn('<code>x = [[x]]</code>', out)  # only a span that is a wiki link alone links (CodedWikiLinkTest)
         self.assertIn('<code>https://a.b</code>', out)
         self.assertNotIn('<strong>', out)
         self.assertNotIn('<a ', out)
