@@ -321,6 +321,8 @@ def _forget_cached(message):
     from django.core.cache import cache
     cache.delete(f'links:card:{message.id}')
     cache.delete_many([f'links:ref:{str(message.id)[:8]}'])
+    from .tidings import pictures_changed
+    pictures_changed()  # a picture it showed may be gone from Tidings, or one it shows now there
 
 
 def copies_of(message_id):

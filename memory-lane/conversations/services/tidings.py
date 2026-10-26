@@ -144,6 +144,17 @@ def _add_turn(entry, agent, messages):
 
 
 def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
+    """prompt_scan, kept PROMPTS_KEPT seconds."""
+    from django.core.cache import cache
+    key = f'tidings:prompts:{per_human}'
+    found = cache.get(key)
+    if found is None:
+        found = prompt_scan(per_human)
+        cache.set(key, found, PROMPTS_KEPT)
+    return found
+
+
+def prompt_scan(per_human=PROMPTS_PER_HUMAN):
     """Every biological human's prompts, newest first, at most `per_human` each.
 
     One pass over each Mood's visible posts, oldest first, so a short
@@ -220,7 +231,32 @@ def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
     return with_prompts + without_prompts
 
 
+# Kept a while (Justin, 21 Oct: Tidings took 1.5-2.6 s, Prompts 1.1-1.6 s, live; still 1.4-2.8 s on 26 Oct): the
+# picture scan reads every message for "/media/", and the prompts read every Mood. The pictures' copy goes the
+# moment what they show changes (pictures_changed: a picture stored or posted, a face looked at or named, an
+# upload to PickiPedia, a post edited or deleted) and after PICTURES_KEPT regardless; the prompts' after PROMPTS_KEPT.
+PICTURES_KEPT = 300  # seconds
+PROMPTS_KEPT = 30
+
+
+def pictures_changed():
+    """What Tidings' pictures show has changed: their kept copy goes, and the next look reads afresh."""
+    from django.core.cache import cache
+    cache.delete_many([f'tidings:pictures:{limit}' for limit in (PICTURES, PICTURES * 2, 60, 120)])
+
+
 def picture_tidings(limit=PICTURES):
+    """picture_scan, kept until pictures_changed (or PICTURES_KEPT)."""
+    from django.core.cache import cache
+    key = f'tidings:pictures:{limit}'
+    found = cache.get(key)
+    if found is None:
+        found = picture_scan(limit)
+        cache.set(key, found, PICTURES_KEPT)
+    return found
+
+
+def picture_scan(limit=PICTURES):
     """The latest `limit` images, newest first, each with its two marks.
 
     Only pictures a visible Mood post shows: a picture pasted into a
