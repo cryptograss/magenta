@@ -581,3 +581,27 @@ class CommentEditingTests(TestCase):
         page = skyler.get('/moods/tidings/?embed=1')
         self.assertEqual(page.status_code, 200)
         self.assertIn('1 comment', page.content.decode())
+
+
+class FindTidingsTest(TestCase):
+    """'#t-' in the composer offers links on Tidings by the words of their title or address (Justin's wishlist)."""
+
+    def test_by_every_word_newest_first(self):
+        justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        mood = Mood.objects.create(slug='general')
+        made = []
+        for i, (url, title) in enumerate([('https://bluegrasstoday.com/ibma-winners/', '2026 IBMA award winners'),
+                                          ('https://example.org/train', 'Blue Railroad Train, again'),
+                                          ('https://bluegrasstoday.com/rice/', '')]):
+            said = Message.objects.create(id=uuid.uuid4(), sender=justin, mood=mood, content=url, timestamp=i)
+            t = Tiding.objects.create(message=said, url=url, title=title, by=justin)
+            Tiding.objects.filter(id=t.id).update(at=timezone.now() + timedelta(minutes=i))
+            made.append(str(t.id))
+        find = lambda q: [l['id'] for l in self.client.get('/api/tidings/find/', {'q': q}).json()['links']]
+        self.assertEqual(find(''), made[::-1])
+        self.assertEqual(find('bluegrasstoday'), [made[2], made[0]])
+        self.assertEqual(find('ibma-winners'), [made[0]])
+        self.assertEqual(find('railroad BLUE'), [made[1]])
+        self.assertEqual(find('banjo'), [])
+        rice = self.client.get('/api/tidings/find/', {'q': 'rice'}).json()['links'][0]
+        self.assertEqual((rice['title'], rice['host']), ('https://bluegrasstoday.com/rice/', 'bluegrasstoday.com'))
