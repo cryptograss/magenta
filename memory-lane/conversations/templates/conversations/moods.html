@@ -5456,6 +5456,17 @@
     return titles;
   }
 
+  // '#t-' and words: links on Tidings whose title or address has them (api/tidings/find), newest first.
+  const tidingCache = new Map();
+  let tidingTimer = null;
+  async function findTidings(q) {
+    if (tidingCache.has(q)) return tidingCache.get(q);
+    let links = [];
+    try { links = (await (await fetch('/api/tidings/find/?q=' + encodeURIComponent(q))).json()).links || []; } catch (e) {}
+    tidingCache.set(q, links);
+    return links;
+  }
+
   // /clips <name> and /clips forget <name>: the team's saved clips, by name (/yarn, as it was first called, too).
   let clipsCache = null;
   async function savedClips() {
@@ -5483,6 +5494,9 @@
     if (w) return { kind: 'wiki', start: upto.length - w[1].length, prefix: w[1] };
     let m = upto.match(/(^|[^\w@\/.])@([A-Za-z][\w.-]*)?$/);
     if (m) return { kind: 'mention', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
+    // #t-: a link on Tidings, found by the words of its title or address.
+    m = upto.match(/(^|[^\w&#\/;=])#t-([^\s#\[\]]{0,80})$/i);
+    if (m) return { kind: 'tiding', start: upto.length - m[2].length - 2, prefix: m[2] };
     // #mood, as mood_view._HASH links it: not after a word, an & or a / (a URL's #anchor, &#39;).
     m = upto.match(/(^|[^\w&#\/;=])#([a-z0-9][a-z0-9-]{0,79})?$/i);
     if (m) return { kind: 'mood', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
@@ -5508,6 +5522,22 @@
         suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
         suggest.classList.add('on');
       }, wikiCache.has(prefix) ? 0 : 150);
+      return;
+    }
+    if (at.kind === 'tiding') {
+      clearTimeout(tidingTimer);
+      const prefix = at.prefix;
+      tidingTimer = setTimeout(async () => {
+        const links = await findTidings(prefix);
+        const still = wordAtCaret();
+        if (!still || still.kind !== 'tiding' || still.prefix !== prefix) return;  // they've typed on
+        choices = links.map(l => ({ insert: `t-${l.id.slice(0, 8)} `,
+          html: `<span class="emo">🔗</span>${esc(l.title.slice(0, 80))}<small>${esc(l.host)}</small>` }));
+        if (!choices.length) return closeSuggest();
+        chosen = Math.min(chosen, choices.length - 1);
+        suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
+        suggest.classList.add('on');
+      }, tidingCache.has(prefix) ? 0 : 150);
       return;
     }
     if (at.kind === 'clips') {
