@@ -586,6 +586,29 @@ def _retract(request, slug, message_id, edit):
 
 
 @require_POST
+def api_pin_message(request, slug, message_id):
+    """Pin a message to its Mood's top, or unpin it (services/pins.py): anyone signed in with an SSH key.
+    Answers the Mood's pins as they now stand: {"pinned", "pins"}."""
+    from .services import pins
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device, refused = mood_auth.key_device(request, 'pin a message')
+    if refused:
+        return refused
+    message = Message.objects.filter(id=_uuid_or_none(message_id), mood=Mood.by_slug(slug)).first()
+    if message is None:
+        return JsonResponse({'error': 'no such message in this Mood'}, status=404)
+    if not _under_limit(f'pin:{device.pk}', 20):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        pinned = pins.toggle(message, device.entity_id)
+    except pins.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'pinned': pinned, 'pins': pins.in_mood(message.mood)})
+
+
+@require_POST
 def api_react(request, slug, message_id):
     """{"emoji"}: react to a message, or take the reaction back (services/reactions.py). Any sign-in.
     Answers the message's reactions as they now stand: {"reactions": {emoji: [who]}, "on"}."""

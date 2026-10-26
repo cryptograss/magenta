@@ -54,6 +54,7 @@ urlpatterns = [
     path('api/moods/<slug:slug>/messages/<str:message_id>/hear-again/', views_auth.api_memo_again, name='api_memo_again'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/delete/', views_auth.api_message_delete, name='api_message_delete'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/react/', views_auth.api_react, name='api_message_react'),
+    path('api/moods/<slug:slug>/messages/<str:message_id>/pin/', views_auth.api_pin_message, name='api_message_pin'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/sealed/', views_auth.api_message_sealed, name='api_message_sealed'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/restore/', views_auth.api_message_restore, name='api_message_restore'),
     path('api/moods/<slug:slug>/taken-back/', views_auth.api_mood_taken_back, name='api_mood_taken_back'),
