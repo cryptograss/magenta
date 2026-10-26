@@ -1060,6 +1060,34 @@ def settings_changed(agent, page, texts=None):
     return ['', wake_line(texts, 'settings-changed', SETTINGS_CHANGED, said=said, who=who, why=why)]
 
 
+REACTED_NOTE = ('Reactions to your posts here since you were last woken (a nod, not a question: '
+                'nothing to answer unless one tells you something):')
+
+
+def reactions_to(agent, page, seen):
+    """(lines, keys): the reactions to `agent`'s own posts in the Mood not in `seen` -- one line each,
+    "justin 👍 your 05:41Z post: “first words”" -- and every reaction to its posts there now, to keep as seen
+    (Justin, 26 Oct: "can y'all see when someone emoji-reacts to one of your messages?"). Its own nods aren't news."""
+    turns = {t['id']: t for t in page.get('turns') or ()}
+    lines, keys = [], []
+    for message_id, by_emoji in (page.get('reactions') or {}).items():
+        turn = turns.get(message_id)
+        if turn is not None and turn.get('sender') != agent:
+            continue
+        for emoji, people in by_emoji.items():
+            for who in people:
+                if who == agent:
+                    continue
+                key = f'{message_id}|{emoji}|{who}'
+                keys.append(key)
+                if key in seen or turn is None:  # a post older than the page: only one of its own is known as its
+                    continue
+                words = ' '.join(str(turn.get('text') or '').split())
+                words = words if len(words) <= 80 else words[:79] + '…'
+                lines.append(f'{who} {emoji} your {turn["created_at"][11:16]}Z post (#m-{message_id[:8]}): “{words}”')
+    return lines, keys
+
+
 def cut_off_note(started):
     """For a turn tried again because a restart cut it off (MoodPoller.recover_cut_off)."""
     return (f'<cut-off>Your turn for this, started at {started[11:16]}Z, was cut off before it finished: '
@@ -2241,7 +2269,23 @@ class MoodPoller:
         return lines, cost
 
     def extras_lines(self, slug):
-        return wake_extras(self.knob(slug, 'verbosity', 'normal'), slug, self.texts)
+        return self.reacted_lines(slug) + wake_extras(self.knob(slug, 'verbosity', 'normal'), slug, self.texts)
+
+    def reacted_lines(self, slug):
+        """What's new among the reactions to its posts here (reactions_to), told once: the first time it's
+        woken in a Mood, what was there already is only noted."""
+        try:
+            page = self.api.recent(slug, limit=200)
+        except Exception:
+            return []
+        known = self.state.setdefault('reacted', {})
+        first = slug not in known
+        lines, keys = reactions_to(self.agent, page, set(known.get(slug) or ()))
+        known[slug] = keys[-2000:]
+        self.save()
+        if first or not lines:
+            return []
+        return ['', wake_line(self.texts, 'reacted', REACTED_NOTE), *lines]
 
     # --- the consider loop ------------------------------------------------------
     #

@@ -1119,6 +1119,33 @@ class ConsiderLoopTest(TestCase):
         self.assertEqual(poller.consider_once(), [('m26', 'silent')])  # what came after it spoke still does
         self.assertNotIn('► [re', self.waker.woken[0][1])
 
+    def test_reactions_to_its_posts_are_told_once_at_its_next_wake(self):
+        # Justin, 26 Oct: "can y'all see when someone emoji-reacts to one of your messages?"
+        class Reacted(ConsiderAPI):
+            reactions = {}
+            def recent(inner, slug, limit=40):
+                return {**super().recent(slug, limit), 'reactions': inner.reactions}
+        api = Reacted()
+        poller = self.make(api, FakeScreen('pass'))
+        api.add(post('m', 0.5, sender='magent', via='session', text='Salt Creek opens, then Old Joe Clark.') | {'is_human': False})
+        api.reactions = {'m': {'🎻': ['skyler']}}
+        api.add(post('a', 1))
+        self.at(minutes=2)
+        poller.consider_once()
+        self.assertNotIn('🎻', self.waker.woken[0][1])  # first sight of this Mood: what was there is only noted
+        api.reactions = {'m': {'🎻': ['skyler'], '👍': ['justin', 'magent']}, 'a': {'👍': ['magent']}}
+        api.add(post('b', 3))
+        self.at(minutes=4)
+        poller.consider_once()
+        prompt = self.waker.woken[1][1]
+        self.assertIn('justin 👍 your 18:00Z post (#m-m): “Salt Creek opens, then Old Joe Clark.”', prompt)
+        self.assertNotIn('skyler 🎻', prompt)  # told already
+        self.assertNotIn('magent 👍', prompt)  # its own, and on another's post
+        api.add(post('c', 5))
+        self.at(minutes=6)
+        poller.consider_once()
+        self.assertNotIn('justin 👍', self.waker.woken[2][1])  # once
+
     def test_never_its_own(self):
         api = ConsiderAPI()
         poller = self.make(api, FakeScreen('pass'))
