@@ -1493,8 +1493,9 @@
     return Math.round(m / 60) + ' h';
   }
   // When an agent whose arrival was waited for posts, flip its preceding waitline to past tense
-  // with elapsed time: "magent waited for 12 s for re to set up the joke" (Justin, 25 Oct).
-  function resolveWaits(container, agentName, resolvedAt) {
+  // with elapsed time: "magent waited for 12 s for re to set up the joke" (Justin, 25 Oct), and move it
+  // below what it waited for, where the waiting finished (Justin, 26 Oct).
+  function resolveWaits(container, agentName, resolvedAt, after) {
     const resolvedMs = new Date(resolvedAt).getTime();
     container.querySelectorAll('.waitline[data-waiting-for]').forEach(line => {
       if (!line.dataset.waitingFor.split(',').includes(agentName)) return;
@@ -1504,6 +1505,7 @@
         const rest = waitedFor(line.dataset.waitReason).replace(/^waiting for /, '');
         verbSpan.innerHTML = `waited for ${esc(dur)} for ` + rest;
       }
+      if (after && after.parentNode === container) { after.after(line); line.classList.add('waited'); }
       delete line.dataset.waitingFor;
     });
   }
@@ -3740,8 +3742,14 @@
     if (n >= 1000) return (n < 10000 && n % 1000 ? (n / 1000).toFixed(1) : Math.round(n / 1000)) + 'k';
     return String(n);
   }
+  // The newest thing here, not counting a finished wait: that sits just below what it waited for.
+  function lastOf(container) {
+    let last = container.lastElementChild;
+    while (last && last.classList.contains('waited')) last = last.previousElementSibling;
+    return last;
+  }
   function openBlock(container, agent) {
-    const last = container.lastElementChild;
+    const last = lastOf(container);
     return last && last.classList.contains('aturn') && !last._ended && last._agent === agent ? last : null;
   }
   // Thinking alone makes no turn: held until the agent says or does something, so a quiet
@@ -3895,11 +3903,11 @@
   }
   // Working only if it's the newest thing here and the agent is at work now.
   function isWorking(b) {
-    return b.parentNode && b.parentNode.lastElementChild === b && acts.some(a => a.agent === b._agent && a.doing !== 'held');
+    return b.parentNode && lastOf(b.parentNode) === b && acts.some(a => a.agent === b._agent && a.doing !== 'held');
   }
   // A turn that a person spoke after is over, whether or not its end was marked.
   function closeBlock(container) {
-    const last = container.lastElementChild;
+    const last = lastOf(container);
     if (last && last.classList.contains('aturn') && !last._ended) { last._ended = true; drawBlockHead(last); }
   }
 
@@ -4021,7 +4029,7 @@
           // its link (Justin, 19 Oct: replies with nowhere to take their address from).
           prev = null;
           body.appendChild(turnEl(it.v, isNew));
-          resolveWaits(container, agent, it.v.created_at);
+          resolveWaits(container, agent, it.v.created_at, b);
           // Naming another agent wakes it: its turn is timed from here.
           (it.v.mentions || []).filter(n => n !== agent).forEach(n => {
             (container._askedOf ||= {})[n] = new Date(it.v.created_at).getTime() / 1000;
