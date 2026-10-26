@@ -393,6 +393,20 @@
   /* --gutter: what the jump strip takes at the right (25px + margins). When the
      window leaves room beside the column the text never reaches it; when the
      column fills the width (a phone, zoomed in), its text stops short of it. */
+  /* Pinned messages (services/pins.py): one quiet line at the top of the thread, the newest; the rest on a click. */
+  /* Sticky against main's own top edge: its 22px padding is above where sticky's 0 is measured from. */
+  #pins { position: sticky; top: -22px; z-index: 5; max-width: 760px; margin: -22px auto 6px; padding: 3px 12px;
+          font-size: 12.5px; color: var(--muted); background: var(--bg); border-bottom: 1px solid var(--line); }
+  #pins[hidden] { display: none; }
+  #pins .pin { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  #pins .pin a.go { flex: 1; min-width: 0; color: inherit; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  #pins .pin a.go:hover { color: var(--ink); }
+  #pins .pin b { color: var(--ink); font-weight: 600; }
+  #pins button { font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 3px; white-space: nowrap; }
+  #pins button:hover { color: var(--accent); }
+  #pins .more { padding: 2px 0 1px 18px; display: grid; gap: 2px; }
+  #pins .more[hidden] { display: none; }
+  .turn.pinned > .who .name::after { content: ' 📌'; font-size: 11px; }
   .inner { --gutter: 36px; max-width: 760px; margin: 0 auto;
            padding: 0 max(22px, calc(var(--gutter) - max(0px, (100cqw - 760px) / 2))) 0 22px; }
 
@@ -1340,7 +1354,7 @@
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
-  <main id="main"><div class="inner" id="inner"><div class="empty">Loading…</div></div>
+  <main id="main"><div id="pins" hidden></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
     <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
@@ -2614,6 +2628,7 @@
     el.dataset.id = t.id;
     el.id = 'm-' + t.id;
     if (forMe.has(t.id)) el.classList.add('for-me');
+    if (pinsNow.some(p => p.id === t.id)) el.classList.add('pinned');
     if (!t.is_human) el.style.setProperty('--who', agentColor(t.sender));
     const signed = t.attested ? `<button type="button" class="signed" title="Signed with ${esc(t.sender)}'s SSH key: click for the proof">✓ signed</button>` : '';
     const phone = t.mobile ? '<span class="from-phone" title="sent from a phone" aria-label="sent from a phone">📱</span>' : '';
@@ -2635,9 +2650,11 @@
     const mayPromote = viewer && !t.deleted && (t.links || []).some(u => !promoted.has(u));
     // 📝 into your notes for the current sprint (services/sprint_notes.py): a person's, any message.
     const mayNote = viewer && human[viewer] !== false && !t.deleted;
-    const moreBtn = mayEdit || mayDelete || mayPromote || mayNote
+    // 📌 to the Mood's top (services/pins.py): anyone signed in with a key.
+    const mayPin = keyHolder && !t.deleted;
+    const moreBtn = mayEdit || mayDelete || mayPromote || mayNote || mayPin
       ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
-        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
+        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" data-pin="${mayPin ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
     const onTidings = onTidingsMark(t.tidings || []);
     const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
@@ -4291,6 +4308,7 @@
     // Nothing of the Mood just left may linger: not its agent's work, its
     // tasks, who was typing there, or its agents' settings.
     act = null; acts = []; renderActivity();
+    renderPins([]);  // the last Mood's pins aren't this one's; its own come with its first look
     tasks = []; renderTasks();
     typingNow = []; renderTyping();
     agentsNow = {};  // nothing to compare with: a first drawing never glows
@@ -4545,6 +4563,7 @@
       todoStamp = data.todo_stamp;
     }
     (data.changes || []).forEach(applyChange);
+    renderPins(data.pins || []);
     reactionsNow = data.reactions || {};
     turnsEl.querySelectorAll('.turn[data-id]').forEach(el => renderReacts(el, reactionsNow[el.dataset.id] || {}));
     const items = itemsOf(data);
@@ -4627,7 +4646,8 @@
     const more = e.target.closest('.turn .morebtn[data-more]');
     if (more) {
       if (msgMenu._for === more) { closeMsgMenu(); return; }
-      msgMenu.innerHTML = (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
+      msgMenu.innerHTML = (more.dataset.pin ? `<button type="button" role="menuitem" data-act="pin">${pinsNow.some(p => p.id === more.dataset.more) ? '📌 Unpin' : '📌 Pin to the top'}</button>` : '')
+        + (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
         + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my sprint notes</button>'
           + '<button type="button" role="menuitem" data-act="wiki">⧉ Copy for PickiPedia</button>' : '')
         + ((more.dataset.promote || more.dataset.note) && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
@@ -4652,11 +4672,51 @@
     if (act.dataset.act === 'edit') editMessage(el, from.dataset.more);
     else if (act.dataset.act === 'promote') promoteMessage(el, from);
     else if (act.dataset.act === 'note') noteMessage(from.dataset.more);
+    else if (act.dataset.act === 'pin') pinMessage(from.dataset.more);
     else if (act.dataset.act === 'wiki') copyForWiki(from.dataset.more);
     else deleteMessage(from.dataset.more);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !msgMenu.hidden) closeMsgMenu(); });
   main.addEventListener('scroll', () => { if (!msgMenu.hidden) closeMsgMenu(); }, { passive: true });
+  // --- pinned (services/pins.py): the newest pin's line at the top, the rest a click away; a pinned message
+  // wears 📌 by its name. Each look brings them; pinning or unpinning answers with them as they now stand.
+  let pinsNow = [];
+  const pinsEl = document.getElementById('pins');
+  function renderPins(pins) {
+    const key = JSON.stringify(pins);
+    if (pinsEl.dataset.key !== key) {
+      pinsEl.dataset.key = key;
+      const open = pinsEl.querySelector('.more:not([hidden])');
+      const line = p => `<div class="pin"><span>📌</span><a class="go" data-id="${esc(p.id)}" title="Go to it · pinned by ${esc(shown(p.by || ''))}">`
+        + `<b>${esc(shown(p.sender))}</b> ${esc(p.snippet || '(a message)')}</a>`
+        + (keyHolder ? `<button type="button" class="unpin" data-id="${esc(p.id)}" title="Unpin it">×</button>` : '') + '</div>';
+      pinsEl.innerHTML = pins.length ? line(pins[0]).replace('</div>', pins.length > 1
+          ? `<button type="button" class="toggle" aria-expanded="${!!open}">${pins.length - 1} more ${open ? '▴' : '▾'}</button></div>` : '</div>')
+        + (pins.length > 1 ? `<div class="more"${open ? '' : ' hidden'}>${pins.slice(1).map(line).join('')}</div>` : '') : '';
+      pinsEl.hidden = !pins.length;
+    }
+    pinsNow = pins;
+    const pinned = new Set(pins.map(p => p.id));
+    document.querySelectorAll('#turns .turn[data-id]').forEach(el => el.classList.toggle('pinned', pinned.has(el.dataset.id)));
+  }
+  pinsEl.addEventListener('click', e => {
+    const go = e.target.closest('a.go[data-id]');
+    if (go) { e.preventDefault(); openAndReveal(current, go.dataset.id); return; }
+    const toggle = e.target.closest('button.toggle');
+    if (toggle) {
+      const more = pinsEl.querySelector('.more'), open = more.hidden;
+      more.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.textContent = toggle.textContent.replace(/[▾▴]/, open ? '▴' : '▾');
+      return;
+    }
+    const unpin = e.target.closest('button.unpin[data-id]');
+    if (unpin) pinMessage(unpin.dataset.id);
+  });
+  async function pinMessage(id) {
+    try { renderPins((await changeMessage(id, 'pin')).pins || []); }
+    catch (err) { showError('pin: ' + err.message); }
+  }
   function changeMessage(id, what, body) {
     return fetch(`/api/moods/${encodeURIComponent(current)}/messages/${encodeURIComponent(id)}/${what}/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify(body || {}) })
