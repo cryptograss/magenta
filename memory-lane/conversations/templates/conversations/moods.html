@@ -917,6 +917,7 @@
   .waitline { display: flex; align-items: center; gap: 8px; margin: 4px 0; padding: 2px 3px; font-size: 13px; color: var(--muted); }
   .waitline .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); opacity: .35; flex: none; }
   .waitline b { color: var(--who, var(--agent)); }
+  .waitline b.answered { opacity: .6; font-weight: 500; }
   .waitline time { margin-left: 2px; }
   /* A turn that came back with nothing, twice: said plainly, in the error colour, its dot hollow. */
   .waitline.failed { color: var(--err, #c0392b); }
@@ -1480,9 +1481,10 @@
   const AGENT_COLORS = { magent: '#ff67fd', re: '#ff3c00', blu: '#1976d2' };
   const AGENT_PALETTE = ['#1f8a70', '#c77c02', '#5b5bd6', '#0b7fab', '#8e5a2b', '#6b8e23'];
   // "waiting for re, blu to settle the schema": each it waits for in its own colour, then what for (Justin, 24 Oct).
-  function waitedFor(why) {
+  // Each that has answered already, with a ✓ (a wait for several goes on until the last has).
+  function waitedFor(why, answered = []) {
     const [names, to] = String(why || '').replace(/^waiting for /, '').split(/ to (.*)/s);
-    return 'waiting for ' + names.split(/,\s*/).map(n => `<b style="color: ${agentColor(n)}">${esc(n)}</b>`).join(', ')
+    return 'waiting for ' + names.split(/,\s*/).map(n => `<b style="color: ${agentColor(n)}"${answered.includes(n) ? ' class="answered" title="has answered"' : ''}>${esc(n)}${answered.includes(n) ? ' ✓' : ''}</b>`).join(', ')
       + (to ? ' to ' + esc(to) : '');
   }
   function humanDuration(ms) {
@@ -1498,12 +1500,21 @@
   function resolveWaits(container, agentName, resolvedAt, after) {
     const resolvedMs = new Date(resolvedAt).getTime();
     container.querySelectorAll('.waitline[data-waiting-for]').forEach(line => {
-      if (!line.dataset.waitingFor.split(',').includes(agentName)) return;
-      const dur = humanDuration(resolvedMs - new Date(line.dataset.waitAt).getTime());
+      const names = line.dataset.waitingFor.split(',');
+      if (!names.includes(agentName)) return;
+      const answered = [...new Set([...(line.dataset.answered || '').split(',').filter(Boolean), agentName])];
+      line.dataset.answered = answered.join(',');
       const verbSpan = line.querySelector('.wait-verb');
+      // Waiting for several (Justin, 26 Oct: "duke it out"): each that answers is ticked; the line is finished,
+      // and moved below, only when the last has -- as the runner wakes the waiter then, not before.
+      if (names.some(n => !answered.includes(n))) {
+        if (verbSpan) verbSpan.innerHTML = 'is ' + waitedFor(line.dataset.waitReason, answered);
+        return;
+      }
+      const dur = humanDuration(resolvedMs - new Date(line.dataset.waitAt).getTime());
       if (verbSpan) {
         const rest = waitedFor(line.dataset.waitReason).replace(/^waiting for /, '');
-        verbSpan.innerHTML = `waited for ${esc(dur)} for ` + rest;
+        verbSpan.innerHTML = `waited for ${esc(dur)} for ` + (names.length > 1 ? 'all of ' : '') + rest;
       }
       if (after && after.parentNode === container) { after.after(line); line.classList.add('waited'); }
       delete line.dataset.waitingFor;
@@ -3639,7 +3650,7 @@
     // What it thought before choosing not to speak: shown when its dot is pressed (Justin, 20 Oct).
     const thought = ((container._held || {})[q.sender] || []).map(t => t.text).filter(Boolean).join('\n\n');
     if (container._held) delete container._held[q.sender];
-    let row = container.lastElementChild;
+    let row = lastOf(container);
     if (!row || !row.classList.contains('quiet')) {
       row = document.createElement('div'); row.className = 'quiet';
       container.appendChild(row);
@@ -3663,6 +3674,7 @@
       dot.title += ` · thought ${words.toLocaleString()} word${words === 1 ? '' : 's'} first`;
     }
     row.appendChild(dot);
+    if (q.by !== 'screen') resolveWaits(container, q.sender, q.created_at, row);  // finished without a word: answered, for a wait
   }
   document.addEventListener('click', e => {
     const dot = e.target.closest('.quiet .dot');
