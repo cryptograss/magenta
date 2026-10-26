@@ -443,8 +443,9 @@
      for (Justin, 18 Oct): not its thinking, steps, silences or compactions, which aren't .turn.agent. */
   .turn.agent { border-left-color: var(--who, var(--agent)); }
   /* For you (it names you, or a group you're in, or replies to you): the other three edges, in the gold of your
-     highlighted @name, so the left keeps its sender's colour (Justin, 26 Oct). */
-  .turn.mentions-me, .turn.for-me { box-shadow: inset 0 2px 0 var(--for-me), inset -2px 0 0 var(--for-me), inset 0 -2px 0 var(--for-me);
+     highlighted @name, so the left keeps its sender's colour (Justin, 26 Oct). Not an agent's every answer after
+     you spoke: that was "way too many" (Justin, 26 Oct); those still ring the bell. */
+  .turn.mentions-me { box-shadow: inset 0 2px 0 var(--for-me), inset -2px 0 0 var(--for-me), inset 0 -2px 0 var(--for-me);
                                     border-top-color: transparent; padding-right: 10px; border-radius: 0 6px 6px 0; }
   body.only-mine .turn:not(.mentions-me) { display: none; }
   .turn .who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
@@ -493,8 +494,9 @@
   a.mention:hover { text-decoration: underline; }
   /* Each @name its own way (Skyler, 26 Oct): an emergent's in its colour; a person's in their name art (markTurn). */
   .turn .body .mention.tagged, .mention.tagged { color: var(--tag); background: color-mix(in srgb, var(--tag) 15%, transparent); }
-  .turn .body .mention.tagged.me, .mention.tagged.me { background: var(--mention); color: inherit; }  /* yours: gold, as before */
-  .mention.me { background: var(--mention); }
+  .turn .body .mention.named, .mention.named { background: none; padding: 0; }  /* a person in their own name art, bare */
+  /* Yours: a gold underline, no fill (Justin, 26 Oct: the fill read grey behind name art). */
+  .turn .body .mention.me, .mention.me { background: none; color: inherit; box-shadow: inset 0 -2px 0 var(--for-me); border-radius: 0; }
   .wake { font-size: .85em; margin-left: 2px; cursor: help; }  /* 👀 or 🔨: which tools a turn had */
   .mention .wake { margin-left: 3px; }
   .turn.new { animation: arrive .6s ease-out; }
@@ -670,7 +672,7 @@
            padding: 6px 10px 2px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
   .ahead b { color: var(--who, var(--agent)); font-weight: 600; }
   .ahead .caret { width: 10px; flex: none; }
-  .ahead .turnlink { flex: none; font-size: 11.5px; color: var(--muted); cursor: copy; }
+  .ahead .turnlink { flex: none; font-size: 11.5px; color: var(--muted); cursor: copy; text-decoration: none; }
   .ahead .turnlink:hover { text-decoration: underline; }
   .ahead .turnlink[data-copied]::after { content: ' link copied'; color: var(--accent); font-size: 11px; }
   /* 🔥 or 🧊: whether a turn's first call read its context from the cache; and its instructions' checksum */
@@ -1920,7 +1922,7 @@
     el.querySelectorAll('.mention[data-who]:not(.group)').forEach(s => {
       const who = s.dataset.who;
       if (human[who] === false) { s.style.setProperty('--tag', agentColor(who)); s.classList.add('tagged'); }
-      else if (human[who] && (looks[who] || {}).art && !s.querySelector('.art')) s.innerHTML = '@' + nameHtml(who);
+      else if (human[who] && (looks[who] || {}).art && !s.querySelector('.art')) { s.innerHTML = '@' + nameHtml(who); s.classList.add('named'); }
     });
   }
 
@@ -2691,7 +2693,6 @@
     el.dataset.mentions = JSON.stringify(t.mentions || []);
     el.dataset.id = t.id;
     el.id = 'm-' + t.id;
-    if (forMe.has(t.id)) el.classList.add('for-me');
     if (pinsNow.some(p => p.id === t.id)) el.classList.add('pinned');
     if (!t.is_human) el.style.setProperty('--who', agentColor(t.sender));
     const signed = t.attested ? `<button type="button" class="signed" title="Signed with ${esc(t.sender)}'s SSH key: click for the proof">✓ signed</button>` : '';
@@ -3488,8 +3489,8 @@
   }
   document.getElementById('jumpUp').addEventListener('click', () => jump(-1));
   document.getElementById('jumpDown').addEventListener('click', () => jump(1));
-  document.getElementById('jumpMeUp').addEventListener('click', () => jump(-1, '.mentions-me, .for-me'));
-  document.getElementById('jumpMeDown').addEventListener('click', () => jump(1, '.mentions-me, .for-me'));
+  document.getElementById('jumpMeUp').addEventListener('click', () => jump(-1, '.mentions-me'));
+  document.getElementById('jumpMeDown').addEventListener('click', () => jump(1, '.mentions-me'));
   for (const [id, dir] of [['jumpHumanUp', -1], ['jumpHumanDown', 1]]) {
     const b = document.getElementById(id);
     b.innerHTML = ICONS.human + b.textContent;
@@ -3873,7 +3874,7 @@
     const began = blockText(b._firstBlock, b._firstAt);
     b.querySelector('.ahead').innerHTML = `<span class="caret">${open ? '▾' : '▸'}</span>`
       + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${whyMark(b._why)}${cacheMark(b)}${open ? bundleMark(b) : ''}`
-      + (b._firstId ? ` <span class="turnlink" data-href="#m-${esc(b._firstId)}" title="${esc(stamp(b._firstAt))}${began.est ? ' (about this block: its own is stamped a few minutes on)' : ''} · this turn's link: click to copy">${esc(began.text)}</span>` : '')
+      + (b._firstId ? ` <a class="turnlink" href="/messages/${esc(b._firstId)}" data-href="#m-${esc(b._firstId)}" title="${esc(stamp(b._firstAt))}${began.est ? ' (about this block: its own is stamped a few minutes on)' : ''} · this turn's link: click to copy">${esc(began.text)}</a>` : '')
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
       + (open && added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
       + (b._priced ? ` · <span class="spent" title="${esc(costTitle)}">${esc(usdText(b._usd))}</span>` : '')
@@ -3911,7 +3912,8 @@
     const head = e.target.closest('.ahead');
     if (!head) return;
     const link = e.target.closest('.turnlink');
-    if (link) { copyLink(link, link.dataset.href); return; }  // the turn's time: its link, copied
+    // The turn's block: its link, copied on a click; a real link, so a right-click or a long press copies it too.
+    if (link) { e.preventDefault(); copyLink(link, link.dataset.href); return; }
     const bundle = e.target.closest('.bundlemark');
     if (bundle) { window.open(bundle.dataset.href, '_blank', 'noopener'); return; }  // its instructions, rebuilt
     const b = head.closest('.aturn');
@@ -4072,9 +4074,8 @@
   const pageOpened = new Date().toISOString();
   let badgeCursor = null, badgeAt = 0;
   const counted = new Set();  // notices already seen, by turn id
-  const forMe = new Set();    // answers to me, marked in the thread
   let unread = {};            // slug -> Map(turn id -> created_at)
-  function resetBadges() { badges = {}; unread = {}; badgeCursor = null; badgeAt = 0; counted.clear(); forMe.clear(); }
+  function resetBadges() { badges = {}; unread = {}; badgeCursor = null; badgeAt = 0; counted.clear(); }
   function countBadges() {
     badges = {};
     for (const [slug, ids] of Object.entries(unread)) if (ids.size) badges[slug] = ids.size;
@@ -4111,11 +4112,6 @@
           if (n.kind === 'said' && tellAll[by]) notify(n);
         }
         if (n.kind === 'said') continue;  // not a badge: badges count what's for you
-        if (n.kind === 'answer') {
-          forMe.add(n.turn.id);
-          const el = document.getElementById('m-' + n.turn.id);
-          if (el) el.classList.add('for-me');
-        }
         const floor = lastSeen[n.mood];
         if (floor && n.turn.created_at <= floor) continue;  // seen already
         const looking = n.mood === current && !document.hidden;
