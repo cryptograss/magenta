@@ -1101,6 +1101,24 @@ class ConsiderLoopTest(TestCase):
         self.assertIn('► [re', self.waker.woken[0][1])
         self.assertEqual(poller.consider_once(), [])  # once
 
+    def test_not_what_it_has_spoken_after(self):
+        # Justin, 26 Oct (#emergence 06:04Z): his '@emergents' post, then re's, all while magent was at work; magent
+        # answered re; free again, a consider looked at re's post a second time.
+        api = ConsiderAPI(activity={'doing': 'thinking'})
+        poller = self.make(api, FakeScreen('pass'))
+        api.add(post('j', 1, sender='justin', mentions=['magent', 're', 'blu'], text='@emergents take a look around'))
+        api.add(post('r', 1.5, sender='re', via='session', text='The Emergent namespace is not exempt.') | {'is_human': False})
+        api.add(post('m', 2, sender='magent', via='session', text='re is right; one line fixes it.') | {'is_human': False})
+        self.at(minutes=3)
+        self.assertEqual(poller.consider_once(), [])  # at work
+        api.activity = None
+        self.assertEqual(poller.consider_once(), [])
+        self.assertEqual(self.waker.woken, [])
+        api.add(post('b', 3.5, sender='blu', via='session', text='My entry waits meanwhile.') | {'is_human': False})
+        self.at(minutes=5)
+        self.assertEqual(poller.consider_once(), [('m26', 'silent')])  # what came after it spoke still does
+        self.assertNotIn('► [re', self.waker.woken[0][1])
+
     def test_never_its_own(self):
         api = ConsiderAPI()
         poller = self.make(api, FakeScreen('pass'))

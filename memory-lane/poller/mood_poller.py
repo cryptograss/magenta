@@ -2433,6 +2433,13 @@ class MoodPoller:
             if asked:
                 last_asked = max(parse_time(t['created_at']) for t in asked)
                 posts = [t for t in posts if parse_time(t['created_at']) > last_asked]
+            # What it has spoken (or stayed quiet) after, it has seen: a turn's prompt carries the Mood up to then,
+            # and what came during a turn has its crosstalk look. Not owed a second (Justin, 26 Oct: magent looked
+            # again at re's post, which its crosstalk turn had just answered).
+            own = [parse_time(t['created_at']) for t in recent['turns'] + list(recent.get('quiet') or ())
+                   if t.get('sender') == self.agent]
+            if own:
+                posts = [t for t in posts if parse_time(t['created_at']) > max(own)]
             if not posts:
                 return None
             return self.consider_posts(slug, recent, posts)
