@@ -15,7 +15,7 @@
   :root {
     --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
     --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1;
-    --human: #2a5d9f; --agent: #b8106b; --code: #f3efe8; --mention: #fff3c4;
+    --human: #2a5d9f; --agent: #b8106b; --code: #f3efe8; --mention: #fff3c4; --for-me: #d9a400;
     --hover: #f6f3ee; --warn-ink: #7a4b00; --warn-bg: #ffe9b0; --dot-edge: #d6cfc2; --err: #b3261e;
   }
   /* Dark, when the system is: the same tokens, night colours. */
@@ -23,7 +23,7 @@
     :root {
       --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
       --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b;
-      --human: #86b4f0; --agent: #ef5aa6; --code: #29252c; --mention: #4a3f12;
+      --human: #86b4f0; --agent: #ef5aa6; --code: #29252c; --mention: #4a3f12; --for-me: #c99a1e;
       --hover: #262228; --warn-ink: #ffd27a; --warn-bg: #3b2c08; --dot-edge: #4d4652; --err: #ff8a80;
     }
   }
@@ -393,6 +393,20 @@
   /* --gutter: what the jump strip takes at the right (25px + margins). When the
      window leaves room beside the column the text never reaches it; when the
      column fills the width (a phone, zoomed in), its text stops short of it. */
+  /* Pinned messages (services/pins.py): one quiet line at the top of the thread, the newest; the rest on a click. */
+  /* Sticky against main's own top edge: its 22px padding is above where sticky's 0 is measured from. */
+  #pins { position: sticky; top: -22px; z-index: 5; max-width: 760px; margin: -22px auto 6px; padding: 3px 12px;
+          font-size: 12.5px; color: var(--muted); background: var(--bg); border-bottom: 1px solid var(--line); }
+  #pins[hidden] { display: none; }
+  #pins .pin { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  #pins .pin a.go { flex: 1; min-width: 0; color: inherit; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  #pins .pin a.go:hover { color: var(--ink); }
+  #pins .pin b { color: var(--ink); font-weight: 600; }
+  #pins button { font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 3px; white-space: nowrap; }
+  #pins button:hover { color: var(--accent); }
+  #pins .more { padding: 2px 0 1px 18px; display: grid; gap: 2px; }
+  #pins .more[hidden] { display: none; }
+  .turn.pinned > .who .name::after { content: ' 📌'; font-size: 11px; }
   .inner { --gutter: 36px; max-width: 760px; margin: 0 auto;
            padding: 0 max(22px, calc(var(--gutter) - max(0px, (100cqw - 760px) / 2))) 0 22px; }
 
@@ -401,6 +415,14 @@
   .mood-head .meta { font-size: 12px; color: var(--muted); }
   .mood-head .meta a { color: var(--muted); }
   .mood-head { padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+  /* A thread (services: Mood.thread_of): where it came from, and the threads opened from here. */
+  .mood-head .thread { font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
+  .mood-head .thread a { color: var(--accent); }
+  .mood-head .thread button, .mood-head .meta button.newthread { font: inherit; font-size: 12px; border: 1px solid var(--line);
+                               background: none; color: var(--muted); border-radius: 6px; padding: 0 7px; cursor: pointer; margin-left: 4px; }
+  .mood-head .thread button:hover, .mood-head .meta button.newthread:hover { color: var(--accent); border-color: var(--accent); }
+  #newBox .forkchoice { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+  #newBox .forkchoice[hidden] { display: none; }
 
   /* What was said, at its own size: --text-scale is the reader's choice (the menu's text size), apart from zoom. */
   :root { --text-base: 15px; --text-scale: 1; }
@@ -420,6 +442,10 @@
   /* Every message an agent says in the Mood carries its colour down the margin (--who), whoever it's
      for (Justin, 18 Oct): not its thinking, steps, silences or compactions, which aren't .turn.agent. */
   .turn.agent { border-left-color: var(--who, var(--agent)); }
+  /* For you (it names you, or a group you're in, or replies to you): the other three edges, in the gold of your
+     highlighted @name, so the left keeps its sender's colour (Justin, 26 Oct). */
+  .turn.mentions-me, .turn.for-me { box-shadow: inset 0 2px 0 var(--for-me), inset -2px 0 0 var(--for-me), inset 0 -2px 0 var(--for-me);
+                                    border-top-color: transparent; padding-right: 10px; border-radius: 0 6px 6px 0; }
   body.only-mine .turn:not(.mentions-me) { display: none; }
   .turn .who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
   .turn .who .name { font-weight: 700; }
@@ -441,6 +467,7 @@
   .turn .body > :last-child { margin-bottom: 0; }
   .turn .body p { margin: 0 0 .7em; }
   .turn .body ul, .turn .body ol { margin: 0 0 .7em; padding-left: 1.4em; }
+  .turn .body li > ul { margin: 0; }
   .turn .body h4 { margin: .8em 0 .3em; font-size: 1em; }
   .turn .body code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .87em; }
   .turn .body pre { background: var(--code); padding: 10px 12px; border-radius: 6px; overflow-x: auto; font-size: .87em; }
@@ -464,6 +491,9 @@
   .mention { background: var(--code); border-radius: 4px; padding: 0 4px; font-weight: 600; }
   a.mention { color: inherit; text-decoration: none; }  /* to their PickiPedia page (mood_view.mention_page) */
   a.mention:hover { text-decoration: underline; }
+  /* Each @name its own way (Skyler, 26 Oct): an emergent's in its colour; a person's in their name art (markTurn). */
+  .turn .body .mention.tagged, .mention.tagged { color: var(--tag); background: color-mix(in srgb, var(--tag) 15%, transparent); }
+  .turn .body .mention.tagged.me, .mention.tagged.me { background: var(--mention); color: inherit; }  /* yours: gold, as before */
   .mention.me { background: var(--mention); }
   .wake { font-size: .85em; margin-left: 2px; cursor: help; }  /* 👀 or 🔨: which tools a turn had */
   .mention .wake { margin-left: 3px; }
@@ -764,9 +794,11 @@
   #composer .field:focus-within { border-color: var(--accent); }
   #composer.dropping .field { outline: 2px dashed var(--accent); }
   #composer .field textarea { border: 0; border-radius: 0; background: none; outline: none; padding: 9px 6px; resize: none; }
-  #composer .field #attach, #composer .field #memoBtn, #composer .field #emojiBtn { flex: none; border: 0; border-radius: 50%; background: none;
+  #composer .field #attach, #composer .field #memoBtn, #composer .field #emojiBtn, #composer .field #sayHelp { flex: none; border: 0; border-radius: 50%; background: none;
                                                         min-width: 38px; height: 38px; padding: 0 8px; margin-bottom: 1px; }
   #composer .field #memoBtn.recording { border-radius: 19px; }
+  #composer .field #sayHelp { min-width: 28px; padding: 0 6px; color: var(--muted); font-size: 13px; font-weight: 600; cursor: help; opacity: .7; }
+  #composer .field #sayHelp:hover { opacity: 1; color: var(--accent); }
   /* Pictures with the words: thumbnails above the field, each with how far up it is and ✕ (renderTray). */
   #tray { flex: 0 0 100%; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0; scrollbar-width: thin; }
   #tray[hidden] { display: none; }
@@ -884,6 +916,9 @@
   .waitline .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); opacity: .35; flex: none; }
   .waitline b { color: var(--who, var(--agent)); }
   .waitline time { margin-left: 2px; }
+  /* A turn that came back with nothing, twice: said plainly, in the error colour, its dot hollow. */
+  .waitline.failed { color: var(--err, #c0392b); }
+  .waitline.failed .dot { background: none; border: 1.5px solid var(--who, var(--agent)); opacity: .7; }
   /* Each in its agent's colour (--who, agentColor): pale, full when hovered or opened. */
   .quiet .dot { --who: var(--agent); width: 9px; height: 9px; border-radius: 50%; padding: 0; cursor: pointer;
                 background: color-mix(in srgb, var(--who) 30%, var(--panel)); border: 1px solid var(--who); }
@@ -1322,7 +1357,12 @@
 <form id="newBox" hidden>
   <input id="newTitle" maxlength="200" aria-label="Title" placeholder="What the new Mood is about">
   <textarea id="newDesc" rows="2" maxlength="2000" aria-label="Description" placeholder="A line or two more (optional)"></textarea>
-  <span class="hint">Its first @magent starts a new session there, briefed by the letter magent left itself.</span>
+  <div class="forkchoice" id="newThread" hidden>
+    <span class="hint">A thread of <b id="newThreadOf"></b>, with its settings and (until it has its own) its instructions:</span>
+    <label><input type="radio" name="threadKind" value="fork" checked> <b>Fork</b>: its emergents go on from where they are there, remembering all of it</label>
+    <label><input type="radio" name="threadKind" value="fresh"> <b>Fresh</b>: they start anew here</label>
+  </div>
+  <span class="hint" id="newHint">Its first @magent starts a new session there, briefed by the letter magent left itself.</span>
   <span><button type="submit">Start</button> <button type="button" id="newCancel">Cancel</button></span>
 </form>
 <div id="locked"></div>
@@ -1340,7 +1380,7 @@
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
-  <main id="main"><div class="inner" id="inner"><div class="empty">Loading…</div></div>
+  <main id="main"><div id="pins" hidden></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
     <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
@@ -1364,7 +1404,9 @@
       <!-- One field, as Signal and WhatsApp have it: ＋ and 🎙 inside it, the words between. -->
       <div class="field">
         <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
-        <textarea id="say" placeholder="Say something. @name to address someone; [[Page]] links PickiPedia. Enter sends; Ctrl+Enter for a new line." rows="2"></textarea>
+        <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
+        <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
+        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @agents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
@@ -1873,6 +1915,31 @@
     // You, or a group you're in (@core).
     el.querySelectorAll('.mention').forEach(s => s.classList.toggle('me', s.dataset.who === me
       || (s.dataset.members || '').split(',').includes(me)));
+    // Who's tagged, at a glance: an emergent in its colour (it wakes); a person written their own way, as their name
+    // is above their messages (Justin, 26 Oct: the icon's colour is kept to mean something else); a group stays plain.
+    el.querySelectorAll('.mention[data-who]:not(.group)').forEach(s => {
+      const who = s.dataset.who;
+      if (human[who] === false) { s.style.setProperty('--tag', agentColor(who)); s.classList.add('tagged'); }
+      else if (human[who] && (looks[who] || {}).art && !s.querySelector('.art')) s.innerHTML = '@' + nameHtml(who);
+    });
+  }
+
+  // A thread's line: where it was opened from, forked or fresh, and closing it (archiving); a Mood's threads.
+  function threadLine(m) {
+    const link = slug => `<a href="/moods/${encodeURIComponent(slug)}/">#${esc(slug)}</a>`;
+    const parts = [];
+    if (m.thread_of) {
+      const shut = isArchived(m.slug);
+      parts.push(`⑂ a thread of ${link(m.thread_of)}, ` + (m.forked_at
+        ? `forked ${esc(stamp(m.forked_at))}: its emergents went on from where they were there`
+        : 'started fresh') + (shut ? ' · closed' : '')
+        + (keyHolder ? `<button type="button" class="closethread" title="${shut ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${shut ? 'reopen' : 'close thread'}</button>` : ''));
+    }
+    const open = (m.threads || []).filter(t => !isArchived(t.slug)), shut = (m.threads || []).filter(t => isArchived(t.slug));
+    if (open.length) parts.push('threads: ' + open.map(t => `<a href="/moods/${encodeURIComponent(t.slug)}/" title="${esc(t.title)}">#${esc(t.slug)}</a>`).join(', ')
+      + (shut.length ? ` (and ${shut.length} closed)` : ''));
+    else if (shut.length) parts.push(`${shut.length} closed thread${shut.length === 1 ? '' : 's'}`);
+    return parts.length ? `<div class="thread">${parts.join(' · ')}</div>` : '';
   }
 
   function renderHead(m) {
@@ -1880,8 +1947,9 @@
     return `<div class="mood-head">
       <h1>${esc(m.title)}</h1>
       ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
+      ${threadLine(m)}
       <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record · ' : ''}
-        <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a></div>
+        <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}</div>
       <div class="people" id="people">${(m.participants || []).map(n =>
         `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
@@ -2624,6 +2692,7 @@
     el.dataset.id = t.id;
     el.id = 'm-' + t.id;
     if (forMe.has(t.id)) el.classList.add('for-me');
+    if (pinsNow.some(p => p.id === t.id)) el.classList.add('pinned');
     if (!t.is_human) el.style.setProperty('--who', agentColor(t.sender));
     const signed = t.attested ? `<button type="button" class="signed" title="Signed with ${esc(t.sender)}'s SSH key: click for the proof">✓ signed</button>` : '';
     const phone = t.mobile ? '<span class="from-phone" title="sent from a phone" aria-label="sent from a phone">📱</span>' : '';
@@ -2645,9 +2714,11 @@
     const mayPromote = viewer && !t.deleted && (t.links || []).some(u => !promoted.has(u));
     // 📝 into your notes for the current sprint (services/sprint_notes.py): a person's, any message.
     const mayNote = viewer && human[viewer] !== false && !t.deleted;
-    const moreBtn = mayEdit || mayDelete || mayPromote || mayNote
+    // 📌 to the Mood's top (services/pins.py): anyone signed in with a key.
+    const mayPin = keyHolder && !t.deleted;
+    const moreBtn = mayEdit || mayDelete || mayPromote || mayNote || mayPin
       ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
-        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
+        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" data-pin="${mayPin ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
     const onTidings = onTidingsMark(t.tidings || []);
     const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
@@ -3187,6 +3258,16 @@
       prev = null;
       return;
     }
+    if (e.type === 'thread' || (e.type === 'created' && e.from_mood)) {  // a thread opened from here; this one, from there
+      el.className = 'event';
+      const there = e.type === 'thread' ? e.to_mood : e.from_mood;
+      const how = e.kind === 'fresh' ? 'fresh' : 'forked';
+      el.innerHTML = `⑂ <b>${esc(e.by || 'someone')}</b> ${e.type === 'thread' ? 'opened a thread,' : 'opened this thread from'} `
+        + `<a href="/moods/${encodeURIComponent(there)}/">#${esc(there)}</a> (${how}) · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'interrupt' || e.type === 'created') {  // someone pressed stop; someone started this Mood
       el.className = 'event';
       el.innerHTML = e.type === 'created'
@@ -3466,11 +3547,28 @@
       if (!r.ok) { showError('pin: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
       renameBox.hidden = true;
       loadMoods();
-    } else if (e.target.closest('#newMood')) {
+    } else if (e.target.closest('#newMood') || e.target.closest('.mood-head .newthread')) {
+      // A thread (from the head's ⑂): of the Mood open now, forked by default.
+      newBox._threadOf = e.target.closest('.newthread') ? current : null;
+      document.getElementById('newThread').hidden = !newBox._threadOf;
+      document.getElementById('newHint').hidden = !!newBox._threadOf;
+      document.getElementById('newThreadOf').textContent = newBox._threadOf ? '#' + newBox._threadOf : '';
+      newBox.querySelector('input[name=threadKind][value=fork]').checked = true;
+      document.getElementById('newTitle').placeholder = newBox._threadOf ? 'What the thread is about' : 'What the new Mood is about';
+      newBox.querySelector('button[type=submit]').textContent = newBox._threadOf ? 'Open the thread' : 'Start';
       document.getElementById('newTitle').value = '';
       document.getElementById('newDesc').value = '';
       newBox.hidden = false;
       document.getElementById('newTitle').focus();
+    } else if (e.target.closest('.mood-head .closethread')) {
+      const r = await fetch(`/api/moods/${encodeURIComponent(current)}/archive/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ archived: !isArchived(current) }),
+      });
+      if (!r.ok) { showError('thread: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+      await loadMoods();
+      const line = document.querySelector('.mood-head .thread');
+      if (line && headMood) line.outerHTML = threadLine(headMood);
     } else if (e.target.closest('#newCancel')) {
       newBox.hidden = true;
     }
@@ -3480,9 +3578,11 @@
     const r = await fetch('/api/moods/new/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ title: document.getElementById('newTitle').value,
-                             description: document.getElementById('newDesc').value }),
+                             description: document.getElementById('newDesc').value,
+                             ...(newBox._threadOf ? { thread_of: newBox._threadOf,
+                                 fork: newBox.querySelector('input[name=threadKind]:checked').value === 'fork' } : {}) }),
     });
-    if (!r.ok) { showError('new Mood: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+    if (!r.ok) { showError((newBox._threadOf ? 'thread: ' : 'new Mood: ') + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     const made = await r.json();
     newBox.hidden = true;
     await loadMoods();
@@ -3518,6 +3618,17 @@
       line.dataset.waitAt = q.created_at;
       line.dataset.waitReason = q.reason || '';
       line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> <span class="wait-verb">is ${waitedFor(q.reason)}</span>`
+        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      container.appendChild(line);
+      return;
+    }
+    // A turn that came back with nothing, tried twice (the runner says so, by="failed"): a line, not a dot --
+    // it isn't a choice not to speak, and whoever asked should know to ask again.
+    if (q.by === 'failed') {
+      const line = document.createElement('div');
+      line.className = 'waitline failed';
+      line.style.setProperty('--who', agentColor(q.sender));
+      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> ${esc(q.reason || "couldn't answer")}`
         + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
       container.appendChild(line);
       return;
@@ -4310,6 +4421,7 @@
     acts = (liveData[slug] && liveData[slug].activities) || [];
     act = [...acts].reverse().find(a => a.doing !== 'held') || acts[0] || null;
     renderActivity();
+    renderPins([]);  // the last Mood's pins aren't this one's; its own come with its first look
     tasks = []; renderTasks();
     typingNow = []; renderTyping();
     agentsNow = {};  // nothing to compare with: a first drawing never glows
@@ -4564,6 +4676,7 @@
       todoStamp = data.todo_stamp;
     }
     (data.changes || []).forEach(applyChange);
+    renderPins(data.pins || []);
     reactionsNow = data.reactions || {};
     turnsEl.querySelectorAll('.turn[data-id]').forEach(el => renderReacts(el, reactionsNow[el.dataset.id] || {}));
     const items = itemsOf(data);
@@ -4646,7 +4759,8 @@
     const more = e.target.closest('.turn .morebtn[data-more]');
     if (more) {
       if (msgMenu._for === more) { closeMsgMenu(); return; }
-      msgMenu.innerHTML = (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
+      msgMenu.innerHTML = (more.dataset.pin ? `<button type="button" role="menuitem" data-act="pin">${pinsNow.some(p => p.id === more.dataset.more) ? '📌 Unpin' : '📌 Pin to the top'}</button>` : '')
+        + (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
         + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my sprint notes</button>'
           + '<button type="button" role="menuitem" data-act="wiki">⧉ Copy for PickiPedia</button>' : '')
         + ((more.dataset.promote || more.dataset.note) && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
@@ -4671,11 +4785,51 @@
     if (act.dataset.act === 'edit') editMessage(el, from.dataset.more);
     else if (act.dataset.act === 'promote') promoteMessage(el, from);
     else if (act.dataset.act === 'note') noteMessage(from.dataset.more);
+    else if (act.dataset.act === 'pin') pinMessage(from.dataset.more);
     else if (act.dataset.act === 'wiki') copyForWiki(from.dataset.more);
     else deleteMessage(from.dataset.more);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !msgMenu.hidden) closeMsgMenu(); });
   main.addEventListener('scroll', () => { if (!msgMenu.hidden) closeMsgMenu(); }, { passive: true });
+  // --- pinned (services/pins.py): the newest pin's line at the top, the rest a click away; a pinned message
+  // wears 📌 by its name. Each look brings them; pinning or unpinning answers with them as they now stand.
+  let pinsNow = [];
+  const pinsEl = document.getElementById('pins');
+  function renderPins(pins) {
+    const key = JSON.stringify(pins);
+    if (pinsEl.dataset.key !== key) {
+      pinsEl.dataset.key = key;
+      const open = pinsEl.querySelector('.more:not([hidden])');
+      const line = p => `<div class="pin"><span>📌</span><a class="go" data-id="${esc(p.id)}" title="Go to it · pinned by ${esc(shown(p.by || ''))}">`
+        + `<b>${esc(shown(p.sender))}</b> ${esc(p.snippet || '(a message)')}</a>`
+        + (keyHolder ? `<button type="button" class="unpin" data-id="${esc(p.id)}" title="Unpin it">×</button>` : '') + '</div>';
+      pinsEl.innerHTML = pins.length ? line(pins[0]).replace('</div>', pins.length > 1
+          ? `<button type="button" class="toggle" aria-expanded="${!!open}">${pins.length - 1} more ${open ? '▴' : '▾'}</button></div>` : '</div>')
+        + (pins.length > 1 ? `<div class="more"${open ? '' : ' hidden'}>${pins.slice(1).map(line).join('')}</div>` : '') : '';
+      pinsEl.hidden = !pins.length;
+    }
+    pinsNow = pins;
+    const pinned = new Set(pins.map(p => p.id));
+    document.querySelectorAll('#turns .turn[data-id]').forEach(el => el.classList.toggle('pinned', pinned.has(el.dataset.id)));
+  }
+  pinsEl.addEventListener('click', e => {
+    const go = e.target.closest('a.go[data-id]');
+    if (go) { e.preventDefault(); openAndReveal(current, go.dataset.id); return; }
+    const toggle = e.target.closest('button.toggle');
+    if (toggle) {
+      const more = pinsEl.querySelector('.more'), open = more.hidden;
+      more.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.textContent = toggle.textContent.replace(/[▾▴]/, open ? '▴' : '▾');
+      return;
+    }
+    const unpin = e.target.closest('button.unpin[data-id]');
+    if (unpin) pinMessage(unpin.dataset.id);
+  });
+  async function pinMessage(id) {
+    try { renderPins((await changeMessage(id, 'pin')).pins || []); }
+    catch (err) { showError('pin: ' + err.message); }
+  }
   function changeMessage(id, what, body) {
     return fetch(`/api/moods/${encodeURIComponent(current)}/messages/${encodeURIComponent(id)}/${what}/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify(body || {}) })
@@ -5321,6 +5475,17 @@
     return titles;
   }
 
+  // '#t-' and words: links on Tidings whose title or address has them (api/tidings/find), newest first.
+  const tidingCache = new Map();
+  let tidingTimer = null;
+  async function findTidings(q) {
+    if (tidingCache.has(q)) return tidingCache.get(q);
+    let links = [];
+    try { links = (await (await fetch('/api/tidings/find/?q=' + encodeURIComponent(q))).json()).links || []; } catch (e) {}
+    tidingCache.set(q, links);
+    return links;
+  }
+
   // /clips <name> and /clips forget <name>: the team's saved clips, by name (/yarn, as it was first called, too).
   let clipsCache = null;
   async function savedClips() {
@@ -5348,6 +5513,9 @@
     if (w) return { kind: 'wiki', start: upto.length - w[1].length, prefix: w[1] };
     let m = upto.match(/(^|[^\w@\/.])@([A-Za-z][\w.-]*)?$/);
     if (m) return { kind: 'mention', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
+    // #t-: a link on Tidings, found by the words of its title or address.
+    m = upto.match(/(^|[^\w&#\/;=])#t-([^\s#\[\]]{0,80})$/i);
+    if (m) return { kind: 'tiding', start: upto.length - m[2].length - 2, prefix: m[2] };
     // #mood, as mood_view._HASH links it: not after a word, an & or a / (a URL's #anchor, &#39;).
     m = upto.match(/(^|[^\w&#\/;=])#([a-z0-9][a-z0-9-]{0,79})?$/i);
     if (m) return { kind: 'mood', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
@@ -5373,6 +5541,22 @@
         suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
         suggest.classList.add('on');
       }, wikiCache.has(prefix) ? 0 : 150);
+      return;
+    }
+    if (at.kind === 'tiding') {
+      clearTimeout(tidingTimer);
+      const prefix = at.prefix;
+      tidingTimer = setTimeout(async () => {
+        const links = await findTidings(prefix);
+        const still = wordAtCaret();
+        if (!still || still.kind !== 'tiding' || still.prefix !== prefix) return;  // they've typed on
+        choices = links.map(l => ({ insert: `t-${l.id.slice(0, 8)} `,
+          html: `<span class="emo">🔗</span>${esc(l.title.slice(0, 80))}<small>${esc(l.host)}</small>` }));
+        if (!choices.length) return closeSuggest();
+        chosen = Math.min(chosen, choices.length - 1);
+        suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
+        suggest.classList.add('on');
+      }, tidingCache.has(prefix) ? 0 : 150);
       return;
     }
     if (at.kind === 'clips') {
@@ -5512,7 +5696,6 @@
     sayBox.style.height = sayBox.scrollHeight + 2 + 'px';
   }
   // Short: a phone's box is narrow, and a placeholder can't wrap or end in an ellipsis there.
-  if (phone) { sayBox.placeholder = 'Say something…'; sayBox.rows = 1; }
   sayBox.addEventListener('input', fitSay);
   addEventListener('resize', fitSay);  // turning the phone rewraps what's typed
 
@@ -5542,6 +5725,7 @@
   }
   // What's said next makes an old error old news.
   sayBox.addEventListener('input', () => { const err = composer.querySelector('.err'); if (err) err.remove(); });
+  document.getElementById('sayHelp').addEventListener('click', e => { showNote(e.currentTarget.title, 9000); sayBox.focus(); });
   function showNote(message, ms, isHtml) {  // a word under the box, gone after a while (isHtml: already escaped, with a link)
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
     composer.insertAdjacentHTML('beforeend', `<span class="note">${isHtml ? message : esc(message)}</span>`);

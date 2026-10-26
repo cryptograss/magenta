@@ -6,6 +6,7 @@ so the page also shows who changed what, when, and why.
 """
 
 import json
+import re
 
 from django.http import JsonResponse
 from django.conf import settings
@@ -184,6 +185,20 @@ def api_tidings(request):
     from .services import tidings
     device = mood_auth.device_for(request)
     return JsonResponse(tidings.tidings_state(viewer=device.entity_id if device else None))
+
+
+@require_GET
+def api_tidings_find(request):
+    """{"links": [{id, title, host, at}]}: the links on Tidings whose title or address has every word of ?q=,
+    newest first, eight at most -- what '#t-' offers in the composer. No ?q=: the newest eight."""
+    from django.db.models import Q
+    from urllib.parse import urlsplit
+    from .models import Tiding
+    found = Tiding.objects.only('id', 'title', 'url', 'at')
+    for word in re.findall(r'[^\s\-_]+', request.GET.get('q', ''))[:6]:
+        found = found.filter(Q(title__icontains=word) | Q(url__icontains=word))
+    return JsonResponse({'links': [{'id': str(t.id), 'title': t.title or t.url, 'host': urlsplit(t.url).hostname or '',
+                                    'at': t.at.isoformat()} for t in found.order_by('-at')[:8]]})
 
 
 @require_GET

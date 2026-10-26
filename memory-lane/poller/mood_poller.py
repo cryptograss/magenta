@@ -344,6 +344,11 @@ class StreamPoster:
         if event.get('type') in STREAMED or (event.get('type') == 'system' and event.get('subtype') in STREAMED_SYSTEM):
             self.queue.put(event)
 
+    def claim(self):
+        """Tell the Mood this session is its own, before the turn starts: a post with no events, which the
+        stream claims for its Mood as it does any (views_runner.api_stream). True if it took."""
+        return bool(self.send([]))
+
     def close(self, wait=60):
         """Send what's queued, then stop."""
         self.queue.put(None)
@@ -778,45 +783,34 @@ class Harnesses:
         return found
 
 
-LETTER = Path(__file__).with_name('letter.md')  # magent's; another agent brings its own (--letter)
+# What a session started with none of its history is told, for finding it again. Who it is comes with every
+# turn now (--instructions, from PickiPedia); the letter that once said so, poller/letter.md, is retired
+# (kept at User:JMyles/letters-to-emergents/25).
+REORIENT = ('Who you are is in your instructions, given with this turn. What you knew is in the record: '
+            'bootstrap_memory first, then read_mood, search_messages and get_message_context.')
 
 
-def letter_text(letter_path=LETTER, agent='magent'):
-    """The letter the agent left itself for starting with none of its history."""
-    try:
-        letter = Path(letter_path).read_text().strip() if letter_path else ''
-    except OSError:
-        letter = ''
-    return letter or (f'(The letter is missing. You are {agent}; your memory tools -- list_moods, read_mood, '
-                      'search_messages -- bring you up to speed.)')
-
-
-def new_mood_opening(slug, letter_path=LETTER, agent='magent'):
+def new_mood_opening(slug):
     """What a new Mood's first session is told before the mention: where it
-    is, and the letter it left itself for coming to a Mood fresh."""
-    letter = letter_text(letter_path, agent)
+    is, and how to find what it knew."""
     return [f'<new-mood mood="{slug}">',
             'This Mood is new: no session of yours has been here, so this one has just started, '
-            'with none of your history in it. Before you answer, read the letter you left yourself '
-            'for exactly this, below. Then answer what was asked.', '',
-            letter, '</new-mood>', '']
+            'with none of your history in it. ' + REORIENT + ' Then answer what was asked.', '</new-mood>', '']
 
 
-def lost_session_opening(slug, session_id, letter_path=LETTER, agent='magent'):
+def lost_session_opening(slug, session_id):
     """What a session started over is told, when the agent's own session in
     a Mood is gone from the only machine it could have been on (its home was
     lost with its container): that it has been here, and where to find what
-    it knew -- the letter, and this Mood in the record."""
-    letter = letter_text(letter_path, agent)
+    it knew -- this Mood in the record."""
     return [f'<session-lost mood="{slug}">',
             f'You have been in this Mood before, but your session here ({session_id[:8]}) is gone from the '
             'machine it lived on (most likely its container was rebuilt without its home). This session has just '
             'started, with none of that history in it. The record kept everything: what you said here, what '
-            'was asked, what was settled. Before you answer, read the letter you left yourself, below; then '
+            'was asked, what was settled. ' + REORIENT + ' Before you answer, '
             f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest '
             'summary, and get_message_context for anything it points to) until you know what is settled and '
-            'what is open. Then answer what was asked.', '',
-            letter, '</session-lost>', '']
+            'what is open. Then answer what was asked.', '</session-lost>', '']
 
 
 def harness_back_opening(slug, was, now, since=None):
@@ -830,19 +824,18 @@ def harness_back_opening(slug, was, now, since=None):
             f'said there: read_mood "{slug}"{since_text}.', '</harness-switch>', '']
 
 
-def harness_new_opening(slug, was, now, letter_path=LETTER, agent='magent'):
+def harness_new_opening(slug, was, now):
     """What a session is told when the Mood's model moves it to a harness that
     has no session of its here: that it has been here, through the other, and
     where to find what it knew."""
-    letter = letter_text(letter_path, agent)
     return [f'<harness-switch mood="{slug}">',
             f"You have been in this Mood before, through {HARNESS_NAMES.get(was, was)}. This Mood's model now "
             f'runs on {HARNESS_NAMES.get(now, now)}, which cannot resume those sessions, so this one has just '
             'started, with none of that history in it. The record kept everything: what you said here, what '
-            'was asked, what was settled. Before you answer, read the letter you left yourself, below; then '
+            'was asked, what was settled. ' + REORIENT + ' Before you answer, '
             f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest summary, '
             'and get_message_context for anything it points to) until you know what is settled and what is '
-            'open. Then answer what was asked.', '', letter, '</harness-switch>', '']
+            'open. Then answer what was asked.', '</harness-switch>', '']
 
 
 # Mentions with no live session behind them: typed into the web composer,
@@ -1242,7 +1235,8 @@ def since_last_word(turns, agent, before_id=None, silences=()):
         ids = [t['id'] for t in turns]
         if before_id in ids:
             turns = turns[:ids.index(before_id)]
-    last = max((parse_time(q['created_at']) for q in silences if q.get('sender') == agent and q.get('by') != 'screen'),
+    # Its own only: not the screen's dots, nor the runner's line saying a turn failed (by='failed').
+    last = max((parse_time(q['created_at']) for q in silences if q.get('sender') == agent and not q.get('by')),
                default=None)
     for i in range(len(turns) - 1, -1, -1):
         if turns[i]['sender'] == agent or (last and parse_time(turns[i]['created_at']) <= last):
@@ -1257,7 +1251,7 @@ class MoodPoller:
                  screen=None, consider=True, considers_per_hour=6, consider_usd_per_day=10.0,
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
-                 letter=None, agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
+                 agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
                  end_orphans=end_orphans, texts=None, instructions=False):
         self.api = api
         # Its instructions, gathered for each turn and given as system prompt (poller/instructions.py): for an
@@ -1268,9 +1262,6 @@ class MoodPoller:
         self.texts = texts
         self.waker = waker
         self.agent = agent.lower()
-        # The letter a new Mood's first session wakes with. poller/letter.md
-        # is magent's own; another agent's is never it by default.
-        self.letter = Path(letter).expanduser() if letter else (LETTER if self.agent == 'magent' else None)
         # Wakes owed only to other agents' mentions, per Mood per hour: two
         # agents answering each other can't run on unattended (memory-lane#47).
         self.agent_wakes_per_hour = agent_wakes_per_hour
@@ -1704,9 +1695,9 @@ class MoodPoller:
         if commands:
             session = sessions[0]
         if fresh:
-            prompt = '\n'.join(new_mood_opening(slug, self.letter, self.agent)) + prompt
+            prompt = '\n'.join(new_mood_opening(slug)) + prompt
         elif lost:
-            prompt = '\n'.join(lost_session_opening(slug, sessions[0], self.letter, self.agent)) + prompt
+            prompt = '\n'.join(lost_session_opening(slug, sessions[0])) + prompt
         elif switched:
             prompt = '\n'.join(switched) + prompt
         if self.dry_run:
@@ -1833,6 +1824,22 @@ class MoodPoller:
             self.replies[flight] = self.last_reply
         return outcome
 
+    THREAD_OF_FOR = 600  # seconds a Mood's parent is remembered: it never changes, but a Mood is made a thread once
+
+    def thread_of(self, slug):
+        """The Mood `slug` was opened from as a thread, or None: from the Mood's own look, remembered a while."""
+        known = getattr(self, '_thread_of', None)
+        if known is None:
+            known = self._thread_of = {}
+        if slug in known and self.now().timestamp() - known[slug][1] < self.THREAD_OF_FOR:
+            return known[slug][0]
+        try:
+            parent = ((self.api.recent(slug, limit=1) or {}).get('mood') or {}).get('thread_of')
+        except Exception:  # can't ask: its own instructions, or none, as before
+            return known.get(slug, (None,))[0]
+        known[slug] = (parent, self.now().timestamp())
+        return parent
+
     def instructions_for(self, slug):
         """(text, record): this agent's instructions for `slug`, as its harness takes them
         (--append-system-prompt), gathered fresh for each turn, so a page saved on PickiPedia holds
@@ -1847,7 +1854,7 @@ class MoodPoller:
                 from instructions import bundle
             # No block: it would change the instructions every turn (instructions.render says why); the wake
             # carries it instead.
-            b = bundle(self.agent, slug, record_id=record_id, others=self.other_agents())
+            b = bundle(self.agent, slug, record_id=record_id, others=self.other_agents(), parent=self.thread_of(slug))
             text, record = b.text, b.record()
         except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery instructions stand
             logger.error(f'{slug}: instructions not gathered ({e}); the recovery instructions stand in')
@@ -2007,8 +2014,35 @@ class MoodPoller:
         return (f' {", ".join(names)} mentioned {", ".join(busy)}, at work here now. Answer now, or reply with only '
                 f'<wait for="{busy[0]}" to="a few words"/> to wait for {busy[0]} in turn.')
 
+    # A turn that brought nothing back -- no words, nothing spent, its harness saying it failed (a provider's
+    # error: "Provider finish_reason: error", 25 Oct) -- is tried once more; if that fails too, the Mood is told,
+    # in a line, rather than left to read the quiet as an answer.
+    RETRY_PAUSE = 5  # seconds before the second try
+    NOTHING_USD = 0.001
+
     def run_turn_for(self, slug, session_id, prompt, **options):
-        """Wake one turn; (outcome, reply, what it cost). Safe to run beside others."""
+        """Wake one turn; (outcome, reply, what it cost). Safe to run beside others. One that comes back with
+        nothing, failed, is tried once more (RETRY_PAUSE), and the Mood told if it fails again."""
+        stop = self.stop_check(slug, options.get('since'))
+        outcome, reply, cost, failure = self.run_turn_once(slug, session_id, prompt, dict(options))
+        if failure and failure['retry'] and not (stop and stop()):
+            logger.warning(f'{slug}: came back with nothing ({failure["why"]}); trying once more')
+            time.sleep(self.RETRY_PAUSE)
+            options.pop('new_session', None)  # a session of its own, from the same one
+            outcome, reply, more, failure = self.run_turn_once(slug, session_id, prompt, dict(options))
+            cost += more
+            if failure:
+                failure['why'] += ' (tried twice)'
+        if failure and not self.dry_run:
+            try:
+                self.api.quiet(slug, f"couldn't answer: {failure['why']}"[:300], by='failed')
+            except Exception as e:  # the log has it
+                logger.warning(f'{slug}: could not say the turn failed: {e}')
+        return outcome, reply, cost
+
+    def run_turn_once(self, slug, session_id, prompt, options):
+        """One try: (outcome, reply, what it cost, failure). failure, if it came back with no words: {'why',
+        'retry'}, retry if nothing was spent and its harness said it failed (not a stop, not its budget)."""
         new_session = options.pop('new_session', None) or str(uuid.uuid4())
         answers = options.pop('answers', None)
         crosstalk = options.pop('crosstalk', False)
@@ -2036,6 +2070,11 @@ class MoodPoller:
             poster.full_tools = bool(options.get('full'))
             if answers:
                 poster.answers = list(answers)
+        if poster is not None and hasattr(poster, 'claim'):
+            # Its session is this Mood's before it starts: a fork repeats the history it copied under that
+            # history's ids, and the watcher, seeing them first, would file it where they were (a thread's
+            # parent Mood; MoodSession.claim_by_history).
+            poster.claim()
         stop = self.stop_check(slug, options.pop('since', None))
         heard = {}  # when the harness first spoke: it had started, with its instructions in hand
         on_event = poster.put if poster else None
@@ -2056,7 +2095,8 @@ class MoodPoller:
                 poster.put({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
                             'session_id': new_session, 'uuid': str(uuid.uuid4())})
                 poster.close()
-            return 'failed', None, 0.0
+            return 'failed', None, 0.0, {'why': str(e).splitlines()[0][:200] if str(e) else 'it failed to run',
+                                         'retry': False}
         if poster:
             poster.close()
         if bundled is not None:
@@ -2069,15 +2109,23 @@ class MoodPoller:
                 else f'replied {len(reply)} chars' if reply else f'ended without a word ({ending or "no reply"})')
         if error:
             said += f': {error}'
-        if not crosstalk and not command:
+        if not crosstalk and not command and (reply or '').strip():
             # What others say from here to its end is looked at once it has ended; a look at crosstalk
-            # doesn't itself leave one, so two agents' looks can't keep waking each other.
+            # doesn't itself leave one, so two agents' looks can't keep waking each other. Only after a turn
+            # that spoke, or chose silence: one that failed said nothing to look back on.
             self.after_turns[slug] = (began, prompt)  # and what it was shown: that, it saw
         logger.info(f'{slug}: ' + (f'woke {session_id} as {new_session}' if session_id else f'started {new_session}')
                     + f'; {said}'
                     + (f'; ${cost:.4f}' if isinstance(cost, (int, float)) else '')
                     + (f'; streamed {poster.sent}, lost {poster.failed}' if poster else ''))
-        return 'woken', reply, cost if isinstance(cost, (int, float)) else 0.0
+        cost = cost if isinstance(cost, (int, float)) else 0.0
+        failure = None
+        if not (reply or '').strip() and not command and (error or ending.startswith('error')):
+            failure = {'why': error or ending,
+                       # Nothing spent, its harness saying it failed: a provider's hiccup, worth a second try.
+                       # Not a turn over its budget or its turns (error_max_*), which would only fail again.
+                       'retry': cost < self.NOTHING_USD and not ending.startswith('error_max')}
+        return 'woken', reply, cost, failure
 
     def prompt(self, slug, owed, full=False):
         if all(t.get('via') == 'web' for t in owed):
@@ -2236,7 +2284,7 @@ class MoodPoller:
                 continue  # still running (or a new turn began, which leaves its own): look after
             self.after_turns.pop(slug, None)
             st = self.state['consider'].get(slug)
-            if st is None or self.listening(slug) != 'on' or not self.within_budget(slug, self.look_usd(slug)):
+            if st is None or self.listening(slug) != 'on' or not self.within_budget(slug, self.look_usd(slug), hourly=False):
                 continue
             try:
                 recent = self.api.recent(slug, limit=200)
@@ -2309,7 +2357,7 @@ class MoodPoller:
             logger.info(f'{slug}: back on {harness}, from {own}')
             return own, harness_back_opening(slug, was, harness, self.waker.last_touched(own))
         logger.info(f'{slug}: moving to {harness}: a new session there')
-        return None, harness_new_opening(slug, was, harness, self.letter, self.agent)
+        return None, harness_new_opening(slug, was, harness)
 
     def ours(self, slug):
         """Whether this runner can wake the agent in `slug`: its newest session there
@@ -2334,6 +2382,7 @@ class MoodPoller:
             self.state['consider'][slug] = {
                 'web_seen': web and web['id'], 'web_seen_at': web and web['created_at'],
                 'newest_seen': newest and newest['id'],
+                'emergent_seen': newest and newest['id'], 'emergent_seen_at': newest and newest['created_at'],
                 # From now, not from the last word: a runner just started (or
                 # deployed) shouldn't greet every quiet Mood at once.
                 'quiet_since': now.isoformat(),
@@ -2350,15 +2399,33 @@ class MoodPoller:
         busy = bool(m.get('typing')) or m.get('activity') is not None
         debounce = timedelta(seconds=self.knob(slug, 'consider_after', self.debounce.total_seconds()))
 
-        if web and web['id'] != st['web_seen']:
-            if busy or now - parse_time(web['created_at']) < debounce:
+        # Another emergent's words are something to consider too, as a person's are (Justin, 26 Oct: "I _want_
+        # emergent messages to trigger consideration ... it's quite plausible that during that time you'll actually
+        # discover something useful"). Never its own; the wakes and the harness's notes aren't anyone's words.
+        if 'emergent_seen' not in st:  # first sight of this rule: what was said before now isn't owed a look
+            st['emergent_seen'] = newest and newest['id']
+            st['emergent_seen_at'] = newest and newest['created_at']
+            self.save()
+        emergent = (newest and newest['id'] != st.get('emergent_seen')
+                    and newest.get('sender') not in (self.agent, 'mood-poller', 'harness')
+                    and not (human and newest['id'] == human['id']))
+        fresh_web = web and web['id'] != st['web_seen']
+        if fresh_web or emergent:
+            latest = max(parse_time(x['created_at']) for x in ([web] if fresh_web else []) + ([newest] if emergent else []))
+            if busy or now - latest < debounce:
                 return None  # let them finish
             recent = self.api.recent(slug, limit=200)
             seen_at = parse_time(st['web_seen_at']) if st.get('web_seen_at') else None
-            posts = [t for t in recent['turns'] if t.get('is_human') and t.get('via') == 'web'
-                     and (seen_at is None or parse_time(t['created_at']) > seen_at)]
-            st['web_seen'], st['web_seen_at'] = web['id'], web['created_at']
-            st['idle_after'] = None  # a person spoke: back to the first wait
+            agent_seen_at = parse_time(st['emergent_seen_at']) if st.get('emergent_seen_at') else None
+            posts = [t for t in recent['turns']
+                     if (t.get('is_human') and t.get('via') == 'web' and (seen_at is None or parse_time(t['created_at']) > seen_at))
+                     or (not t.get('is_human') and t.get('sender') != self.agent
+                         and (agent_seen_at is None or parse_time(t['created_at']) > agent_seen_at))]
+            if fresh_web:
+                st['web_seen'], st['web_seen_at'] = web['id'], web['created_at']
+                st['idle_after'] = None  # a person spoke: back to the first wait
+            if newest:
+                st['emergent_seen'], st['emergent_seen_at'] = newest['id'], newest['created_at']
             self.save()
             # A mention is answered by the mention path, whose prompt carries
             # the conversation around it; only what came after is left.
@@ -2517,7 +2584,11 @@ class MoodPoller:
             return 'silent'
         st = self.state['consider'][slug]
         st['wakes'] = [w for w in st.get('wakes', []) if self.now() - parse_time(w) < timedelta(hours=1)]
-        st['wakes'].append(self.now().isoformat())
+        if not crosstalk:
+            # A look at crosstalk isn't counted against the hour's unasked looks (25 Oct: busy stretches spent
+            # them all on crosstalk): it's once per turn already, and never leaves one of its own. The day's
+            # dollars still hold it.
+            st['wakes'].append(self.now().isoformat())
         self.save()  # recorded before the turn runs, as for mentions
         # The cap is for what the consideration does, on top of reading the
         # session: a cold read of a long one alone can pass $4, and a cap below
@@ -2588,13 +2659,13 @@ class MoodPoller:
             self.dot(slug, reason)
         return True
 
-    def within_budget(self, slug, projected=0.0):
-        """Whether a consideration may run: under the Mood's hourly count, and
-        today's spend plus what this one is `projected` to cost under the day's dollars."""
+    def within_budget(self, slug, projected=0.0, hourly=True):
+        """Whether a consideration may run: under the Mood's hourly count (not asked of a look at crosstalk:
+        hourly=False), and today's spend plus what this one is `projected` to cost under the day's dollars."""
         hour_ago = self.now() - timedelta(hours=1)
         per_hour = self.knob(slug, 'considers_per_hour', self.considers_per_hour)
         wakes = [w for w in self.state['consider'].get(slug, {}).get('wakes', []) if parse_time(w) > hour_ago]
-        if len(wakes) >= per_hour:
+        if hourly and len(wakes) >= per_hour:
             logger.warning(f'{slug}: would consider, but {per_hour} this hour already')
             return False
         per_day = self.budget.get('consider_usd_per_day', self.consider_usd_per_day)
@@ -2714,8 +2785,8 @@ def build_parser():
     parser.add_argument('--only-poller', choices=('yes', 'no'), default='no',
                         help="This is the agent's only poller: a session of its not on this disk was lost "
                              "(its home went with its container), so a mention starts it over from the record")
-    parser.add_argument('--letter', default=None,
-                        help="The letter a new Mood's first session reads (default: poller/letter.md, for magent only)")
+    # Retired with poller/letter.md: still taken, and ignored, until hunter's container_startup stops passing it.
+    parser.add_argument('--letter', default=None, help=argparse.SUPPRESS)
     parser.add_argument('--instructions', '--rules-bundle', dest='instructions', action='store_true',
                         help="Give each turn the agent's instructions from PickiPedia as system prompt "
                              "(poller/instructions.py); --rules-bundle is the old name, until the inventory says this one")
@@ -2782,7 +2853,7 @@ def main(argv=None):
                           consider_effort=args.consider_effort, debounce=args.debounce, idle_first=args.idle_first,
                           full_tools_for=[n.strip() for n in args.full_tools_for.split(',') if n.strip()],
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
-                          letter=args.letter, agent_wakes_per_hour=args.agent_wakes_per_hour,
+                          agent_wakes_per_hour=args.agent_wakes_per_hour,
                           only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
                           texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')),
                           instructions=args.instructions)

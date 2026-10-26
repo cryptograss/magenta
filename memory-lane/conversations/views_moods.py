@@ -297,12 +297,14 @@ def api_mood_turns(request, slug):
             changes.append({**c, 'turn': retract.mark(turn_payload(msg, text, names), retract.change_of(msg))
                             if msg and text else None})
     clock.lap('changes')
-    from .services import reactions
+    from .services import pins, reactions
     return clock.report(JsonResponse({
         # A poll for what's new: its name only (a rename shows at once); the rest is a first look's.
         'mood': clock('mood', mood_payload, mood, light=after is not None),
         # Every message here that has reactions, as they now stand (services/reactions.py).
         'reactions': clock('reactions', reactions.in_mood, mood),
+        # What's pinned to this Mood's top, newest first (services/pins.py).
+        'pins': clock('pins', pins.in_mood, mood),
         # What was edited or deleted since ?changes_since=, as it stands now; and the time to ask from next.
         'changes': changes,
         'now': timezone.now().isoformat(),
@@ -676,15 +678,23 @@ def api_mood_sessions(request, slug):
     the one to continue. A session id is a local handle, not a credential.
     """
     mood = Mood.by_slug_or_404(slug)
-    messages = Message.objects.filter(mood=mood, session_id__isnull=False)
-    sender = request.GET.get('sender')
-    if sender:
-        messages = messages.filter(sender_id=sender.lower())
-    sessions = (messages.values('session_id')
-                .annotate(last_at=Max('created_at'))
-                .order_by('-last_at'))
+
+    def sessions_in(where, before=None):
+        messages = Message.objects.filter(mood=where, session_id__isnull=False)
+        sender = request.GET.get('sender')
+        if sender:
+            messages = messages.filter(sender_id=sender.lower())
+        found = messages.values('session_id').annotate(last_at=Max('created_at')).order_by('-last_at')
+        return [s for s in found if before is None or s['last_at'] <= before]
+
+    sessions, came_from = sessions_in(mood), None
+    # A thread forked from another Mood: until an agent has spoken here, it goes on from where it was there
+    # when the thread was forked -- its session then, never one from after.
+    if not sessions and mood.thread_of_id and mood.forked_at:
+        sessions, came_from = sessions_in(mood.thread_of, before=mood.forked_at), mood.thread_of.slug
     return JsonResponse({'mood': mood.slug, 'sessions': [
-        {'session_id': str(s['session_id']), 'last_at': s['last_at'].isoformat()} for s in sessions
+        {'session_id': str(s['session_id']), 'last_at': s['last_at'].isoformat(),
+         **({'from': came_from} if came_from else {})} for s in sessions
     ]})
 
 
