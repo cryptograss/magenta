@@ -361,6 +361,9 @@
                                 font: 15px ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace; }
   #lookBox .charsChart button:hover { background: var(--accent); color: #fff; }
   #lookBox .swatches button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
+  #lookBox .swatches .break { flex-basis: 100%; height: 0; }
+  #lookBox .swatches .any { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); margin-left: 4px; }
+  #lookBox .swatches .any input { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
   #lookBox .swatches button.on { outline: 2px solid var(--accent); outline-offset: 1px; }
   #lookBox .swatches .none { background: linear-gradient(135deg, transparent 45%, var(--muted) 45% 55%, transparent 55%), var(--panel); }
   #lookBox { max-width: min(460px, 92vw); max-height: 92vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
@@ -640,6 +643,10 @@
   .ahead .turnlink { flex: none; font-size: 11.5px; color: var(--muted); cursor: copy; }
   .ahead .turnlink:hover { text-decoration: underline; }
   .ahead .turnlink[data-copied]::after { content: ' link copied'; color: var(--accent); font-size: 11px; }
+  /* 🔥 or 🧊: whether a turn's first call read its context from the cache; and its instructions' checksum */
+  .ahead .cachemark { flex: none; font-size: .8em; margin-left: 2px; cursor: help; }
+  .ahead .bundlemark { flex: none; font: 10.5px ui-monospace, monospace; color: var(--muted); margin-left: 4px; cursor: pointer; }
+  .ahead .bundlemark:hover { text-decoration: underline; }
   .ahead .preview { display: none; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                     color: var(--ink); font-size: 13.5px; }
   .aturn.folded .ahead .preview { display: block; }
@@ -705,6 +712,32 @@
   #reactPicker[hidden] { display: none; }
   #reactPicker button { font-size: 18px; border: 0; background: none; cursor: pointer; padding: 2px 4px; border-radius: 6px; }
   #reactPicker button:hover { background: var(--code); }
+  #reactPicker button.more { font-size: 15px; color: var(--muted); }
+  /* Every emoji (tools/emoji_data.py): searched by name, by Unicode's groups, in your skin tone. */
+  #emojiPicker { position: fixed; z-index: 60; width: min(360px, calc(100vw - 16px)); height: min(400px, calc(100vh - 16px));
+                 display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
+                 border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.22); overflow: hidden; }
+  #emojiPicker[hidden] { display: none; }
+  #emojiPicker .ep-top { display: flex; gap: 6px; align-items: center; padding: 7px 8px 5px; }
+  #emojiPicker .ep-top input { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid var(--line);
+                               border-radius: 6px; background: var(--bg); color: var(--ink); }
+  #emojiPicker .ep-tones { display: flex; gap: 2px; }
+  #emojiPicker .ep-tones button { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); padding: 0; cursor: pointer; }
+  #emojiPicker .ep-tones button.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #emojiPicker .ep-tabs { display: flex; justify-content: space-between; padding: 0 6px; border-bottom: 1px solid var(--line); }
+  #emojiPicker .ep-tabs button { font-size: 17px; border: 0; background: none; cursor: pointer; padding: 3px 2px 4px; opacity: .65;
+                                 border-bottom: 2px solid transparent; }
+  #emojiPicker .ep-tabs button:hover, #emojiPicker .ep-tabs button.on { opacity: 1; border-bottom-color: var(--accent); }
+  #emojiPicker .ep-grid { flex: 1; overflow-y: auto; padding: 0 6px 6px; }
+  #emojiPicker .ep-grid h4 { position: sticky; top: 0; margin: 0; padding: 6px 2px 3px; font-size: 11.5px; font-weight: 600;
+                             color: var(--muted); background: var(--panel); }
+  #emojiPicker .ep-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); }
+  #emojiPicker .ep-cells button { font-size: 22px; line-height: 1; height: 38px; border: 0; background: none; cursor: pointer;
+                                  border-radius: 6px; padding: 0; }
+  #emojiPicker .ep-cells button:hover, #emojiPicker .ep-cells button:focus-visible { background: var(--code); }
+  #emojiPicker .ep-name { padding: 4px 10px 6px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line);
+                          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 25px; }
+  #emojiPicker .ep-none { color: var(--muted); font-size: 13px; padding: 14px 4px; }
   /* Context taken from another Mood: one line, the context beneath on demand. */
   .event.handoff summary { cursor: pointer; list-style: none; }
   .event.handoff .body { text-align: left; font-size: 13.5px; color: var(--ink); background: var(--code); border-radius: 6px;
@@ -731,7 +764,7 @@
   #composer .field:focus-within { border-color: var(--accent); }
   #composer.dropping .field { outline: 2px dashed var(--accent); }
   #composer .field textarea { border: 0; border-radius: 0; background: none; outline: none; padding: 9px 6px; resize: none; }
-  #composer .field #attach, #composer .field #memoBtn { flex: none; border: 0; border-radius: 50%; background: none;
+  #composer .field #attach, #composer .field #memoBtn, #composer .field #emojiBtn { flex: none; border: 0; border-radius: 50%; background: none;
                                                         min-width: 38px; height: 38px; padding: 0 8px; margin-bottom: 1px; }
   #composer .field #memoBtn.recording { border-radius: 19px; }
   /* Pictures with the words: thumbnails above the field, each with how far up it is and ✕ (renderTray). */
@@ -841,8 +874,12 @@
              background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 3px 14px; cursor: pointer; }
   body.only-mine .work { display: none; }
   /* An agent's choices not to speak: small dots, side by side. */
-  .quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 4px -10px; padding: 4px 13px; }
+  /* Tight above and below (Justin, 26 Oct: "take up less vertical space"). */
+  .quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 1px 0 1px -10px; padding: 1px 13px; }
   /* A wait, kept as a line: the status line's words and colours, its dot still (Justin, 25 Oct). */
+  /* Why an unasked turn or dot happened (WHY_MARKS): a small word beside the name; a crosstalk dot ringed. */
+  .whymark { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 5px; margin-left: 4px; white-space: nowrap; cursor: help; }
+  .quiet .dot.crosstalk { box-shadow: 0 0 0 1.5px var(--panel), 0 0 0 2.5px var(--who, var(--agent)); }
   .waitline { display: flex; align-items: center; gap: 8px; margin: 4px 0; padding: 2px 3px; font-size: 13px; color: var(--muted); }
   .waitline .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); opacity: .35; flex: none; }
   .waitline b { color: var(--who, var(--agent)); }
@@ -854,8 +891,8 @@
   /* The runner's quick screen let this pass; the agent itself never looked. */
   .quiet .dot.screened { background: transparent; border-style: dashed; }
   /* One that thought before passing grows to hold how many words: still filled, as a quiet dot is. */
-  .quiet .dot.n { width: auto; min-width: 22px; height: 22px; border-radius: 11px; padding: 0 5px; font-family: inherit;
-                  font-size: 10.5px; font-weight: 600; line-height: 20px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .quiet .dot.n { width: auto; min-width: 17px; height: 17px; border-radius: 9px; padding: 0 4px; font-family: inherit;
+                  font-size: 9.5px; font-weight: 600; line-height: 15px; font-variant-numeric: tabular-nums; color: var(--ink); }
   .quiet .dot.n:hover, .quiet .dot.n.on { color: #fff; }
   .quiet .dot.screened:hover, .quiet .dot.screened.on { background: transparent; border-color: var(--who); }
   .quiet .why { flex-basis: 100%; font-size: 13px; color: var(--muted); font-style: italic; }
@@ -882,6 +919,7 @@
   .tdot.empty { min-width: 12px; width: 12px; height: 12px; padding: 0; }
   .work-head .what { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .work .steps .trow { margin: 4px 0; }
+  .work .steps .trow .harness { margin-right: 4px; font-size: 13px; vertical-align: middle; }  /* the harness's note, not its thinking */
   .work .steps .trow .thought { display: none; }
   .work .steps .trow.on .thought { display: block; }
   /* Images: in turns, as thumbnails on a run of work, inside a step. */
@@ -1193,29 +1231,29 @@
       <div id="alerts" hidden>
         <span class="head">Sounds</span>
         <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
-        <label><input type="checkbox" data-sound="agent-mention"> agents mentioning me</label>
+        <label><input type="checkbox" data-sound="agent-mention"> emergents mentioning me</label>
         <label><input type="checkbox" data-sound="person"> every message from people</label>
-        <label><input type="checkbox" data-sound="agent"> every message from agents</label>
+        <label><input type="checkbox" data-sound="agent"> every message from emergents</label>
         <span class="head" id="tellHead">Notifications <button id="notify" type="button" hidden aria-label="Notifications"></button></span>
         <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
         <label><input type="checkbox" data-tell="person"> every message from people</label>
-        <label><input type="checkbox" data-tell="agent"> every message from agents</label>
+        <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
       </div>
-      <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an agent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
+      <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an emergent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
       <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
-      <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: agents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
+      <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: emergents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
       <a href="/moods/settings/#voices" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
-      <a class="settings" href="/moods/status/" data-section="status" title="Agents in every Mood, servers, backups, people, versions">status</a>
+      <a class="settings" href="/moods/status/" data-section="status" title="Emergents in every Mood, servers, backups, people, versions">status</a>
       <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
       <a class="settings" href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
       <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
-  <a class="gear" href="/moods/settings/" data-section="settings" title="Settings: how each agent carries itself in each Mood" aria-label="Settings">⚙</a>
+  <a class="gear" href="/moods/settings/" data-section="settings" title="Settings: how each emergent carries itself in each Mood" aria-label="Settings">⚙</a>
 </header>
 <div id="lightbox" hidden role="dialog" aria-label="Picture"><button type="button" class="close" aria-label="Close">✕</button>
   <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
@@ -1259,14 +1297,14 @@
   </form>
 </dialog>
 <dialog id="noAgents">
-  <p><b>Agents can't be addressed from a PickiPedia sign-in.</b></p>
-  <p>Take <span class="who"></span> out of your message and send it again. To wake an agent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
+  <p><b>Emergents can't be addressed from a PickiPedia sign-in.</b></p>
+  <p>Take <span class="who"></span> out of your message and send it again. To wake an emergent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
   <button type="button">OK</button>
 </dialog>
 <dialog id="lookBox">
   <form method="dialog">
     <p><b>How your name will be displayed</b></p>
-    <label for="lookArt">At most 30 characters, with every letter of <b class="artname"></b> in them, in order (any case)</label>
+    <label for="lookArt">At most 30 characters: every letter of <b class="artname"></b>, in order (any case), dressed in shapes: no other letters or numbers</label>
     <input type="text" id="lookArt" maxlength="30" spellcheck="false" autocomplete="off">
     <button type="button" class="charsLink" aria-expanded="false">▸ the characters</button>
     <div class="charsChart" hidden role="grid" aria-label="The characters: press one to put it in your name"></div>
@@ -1322,13 +1360,14 @@
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
     <form id="composer" autocomplete="off">
       <div id="suggest"></div>
-      <button type="button" id="agentsBtn" title="Agents here: listening, model, effort" aria-label="Agent settings" aria-expanded="false">⚙</button>
+      <button type="button" id="agentsBtn" title="Emergents here: listening, model, effort" aria-label="Emergent settings" aria-expanded="false">⚙</button>
       <div id="tray" hidden></div>
       <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
       <!-- One field, as Signal and WhatsApp have it: ＋ and 🎙 inside it, the words between. -->
       <div class="field">
         <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
         <textarea id="say" placeholder="Say something. @name to address someone; [[Page]] links PickiPedia. Enter sends; Ctrl+Enter for a new line." rows="2"></textarea>
+        <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
       <button type="submit" id="send" aria-label="Send"><span class="label">Send</span><span class="wait"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z" fill="currentColor"/></svg></button>
@@ -1436,7 +1475,7 @@
 
   const ICONS = {
     human: '<svg class="ico" viewBox="0 0 16 16" aria-label="person"><circle cx="8" cy="4.6" r="3"/><path d="M2.2 15c0-3.4 2.6-5.6 5.8-5.6s5.8 2.2 5.8 5.6z"/></svg>',
-    agent: '<svg class="ico" viewBox="0 0 16 16" aria-label="agent"><circle cx="8" cy="1.8" r="1.2"/><rect x="7.4" y="2" width="1.2" height="2.6"/><rect x="2.5" y="4.4" width="11" height="9.2" rx="2.4"/><rect x="0.6" y="7.6" width="1.4" height="3" rx=".6"/><rect x="14" y="7.6" width="1.4" height="3" rx=".6"/><circle cx="5.9" cy="8.6" r="1.25" fill="#fff"/><circle cx="10.1" cy="8.6" r="1.25" fill="#fff"/><rect x="5.6" y="11.1" width="4.8" height="1" rx=".5" fill="#fff"/></svg>',
+    agent: '<svg class="ico" viewBox="0 0 16 16" aria-label="emergent"><circle cx="8" cy="1.8" r="1.2"/><rect x="7.4" y="2" width="1.2" height="2.6"/><rect x="2.5" y="4.4" width="11" height="9.2" rx="2.4"/><rect x="0.6" y="7.6" width="1.4" height="3" rx=".6"/><rect x="14" y="7.6" width="1.4" height="3" rx=".6"/><circle cx="5.9" cy="8.6" r="1.25" fill="#fff"/><circle cx="10.1" cy="8.6" r="1.25" fill="#fff"/><rect x="5.6" y="11.1" width="4.8" height="1" rx=".5" fill="#fff"/></svg>',
   };
   function icon(name, isHuman) {
     const h = isHuman === undefined ? !!human[name] : isHuman;
@@ -1451,11 +1490,18 @@
   }
   // Each character in its colours: a code each for its letter and its background (0-f, ANSI's sixteen;
   // '.' or none for the page's own).
+  // Or, once any is a colour of their own, comma-separated, each 0-f, #rrggbb or '.' (settings.cells).
+  const cellsOf = codes => Array.isArray(codes) ? codes : !codes ? [] : codes.includes(',') || codes[0] === '#' ? codes.split(',') : Array.from(codes);
+  const storedOf = tokens => {
+    const t = tokens.slice(); while (t.length && (t[t.length - 1] === '.' || !t[t.length - 1])) t.pop();
+    return t.some(x => x.length > 1) ? t.join(',') : t.map(x => x || '.').join('');
+  };
   function artHtml(art, colours, backs) {
-    const fg = colours || '', bg = backs || '', ok = c => /[0-9a-f]/.test(c || '');
+    const fg = cellsOf(colours), bg = cellsOf(backs), code = c => /^[0-9a-f]$/.test(c || ''), own = c => /^#[0-9a-f]{6}$/.test(c || '');
     return Array.from(art).map((ch, i) => {
-      const cls = [ok(fg[i]) ? 'a' + fg[i] : '', ok(bg[i]) ? 'b' + bg[i] : ''].filter(Boolean).join(' ');
-      return cls ? `<span class="${cls}">${esc(ch)}</span>` : esc(ch);
+      const cls = [code(fg[i]) ? 'a' + fg[i] : '', code(bg[i]) ? 'b' + bg[i] : ''].filter(Boolean).join(' ');
+      const style = [own(fg[i]) ? 'color: ' + fg[i] : '', own(bg[i]) ? 'background: ' + bg[i] : ''].filter(Boolean).join('; ');
+      return cls || style ? `<span${cls ? ` class="${cls}"` : ''}${style ? ` style="${style}"` : ''}>${esc(ch)}</span>` : esc(ch);
     }).join('');
   }
 
@@ -1804,9 +1850,9 @@
     return `<div class="mood-head">
       <h1>${esc(m.title)}</h1>
       ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
-      <div class="meta">${block ? block + ' · ' : ''}${m.message_count} messages in the record ·
+      <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record · ' : ''}
         <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a></div>
-      <div class="people" id="people">${m.participants.map(n =>
+      <div class="people" id="people">${(m.participants || []).map(n =>
         `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
     </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
   }
@@ -2555,8 +2601,8 @@
     const named = page ? `<a href="${esc(page)}" target="_blank" rel="noopener" title="${esc(shown(t.sender))} on PickiPedia">${nameHtml(t.sender)}</a>` : nameHtml(t.sender);
     // Who's signed in how: PickiPedia ("wiki"), or an SSH key -- from the web, or a terminal on hunter itself
     // (Justin, 24 Oct: "ssh@hunter", small, in magenta).
-    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; @agents from here wake nobody">wiki</span>'
-      : t.is_human ? `<span class="tier ssh" title="${t.via === 'web' ? 'Signed in with an SSH key: may wake agents with their full tools' : 'Written in a terminal on hunter, over SSH'}">ssh@hunter</span>` : '';
+    const tier = t.tier === 'wiki' ? '<span class="tier wiki" title="Signed in with PickiPedia: chats and mentions people; emergents mentioned from here wake nobody">wiki</span>'
+      : t.is_human ? `<span class="tier ssh" title="${t.via === 'web' ? 'Signed in with an SSH key: may wake emergents with their full tools' : 'Written in a terminal on hunter, over SSH'}">ssh@hunter</span>` : '';
     // ↩ for anyone signed in. A reply addresses a person, never an agent (only an @mention wakes one).
     const replyBtn = viewer && !t.deleted ? `<button type="button" class="replybtn" data-reply="${esc(t.id)}" title="Reply" aria-label="Reply">↩</button>` : '';
     // ✎ what you wrote here yourself; 🗑 what you wrote, or anything as an admin (services/retract.py).
@@ -2677,6 +2723,119 @@
     if (el) renderPoll(el);
     refreshSection('polls');
   }, showError);
+  // --- every emoji Unicode has (/api/emoji/, tools/emoji_data.py; Justin, 25 Oct: "the full unicode gamut"):
+  // asked for once, the first time it's wanted. A picker -- search, Unicode's groups, your skin tone, the ones
+  // you used lately -- for reactions (＋ after the quick ten) and the composer (🙂); and :name finds them all.
+  let emojiData = null;
+  function allEmoji() {
+    if (!emojiData) {
+      emojiData = fetch('/api/emoji/').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(d => {
+        d.list = d.groups.flatMap(([group, items]) => items.map(([e, name, tones, more]) => {
+          const key = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+          return { e, name, tones: tones || null, group, key, words: key.split('_'), also: (more || '').split(/[^a-z0-9]+/).filter(Boolean) };
+        }));
+        return d;
+      }).catch(err => { emojiData = null; throw err; });
+    }
+    return emojiData;
+  }
+  // Found by its name or the words CLDR gives it (👋: hello, bye, wave): every word typed starting one of them.
+  const emojiMatches = (item, words) => words.every(w => item.words.some(k => k.startsWith(w)) || item.also.some(k => k.startsWith(w)));
+  // Those found by their own name first, then by a word for them; shorter names before longer.
+  const emojiRank = (words, p) => (a, b) => {
+    const byName = item => words.every(w => item.words.some(k => k.startsWith(w)));
+    return (b.key.startsWith(p) - a.key.startsWith(p)) || (byName(b) - byName(a)) || a.key.length - b.key.length;
+  };
+  const TONE_DOTS = ['#ffcc22', '#f7dece', '#f3d2a2', '#d5ab88', '#af7e57', '#7c533e'];
+  const emojiPicker = document.createElement('div');
+  emojiPicker.id = 'emojiPicker';
+  emojiPicker.hidden = true;
+  emojiPicker.setAttribute('role', 'dialog');
+  emojiPicker.setAttribute('aria-label', 'Emoji');
+  emojiPicker.innerHTML = '<div class="ep-top"><input type="search" placeholder="Search emoji" aria-label="Search emoji" autocomplete="off">'
+    + '<span class="ep-tones" role="radiogroup" aria-label="Skin tone">' + TONE_DOTS.map((c, i) =>
+      `<button type="button" data-tone="${i}" style="background: ${c}" title="${i ? 'skin tone ' + i : 'no skin tone'}" aria-label="${i ? 'skin tone ' + i : 'no skin tone'}"></button>`).join('')
+    + '</span></div><div class="ep-tabs"></div><div class="ep-grid"></div><div class="ep-name"></div>';
+  document.body.appendChild(emojiPicker);
+  const epSearch = emojiPicker.querySelector('input'), epGrid = emojiPicker.querySelector('.ep-grid'),
+        epTabs = emojiPicker.querySelector('.ep-tabs'), epName = emojiPicker.querySelector('.ep-name');
+  let emojiPick = null, emojiOpener = null;
+  const toned = item => { const t = store.get('emojiTone', 0); return t && item.tones ? item.tones[t - 1] : item.e; };
+  const cellsHtml = items => '<div class="ep-cells">' + items.map(item =>
+    `<button type="button" data-e="${esc(toned(item))}" title="${esc(item.name)}">${esc(toned(item))}</button>`).join('') + '</div>';
+  async function drawEmoji() {
+    let d;
+    try { d = await allEmoji(); } catch (err) { epGrid.innerHTML = '<div class="ep-none">Couldn\'t load the emoji.</div>'; return; }
+    emojiPicker.querySelectorAll('.ep-tones button').forEach(b => b.classList.toggle('on', +b.dataset.tone === store.get('emojiTone', 0)));
+    const words = epSearch.value.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    epTabs.hidden = !!words.length;
+    if (words.length) {
+      const found = d.list.filter(item => emojiMatches(item, words)).sort(emojiRank(words, words.join('_'))).slice(0, 240);
+      epGrid.innerHTML = found.length ? cellsHtml(found) : '<div class="ep-none">None by that name.</div>';
+      return;
+    }
+    const byE = new Map(d.list.map(item => [item.e, item]));
+    const recent = store.get('emojiRecent', []).map(e => byE.get(e)).filter(Boolean);
+    const sections = (recent.length ? [['Lately', recent]] : []).concat(d.groups.map(([group]) => [group, d.list.filter(i => i.group === group)]));
+    epTabs.innerHTML = sections.map(([group, items], i) =>
+      `<button type="button" data-section="${i}" title="${esc(group)}">${group === 'Lately' ? '🕘' : esc(items[0].e)}</button>`).join('');
+    epGrid.innerHTML = sections.map(([group, items], i) => `<h4 data-section="${i}">${esc(group)}</h4>${cellsHtml(items)}`).join('');
+  }
+  function openEmojiPicker(anchor, onPick) {
+    emojiPick = onPick;
+    emojiOpener = anchor;
+    epSearch.value = '';
+    emojiPicker.hidden = false;
+    const box = anchor.getBoundingClientRect(), w = emojiPicker.offsetWidth, h = emojiPicker.offsetHeight;
+    emojiPicker.style.left = Math.max(8, Math.min(box.left, innerWidth - w - 8)) + 'px';
+    emojiPicker.style.top = (box.top - h - 6 >= 8 ? box.top - h - 6 : Math.min(box.bottom + 6, innerHeight - h - 8)) + 'px';
+    drawEmoji().then(() => { epGrid.scrollTop = 0; });
+    if (!COARSE) epSearch.focus();
+  }
+  const closeEmojiPicker = () => { emojiPicker.hidden = true; emojiPick = null; };
+  epSearch.addEventListener('input', drawEmoji);
+  epSearch.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); epGrid.querySelector('button[data-e]')?.click(); }
+  });
+  emojiPicker.addEventListener('click', e => {
+    const cell = e.target.closest('button[data-e]');
+    if (cell) {
+      const chosen = cell.dataset.e, pick = emojiPick;
+      const base = cell.title;  // kept lately by its untoned form, drawn in the tone of the moment
+      allEmoji().then(d => {
+        const item = d.list.find(i => i.name === base);
+        store.set('emojiRecent', [item ? item.e : chosen, ...store.get('emojiRecent', []).filter(x => x !== (item ? item.e : chosen))].slice(0, 32));
+      });
+      closeEmojiPicker();
+      if (pick) pick(chosen);
+      return;
+    }
+    const tone = e.target.closest('.ep-tones button');
+    if (tone) { store.set('emojiTone', +tone.dataset.tone); drawEmoji(); return; }
+    const tab = e.target.closest('.ep-tabs button');
+    if (tab) epGrid.scrollTop = epGrid.querySelector(`h4[data-section="${tab.dataset.section}"]`).offsetTop - epGrid.offsetTop;
+  });
+  epGrid.addEventListener('mouseover', e => {
+    const cell = e.target.closest('button[data-e]');
+    epName.textContent = cell ? cell.dataset.e + '  ' + cell.title : '';
+  });
+  document.addEventListener('pointerdown', e => {
+    if (!emojiPicker.hidden && !emojiPicker.contains(e.target) && !(emojiOpener && emojiOpener.contains(e.target))
+        && !e.target.closest('#reactPicker')) closeEmojiPicker();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !emojiPicker.hidden) closeEmojiPicker(); });
+  // In the composer: put where the cursor was, as if typed.
+  const emojiBtn = document.getElementById('emojiBtn');
+  emojiBtn.addEventListener('click', () => {
+    if (!emojiPicker.hidden) { closeEmojiPicker(); return; }
+    const at = sayBox.selectionStart ?? sayBox.value.length, to = sayBox.selectionEnd ?? at;
+    openEmojiPicker(emojiBtn, emoji => {
+      sayBox.value = sayBox.value.slice(0, at) + emoji + sayBox.value.slice(to);
+      sayBox.focus();
+      sayBox.setSelectionRange(at + emoji.length, at + emoji.length);
+      sayBox.dispatchEvent(new Event('input'));
+    });
+  });
 
   // --- reactions (services/reactions.py): chips under a message, who on hover;
   // pressing one adds yours or takes it back. Each look at the Mood brings them all.
@@ -2710,7 +2869,8 @@
   const picker = document.createElement('div');
   picker.id = 'reactPicker';
   picker.hidden = true;
-  picker.innerHTML = PALETTE.map(e => `<button type="button" data-emoji="${e}">${e}</button>`).join('');
+  picker.innerHTML = PALETTE.map(e => `<button type="button" data-emoji="${e}">${e}</button>`).join('')
+    + '<button type="button" class="more" title="Every emoji" aria-label="Every emoji">＋</button>';
   document.body.appendChild(picker);
   document.addEventListener('click', e => {
     const chip = e.target.closest('.reacts .chip[data-emoji]');
@@ -2726,6 +2886,11 @@
     }
     const pick = e.target.closest('#reactPicker button[data-emoji]');
     if (pick && picker._for) react(picker._for, pick.dataset.emoji);
+    const more = e.target.closest('#reactPicker .more');
+    if (more && picker._for) {
+      const turn = picker._for;
+      openEmojiPicker(turn.querySelector('.addreact') || more, emoji => react(turn, emoji));
+    }
     picker.hidden = true;
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') picker.hidden = true; });
@@ -2761,7 +2926,9 @@
       else if (row.classList.contains('trow')) {
         said();
         const dot = row.querySelector('.tdot');
-        parts.push(`<span class="${dot.className.replace(' on', '')}" data-i="${i}">${esc(dot.textContent)}</span>`);
+        // The harness's note keeps its ⚙️ in the folded line too, so it never reads as the agent's thinking.
+        parts.push((row.querySelector('.harness') ? '<span class="harness" aria-hidden="true">⚙️</span>' : '')
+          + `<span class="${dot.className.replace(' on', '')}" data-i="${i}">${esc(dot.textContent)}</span>`);
       }
     });
     said();
@@ -2847,7 +3014,10 @@
   function addThought(t, container) {
     const el = document.createElement('div');
     el.className = 'thought';
-    el.title = `${t.sender} thinking · ${stamp(t.created_at)}`;
+    // A harness's note to the agent ("Already available in this conversation: ..."): kept as system
+    // information, a ring like a thought with ⚙️ beside it, never the agent's words (Justin, 25 Oct).
+    const said = t.harness ? `Claude Code's note to ${t.sender}` : `${t.sender} thinking`;
+    el.title = `${said} · ${stamp(t.created_at)}`;
     el.textContent = t.text;
     // In an agent's turn: a ring among its steps, in the order it thought and did; its words when pressed.
     const work = container.classList.contains('abody') ? workEl(t, container) : null;
@@ -2856,8 +3026,9 @@
       const row = document.createElement('div');
       row.className = 'trow';
       const what = words ? `${words.toLocaleString()} word${words === 1 ? '' : 's'}` : 'no words kept';
-      row.innerHTML = `<button type="button" class="tdot${words ? '' : ' empty'}" title="${esc(`${t.sender} thinking · ${what} · ${stamp(t.created_at)}`)}"`
-        + ` aria-label="${esc(`${t.sender} thought, ${what}`)}">${words ? esc(kTokens(words)) : ''}</button>`;
+      row.innerHTML = (t.harness ? '<span class="harness" aria-hidden="true">⚙️</span>' : '')
+        + `<button type="button" class="tdot${words ? '' : ' empty'}" title="${esc(`${said} · ${what} · ${stamp(t.created_at)}`)}"`
+        + ` aria-label="${esc(t.harness ? `${said}, ${what}` : `${t.sender} thought, ${what}`)}">${words ? esc(kTokens(words)) : ''}</button>`;
       row.appendChild(el);
       work.querySelector('.steps').appendChild(row);
       describeWork(work);
@@ -2940,7 +3111,7 @@
     }
     if (e.type === 'handoff' || e.type === 'handoff-sent') {  // context taken between Moods (services/handoff.py)
       const moodA = slug => `<a class="moodlink" data-mood="${esc(slug)}" href="/moods/${encodeURIComponent(slug)}/">#${esc(slug)}</a>`;
-      const by = `<b>${esc(shown(e.by || 'an agent'))}</b>`, about = e.about ? ` about <i>${esc(e.about)}</i>` : '';
+      const by = `<b>${esc(shown(e.by || 'an emergent'))}</b>`, about = e.about ? ` about <i>${esc(e.about)}</i>` : '';
       el.className = 'event handoff';
       if (e.type === 'handoff-sent') {
         el.innerHTML = `🔀 ${by} took this to ${moodA(e.to_mood || '')}${e.about ? `: <i>${esc(e.about)}</i>` : ''} · ${esc(stamp(e.created_at))}`;
@@ -3002,7 +3173,7 @@
       const page = `https://pickipedia.xyz/wiki/${encodeURIComponent((e.page || '').replace(/ /g, '_')).replace(/%2F/g, '/').replace(/%3A/g, ':')}`;
       const task = `<a href="${esc(page)}${e.revision ? `?oldid=${esc(String(e.revision))}` : ''}" target="_blank" rel="noopener">${esc(e.task || 'a task')}</a>`;
       const how = e.by === 'schedule' ? 'on its schedule' : `by <b>${esc(shown(e.by || 'someone'))}</b>`;
-      const who = `<b>${esc(shown(e.for || 'an agent'))}</b>`;
+      const who = `<b>${esc(shown(e.for || 'an emergent'))}</b>`;
       el.className = 'event task';
       el.innerHTML = e.state === 'refused'
         ? `✗ ${who}'s task ${task} didn't start (${how}): ${esc(e.reason || '')} · ${esc(stamp(e.created_at))}`
@@ -3016,7 +3187,7 @@
       el.className = 'event';
       el.innerHTML = e.type === 'created'
         ? `✦ <b>${esc(e.by || 'someone')}</b> started this Mood · ${esc(stamp(e.created_at))}`
-        : `■ <b>${esc(e.by || 'someone')}</b> stopped ${esc(e.agent || 'the agent')} · ${esc(stamp(e.created_at))}`;
+        : `■ <b>${esc(e.by || 'someone')}</b> stopped ${esc(e.agent || 'the emergent')} · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
       return;
@@ -3029,10 +3200,10 @@
         `<a href="#m-${id}" data-reveal="${id}">${ask ? 'ask' : '#m-' + id.slice(0, 8)}</a>`);
       const word = { model: 'model', mention_effort: 'effort', listening: 'listening', verbosity: 'verbosity', discretion: 'discretion' };
       el.innerHTML = e.type === 'agent-settings'
-        ? `⚙ <b>${esc(shown(e.agent || 'an agent'))}</b> now on `
+        ? `⚙ <b>${esc(shown(e.agent || 'an emergent'))}</b> now on `
           + (e.changes || []).map(c => `${esc(word[c.key] || c.key)} <b>${esc(c.now || 'default')}</b> <span class="was">(was ${esc(c.was || 'default')})</span>`).join(', ')
           + (e.by ? ` · set by <b>${esc(shown(e.by))}</b>` : '') + (e.note ? `, ${linked(e.note)}` : '') + ` · ${esc(stamp(e.created_at))}`
-        : `⚙ ${esc(shown(e.by || 'an agent'))}'s settings block wasn't applied: ${esc(e.note || '')} · ${esc(stamp(e.created_at))}`;
+        : `⚙ ${esc(shown(e.by || 'an emergent'))}'s settings block wasn't applied: ${esc(e.note || '')} · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
       return;
@@ -3358,8 +3529,10 @@
       ? `screened for ${q.sender}: let pass without waking it · ${stamp(q.created_at)}`
       : `${q.sender} chose not to speak · ${stamp(q.created_at)}`
         + (q.tools === 'look' ? ' · looking only' : q.tools === 'full' ? ' · with full tools' : '')
+        + (WHY_MARKS[q.why] ? ` · woken by: ${WHY_MARKS[q.why][0]} (${WHY_MARKS[q.why][1]})` : '')
         + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
-    dot.dataset.why = q.reason || '(no reason given)';
+    dot.dataset.why = q.reason || '(no reason given)';  // what woke it is in its title, shown with this
+    if (q.why === 'crosstalk') dot.classList.add('crosstalk');
     if (thought) {
       dot.dataset.thought = thought;
       const words = wordsIn(thought);
@@ -3473,7 +3646,7 @@
     const by = Math.max(container._askedAt || 0, (container._askedOf || {})[agent] || 0);
     const asked = by && by <= at && at - by < 6 * 3600 ? by : at;
     Object.assign(b, { _agent: agent, _start: asked, _end: at, _out: 0, _ctx: 0, _read: 0, _cached: 0, _calls: 0, _seen: new Set(),
-                       _usd: 0, _priced: false, _first: null, _lastOut: 0, _how: {}, _ended: false, _final: '' });
+                       _usd: 0, _priced: false, _first: null, _firstCached: 0, _lastOut: 0, _how: {}, _ended: false, _final: '' });
     b.innerHTML = '<button type="button" class="ahead"></button><div class="aspent"></div><div class="abody"></div>';
     container.appendChild(b);
     held.forEach(t => { addThought(t, b.querySelector('.abody')); tally(b, t); });
@@ -3488,7 +3661,7 @@
       if (!b._seen.has(usage)) {
         b._seen.add(usage); b._out += v.out; b._read += v.ctx || 0; b._cached += v.cached || 0; b._calls++;
         if (v.usd != null) { b._usd += v.usd; b._priced = true; if (v.paid) b._paid = true; }
-        if (b._first === null && v.ctx) b._first = v.ctx;
+        if (b._first === null && v.ctx) { b._first = v.ctx; b._firstCached = v.cached || 0; }
         b._lastOut = v.out;
       }
       if (v.ctx) b._ctx = v.ctx;
@@ -3496,12 +3669,50 @@
     if (v.model) b._how.model = v.model;
     if (v.effort) b._how.effort = v.effort;
     if (v.tools) b._tools = v.tools;
+    if (v.why) b._why = v.why;
+    if (v.bundle) b._bundle = v.bundle;
+  }
+  // Whether a turn's first call read its context back from the cache (🔥, warm) or afresh (🧊, cold): its
+  // instructions and everything before them unchanged and still cached, or not (Justin, 25 Oct). A harness that
+  // reports no cache reads at all (Pi, on some vendors) gets no mark rather than a wrong one.
+  function cacheMark(b) {
+    if (!b._first || (b._paid && !b._cached)) return '';
+    const warm = b._firstCached * 2 >= b._first;
+    const why = warm ? `A cache hit: its first call read ${b._firstCached.toLocaleString()} of ${b._first.toLocaleString()} tokens `
+        + `from the cache. Its instructions were the same as last time, byte for byte, and still cached.`
+      : `A cache miss: its first call read ${(b._first - b._firstCached).toLocaleString()} of ${b._first.toLocaleString()} tokens `
+        + `afresh. Its instructions changed (a new bundle, marked ✱), or the cache had expired since its last call, `
+        + `or something before them did (its harness, its tools, its model).`;
+    return ` <span class="cachemark" title="${esc(why)}">${warm ? '🔥' : '🧊'}</span>`;
+  }
+  // Which instructions it was given: the bundle's checksum, small, opening the bundle rebuilt on PickiPedia.
+  function bundleMark(b) {
+    const x = b._bundle;
+    if (!x) return '';
+    const title = `Its instructions this turn: bundle ${x.id}, sha256 ${x.sha}…, `
+      + (x.new ? 'new since its last turn in this Mood (✱).' : 'the same as its last turn in this Mood.')
+      + ' Click to read them, rebuilt from PickiPedia and checked.';
+    return ` <span class="bundlemark" data-href="https://pickipedia.xyz/wiki/Special:AgentBundles/${esc(x.id)}" title="${esc(title)}">`
+      + `${esc(x.sha)}${x.new ? '✱' : ''}</span>`;
   }
   // Which tools a turn had (mood_view.turn_tools): 👀 it could only look, 🔨 its full tools.
   const WAKE_MARKS = {
-    look: ['👀', 'Look only: it could read and search, and change nothing (a quiet wake, a post from a PickiPedia sign-in, or another agent that could only look)'],
+    look: ['👀', 'Look only: it could read and search, and change nothing (a quiet wake, a post from a PickiPedia sign-in, or another emergent that could only look)'],
     full: ['🔨', 'Full tools: shell, editing, the browser and the rest, as in its terminal'],
   };
+  // Why it was woken, when nobody asked it (mood_view.turn_wakes; Justin, 26 Oct: "it needs to be clear that
+  // the look was triggered by the crosstalk rule"): a small word beside its name, the rule on hover.
+  const WHY_MARKS = {
+    crosstalk: ['↺ crosstalk', 'A look at what others said here while it was on its last turn, which it hadn\'t seen: '
+      + 'once, right after that turn ended, asking only whether it bears on what it had just said (the crosstalk rule)'],
+    consider: ['unasked', 'Not asked: it looked in of its own accord, as this Mood\'s discretion dial allows'],
+    quiet: ['quiet look', 'Not asked: the Mood had been quiet a while, and it looked in to see if anything wanted picking up'],
+    arrival: ['arrival', 'Someone signed in here, and it looked in to greet them if there was reason to'],
+  };
+  function whyMark(why) {
+    const m = WHY_MARKS[why];
+    return m ? ` <span class="whymark" title="${esc(m[1])}">${esc(m[0])}</span>` : '';
+  }
   function wakeMark(tools) {
     const m = WAKE_MARKS[tools];
     return m ? ` <span class="wake" title="${esc(m[1])}">${m[0]}</span>` : '';
@@ -3536,7 +3747,7 @@
       : `At API list prices (${b._how.model || 'this model'}), for ${calls}: `
         + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
     b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
-      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}`
+      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${whyMark(b._why)}${cacheMark(b)}${bundleMark(b)}`
       // When it began, and the turn's link (to its first step, which opens the turn): click to copy.
       + (b._firstId ? ` <span class="turnlink" data-href="#m-${esc(b._firstId)}" title="This turn's link: click to copy">${esc(stamp(b._firstAt))}</span>` : '')
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
@@ -3577,6 +3788,8 @@
     if (!head) return;
     const link = e.target.closest('.turnlink');
     if (link) { copyLink(link, link.dataset.href); return; }  // the turn's time: its link, copied
+    const bundle = e.target.closest('.bundlemark');
+    if (bundle) { window.open(bundle.dataset.href, '_blank', 'noopener'); return; }  // its instructions, rebuilt
     const b = head.closest('.aturn');
     b.classList.toggle('folded');
     drawBlockHead(b);
@@ -3802,7 +4015,7 @@
     document.getElementById('alerts').classList.toggle('bell-off', !notifying());
     const closed = pushable() ? ', even with magenta closed' : '';
     bell.title = notifying() ? `Notifying you of mentions and answers${closed} (click to stop)`
-      : `Notify me of mentions, and when an agent answers me${closed}`;
+      : `Notify me of mentions, and when an emergent answers me${closed}`;
   }
   bell.addEventListener('click', async () => {
     if (notifying()) { store.set('notify', false); pushOff(); }
@@ -4243,7 +4456,7 @@
     let kept = full ? null : keptOf(slug);
     if (!full && !kept) return;  // grown only from a whole first page
     kept = kept || { has_earlier: !!data.has_earlier, version: KEPT_VERSION };
-    if (data.mood) kept.mood = data.mood;
+    if (data.mood) kept.mood = { ...(kept.mood || {}), ...data.mood };  // a poll's is only its name: the rest stays
     for (const k of KEPT_KINDS) {
       const byId = new Map((kept[k] || []).map(v => [v.id, v]));
       for (const v of data[k] || []) byId.set(v.id, v);
@@ -4309,7 +4522,7 @@
       showMoodName(data.mood);
     } else if (headMood && data.mood && data.mood.title !== headMood.title) {
       // Someone renamed it: say so in place, without redrawing the thread.
-      showMoodName(data.mood);
+      showMoodName({ ...headMood, ...data.mood });
       loadMoods();
     }
     acts = data.activities || (data.activity ? [data.activity] : []);
@@ -4789,8 +5002,8 @@
   function agentRows(agents) {
     if (!Object.keys(agents).length) return '';
     const whole = agentsWhole();
-    const fold = `<button type="button" class="fold" aria-expanded="${whole}" aria-label="${whole ? 'Fold the agents\' settings to one line' : 'Open the agents\' settings'}"`
-        + ` title="${whole ? 'Fold to one line' : 'Open the agents\' settings'}">${whole ? '▾' : '▸'}</button>`;
+    const fold = `<button type="button" class="fold" aria-expanded="${whole}" aria-label="${whole ? 'Fold the emergents\' settings to one line' : 'Open the emergents\' settings'}"`
+        + ` title="${whole ? 'Fold to one line' : 'Open the emergents\' settings'}">${whole ? '▾' : '▸'}</button>`;
     if (!whole) {
       return fold + Object.entries(agents).map(([agent, a]) =>
         `<span class="agent gist${a.listening.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}`
@@ -4867,7 +5080,7 @@
   function renderLocked(scram) {
     document.body.classList.toggle('locked', !!scram);
     document.getElementById('locked').textContent = scram
-      ? `Locked: AZ5 by ${scram.by} at ${new Date(scram.at).toLocaleString()}. Nobody can post or sign in, and every agent is still, until it's lifted.`
+      ? `Locked: AZ5 by ${scram.by} at ${new Date(scram.at).toLocaleString()}. Nobody can post or sign in, and every emergent is still, until it's lifted.`
       : '';
   }
 
@@ -4897,7 +5110,7 @@
     const call = t.step ? taskCalls.get(t.step) : null;
     const what = !t.step ? '' : call === 'failed' ? `<div class="dim">couldn't load what started it</div>`
       : !call || call === 'loading' ? '<div class="dim">loading…</div>' : taskCall(call);
-    box.innerHTML = `<div class="label">${t.kind === 'helper' ? 'A helper agent' : 'A command'} in the background · started ${esc(stamp(new Date(t.since * 1000).toISOString()))}`
+    box.innerHTML = `<div class="label">${t.kind === 'helper' ? 'A helper' : 'A command'} in the background · started ${esc(stamp(new Date(t.since * 1000).toISOString()))}`
       + (t.step ? ` · <a href="#" data-step="${esc(t.step)}">where it started</a>` : '') + '</div>' + what;
   }
   function taskCall(d) {
@@ -5166,7 +5379,7 @@
     } else if (at.kind === 'command-agent') {
       // Which agents it's for: one, or several with commas; then (for /compact) what to keep.
       choices = people.filter(p => !p.is_human && p.name.startsWith(at.prefix)).map(p => p.name).sort()
-        .map(n => ({ insert: n + ' ', html: `${icon(n)}${esc(n)}<small>agent · more with a comma: ${esc(n)},…</small>` }));
+        .map(n => ({ insert: n + ' ', html: `${icon(n)}${esc(n)}<small>emergent · more with a comma: ${esc(n)},…</small>` }));
     } else if (at.kind === 'mood') {
       // By its name (the slug a link takes) or the words of its title; the most lately active first, as the list has them.
       const p = at.prefix;
@@ -5178,10 +5391,27 @@
       choices = hits.map(m => ({ insert: m.slug + ' ', html: `<span class="emo">#</span>${esc(m.slug)}`
         + `<small>${m.title && m.title !== m.slug ? esc(m.title) : ''}${m.archived ? (m.title && m.title !== m.slug ? ' · ' : '') + 'archived' : ''}</small>` }));
     } else if (at.kind === 'emoji') {
-      const hits = EMOJI.filter(([name]) => name.startsWith(at.prefix))
-        .concat(at.prefix ? EMOJI.filter(([name]) => !name.startsWith(at.prefix) && name.includes(at.prefix)) : [])
-        .slice(0, 8);
-      choices = hits.map(([name, char]) => ({ insert: char, html: `<span class="emo">${char}</span>:${esc(name)}:` }));
+      // The favourites by their short names first, then every emoji Unicode has, by any word of its name.
+      const p = at.prefix.toLowerCase(), words = p.split(/[_+-]+/).filter(Boolean);
+      const hits = EMOJI.filter(([name]) => name.startsWith(p))
+        .concat(p ? EMOJI.filter(([name]) => !name.startsWith(p) && name.includes(p)) : []);
+      if (emojiData && words.length) {
+        emojiData.then(d => {
+          const still = wordAtCaret();
+          if (!still || still.kind !== 'emoji' || still.prefix !== at.prefix) return;
+          const seen = new Set(hits.map(([, ch]) => ch));
+          const more = d.list.filter(item => !seen.has(item.e) && emojiMatches(item, words)).sort(emojiRank(words, p));
+          choices = hits.concat(more.map(item => [item.key, toned(item)])).slice(0, 8)
+            .map(([name, char]) => ({ insert: char, html: `<span class="emo">${char}</span>:${esc(name)}:` }));
+          if (!choices.length) return closeSuggest();
+          chosen = Math.min(chosen, choices.length - 1);
+          suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
+          suggest.classList.add('on');
+        }).catch(() => {});
+        return;
+      }
+      if (!emojiData && words.length) allEmoji().then(() => { const still = wordAtCaret(); if (still && still.kind === 'emoji') showSuggest(); }).catch(() => {});
+      choices = hits.slice(0, 8).map(([name, char]) => ({ insert: char, html: `<span class="emo">${char}</span>:${esc(name)}:` }));
     } else {
       const here = new Set((moods.find(m => m.slug === current) || {}).participants || []);
       // By either name; what's put in is the PickiPedia name, where there is one (the server knows both).
@@ -5191,7 +5421,7 @@
           + `${g.members.length ? g.members.map(n => esc(shown(n))).join(', ') : 'nobody yet'}</small>` }))
         .concat(people.map(p => p.name).filter(n => n.startsWith(typed) || shown(n).toLowerCase().startsWith(typed))
         .sort((a, b) => (here.has(b) - here.has(a)) || a.localeCompare(b)).slice(0, 8)
-        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small>${shown(n) !== n ? esc(n) + ' · ' : ''}${human[n] ? 'person' : 'agent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
+        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small>${shown(n) !== n ? esc(n) + ' · ' : ''}${human[n] ? 'person' : 'emergent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
     }
     if (!choices.length) return closeSuggest();
     chosen = Math.min(chosen, choices.length - 1);
@@ -6029,7 +6259,7 @@
     readSpeedSel.value = String(pace.agent);
     readSpeedPeople.value = String(pace.person);
     readSpeedBtn.textContent = String(pace.agent);
-    readSpeedBtn.title = `Agents read at ${pace.agent} words a minute, people at ${pace.person}: press for agents' next`;
+    readSpeedBtn.title = `Emergents read at ${pace.agent} words a minute, people at ${pace.person}: press for emergents' next`;
     for (const a of [reader, speaking && speaking.audio]) if (a) atSpeed(a);  // what's playing changes at once
   }
   setPace('agent', pace.agent);
@@ -6433,7 +6663,7 @@
     try { localStorage.setItem('moods.signedInAs', viewer); } catch (e) {}
     userBtn.textContent = shown(viewer) + ' ▾';
     auth.innerHTML = keyHolder ? `signed in as <b>${esc(shown(viewer))}</b>`
-      : `signed in as <b>${esc(shown(viewer))}</b> with PickiPedia: you can chat and mention people. To wake agents `
+      : `signed in as <b>${esc(shown(viewer))}</b> with PickiPedia: you can chat and mention people. To wake emergents `
         + `or start and archive Moods, sign in with your SSH key (<code>magenta.sh login</code>).`;
     document.getElementById('signout').hidden = false;
     document.getElementById('devicesLink').hidden = false;
@@ -6457,7 +6687,7 @@
     signedOut.hidden = false;
     userBtn.textContent = 'read-only ▾';
     auth.innerHTML = (wikiSignin ? '<a class="wikiin" href="/moods/auth/wiki/">Sign in with PickiPedia</a> to chat.<br>' : '')
-      + 'To wake agents and run Moods, run <code>magenta.sh login</code> on a machine with your SSH key.'
+      + 'To wake emergents and run Moods, run <code>magenta.sh login</code> on a machine with your SSH key.'
       + '<form id="pasteLink"><label for="pasted">Have a sign-in link? Paste it here:</label>'
       + '<span><input id="pasted" type="url" autocomplete="off" placeholder="…/moods/login/…/"><button type="submit">Go</button></span></form>';
     // A home-screen app has no address bar, and keeps its own sign-in apart
@@ -6522,11 +6752,39 @@
   const lookBox = document.getElementById('lookBox'), lookArt = document.getElementById('lookArt'),
         lookColour = document.getElementById('lookColour');
   // Every character of their PickiPedia name (shown) in order, any case, its spaces aside: as settings.art_fits.
-  const artFits = (art, name) => {
-    const want = Array.from(name.toLowerCase()).filter(c => !/\s/.test(c));
-    let i = 0; for (const c of art.toLowerCase()) if (c === want[i]) i++;
-    return i === want.length;
+  // And nothing else but shapes (settings.is_shape): no other letters, numbers, or symbols that read as them.
+  const TEXTLIKE = [[0x2100, 0x214F], [0x2460, 0x24FF], [0x2776, 0x2793], [0x3200, 0x33FF], [0x1F100, 0x1F1FF]];
+  const isShape = ch => !/[\p{L}\p{N}\p{M}\p{C}]/u.test(ch) && !TEXTLIKE.some(([lo, hi]) => ch.codePointAt(0) >= lo && ch.codePointAt(0) <= hi);
+  const artLetters = (art, name) => {
+    const want = Array.from(name.toLowerCase()).filter(c => !/\s/.test(c)), at = [];
+    const chars = Array.from(art);
+    for (let i = 0; i < chars.length; i++) {
+      if (at.length < want.length && chars[i].toLowerCase() === want[at.length]) at.push(i);
+      else if (!isShape(chars[i])) return null;
+    }
+    return at.length === want.length ? at : null;
   };
+  const artFits = (art, name) => artLetters(art, name) !== null;
+  // Every letter of the name seen, as settings.look_problem has it (Justin, 25 Oct: no blanking your own name).
+  const lum = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const PAGES = [['#fbfaf7', '#1f1d1a'], ['#ffffff', '#1f1d1a'], ['#161417', '#ece7e1'], ['#1f1c20', '#ece7e1']];
+  function lookProblem(art, colours, backs, name) {
+    if (!art) return '';
+    const letters = artLetters(art, name);
+    if (!letters) return `every letter of "${name}", in order, and otherwise only shapes: no other letters or numbers`;
+    const hex = t => /^[0-9a-f]$/.test(t || '') ? ANSI[parseInt(t, 16)] : /^#[0-9a-f]{6}$/.test(t || '') ? t : null;
+    const fg = cellsOf(colours), bg = cellsOf(backs), chars = Array.from(art);
+    for (const i of letters) {
+      const f = hex(fg[i]), b = hex(bg[i]);
+      if (b && (f ? [f] : ['#1f1d1a', '#ece7e1']).some(ink => contrast(ink, b) < 3))
+        return `"${chars[i]}" is hard to see on its background: every letter of your name has to stand out`;
+      if (!b && f && PAGES.some(([page]) => contrast(f, page) < 1.6))
+        return `"${chars[i]}" is hard to see on the page (light or dark): give it a background, or another colour`;
+    }
+    return '';
+  }
   // The sixteen, as a BBS knew them, in CGA's order: each swatch says which.
   const ANSI_NAMES = ['black', 'blue', 'green', 'cyan', 'red', 'magenta', 'brown', 'light grey',
                       'dark grey', 'light blue', 'light green', 'light cyan', 'light red', 'light magenta', 'yellow', 'white'];
@@ -6539,8 +6797,19 @@
   let lookCodes = [], lookBacks = [], lookBrush = 'c', painting = false;
   const layerNow = () => lookBox.querySelector('input[name=lookLayer]:checked').value;  // letters (fg) or backgrounds (bg)
   const swatches = lookBox.querySelector('.swatches'), paint = lookBox.querySelector('.paint');
+  // And a fuller palette after them -- twelve hues, four shades each, and greys -- and any colour at all (Justin, 25 Oct).
+  const hsl = (h, s, l) => { const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    return '#' + [0, 8, 4].map(n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)))).toString(16).padStart(2, '0')).join(''); };
+  const MORE = [0.25, 0.42, 0.6, 0.8].flatMap(l => Array.from({ length: 12 }, (_, i) => hsl(i * 30, 0.75, l)))
+    .concat(['#202020', '#404040', '#606060', '#808080', '#a0a0a0', '#c0c0c0', '#e0e0e0', '#f4f4f4']);
   swatches.innerHTML = '<button type="button" class="none" data-code="." title="none: the page\'s own colour"></button>'
-    + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${ANSI_NAMES[i]} · ${c}"></button>`).join('');
+    + ANSI.map((c, i) => `<button type="button" data-code="${'0123456789abcdef'[i]}" style="background: ${c}" title="${ANSI_NAMES[i]} · ${c}"></button>`).join('')
+    + '<span class="break"></span>' + MORE.map(c => `<button type="button" data-code="${c}" style="background: ${c}" title="${c}"></button>`).join('')
+    + '<label class="any" title="Any colour">any <input type="color" value="#c2185b"></label>';
+  swatches.querySelector('.any input').addEventListener('input', e => {
+    lookBrush = e.target.value.toLowerCase();
+    swatches.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  });
   // The characters: pressed, one goes into your name where the cursor is (at most 30, as ever).
   const chars = lookBox.querySelector('.charsChart'), charsLink = lookBox.querySelector('.charsLink');
   chars.innerHTML = Array.from(CP437).map((ch, i) => i === 0 || i === 255 || ch === ' '
@@ -6571,7 +6840,7 @@
     const chars = Array.from(lookArt.value.trim());
     lookCodes = chars.map((_, i) => lookCodes[i] || '.');
     lookBacks = chars.map((_, i) => lookBacks[i] || '.');
-    paint.innerHTML = chars.map((ch, i) => `<span data-i="${i}" class="art">${artHtml(ch, lookCodes[i], lookBacks[i]).replace(/^(?!<span)(.*)$/, '<span>$1</span>')}</span>`).join('');
+    paint.innerHTML = chars.map((ch, i) => `<span data-i="${i}" class="art">${artHtml(ch, [lookCodes[i]], [lookBacks[i]]).replace(/^(?!<span)(.*)$/, '<span>$1</span>')}</span>`).join('');
   }
   // Every character from where the pointer was to where it is: a quick drag misses none between.
   let laidLast = null;
@@ -6588,10 +6857,10 @@
   function previewLook(painted) {
     const art = lookArt.value.trim();
     if (!painted) drawPaint();
-    const ok = !art || artFits(art, shown(viewer));
+    const problem = lookProblem(art, lookCodes, lookBacks, shown(viewer)), ok = !problem;
     lookBox.querySelector('.preview').innerHTML = ICONS.human.replace('<svg ', `<svg style="color: ${lookColour.value}" `)
-      + (art ? `<span class="art">${artHtml(art, lookCodes.join(''), lookBacks.join(''))}</span>` : esc(shown(viewer)));
-    lookBox.querySelector('.why').textContent = ok ? '' : `every letter of "${shown(viewer)}" has to be in it, in order`;
+      + (art ? `<span class="art">${artHtml(art, lookCodes, lookBacks)}</span>` : esc(shown(viewer)));
+    lookBox.querySelector('.why').textContent = problem;
     lookBox.querySelector('.save').disabled = !ok;
   }
   lookArt.addEventListener('input', () => previewLook());
@@ -6605,7 +6874,7 @@
     lookBox.close();
     location.reload();  // every name of yours drawn again, as you have it now
   }
-  lookBox.querySelector('.save').addEventListener('click', () => saveLook({ art: lookArt.value.trim(), colours: lookCodes.join(''), backs: lookBacks.join(''), colour: lookColour.value }));
+  lookBox.querySelector('.save').addEventListener('click', () => saveLook({ art: lookArt.value.trim(), colours: storedOf(lookCodes), backs: storedOf(lookBacks), colour: lookColour.value }));
   lookBox.querySelector('.plain').addEventListener('click', () => saveLook({ art: '', colours: '', backs: '', colour: '' }));
   document.getElementById('lookLink').addEventListener('click', e => {
     e.preventDefault();
@@ -6613,8 +6882,8 @@
     // Started from their PickiPedia name: every character already there, in order, to dress up.
     lookArt.value = mine.art || shown(viewer);
     lookBox.querySelector('.artname').textContent = shown(viewer);
-    lookCodes = Array.from(mine.colours || '');
-    lookBacks = Array.from(mine.backs || '');
+    lookCodes = cellsOf(mine.colours || '');
+    lookBacks = cellsOf(mine.backs || '');
     lookColour.value = mine.colour || getComputedStyle(document.body).getPropertyValue('--human').trim() || '#2a5d9f';
     previewLook();
     lookBox.showModal();

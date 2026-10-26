@@ -72,6 +72,7 @@ urlpatterns = [
     path('api/status/', views_settings.api_status, name='api_status'),
     path('api/tidings/', views_settings.api_tidings, name='api_tidings'),
     path('api/polls/', views_settings.api_polls, name='api_polls'),
+    path('api/emoji/', views_settings.api_emoji, name='api_emoji'),
     path('api/prompts/', views_settings.api_prompts, name='api_prompts'),
     path('api/auth/admin/', views_admin.api_admin, name='api_auth_admin'),
     path('api/moods/<slug:slug>/turns/', views_moods.api_mood_turns, name='api_mood_turns'),

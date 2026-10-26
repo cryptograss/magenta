@@ -98,3 +98,80 @@ class MarksOnThePageTest(TestCase):
         found = self.client.get('/api/mentions/re/').json()['mentions']
         turn = next(f['turn'] for f in found if f['turn']['id'] == str(said.id))
         self.assertIs(turn['full_tools'], False)
+
+
+class TurnBundleTest(TestCase):
+    """Which instructions a turn was given, as its wake's turn line names them, with the bundle's checksum and
+    whether it was new: beside the 🔥/🧊 cache mark in its heading (Justin, magent-self, 25 Oct)."""
+
+    setUp, say, wake = TurnToolsTest.setUp, TurnToolsTest.say, TurnToolsTest.wake
+
+    def record(self, rid, sha, minutes, agent='magent', mood='connectome'):
+        from conversations.models import BundleRecord
+        return BundleRecord.objects.create(id=rid, agent=agent, mood=mood, sha256=sha * 64,
+                                           requested_at=T0 + timedelta(minutes=minutes), parts=['x'])
+
+    def test_a_turn_knows_its_bundle_and_whether_it_was_new(self):
+        from conversations.services.mood_view import bundle_marks, turn_wakes
+        first_id, second_id, third_id = (str(uuid.uuid4()) for _ in range(3))
+        self.record(first_id, 'a', 0)
+        self.record(second_id, 'a', 10)
+        self.record(third_id, 'b', 20)
+        self.record(str(uuid.uuid4()), 'c', 15, agent='re')  # another emergent's: not what magent had before
+        line = "\n\nIt's block 26,271,000. Your instructions this turn are bundle {} (Special:AgentBundles)."
+        self.wake('full', 0, quoting=line.format(first_id))
+        one = self.say(self.magent, 'First.', 1)
+        self.wake('look', 10, quoting=line.format(second_id))
+        two = self.say(self.magent, 'Same instructions.', 11)
+        self.wake('full', 20, quoting=line.format(third_id))
+        three = self.say(self.magent, 'New ones.', 21)
+        wakes = turn_wakes([one, two, three])
+        self.assertEqual([wakes[str(m.id)]['bundle'] for m in (one, two, three)], [first_id, second_id, third_id])
+        self.assertEqual(wakes[str(two.id)]['tools'], 'look')
+        marks = bundle_marks([w['bundle'] for w in wakes.values()])
+        self.assertEqual(marks[first_id], {'id': first_id, 'sha': 'aaaaaaaa', 'new': False})  # nothing before it
+        self.assertEqual(marks[second_id]['new'], False)
+        self.assertEqual(marks[third_id], {'id': third_id, 'sha': 'bbbbbbbb', 'new': True})
+
+    def test_a_wake_without_a_bundle_still_marks_its_tools(self):
+        from conversations.services.mood_view import bundle_marks, turn_wakes
+        self.wake('full', 0)
+        said = self.say(self.magent, 'Before bundles.', 1)
+        self.assertEqual(turn_wakes([said]), {str(said.id): {'tools': 'full', 'bundle': '', 'reason': ''}})
+        self.assertEqual(bundle_marks(['']), {})
+
+
+class WhyWokenTest(TurnToolsTest):
+    """What woke an unasked turn, as its wake's opening says: shown beside its name, so a look the crosstalk rule
+    made reads as one (Justin, 26 Oct: "it needs to be clear that the look was triggered by the crosstalk rule")."""
+
+    def test_a_crosstalk_look_says_so_and_a_mention_says_nothing(self):
+        from conversations.services.mood_view import turn_wakes
+        self.wake('look', 0)
+        asked = self.say(self.magent, 'Answering the mention.', 1)
+        self.say(self.poller, f'<mood-wake mood="connectome" reason="crosstalk">\nWhile you were on your last turn here\n\n'
+                              f'{FOOTER["look"]}', 2)
+        looked = self.say(self.magent, '<silent>nothing in it touches what I said</silent>', 3)
+        found = turn_wakes([asked, looked])
+        self.assertEqual(found[str(asked.id)]['reason'], '')
+        self.assertEqual(found[str(looked.id)]['reason'], 'crosstalk')
+
+    def test_the_page_is_told(self):
+        from django.test import Client
+        self.say(self.poller, f'<mood-wake mood="connectome" reason="consider">\nNobody asked you anything.\n\n'
+                              f'{FOOTER["look"]}', 0)
+        said = self.say(self.magent, 'Looking in: the bus leaves at nine.', 1)
+        turn = next(t for t in Client().get('/api/moods/connectome/turns/').json()['turns'] if t['id'] == str(said.id))
+        self.assertEqual((turn.get('why'), turn.get('tools')), ('consider', 'look'))
+
+
+class CodedWikiLinkTest(TestCase):
+    """A wiki link written as code -- `[[User:Magent/Journal/26273591]]`, as agents write titles -- is still the
+    link (Justin, 26 Oct: "the link to your journal didn't become a link"); other code stays literal."""
+
+    def test_a_coded_wiki_link_links_and_the_rest_stays_code(self):
+        from conversations.services.mood_view import render_html
+        html = render_html('Added to `[[User:Magent/Journal/26273591]]` and `x = [[y]]`.')
+        self.assertIn('<code><a class="wikilink" href="https://pickipedia.xyz/wiki/User:Magent/Journal/26273591"', html)
+        self.assertIn('<code>x = [[y]]</code>', html)
+        self.assertIn('<code>&lt;b&gt;[[x]]&lt;/b&gt;</code>', render_html('`<b>[[x]]</b>`'))

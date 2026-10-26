@@ -248,6 +248,7 @@ class SpokenMentionsTest(TestCase):
     def test_an_agent_said_by_its_colour(self):
         # Justin, 20 Oct: "re" is hard to say; "the red agent" is said instead.
         self.assertEqual(self.heard('I asked at the red agent about the deploy.'), 'I asked @re about the deploy.')
+        self.assertEqual(self.heard('I asked at the red emergent about the deploy.'), 'I asked @re about the deploy.')  # emergent since 25 Oct
         self.assertEqual(self.heard('Red agent, can you look at this?'), '@re, can you look at this?')
         self.assertEqual(self.heard('Hey the magenta agent what do you think'), 'Hey @magent what do you think')
         self.assertEqual(self.heard('The blue agent started today and the red agent reviewed it.'),
@@ -268,6 +269,7 @@ class ColourKeytermsTest(TestCase):
             ThinkingEntity.objects.get_or_create(name=name, defaults={'is_biological_human': human})
         terms = voice.keyterms()
         self.assertIn('red agent', terms)
+        self.assertIn('red emergent', terms)
         self.assertIn('magenta agent', terms)
         self.assertIn('blue agent', terms)  # blu: made by its migration (0033), there from the start
         self.assertNotIn('green agent', terms)  # no agent named for green

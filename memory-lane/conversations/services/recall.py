@@ -439,9 +439,8 @@ def journal_entries(agent, count=2, http=None):
 
 
 def bootstrap_text(agent):
-    """bootstrap_memory for one agent: who and since when, its latest continuation, its own recent
-    conversation, the people it knows best, its newest journal entries, and Era 1 only if it spoke
-    there."""
+    """bootstrap_memory for one agent: who and since when, its latest continuation, how it has spoken
+    across its life, the people it knows best, and its newest journal entries."""
     from .memory import MemoryService
     at, _ = arrival(agent)
     lines = [f"# Memory bootstrap: {agent}\n", arrival_line(agent), '']
@@ -453,14 +452,17 @@ def bootstrap_text(agent):
     cont = MemoryService.get_latest_continuation(within=own)
     lines.append(f"[{when(cont.created_at)}] {clip(readable(cont), 4000)}\n" if cont else "None yet.\n")
 
-    lines.append("## Your recent conversation (10k characters, newest last)\n")
-    recent, total = MemoryService.get_recent_messages_by_chars(10000, within=own & Q(is_sidechain=False))
-    for msg in reversed(recent[:40]):
-        text = prose(msg.content)
-        if text and not is_wrapper(text):
-            who = 'you' if msg.sender_id == agent else msg.sender_id
-            lines.append(f"[{who}, {when(msg.created_at)}] {clip(text, 400)}")
-    lines.append('')
+    # Not "your recent conversation": that's no longer one thing, each Mood is its own. What carries across
+    # them is the agent itself: a few of its replies from across its whole life, so a cold start begins as
+    # one self, not as whichever Mood it last spoke in (Justin, magent-self, 2026-10-25: "Nobody wants you to
+    # become siloed personalities within a mood").
+    lines.append("## How you've spoken, across your life\n")
+    voice = how_i_speak(agent, count=4)
+    for msg, text in voice:
+        where = f"Mood {msg.mood_slug}" if msg.mood_id else "a session"
+        lines += [f"--- {when(msg.created_at)} · {where} · #m-{msg.id}", clip(text, 800), '']
+    if not voice:
+        lines += ["Nothing yet.", '']
 
     lines.append("## Who you know best, lately\n")
     known = who_i_know(agent)[:8]
@@ -479,11 +481,6 @@ def bootstrap_text(agent):
     for title, text in entries or []:
         lines += [f"--- {title}", clip(text, 3000), '']
 
-    era = MemoryService.get_era_summary("Compacting Meta-Conversation (Era 1)")
-    if era and any(m.sender_id == agent for m in era['messages']):
-        lines.append("## Era 1: foundational summary\n")
-        lines += [f"[{m.sender_id}] {clip(readable(m), 150)}" for m in era['messages'][:15]]
-        lines.append('')
 
     lines.append("remember, mentions_of_me, who_i_know, my_history_with and how_i_speak read more of your own "
                  "memory; search_messages and read_mood, the whole record.")

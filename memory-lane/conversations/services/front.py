@@ -44,15 +44,19 @@ def name_html(name, wiki_names, looks):
     look = looks.get(name) or {}
     art = look.get('art') or ''
     if art:
-        fg, bg = look.get('colours') or '', look.get('backs') or ''
+        from .settings import cells as cells_of
+        fg, bg = cells_of(look.get('colours')), cells_of(look.get('backs'))
         cells = []
-        for i, ch in enumerate(art):  # a code each for its letter and its background: 0-f, ANSI's sixteen
-            codes = []
-            if i < len(fg) and fg[i] in HEX:
-                codes.append(f'a{fg[i]}')
-            if i < len(bg) and bg[i] in HEX:
-                codes.append(f'b{bg[i]}')
-            cells.append(f'<span class="{" ".join(codes)}">{escape(ch)}</span>' if codes else escape(ch))
+        for i, ch in enumerate(art):  # a code each for its letter and its background: 0-f (ANSI's sixteen), #rrggbb
+            codes, style = [], []
+            for layer, codes_of, prop in (('a', fg, 'color'), ('b', bg, 'background')):
+                code = codes_of[i] if i < len(codes_of) else ''
+                if len(code) == 1 and code in HEX:
+                    codes.append(f'{layer}{code}')
+                elif re.fullmatch(r'#[0-9a-f]{6}', code):
+                    style.append(f'{prop}: {code}')
+            attrs = (f' class="{" ".join(codes)}"' if codes else '') + (f' style="{"; ".join(style)}"' if style else '')
+            cells.append(f'<span{attrs}>{escape(ch)}</span>' if attrs else escape(ch))
         return f'<span class="art" title="{escape(wiki_names.get(name, name))}">{"".join(cells)}</span>'
     colour = AGENT_COLOURS.get(name, '')
     shown = escape(wiki_names.get(name, name))

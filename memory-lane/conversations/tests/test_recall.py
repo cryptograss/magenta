@@ -181,12 +181,15 @@ class RecallTest(TestCase):
         self.assertIn('--- Agent:Re/Journal/26270000\nMoved the strings page.', text)
         self.assertNotIn('awakening', text)
         self.assertIn('# Memory bootstrap: re', text)
-        self.assertIn('mandolin', text)
+        self.assertIn("## How you've spoken, across your life", text)
+        self.assertIn('mandolin bridge', text)  # its own replies, from across its life
         self.assertNotIn('banjo', text)
         self.assertIn('justin (person)', text)
+        self.assertNotIn('Era 1', text)
 
-    def test_bootstrap_without_a_key_is_magents_and_says_so(self):
-        self.assertTrue(tools.bootstrap_text(None).startswith("(No key was sent, so this is magent's bootstrap"))
+    def test_bootstrap_without_a_key_is_nobodys_and_says_its_misconfigured(self):
+        self.assertTrue(tools.bootstrap_text(None).startswith('MISCONFIGURED: no memory bootstrap'))
+        self.assertNotIn('# Memory bootstrap', tools.bootstrap_text(None))
         from unittest import mock
         with mock.patch('conversations.services.recall.journal_entries', return_value=[]):  # no network in tests
             self.assertIn('# Memory bootstrap: re', tools.bootstrap_text('re'))

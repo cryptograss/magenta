@@ -276,6 +276,12 @@ def poller_or(user, content, event):
     origin = event.get('origin') if isinstance(event.get('origin'), dict) else {}
     if origin.get('kind') == 'task-notification' or text.lstrip().startswith('<task-notification>'):
         return get_or_create_participant('system', 'system')
+    # A line Claude Code marks isMeta is its own note to the agent ("Already available in this
+    # conversation: ...", a skill's text, a command's caveat): the harness said it. Filed as the user's,
+    # in a runner's session that user is the agent, and the Mood showed it as the agent's words. Kept,
+    # as the harness's, and shown as a note in the agent's turn (mood_view.HARNESS).
+    if event.get('isMeta'):
+        return get_or_create_participant('harness', 'system')
     return user
 
 
@@ -581,6 +587,10 @@ def import_line_from_claude_code_v2(line, era, filename, username='justin', keep
                     **common,
                 }
             )
+            # The runner's stream may have filed a harness note first, as the agent's; the transcript line
+            # says isMeta, and that settles whose it is.
+            if not created and event.get('isMeta') and message.sender_id != sender.pk:
+                Message.objects.filter(pk=message.pk).update(sender=sender)
 
             # Add recipient
             if created:
