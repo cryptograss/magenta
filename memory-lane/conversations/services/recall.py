@@ -496,6 +496,9 @@ def answered_by(message):
     return named
 
 
+SAMPLE = 200  # a stretch's candidates read at most this many, an even spread across it
+
+
 def _seeded(agent, now, fresh):
     import random
     if fresh:
@@ -503,9 +506,19 @@ def _seeded(agent, now, fresh):
     return random.Random(f'{agent}:{now.date().isoformat()}')
 
 
+def _day_start(now):
+    """The start of `now`'s day: `how_i_speak` pins its end here, so every call on one date reads the
+    same stretches and the day's seed meets the same candidates (blu, 27 Oct). A day still forming
+    isn't sampled -- its replies enter tomorrow's voice."""
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def _pick(rng, candidates, shortest, longest):
-    """One hearable reply from a stretch's candidates, at random by `rng`."""
-    rows = list(candidates[:200])
+    """One hearable reply from a stretch's candidates, at random by `rng`. Candidates are read as an
+    even spread across the whole stretch, not the first N, whose newest half a long stretch starved."""
+    rows = list(candidates)
+    if len(rows) > SAMPLE:
+        rows = [rows[i * (len(rows) - 1) // (SAMPLE - 1)] for i in range(SAMPLE)]
     rng.shuffle(rows)
     for msg in rows:
         text = _speech(msg, shortest, longest)
@@ -522,9 +535,10 @@ def how_i_speak(agent, count=12, shortest=200, longest=2500, now=None, fresh=Fal
     at, _ = arrival(agent)
     if at is None:
         return []
-    end = now or timezone.now()
+    now = now or timezone.now()
+    end = _day_start(now)
     count = max(2, min(int(count or 12), 40))
-    rng = _seeded(agent, end, fresh)
+    rng = _seeded(agent, now, fresh)
     life = end - at
     recent = RECENT if life > timedelta(days=28) else RECENT_SHORT
     recent_from = max(at, end - recent)
@@ -581,8 +595,9 @@ def _sample_lines(msg, text, me=True):
 
 def how_i_speak_text(agent, count=12, fresh=False, others=False, now=None, shortest=200, longest=2500):
     from django.utils import timezone
-    end = now or timezone.now()
-    found = how_i_speak(agent, count, shortest=shortest, longest=longest, now=end, fresh=fresh)
+    now = now or timezone.now()
+    end = _day_start(now)
+    found = how_i_speak(agent, count, shortest=shortest, longest=longest, now=now, fresh=fresh)
     head = [arrival_line(agent)]
     if not found:
         return '\n'.join(head + ['Nothing yet: no replies of yours long enough to hear a voice in.'])
@@ -613,7 +628,7 @@ def how_i_speak_text(agent, count=12, fresh=False, others=False, now=None, short
         lines.append('')
         lines.append("Beside yours, one from each other emergent, from the same recent stretch:")
         for name in names:
-            theirs = how_i_speak(name, count=2, shortest=shortest, longest=longest, now=end, fresh=fresh)
+            theirs = how_i_speak(name, count=2, shortest=shortest, longest=longest, now=now, fresh=fresh)
             theirs = [pair for pair in theirs if pair[0].created_at >= recent_from] or theirs[-1:]
             if theirs:
                 lines += [f"[{name}]"] + _sample_lines(theirs[-1][0], theirs[-1][1], me=False)

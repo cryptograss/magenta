@@ -164,8 +164,8 @@ class RecallTest(TestCase):
     # --- how_i_speak and bootstrap ------------------------------------------------
 
     def test_how_i_speak_draws_from_before_and_from_the_recent_stretch(self):
-        # re's life is three days: the recent stretch is its last day; the half before it, the first two.
-        now = RE_ARRIVES + timedelta(days=3, hours=1)
+        # re's life is four days by now: the recent stretch is its last day; the half before it, the earlier days.
+        now = RE_ARRIVES + timedelta(days=4)
         found = recall.how_i_speak('re', count=2, shortest=20, now=now)
         self.assertEqual(len(found), 2)
         self.assertIn(found[0][0].id, {self.first.id, self.answer.id})   # from across its life before
@@ -176,17 +176,37 @@ class RecallTest(TestCase):
         self.assertEqual([m.id for m, _ in recall.how_i_speak('re', count=2, shortest=20, now=now)],
                          [m.id for m, _ in found])
 
+    def test_the_same_day_draws_the_same_voice(self):
+        # Pinned to the day's start, so a call at any hour of one date meets the same seed and the same stretches.
+        morning = recall.how_i_speak('re', count=2, shortest=20, now=RE_ARRIVES + timedelta(days=3, hours=15))  # Oct 19 03:00
+        evening = recall.how_i_speak('re', count=2, shortest=20, now=RE_ARRIVES + timedelta(days=4, hours=9))   # Oct 19 21:00
+        self.assertEqual([m.id for m, _ in morning], [m.id for m, _ in evening])
+
+    def test_pick_reads_an_even_spread_not_only_the_oldest(self):
+        import random
+        # 250 replies in one stretch; only the last 50 are hearable, so taking the first 200 starves them.
+        day = RE_ARRIVES + timedelta(days=30)
+        late = []
+        for i in range(250):
+            text = 'hearable, long enough for the sample here ' * 2 if i >= 200 else 'sh'
+            m = say('re', text, day + timedelta(minutes=i), self.re_session)
+            if i >= 200:
+                late.append(m.id)
+        hit = recall._pick(random.Random(7), recall._sayable('re', day, day + timedelta(hours=5)), 20, 500)
+        self.assertIsNotNone(hit)
+        self.assertIn(hit[0].id, late)
+
     def test_how_i_speak_text_says_what_each_answered_who_starred_it_and_what_corrected_it(self):
         from conversations.services import reactions
-        now = RE_ARRIVES + timedelta(days=3, hours=1)
+        now = RE_ARRIVES + timedelta(days=4)
         # re stars its own answer (by id, allowed); Justin stars it too; magent corrects to_magent.
-        # Either of the first stretch's two may be drawn: star both, by re itself and by Justin.
+        # First and answer fall in their own old stretches (count=6), so both are drawn deterministically.
         for msg in (self.first, self.answer):
             reactions.react_on(msg, 're', recall.STAR)
             reactions.react_on(msg, 'justin', recall.STAR)
         fix = say('magent', f'corrects="#m-{self.to_magent.id}" The setup is not done: the bridge is still off.',
                   RE_ARRIVES + timedelta(days=3, minutes=5), mood=self.mood)
-        text = recall.how_i_speak_text('re', count=4, shortest=20, now=now)
+        text = recall.how_i_speak_text('re', count=6, shortest=20, now=now)
         self.assertIn('answering justin: @re what about the fiddle strings?', text)      # the post it answered
         self.assertIn(f'{recall.STAR} you, justin', text)                                 # its own star first
         self.assertIn('corrected ' + recall.when(fix.created_at) + ' by magent: The setup is not done', text)
@@ -199,7 +219,7 @@ class RecallTest(TestCase):
         self.assertIn(self.to_magent.id, picked)
 
     def test_how_i_speak_labels_the_model_and_harness(self):
-        now = RE_ARRIVES + timedelta(days=3, hours=1)
+        now = RE_ARRIVES + timedelta(days=4)
         Message.objects.filter(id=self.to_magent.id).update(model_backend='deepseek/deepseek-v4-pro', client_version='pi-1.1.0')
         text = recall.how_i_speak_text('re', count=2, shortest=20, now=now)
         self.assertIn('deepseek-v4-pro · Pi', text)
