@@ -395,8 +395,10 @@
      column fills the width (a phone, zoomed in), its text stops short of it. */
   /* Pinned messages (services/pins.py): one quiet line at the top of the thread, the newest; the rest on a click. */
   /* Sticky against main's own top edge: its 22px padding is above where sticky's 0 is measured from. */
-  #pins { position: sticky; top: -22px; z-index: 5; max-width: 760px; margin: -22px auto 6px; padding: 3px 12px;
-          font-size: 12.5px; color: var(--muted); background: var(--bg); border-bottom: 1px solid var(--line); }
+  /* The Mood's head (a slim drawer) and its pins, sticky together. */
+  #topbar { position: sticky; top: -22px; z-index: 5; margin: -22px 0 6px; background: var(--bg); }
+  #pins { max-width: 760px; margin: 0 auto; padding: 3px 12px; box-sizing: border-box;
+          font-size: 12.5px; color: var(--muted); border-bottom: 1px solid var(--line); }
   #pins[hidden] { display: none; }
   #pins .pin { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
   #pins .pin a.go { flex: 1; min-width: 0; color: inherit; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
@@ -410,17 +412,26 @@
   .inner { --gutter: 36px; max-width: 760px; margin: 0 auto;
            padding: 0 max(22px, calc(var(--gutter) - max(0px, (100cqw - 760px) / 2))) 0 22px; }
 
-  .mood-head h1 { font-size: 22px; margin: 0 0 4px; }
-  .mood-head .desc { color: var(--muted); margin: 0 0 6px; }
+  /* A Mood's head: one slim line at the top that stays (Justin, 27 Oct: "I never look at the top of the mood"),
+     its description, threads and people a click away. */
+  .mood-head { max-width: 760px; margin: 0 auto; padding: 3px 12px; box-sizing: border-box; border-bottom: 1px solid var(--line); }
+  .mood-head .mbar { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+  .mood-head .mtoggle { font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; width: 1em; flex: none; }
+  .mood-head h1 { font-size: 13px; margin: 0; color: var(--ink); flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mood-head .mdesc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mood-head .macts { flex: none; display: flex; align-items: baseline; gap: 6px; }
+  .mood-head .macts a { color: var(--muted); }
+  .mood-head .mbody { padding: 4px 0 6px 1.6em; }
+  .mood-head .mbody[hidden] { display: none; }
+  .mood-head .desc { color: var(--muted); margin: 0 0 4px; font-size: 13.5px; }
   .mood-head .meta { font-size: 12px; color: var(--muted); }
   .mood-head .meta a { color: var(--muted); }
-  .mood-head { padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
   /* A thread (services: Mood.thread_of): where it came from, and the threads opened from here. */
   .mood-head .thread { font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
   .mood-head .thread a { color: var(--accent); }
-  .mood-head .thread button, .mood-head .meta button.newthread { font: inherit; font-size: 12px; border: 1px solid var(--line);
+  .mood-head .thread button, .mood-head button.newthread { font: inherit; font-size: 12px; border: 1px solid var(--line);
                                background: none; color: var(--muted); border-radius: 6px; padding: 0 7px; cursor: pointer; margin-left: 4px; }
-  .mood-head .thread button:hover, .mood-head .meta button.newthread:hover { color: var(--accent); border-color: var(--accent); }
+  .mood-head .thread button:hover, .mood-head button.newthread:hover { color: var(--accent); border-color: var(--accent); }
   #newBox .forkchoice { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
   #newBox .forkchoice[hidden] { display: none; }
 
@@ -1382,7 +1393,7 @@
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
-  <main id="main"><div id="pins" hidden></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
+  <main id="main"><div id="topbar"><div id="moodbar"></div><div id="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
     <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
@@ -1946,17 +1957,37 @@
     return parts.length ? `<div class="thread">${parts.join(' · ')}</div>` : '';
   }
 
-  function renderHead(m) {
+  // The head lives in #moodbar, outside the thread's own nodes (stash keeps those per Mood); drawn by showMoodName.
+  const moodbar = document.getElementById('moodbar');
+  let headOpen = !!store.get('headOpen', false);
+  function drawMoodbar(m) {
+    if (!m) { moodbar.innerHTML = ''; return; }
     const block = m.eth_blockheight ? 'opened at block ' + m.eth_blockheight.toLocaleString() : '';
-    return `<div class="mood-head">
-      <h1>${esc(m.title)}</h1>
-      ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
-      ${threadLine(m)}
-      <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record · ' : ''}
-        <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}</div>
-      <div class="people" id="people">${(m.participants || []).map(n =>
-        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
-    </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
+    const thread = threadLine(m);
+    moodbar.innerHTML = `<div class="mood-head${headOpen ? ' open' : ''}">
+      <div class="mbar" title="${headOpen ? 'Fold it away' : 'Its description, threads and people'}">
+        <button type="button" class="mtoggle" aria-expanded="${headOpen}" aria-label="The Mood's description, threads and people">${headOpen ? '▾' : '▸'}</button>
+        <h1>${esc(m.title)}</h1>
+        <span class="mdesc">${m.thread_of ? `⑂ of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
+        <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}</span>
+      </div>
+      <div class="mbody"${headOpen ? '' : ' hidden'}>
+        ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
+        ${thread}
+        <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record' : ''}</div>
+        <div class="people" id="people">${(m.participants || []).map(n =>
+          `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
+      </div>
+    </div>`;
+  }
+  moodbar.addEventListener('click', e => {
+    if (!e.target.closest('.mbar') || e.target.closest('a, button:not(.mtoggle)')) return;
+    headOpen = !headOpen;
+    store.set('headOpen', headOpen);
+    drawMoodbar(headMood);
+  });
+  function renderHead(m) {
+    return `<button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
   }
 
   const RUN_MS = 5 * 60 * 1000;  // the same sender within this is one run
@@ -3517,8 +3548,7 @@
   function showMoodName(m) {
     headMood = m;
     crumb.innerHTML = m ? `<span class="title">${esc(m.title)}</span>` + (keyHolder ? '<button type="button" id="rename" title="Rename this Mood" aria-label="Rename this Mood">✎</button>' : '') : '';
-    const h1 = document.querySelector('.mood-head h1');
-    if (h1 && m) h1.textContent = m.title;
+    drawMoodbar(m);
     if (m) { baseTitle = m.title + ' · magenta'; setTitle(); }
   }
   const isArchived = slug => !!(moods.find(m => m.slug === slug) || {}).archived;
@@ -4425,6 +4455,7 @@
     acts = (liveData[slug] && liveData[slug].activities) || [];
     act = [...acts].reverse().find(a => a.doing !== 'held') || acts[0] || null;
     renderActivity();
+    drawMoodbar(null);  // the last Mood's head goes with it
     renderPins([]);  // the last Mood's pins aren't this one's; its own come with its first look
     tasks = []; renderTasks();
     typingNow = []; renderTyping();
