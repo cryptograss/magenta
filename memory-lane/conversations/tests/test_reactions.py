@@ -73,3 +73,13 @@ class EveryEmojiTest(TestCase):
             self.assertTrue(reactions.valid(emoji), emoji)
         for words in ('#', '12', '#⃣x', 'a⃣'):
             self.assertFalse(reactions.valid(words), words)
+
+    def test_an_agent_may_star_its_own_post_by_id_but_not_react_to_itself_by_name(self):
+        from conversations.services import reactions
+        from conversations.models import Message, Mood
+        mood = Mood.objects.first() or Mood.objects.create(slug='m26', title='M26')
+        ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False, 'participant_type': 'ai'})
+        own = Message.objects.create(id=uuid.uuid4(), sender_id='magent', mood=mood, content='A line of mine.')
+        self.assertEqual(reactions.target(mood, f'#m-{own.id}', own.created_at, 'magent'), own)
+        self.assertIsNone(reactions.target(mood, 'magent', own.created_at, 'magent'))
+

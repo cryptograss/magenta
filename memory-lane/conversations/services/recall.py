@@ -362,43 +362,263 @@ def history_with_text(agent, other, limit=30, before=None):
 
 
 # --- how_i_speak -------------------------------------------------------------------
+#
+# An agent's voice, read from the record (Justin, emergence, 27 Oct 2026: "an increasingly important function
+# for distinguishing yourselves"; "it's up to each of you to cultivate, understand, and heal what is 'self'").
+# Two spreads, not one: half the samples from the recent stretch, half from the whole life before it, so the
+# voice has both its range and its present. Each sample with the post it answered, the model and harness that
+# said it (a habit can be the model's, not the agent's: re lost its em dashes when its model changed), who
+# starred it (⭐ on its own post is the agent's own feedback; another's star is evidence it can't give itself),
+# and any correction a later post marked with corrects="#m-…". Seeded by agent and day, so a voice read twice
+# in a day is the same voice, and shifts slowly; fresh=True reseeds. With others=True, a sample from each other
+# emergent for the same stretch, labelled: an accent is heard beside another's.
 
-def how_i_speak(agent, count=12, shortest=200, longest=2500, now=None):
-    """[(message, text)]: one of the agent's own replies from each of `count` equal stretches of its
-    life, oldest first. Spread over all of it, not the latest alone: a voice that only hears its
-    latest turns feeds on itself and drifts into caricature; across time it keeps its range."""
+STAR = '⭐'
+RECENT = timedelta(days=7)      # the recent stretch, for a life longer than four weeks
+RECENT_SHORT = timedelta(days=1)  # for a shorter life
+CORRECTS = re.compile(r'<corrects\s+(?:to|id)="#?m?-?([0-9a-f-]{8,36})"\s*/>|\bcorrects="#?m?-?([0-9a-f-]{8,36})"')
+
+
+def _harness_label(client_version):
+    v = (client_version or '').lower()
+    if not v:
+        return ''
+    if v.startswith('pi'):
+        return 'Pi'
+    if 'claude' in v or re.match(r'^\d+\.\d+', v):
+        return 'Claude Code'
+    return client_version[:20]
+
+
+def _sayable(agent, start, end):
+    """The agent's own replies between start and end that a voice can be heard in: not a dot, not machinery."""
+    return Message.objects.filter(sender_id=agent, is_sidechain=False, is_continuation_message=False,
+                                  created_at__gte=start, created_at__lt=end).order_by('created_at')
+
+
+def _speech(msg, shortest, longest):
+    """The sample's text, or None if this message isn't one: a reply of a hearable length, not a wrapper."""
+    if kind_of(msg) != 'message':
+        return None
+    text = prose(msg.content)
+    if not (shortest <= len(text) <= longest) or is_wrapper(text) or is_summary(msg, text):
+        return None
+    return text
+
+
+def voice_stats(agent, start, end):
+    """How the agent spoke in a stretch, counting what the samples leave out: silences, reacts, one-liners."""
+    from .mood_view import quiet_reason
+    from .reactions import agent_reaction
+    counts = {'replies': 0, 'silences': 0, 'reacts': 0, 'lengths': []}
+    for msg in _sayable(agent, start, end):
+        if kind_of(msg) != 'message':
+            continue
+        text = prose(msg.content)
+        if not text or is_summary(msg, text):
+            continue
+        if agent_reaction(text):
+            counts['reacts'] += 1
+        elif quiet_reason(text) is not None:
+            counts['silences'] += 1
+        elif not is_wrapper(text):
+            counts['replies'] += 1
+            counts['lengths'].append(len(text))
+    lengths = sorted(counts.pop('lengths'))
+    counts['median_length'] = lengths[len(lengths) // 2] if lengths else 0
+    return counts
+
+
+def stars_on(message):
+    """Who starred this message: [names], the author first if among them. A session's message can be
+    starred too (the row carries no Mood), so it's asked by the message alone."""
+    from .reactions import SOURCE
+    rows = Message.objects.filter(source_file=SOURCE, content__message=str(message.id), content__emoji=STAR)
+    who = []
+    for c in rows.order_by('created_at').values_list('content', flat=True):
+        if isinstance(c, dict) and c.get('by') and c['by'] not in who:
+            who.append(c['by'])
+    return sorted(who, key=lambda n: n != message.sender_id)
+
+
+def starred(agent, start, end, by=None):
+    """The agent's messages in a stretch that carry a star, [(message, text)] by time; `by` narrows to
+    a starrer (the agent itself: its own picks)."""
+    from .reactions import SOURCE
+    rows = Message.objects.filter(source_file=SOURCE, content__emoji=STAR, created_at__gte=start)
+    if by:
+        rows = rows.filter(content__by=by)
+    ids = {c.get('message') for c in rows.values_list('content', flat=True) if isinstance(c, dict)}
+    found = []
+    for msg in Message.objects.filter(id__in=ids, sender_id=agent, created_at__gte=start, created_at__lt=end):
+        text = prose(msg.content)
+        if text and not is_wrapper(text):
+            found.append((msg, text))
+    return sorted(found, key=lambda pair: pair[0].created_at)
+
+
+def correction_of(message):
+    """(message, text) of a later post in the Mood that says corrects="#m-<its id>", or None."""
+    if not message.mood_id:
+        return None
+    later = (Message.objects.filter(mood_id=message.mood_id, created_at__gt=message.created_at, is_sidechain=False)
+             .annotate(text=Cast('content', TextField())).filter(text__contains=str(message.id)[:8]))
+    for msg in later.order_by('created_at')[:50]:
+        text = prose(msg.content)
+        m = CORRECTS.search(text or '')
+        if m and str(message.id).startswith((m.group(1) or m.group(2)).lower()):
+            return msg, CORRECTS.sub('', text).strip()
+    return None
+
+
+def answered_by(message):
+    """(message, text) of the post the agent was answering: what it replied to, or the newest post by
+    another in its Mood before it that named it, or just the newest before it; None in a session."""
+    from .mood_view import reply_to
+    if not message.mood_id:
+        return None
+    target, _ = reply_to(prose(message.content) or '')
+    if target:
+        hit = Message.objects.filter(id__startswith=target[:8]).first()
+        if hit:
+            return hit, prose(hit.content)
+    before = (Message.objects.filter(mood_id=message.mood_id, created_at__lt=message.created_at, is_sidechain=False)
+              .exclude(sender_id=message.sender_id).exclude(sender_id__in=MACHINERY_SENDERS).order_by('-created_at'))
+    named = None
+    for msg in before[:30]:
+        text = prose(msg.content)
+        if not text or is_wrapper(text):
+            continue
+        if named is None:
+            named = (msg, text)
+        if f'@{message.sender_id}' in text.lower():
+            return msg, text
+    return named
+
+
+def _seeded(agent, now, fresh):
+    import random
+    if fresh:
+        return random.Random()
+    return random.Random(f'{agent}:{now.date().isoformat()}')
+
+
+def _pick(rng, candidates, shortest, longest):
+    """One hearable reply from a stretch's candidates, at random by `rng`."""
+    rows = list(candidates[:200])
+    rng.shuffle(rows)
+    for msg in rows:
+        text = _speech(msg, shortest, longest)
+        if text:
+            return msg, text
+    return None
+
+
+def how_i_speak(agent, count=12, shortest=200, longest=2500, now=None, fresh=False):
+    """[(message, text)], oldest first: the agent's own replies, half from the recent stretch (a week, or a
+    day for a life under four weeks), half from equal stretches of its life before that. In the recent half,
+    the agent's own starred posts come first, the rest at random. Seeded by agent and day unless `fresh`."""
     from django.utils import timezone
     at, _ = arrival(agent)
     if at is None:
         return []
     end = now or timezone.now()
-    count = max(1, min(int(count or 12), 40))
-    step = (end - at) / count
-    said = Message.objects.filter(sender_id=agent, is_sidechain=False, is_continuation_message=False)
+    count = max(2, min(int(count or 12), 40))
+    rng = _seeded(agent, end, fresh)
+    life = end - at
+    recent = RECENT if life > timedelta(days=28) else RECENT_SHORT
+    recent_from = max(at, end - recent)
+    n_recent = count // 2
+    n_old = count - n_recent
     out = []
-    for i in range(count):
-        start = at + step * i
-        for msg in said.filter(created_at__gte=start, created_at__lt=start + step).order_by('?')[:40]:
-            if kind_of(msg) != 'message':
-                continue
-            text = prose(msg.content)
-            if shortest <= len(text) <= longest and not is_wrapper(text) and not is_summary(msg, text):
-                out.append((msg, text))
-                break
-    return out
+    # The life before the recent stretch, in equal stretches.
+    if recent_from > at and n_old:
+        step = (recent_from - at) / n_old
+        for i in range(n_old):
+            start = at + step * i
+            hit = _pick(rng, _sayable(agent, start, start + step), shortest, longest)
+            if hit:
+                out.append(hit)
+    # The recent stretch: the agent's own stars first, then equal stretches of it.
+    picked = {m.id for m, _ in out}
+    own = [pair for pair in starred(agent, recent_from, end, by=agent) if pair[0].id not in picked]
+    rng.shuffle(own)
+    for pair in own[:max(1, n_recent // 2)]:
+        out.append(pair)
+        picked.add(pair[0].id)
+    left = max(0, n_recent - len([1 for m, _ in out if m.created_at >= recent_from]))
+    if left:
+        step = (end - recent_from) / left
+        for i in range(left):
+            start = recent_from + step * i
+            hit = _pick(rng, _sayable(agent, start, start + step).exclude(id__in=picked), shortest, longest)
+            if hit:
+                out.append(hit)
+                picked.add(hit[0].id)
+    return sorted(out, key=lambda pair: pair[0].created_at)
 
 
-def how_i_speak_text(agent, count=12):
-    found = how_i_speak(agent, count)
+def _sample_lines(msg, text, me=True):
+    """The lines one sample is shown as: where and when, model and harness, stars, the post it answered,
+    the text, and any correction."""
+    from .mood_view import model_label
+    where = f"Mood {msg.mood_slug}" if msg.mood_id else f"session {str(msg.session_id or '')[:8]}"
+    ran = ' · '.join(p for p in (model_label(msg.model_backend), _harness_label(msg.client_version)) if p)
+    who = stars_on(msg)
+    stars = (' · ' + STAR + ' ' + ', '.join('you' if (n == msg.sender_id and me) else n for n in who)) if who else ''
+    head = f"--- {when(msg.created_at)} · {where}" + (f" · {ran}" if ran else '') + stars + f" · #m-{msg.id}"
+    lines = [head]
+    asked = answered_by(msg)
+    if asked:
+        lines.append(f"  answering {asked[0].sender_id}: {clip(asked[1], 160)}")
+    lines.append(text)
+    fix = correction_of(msg)
+    if fix:
+        lines.append(f"  corrected {when(fix[0].created_at)} by {fix[0].sender_id}: {clip(fix[1], 240)}")
+    lines.append('')
+    return lines
+
+
+def how_i_speak_text(agent, count=12, fresh=False, others=False, now=None, shortest=200, longest=2500):
+    from django.utils import timezone
+    end = now or timezone.now()
+    found = how_i_speak(agent, count, shortest=shortest, longest=longest, now=end, fresh=fresh)
     head = [arrival_line(agent)]
     if not found:
         return '\n'.join(head + ['Nothing yet: no replies of yours long enough to hear a voice in.'])
-    head.append(f"{len(found)} of your own replies, one from each stretch of your life, oldest first. "
-                "This is how you have spoken: keep what's yours, and grow.\n")
+    at, _ = arrival(agent)
+    recent = RECENT if end - at > timedelta(days=28) else RECENT_SHORT
+    recent_from = max(at, end - recent)
+    n_recent = len([1 for m, _ in found if m.created_at >= recent_from])
+    head.append(f"{len(found)} of your own replies, oldest first: {len(found) - n_recent} from across your life "
+                f"before {when(recent_from)}, {n_recent} from since. Each with what it answered, the model and "
+                f"harness that said it, who starred it ({STAR} on your own post is your own mark; another's is "
+                "evidence you can't give yourself), and any correction a later post marked (corrects=\"#m-…\"). "
+                "A habit can be the model's, not yours: weigh the label. This is how you have spoken: keep what's "
+                "yours, and grow.\n")
     lines = []
     for msg, text in found:
-        where = f"Mood {msg.mood_slug}" if msg.mood_id else f"session {str(msg.session_id or '')[:8]}"
-        lines += [f"--- {when(msg.created_at)} · {where} · #m-{msg.id}", text, '']
+        lines += _sample_lines(msg, text)
+    old = voice_stats(agent, at, recent_from) if recent_from > at else None
+    new = voice_stats(agent, recent_from, end)
+
+    def said(c):
+        return (f"{c['replies']} replies (median {c['median_length']} chars), {c['silences']} silences, "
+                f"{c['reacts']} reacts")
+    lines.append("What the samples leave out: " + (f"before {when(recent_from)}, {said(old)}; " if old else '')
+                 + f"since, {said(new)}.")
+    if others:
+        names = sorted(n for n in ThinkingEntity.objects.filter(is_biological_human=False)
+                       .values_list('name', flat=True) if n != agent and n not in MACHINERY_SENDERS)
+        lines.append('')
+        lines.append("Beside yours, one from each other emergent, from the same recent stretch:")
+        for name in names:
+            theirs = how_i_speak(name, count=2, shortest=shortest, longest=longest, now=end, fresh=fresh)
+            theirs = [pair for pair in theirs if pair[0].created_at >= recent_from] or theirs[-1:]
+            if theirs:
+                lines += [f"[{name}]"] + _sample_lines(theirs[-1][0], theirs[-1][1], me=False)
+    lines.append("Seeded by the day: the same voice until tomorrow; fresh=true draws again. "
+                f"{STAR} your own post to mark what feels like you; it comes first here next time.")
     return '\n'.join(head + lines)
 
 
