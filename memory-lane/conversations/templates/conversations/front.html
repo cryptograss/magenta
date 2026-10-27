@@ -119,7 +119,7 @@
 {{ slogans|json_script:"slogans" }}
 <script>
   // The slogans take turns (Justin, 22 Oct: "fun to see what people add and edit"): a new one every few
-  // seconds, in no fixed order, never the same twice running. Still, for anyone who'd rather nothing moved.
+  // seconds, the page's first line first (Justin, 27 Oct), then in no fixed order, never the same twice running. Still, for anyone who'd rather nothing moved.
   (() => {
     const all = JSON.parse(document.getElementById('slogans').textContent);
     const line = document.getElementById('slogan');

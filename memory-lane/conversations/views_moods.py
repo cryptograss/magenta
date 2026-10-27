@@ -516,12 +516,13 @@ def _in_a_mood(message_id):
 @require_GET
 def front_page(request):
     """magenta's front page (services/front.py): anyone may read it, signed in or not."""
-    import random
     from .services import front
     slogans = front.slogans()
     here = request.build_absolute_uri('/')
     return render(request, 'conversations/front.html', {'front': front.state(), 'slogans': slogans,
-                                                        'slogan': random.choice(slogans),
+                                                        # The page's first line first, always; the rest after
+                                                        # it, in turns (Justin, 27 Oct).
+                                                        'slogan': slogans[0],
                                                         'here': here, 'qr': front.qr_svg(here)})
 
 
