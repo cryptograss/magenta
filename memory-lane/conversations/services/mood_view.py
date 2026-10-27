@@ -1121,19 +1121,19 @@ WAKE_REASON = re.compile(r'<mood-wake\b[^>]*?\breason=\\?"([a-z-]{1,20})\\?"')
 
 # An /announce the wake carried (the poller's announced_lines; services/announce.py): who, from where, its words.
 HEARD_AT = '[announced by '
-HEARD = re.compile(r'\[announced by ([\w.-]+) in #([\w-]+), [^\]]*\] ((?:[^\\]|\\[^n])*)')
+HEARD = re.compile(r'\[announced by ([\w.-]+) in #([\w-]+)(?: \(#m-([0-9a-f-]{36})\))?, [^\]]*\] ((?:[^\\]|\\[^n])*)')
 
 
 def heard_in(text):
-    """[{'by', 'from', 'text'}] for the announcements a stored wake's text (its content as JSON) carries."""
+    """[{'by', 'from', 'message', 'text'}] for the announcements a stored wake's text (its content as JSON) carries."""
     import json
     out = []
-    for by, where, words in HEARD.findall(text or ''):
+    for by, where, message, words in HEARD.findall(text or ''):
         try:
             words = json.loads(f'"{words}"')  # as stored: JSON's escapes (a quote, a \\uXXXX) undone
         except ValueError:
             pass
-        out.append({'by': by, 'from': where, 'text': words.strip()[:140]})
+        out.append({'by': by, 'from': where, 'message': message, 'text': words.strip()[:140]})
     return out
 
 

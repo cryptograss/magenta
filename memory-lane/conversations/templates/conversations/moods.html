@@ -3967,8 +3967,10 @@
       b._heardShown = true;
       const line = document.createElement('div');
       line.className = 'heard';
-      line.innerHTML = v.heard.map(h => `📣 heard <b>${esc(shown(h.by))}</b>'s announcement from `
-        + `<a class="moodlink" data-mood="${esc(h.from)}" href="/moods/${encodeURIComponent(h.from)}/">#${esc(h.from)}</a>: “${esc(h.text)}”`).join('<br>');
+      // Not its words (Justin, 27 Oct): "announcement" links to the message, with its words on hover.
+      line.innerHTML = v.heard.map(h => `📣 heard <b>${esc(shown(h.by))}</b>'s `
+        + (h.message ? `<a href="/moods/${encodeURIComponent(h.from)}/#m-${esc(h.message)}" title="${esc(h.text)}">announcement</a>` : 'announcement')
+        + ` from <a class="moodlink" data-mood="${esc(h.from)}" href="/moods/${encodeURIComponent(h.from)}/">#${esc(h.from)}</a>`).join('<br>');
       const body = b.querySelector('.abody');
       if (body) body.prepend(line);
     }

@@ -1179,12 +1179,12 @@ class ConsiderLoopTest(TestCase):
                 return {**super().recent(slug, limit), 'announcements': inner.announcements}
         api = Announced()
         poller = self.make(api, FakeScreen('pass'))
-        api.announcements = [{'id': 'a1', 'by': 'justin', 'from_mood': 'general', 'created_at': '2026-10-27T11:31:00',
+        api.announcements = [{'id': 'a1', 'by': 'justin', 'from_mood': 'general', 'message': 'm1', 'created_at': '2026-10-27T11:31:00',
                               'text': 'Beta is tonight at 8'}]
         api.add(post('a', 1))
         self.at(minutes=2)
         poller.consider_once()
-        self.assertIn('[announced by justin in #general, 2026-10-27T11:31Z] Beta is tonight at 8', self.waker.woken[0][1])
+        self.assertIn('[announced by justin in #general (#m-m1), 2026-10-27T11:31Z] Beta is tonight at 8', self.waker.woken[0][1])
         api.add(post('b', 3))
         self.at(minutes=4)
         poller.consider_once()
