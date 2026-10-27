@@ -105,10 +105,10 @@
     listening: 'listening', consider_after: 'consider after (s)', idle_after: 'first unprompted look (min)',
     considers_per_hour: 'considerations / hour', mention_effort: 'effort when mentioned',
     consider_effort: 'effort when considering', model: 'model', ultracode: 'ultracode', catch_up_tokens: 'reads (tokens)', discretion: 'discretion', verbosity: 'verbosity',
-    handoff_model: 'handoff model', handoff_effort: 'handoff effort',
+    handoff_effort: 'handoff effort',
   };
   // /incorporate and /handoff are magent's alone (services/agent_commands.HANDOFF_AGENT): their settings show only there.
-  const HANDOFF_AGENT = 'magent', HANDOFF_KEYS = ['handoff_model', 'handoff_effort'];
+  const HANDOFF_AGENT = 'magent', HANDOFF_KEYS = ['handoff_effort'];
   // As the terminal names them.
   const EFFORT_LABELS = { xhigh: 'extra' };
   let state = null;
@@ -150,8 +150,6 @@
       input = `<input type="number" min="0" step="5" ${attrs} data-scale="60" value="${Math.round((value || 0) / 60)}">`;
     } else if (key === 'model') {
       input = `<input type="text" ${attrs} placeholder="(harness default)" value="${esc(value)}">`;
-    } else if (key === 'handoff_model') {
-      input = `<input type="text" ${attrs} placeholder="(this Mood's model)" value="${esc(value)}">`;
     } else {
       input = `<input type="number" min="0" ${attrs} value="${esc(value)}">`;
     }

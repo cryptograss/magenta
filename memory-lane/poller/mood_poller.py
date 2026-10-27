@@ -2383,16 +2383,9 @@ class MoodPoller:
         return '\n'.join(lines + extras + wake_footer(full, self.texts))
 
     def handoff_options(self, slug):
-        """An /incorporate's or /handoff's effort and model: the handoff settings here. Its model only on the harness the
-        Mood's model runs on: the turn resumes this Mood's session, which only that harness has."""
-        options = {'effort': self.knob(slug, 'handoff_effort', 'high')}
-        model = self.knob(slug, 'handoff_model')
-        harness_for = getattr(self.waker, 'harness_for', None)
-        if model and harness_for and harness_for(model) != harness_for(self.knob(slug, 'model')):
-            logger.warning(f'{slug}: handoff_model {model} is on another harness than this Mood\'s model; not used')
-        elif model:
-            options['model'] = model
-        return options
+        """An /incorporate's or /handoff's effort: the handoff's own. Never its own model: the turn resumes this Mood's
+        session, and another model reads all of it again uncached (Justin, 27 Oct: "a cache miss")."""
+        return {'effort': self.knob(slug, 'handoff_effort', 'high')}
 
     def incorporate_brief(self, thread, note=''):
         """The /incorporate ask, and the thread's record word for word (its newest INCORPORATE_ROOM characters)."""
