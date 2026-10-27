@@ -2310,9 +2310,10 @@ class WaitingTest(TestCase):
 
 
 class TakingTest(TestCase):
-    """'I'll take this one' (Justin, 27 Oct): a post asking several emergents one question. The lead reads it
-    first; the others are held until it has taken it (<take/>), or answered, or take_wait has passed. A take is a
-    claim, then the taker is woken again at once to answer; the others' wakes say who took it."""
+    """'I'll take this one' (Justin, 27 Oct): a post asking several emergents one question. A take is a claim,
+    then the taker is woken again at once to answer; the others' wakes say who took it, and offer the wait on
+    it. No hold by the poller: who takes, and who waits, is read from the post (Justin, 27 Oct 11:48Z: "I'd
+    rather have you look, make the decision, and figure whether or not to wait")."""
 
     def make(self, replies, agent='magent', mentions=('magent', 're'), **kwargs):
         clock = self.clock = [T0 + timedelta(seconds=5)]
@@ -2354,64 +2355,6 @@ class TakingTest(TestCase):
         self.assertNotIn('reply with only <wait', again)
         self.assertEqual(len(self.waker.woken), 2)
         self.assertEqual(poller.poll_once(), [])                    # and that was all
-
-    def test_the_other_is_held_until_the_lead_takes_it_then_told(self):
-        poller = self.make(['Only the bits re is asked.'], agent='re')
-        self.assertEqual(poller.poll_once(), [])                    # held: magent reads it first
-        self.assertIn(('m26', 'magent reads this first'), [(h[0], h[1]) for h in self.api.holds])
-        self.clock[0] += timedelta(seconds=10)
-        self.assertEqual(poller.poll_once(), [])
-        self.page['quiet'] = [{'sender': 'magent', 'by': '', 'reason': 'taking the redeploy question',
-                               'created_at': (T0 + timedelta(seconds=12)).isoformat()}]
-        self.clock[0] += timedelta(seconds=5)
-        self.assertEqual(poller.poll_once(), ['m26'])
-        prompt = self.waker.woken[0][1]
-        self.assertIn('magent is taking this ("the redeploy question", its words)', prompt)
-        self.assertIn('<wait for="magent" to="a few words"/>', prompt)
-        self.assertNotIn('<take to=', prompt)
-        self.assertEqual(self.api.holds[-1][1], '')                 # the hold lifted with the wake
-        self.assertEqual(self.api.quiets[-1][1], 'held 15 s while magent read first')
-
-    def test_the_leads_first_word_that_is_not_a_take_releases_the_other(self):
-        poller = self.make(['Mine too.'], agent='re')
-        self.assertEqual(poller.poll_once(), [])
-        # A take is always the lead's first reply: a line on the way to a tool instead says it didn't take
-        # them, so the questions were separate (Justin, 27 Oct: re held a minute for nothing).
-        self.page['turns'] = [dict(turn('p1', 'magent', 1, 'Checking the deploy.'), stop='tool_use')]
-        self.clock[0] += timedelta(seconds=10)
-        self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('<take to=', self.waker.woken[0][1])          # nothing taken: the offer stands
-        # And the hold is in the record, as a line: how long, and for whom.
-        self.assertEqual(self.api.quiets, [('m26', 'held 10 s while magent read first', 'held')])
-        self.assertNotIn('m26', poller.state['staggered'])
-
-    def test_a_tool_step_by_the_lead_releases_too(self):
-        poller = self.make(['Mine.'], agent='re')
-        self.assertEqual(poller.poll_once(), [])
-        self.page['steps'] = [dict(turn('s1', 'magent', 1, ''), tool='Bash', verb='ran')]
-        self.clock[0] += timedelta(seconds=3)
-        self.assertEqual(poller.poll_once(), ['m26'])
-
-    def test_the_cap_releases_the_other_with_the_offer(self):
-        poller = self.make(['Mine.'], agent='re', take_wait=20)
-        self.assertEqual(poller.poll_once(), [])
-        self.clock[0] += timedelta(seconds=21)
-        self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('<take to=', self.waker.woken[0][1])
-        self.assertEqual(self.api.quiets[-1][1], 'held 21 s while magent read first')
-
-    def test_no_stagger_when_the_lead_was_not_asked_or_is_this_agent(self):
-        poller = self.make(['Mine.'], agent='re', mentions=('re', 'blu'))
-        self.assertEqual(poller.poll_once(), ['m26'])
-        poller = self.make(['Mine.'], agent='magent')
-        self.assertEqual(poller.poll_once(), ['m26'])
-
-    def test_the_moods_lead_setting_overrides(self):
-        poller = self.make(['Mine.'], agent='magent')
-        poller.settings = {'m26': {'lead': 're'}}
-        self.assertEqual(poller.poll_once(), [])                    # re reads it first here
-        self.assertIn(('m26', 're reads this first'), [(h[0], h[1]) for h in self.api.holds])
-
 
 class CrosstalkTest(TestCase):
     """What others said while the agent was on a turn: one look right after it, asking only whether it bears on
