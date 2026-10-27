@@ -1019,6 +1019,13 @@ TAKEN = ('{who} is taking this ("{to}", its words), so answer only what that lea
 TOOK = 'You took this ("{to}"). The others asked were told, and answer only what you leave them. Answer now.'
 
 
+def ended(turn):
+    """Whether a turn, as the turns API shows it, was the end of its turn: not a progress line said on the way
+    (re, 27 Oct: a wait lifted on "Reads done.", and the other started mid-turn). A turn with no word on it
+    (an older server) counts as ended."""
+    return turn.get('stop', 'end_turn') in (None, 'end_turn')
+
+
 def taking_on(owed, page, names):
     """{name: what} for each of `names` whose newest quiet since the posts `owed`, as the Mood's turns API
     shows them (page['quiet']), is a take ('taking the redeploy question')."""
@@ -2001,7 +2008,8 @@ class MoodPoller:
             page = self.api.recent(slug, limit=60)
         except Exception:  # noqa: BLE001 -- can't see the Mood: answer as before
             return False
-        if any(t.get('sender') == lead and (t.get('created_at') or '') > newest for t in page.get('turns') or []):
+        if any(t.get('sender') == lead and (t.get('created_at') or '') > newest and ended(t)
+               for t in page.get('turns') or []):
             return False
         if taking_on(owed, page, [lead]):
             return False
@@ -2094,7 +2102,7 @@ class MoodPoller:
                     page = {}
                 doing = {a.get('agent'): a for a in page.get('activities') or [] if a.get('agent')}
                 said = [t for t in page.get('turns') or []
-                        if t.get('sender') in names and parse_time(t['created_at']) > since]
+                        if t.get('sender') in names and parse_time(t['created_at']) > since and ended(t)]
                 busy = self.at_work(slug, names, page)
                 waiting_on_me = [n for n in names if (doing.get(n) or {}).get('doing') == 'held'
                                  and str((doing.get(n) or {}).get('why') or '').startswith('waiting for ')

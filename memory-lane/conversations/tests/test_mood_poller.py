@@ -2192,7 +2192,10 @@ class WaitingTest(TestCase):
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), [])                   # re at work: still waiting
         self.page['activities'] = []
-        self.page['turns'] = [turn('r1', 're', 2, 'Start with the settings block.')]
+        self.page['turns'] = [dict(turn('r0', 're', 2, 'Reading the settings code.'), stop='tool_use')]
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), [])                   # a progress line isn't its answer (re, 27 Oct)
+        self.page['turns'].append(turn('r1', 're', 2, 'Start with the settings block.'))
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), ['m26'])               # re has answered: its turn now
         again = self.waker.woken[1][1]
@@ -2361,8 +2364,12 @@ class TakingTest(TestCase):
     def test_the_lead_answering_without_a_take_releases_the_other(self):
         poller = self.make(['Mine too.'], agent='re')
         self.assertEqual(poller.poll_once(), [])
-        self.page['turns'] = [turn('a1', 'magent', 1, 'Yes, redeploy.')]
+        # A progress line on the way ("Reads done.") isn't the answer: still held (re, 27 Oct).
+        self.page['turns'] = [dict(turn('p1', 'magent', 1, 'Checking the deploy.'), stop='tool_use')]
         self.clock[0] += timedelta(seconds=10)
+        self.assertEqual(poller.poll_once(), [])
+        self.page['turns'].append(dict(turn('a1', 'magent', 1, 'Yes, redeploy.'), stop='end_turn'))
+        self.clock[0] += timedelta(seconds=5)
         self.assertEqual(poller.poll_once(), ['m26'])
         self.assertIn('<take to=', self.waker.woken[0][1])          # nothing taken: the offer stands
 
