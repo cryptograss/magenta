@@ -1119,31 +1119,52 @@ def turn_tools(messages):
 WAKE_REASON = re.compile(r'<mood-wake\b[^>]*?\breason=\\?"([a-z-]{1,20})\\?"')
 
 
+# An /announce the wake carried (the poller's announced_lines; services/announce.py): who, from where, its words.
+HEARD_AT = '[announced by '
+HEARD = re.compile(r'\[announced by ([\w.-]+) in #([\w-]+), [^\]]*\] ((?:[^\\]|\\[^n])*)')
+
+
+def heard_in(text):
+    """[{'by', 'from', 'text'}] for the announcements a stored wake's text (its content as JSON) carries."""
+    import json
+    out = []
+    for by, where, words in HEARD.findall(text or ''):
+        try:
+            words = json.loads(f'"{words}"')  # as stored: JSON's escapes (a quote, a \\uXXXX) undone
+        except ValueError:
+            pass
+        out.append({'by': by, 'from': where, 'text': words.strip()[:140]})
+    return out
+
+
 def turn_wakes(messages):
     """{message id (str): {'tools': 'look', 'full' or '', 'bundle': the instructions' record id or '', 'reason': why
     it was woken ('crosstalk', 'consider', 'quiet', 'arrival'; '' for a mention)}} for agents' messages in a Mood,
     by the last wake before each in its session (the poller's turn line names the bundle, mood_poller.turn_line).
     One with no wake within reach is left out."""
     from datetime import timedelta
-    from django.db.models import TextField
-    from django.db.models.functions import Cast, Left, Right
+    from django.db.models import F, TextField, Value
+    from django.db.models.functions import Cast, Left, Right, StrIndex, Substr
     from conversations.models import Message
     messages = [m for m in messages if m.session_id]
     if not messages:
         return {}
     reach = timedelta(seconds=WAKE_REACH)
     wakes = {}
-    for sid, at, tail, head in (Message.objects.filter(session_id__in={m.session_id for m in messages}, sender_id=WAKE_SENDER,
+    for sid, at, tail, head, heard in (Message.objects.filter(session_id__in={m.session_id for m in messages}, sender_id=WAKE_SENDER,
                                                  created_at__gte=min(m.created_at for m in messages) - reach,
                                                  created_at__lte=max(m.created_at for m in messages))
                           .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL),
-                                    head=Left(Cast('content', TextField()), 300))
-                          .order_by('created_at').values_list('session_id', 'created_at', 'tail', 'head')):
+                                    head=Left(Cast('content', TextField()), 300),
+                                    at_heard=StrIndex(Cast('content', TextField()), Value(HEARD_AT)))
+                          .annotate(heard=Substr(Cast('content', TextField()), F('at_heard'), 2000))
+                          .order_by('created_at').values_list('session_id', 'created_at', 'tail', 'head', 'heard')):
         bundle = BUNDLE_SAID.search(tail or '')
         reason = WAKE_REASON.search(head or '')
         wakes.setdefault(str(sid), []).append((at, {'tools': wake_said(tail or ''),
                                                     'bundle': bundle.group(1) if bundle else '',
-                                                    'reason': reason.group(1) if reason else ''}))
+                                                    'reason': reason.group(1) if reason else '',
+                                                    'heard': heard_in(heard) if (heard or '').startswith(HEARD_AT) else []}))
     found = {}
     for m in messages:  # as text: a row just made holds its session as it was given, a row read as a UUID
         before = [said for at, said in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]

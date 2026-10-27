@@ -1184,7 +1184,7 @@ class ConsiderLoopTest(TestCase):
         api.add(post('a', 1))
         self.at(minutes=2)
         poller.consider_once()
-        self.assertIn('[justin, in #general, 2026-10-27T11:31Z] Beta is tonight at 8', self.waker.woken[0][1])
+        self.assertIn('[announced by justin in #general, 2026-10-27T11:31Z] Beta is tonight at 8', self.waker.woken[0][1])
         api.add(post('b', 3))
         self.at(minutes=4)
         poller.consider_once()

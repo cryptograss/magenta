@@ -137,7 +137,7 @@ class TurnBundleTest(TestCase):
         from conversations.services.mood_view import bundle_marks, turn_wakes
         self.wake('full', 0)
         said = self.say(self.magent, 'Before bundles.', 1)
-        self.assertEqual(turn_wakes([said]), {str(said.id): {'tools': 'full', 'bundle': '', 'reason': ''}})
+        self.assertEqual(turn_wakes([said]), {str(said.id): {'tools': 'full', 'bundle': '', 'reason': '', 'heard': []}})
         self.assertEqual(bundle_marks(['']), {})
 
 

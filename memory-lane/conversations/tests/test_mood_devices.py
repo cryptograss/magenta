@@ -588,3 +588,19 @@ class AnnounceTest(TestCase):
     def test_nothing_to_announce_is_refused(self):
         self.assertEqual(self.say('/announce').status_code, 400)
         self.assertEqual(self.say('/announcements are fun').status_code, 201)  # not the command
+
+    def test_the_turn_that_heard_it_says_so(self):
+        import uuid as _uuid
+        from conversations.models import Message
+        magent = ThinkingEntity.objects.get(name='magent')
+        jams, sid = Mood.objects.get(slug='jams'), _uuid.uuid4()
+        ThinkingEntity.objects.get_or_create(name='mood-poller', defaults={'is_biological_human': False})
+        wake = ('<mood-wake mood="jams" reason="consider">\nNobody asked.\n\nAnnounced to every Mood:\n'
+                '[announced by justin in #general, 2026-10-27T11:31Z] Beta is "tonight" at 8 🎻\n\nKeep replies short. '
+                'This turn has your full tools. Your instructions this turn are bundle b-1 (Special:AgentBundles).')
+        Message.objects.create(id=_uuid.uuid4(), sender_id='mood-poller', mood=jams, session_id=sid, timestamp=1,
+                               content=[{'type': 'text', 'text': wake}])
+        Message.objects.create(id=_uuid.uuid4(), sender=magent, mood=jams, session_id=sid, timestamp=2,
+                               stop_reason='end_turn', content=[{'type': 'text', 'text': 'Noted: 8 tonight.'}])
+        turn = self.client.get('/api/moods/jams/turns/').json()['turns'][0]
+        self.assertEqual(turn['heard'], [{'by': 'justin', 'from': 'general', 'text': 'Beta is "tonight" at 8 🎻'}])

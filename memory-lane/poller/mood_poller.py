@@ -2466,7 +2466,8 @@ class MoodPoller:
         told[slug] = (list(mine) + [a['id'] for a in fresh])[-200:]
         self.save()
         return ['', wake_line(self.texts, 'announced', ANNOUNCED_NOTE),
-                *[f"[{a.get('by')}, in #{a.get('from_mood')}, {str(a.get('created_at'))[:16]}Z] {a.get('text') or ''}" for a in fresh]]
+                *[f"[announced by {a.get('by')} in #{a.get('from_mood')}, {str(a.get('created_at'))[:16]}Z] {a.get('text') or ''}"
+                  for a in fresh]]  # the form magenta finds to say the turn heard it (mood_view.HEARD)
 
     def reacted_lines(self, slug, page):
         """What's new among the reactions to its posts here (reactions_to), told once: the first time it's

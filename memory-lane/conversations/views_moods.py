@@ -287,6 +287,8 @@ def api_mood_turns(request, slug):
             p['tools'] = said['tools']
         if said and said.get('reason'):
             p['why'] = said['reason']  # what woke it, when it wasn't asked: a look at crosstalk, an unasked look
+        if said and said.get('heard'):
+            p['heard'] = said['heard']  # an /announce from another Mood this wake carried (services/announce.py)
         if said and said['bundle'] in marks:
             p['bundle'] = marks[said['bundle']]
     first = min([i['created_at'] for i in turns_out + steps_out + quiet_out + thoughts_out + compactions_out
