@@ -94,3 +94,17 @@ class SayTest(TestCase):
         self.assertIn("Claude Code's; not for re (pi 1.1.0)", refused.json()['error'])
         HarnessModels.objects.filter(agent_id='re').update(harness='goose 2')
         self.assertIn('not for re (goose 2)', self.say('/compact re keep it').json()['error'])
+
+
+class IncorporateParseTest(TestCase):
+
+    def test_the_form_and_who_it_is_for(self):
+        self.assertEqual(ac.parse('/incorporate #jams-setlist', AGENTS), ('incorporate', ['magent'], '#jams-setlist'))
+        self.assertEqual(ac.parse('/incorporate #Jams-Setlist the key, mostly', AGENTS),
+                         ('incorporate', ['magent'], '#jams-setlist the key, mostly'))
+        with self.assertRaises(ac.Invalid):
+            ac.parse('/incorporate the setlist', AGENTS)
+        self.assertIn('incorporate', [s[0] for s in ac.suggestions()])
+        self.assertEqual(ac.parse('/handoff #jams the setlist', AGENTS), ('handoff', ['magent'], '#jams the setlist'))
+        with self.assertRaises(ac.Invalid):
+            ac.parse('/handoff', AGENTS)

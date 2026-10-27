@@ -33,10 +33,12 @@ class InterfaceWordsTest(TestCase):
         def away():
             raise OSError('no wiki')
         self.assertEqual(interface_words.words(fetch=away)['fork'], 'kept')
+        cache.delete('interface-words')
+        self.assertEqual(interface_words.words(fetch=lambda: None), interface_words.DEFAULTS)  # no page: never a stale read
 
     def test_the_page_carries_them(self):
         from django.test import override_settings
         with override_settings(INTERFACE_WORDS_FROM_WIKI=False):
             page = self.client.get('/moods/').content.decode()
-        self.assertIn('close-message', page)
+        self.assertIn('close-ask', page)
         self.assertIn('its emergents go on from where they are there', page)

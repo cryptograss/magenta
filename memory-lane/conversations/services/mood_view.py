@@ -435,6 +435,8 @@ def event_line(content):
         return wiki_sentence(c)
     if kind == 'wiki-upload':
         return f"🖼 {by or 'someone'} put {c.get('file', 'a picture')} on PickiPedia"
+    if kind == 'incorporated':
+        return f"⑂ {by or 'someone'} closed this thread: handed to #{c.get('into', '')} to incorporate"
     if kind in ('handoff', 'handoff-sent'):
         where = c.get('from_mood') if kind == 'handoff' else c.get('to_mood')
         return f"🔀 {by or 'someone'} {'brought this from' if kind == 'handoff' else 'took this to'} #{where}: {c.get('about', '')}"

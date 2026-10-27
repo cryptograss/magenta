@@ -46,6 +46,9 @@ KNOBS = {
                              "decision or is plainly for it. normal: when it would genuinely help; mostly quiet. "
                              "chatty: joins in as a teammate would, small talk and kind words included."),
     'verbosity': ('normal', 'How long its replies run here: brief, normal or thorough.'),
+    'handoff_model': ('', "The model for an /incorporate here (a thread folded back in, by the handoff agent): as "
+                          "'model' takes; empty: this Mood's model. On the same harness as the Mood's model."),
+    'handoff_effort': ('high', 'How hard it thinks for an /incorporate here: one full account, never brief.'),
     'ultracode': (False, "Its full-tools mention wakes here run with Claude Code's ultracode on: standing "
                          "multi-agent workflows, at any effort. Thorough, and costly."),
 }
@@ -239,11 +242,11 @@ def clean(key, value):
         if value not in allowed:
             raise Invalid(f"{key}: one of {', '.join(allowed)}")
         return value
-    if key in ('mention_effort', 'consider_effort'):
+    if key in ('mention_effort', 'consider_effort', 'handoff_effort'):
         if value not in EFFORTS:
             raise Invalid(f"{key}: one of {', '.join(EFFORTS)}")
         return value
-    if key == 'model':
+    if key in ('model', 'handoff_model'):
         value = str(value or '').strip()
         # Pi names a model by vendor, and some vendors' ids carry slashes,
         # colons or a leading ~ of their own (openrouter/~anthropic/claude-fable-latest).
