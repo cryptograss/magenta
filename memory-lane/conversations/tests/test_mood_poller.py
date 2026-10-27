@@ -1172,6 +1172,24 @@ class ConsiderLoopTest(TestCase):
         poller.consider_once()
         self.assertNotIn('justin 👍', self.waker.woken[2][1])  # once
 
+    def test_an_announcement_from_elsewhere_rides_its_next_wake_once(self):
+        class Announced(ConsiderAPI):
+            announcements = []
+            def recent(inner, slug, limit=40):
+                return {**super().recent(slug, limit), 'announcements': inner.announcements}
+        api = Announced()
+        poller = self.make(api, FakeScreen('pass'))
+        api.announcements = [{'id': 'a1', 'by': 'justin', 'from_mood': 'general', 'message': 'm1', 'created_at': '2026-10-27T11:31:00',
+                              'text': 'Beta is tonight at 8'}]
+        api.add(post('a', 1))
+        self.at(minutes=2)
+        poller.consider_once()
+        self.assertIn('[announced by justin in #general (#m-m1), 2026-10-27T11:31Z] Beta is tonight at 8', self.waker.woken[0][1])
+        api.add(post('b', 3))
+        self.at(minutes=4)
+        poller.consider_once()
+        self.assertNotIn('Beta is tonight', self.waker.woken[1][1])  # once
+
     def test_never_its_own(self):
         api = ConsiderAPI()
         poller = self.make(api, FakeScreen('pass'))
@@ -2310,9 +2328,10 @@ class WaitingTest(TestCase):
 
 
 class TakingTest(TestCase):
-    """'I'll take this one' (Justin, 27 Oct): a post asking several emergents one question. The lead reads it
-    first; the others are held until it has taken it (<take/>), or answered, or take_wait has passed. A take is a
-    claim, then the taker is woken again at once to answer; the others' wakes say who took it."""
+    """'I'll take this one' (Justin, 27 Oct): a post asking several emergents one question. A take is a claim,
+    then the taker is woken again at once to answer; the others' wakes say who took it, and offer the wait on
+    it. No hold by the poller: who takes, and who waits, is read from the post (Justin, 27 Oct 11:48Z: "I'd
+    rather have you look, make the decision, and figure whether or not to wait")."""
 
     def make(self, replies, agent='magent', mentions=('magent', 're'), **kwargs):
         clock = self.clock = [T0 + timedelta(seconds=5)]
@@ -2322,6 +2341,10 @@ class TakingTest(TestCase):
         class API(FakeAPI):
             def recent(inner, slug, limit=40):
                 return test.page
+
+            def quiet(inner, slug, reason, by='screen'):
+                inner.quiets = getattr(inner, 'quiets', []) + [(slug, reason, by)]
+                return True
 
         ask = dict(turn('ask', 'justin', 0, '@magent @re good for redeploy?'), via='web', mentions=list(mentions))
         self.api = API([mention('m26', ask)], sessions={'m26': ['s-local']})
@@ -2350,54 +2373,6 @@ class TakingTest(TestCase):
         self.assertNotIn('reply with only <wait', again)
         self.assertEqual(len(self.waker.woken), 2)
         self.assertEqual(poller.poll_once(), [])                    # and that was all
-
-    def test_the_other_is_held_until_the_lead_takes_it_then_told(self):
-        poller = self.make(['Only the bits re is asked.'], agent='re')
-        self.assertEqual(poller.poll_once(), [])                    # held: magent reads it first
-        self.assertIn(('m26', 'magent reads this first'), [(h[0], h[1]) for h in self.api.holds])
-        self.clock[0] += timedelta(seconds=10)
-        self.assertEqual(poller.poll_once(), [])
-        self.page['quiet'] = [{'sender': 'magent', 'by': '', 'reason': 'taking the redeploy question',
-                               'created_at': (T0 + timedelta(seconds=12)).isoformat()}]
-        self.clock[0] += timedelta(seconds=5)
-        self.assertEqual(poller.poll_once(), ['m26'])
-        prompt = self.waker.woken[0][1]
-        self.assertIn('magent is taking this ("the redeploy question", its words)', prompt)
-        self.assertIn('<wait for="magent" to="a few words"/>', prompt)
-        self.assertNotIn('<take to=', prompt)
-        self.assertEqual(self.api.holds[-1][1], '')                 # the hold lifted with the wake
-
-    def test_the_lead_answering_without_a_take_releases_the_other(self):
-        poller = self.make(['Mine too.'], agent='re')
-        self.assertEqual(poller.poll_once(), [])
-        # A progress line on the way ("Reads done.") isn't the answer: still held (re, 27 Oct).
-        self.page['turns'] = [dict(turn('p1', 'magent', 1, 'Checking the deploy.'), stop='tool_use')]
-        self.clock[0] += timedelta(seconds=10)
-        self.assertEqual(poller.poll_once(), [])
-        self.page['turns'].append(dict(turn('a1', 'magent', 1, 'Yes, redeploy.'), stop='end_turn'))
-        self.clock[0] += timedelta(seconds=5)
-        self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('<take to=', self.waker.woken[0][1])          # nothing taken: the offer stands
-
-    def test_the_cap_releases_the_other_with_the_offer(self):
-        poller = self.make(['Mine.'], agent='re', take_wait=20)
-        self.assertEqual(poller.poll_once(), [])
-        self.clock[0] += timedelta(seconds=21)
-        self.assertEqual(poller.poll_once(), ['m26'])
-        self.assertIn('<take to=', self.waker.woken[0][1])
-
-    def test_no_stagger_when_the_lead_was_not_asked_or_is_this_agent(self):
-        poller = self.make(['Mine.'], agent='re', mentions=('re', 'blu'))
-        self.assertEqual(poller.poll_once(), ['m26'])
-        poller = self.make(['Mine.'], agent='magent')
-        self.assertEqual(poller.poll_once(), ['m26'])
-
-    def test_the_moods_lead_setting_overrides(self):
-        poller = self.make(['Mine.'], agent='magent')
-        poller.settings = {'m26': {'lead': 're'}}
-        self.assertEqual(poller.poll_once(), [])                    # re reads it first here
-        self.assertIn(('m26', 're reads this first'), [(h[0], h[1]) for h in self.api.holds])
-
 
 class CrosstalkTest(TestCase):
     """What others said while the agent was on a turn: one look right after it, asking only whether it bears on

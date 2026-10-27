@@ -310,7 +310,8 @@
   #newBox .hint, #closeBox .hint { font-size: 12.5px; color: var(--muted); }
   #closeBox label { display: flex; gap: 6px; align-items: baseline; font-size: 13.5px; }
   #closeBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
-  #closeBox textarea[hidden] { display: none; }
+  #closeBox textarea[hidden], #closeBox #closeModel[hidden] { display: none; }
+  #closeBox #closeModel select { font: inherit; font-size: 12.5px; }
   #renameBox input, #renameBox textarea, #newBox input, #newBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
                                           background: var(--bg); color: var(--ink); }
   #renameBox input, #newBox input { font-size: 17px; font-weight: 600; }
@@ -740,6 +741,8 @@
   .event.wiki a { color: inherit; }
   .event.wiki .delta { color: var(--muted); text-decoration: none; }
   .event.wiki summary { cursor: pointer; }
+  .aturn .heard { font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
+  .aturn .heard a { color: var(--accent); }
   .event.wiki .each { margin: 4px 0 0 18px; }
   .event.wiki .wthumb img { height: 32px; max-width: 64px; object-fit: cover; border-radius: 3px; border: 1px solid var(--line);
                             vertical-align: middle; margin: 0 5px 0 1px; }
@@ -977,6 +980,11 @@
   .tdot.empty { min-width: 12px; width: 12px; height: 12px; padding: 0; }
   .work-head .what { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .work .steps .trow { margin: 4px 0; }
+  /* What the agent said on its way to a tool call (stop: tool_use): a lead-in, folded with the steps it led to,
+     so a turn reads as one answer, not two near-identical posts (Justin and re, 27 Oct). */
+  .work .steps .lead { margin: 4px 0 8px; }
+  .work .steps .lead .turn { margin: 0; }
+  .work-head .lead-sum { color: var(--muted); font-style: italic; max-width: 28em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .work .steps .trow .harness { margin-right: 4px; font-size: 13px; vertical-align: middle; }  /* the harness's note, not its thinking */
   .work .steps .trow .thought { display: none; }
   .work .steps .trow.on .thought { display: block; }
@@ -1392,6 +1400,7 @@
   <b id="closeTitle"></b>
   <label id="closeAskLine"><input type="checkbox" id="closeAsk" checked> <span id="closeAskWords"></span></label>
   <textarea id="closeNote" rows="2" maxlength="2000" aria-label="A note for them"></textarea>
+  <span class="hint" id="closeModel"></span>
   <span><button type="submit" id="closeGo"></button> <button type="button" id="closeCancel">Cancel</button></span>
 </form>
 <div id="locked"></div>
@@ -3087,7 +3096,10 @@
     };
     [...el.querySelector('.steps').children].forEach((row, i) => {
       if (row.classList.contains('step')) verbs.push(row.dataset.verb);
-      else if (row.classList.contains('trow')) {
+      else if (row.classList.contains('lead')) {
+        said();
+        parts.push(`<span class="lead-sum" title="${esc(row.dataset.text)}">“${esc(row.dataset.text)}”</span>`);
+      } else if (row.classList.contains('trow')) {
         said();
         const dot = row.querySelector('.tdot');
         // The harness's note keeps its ⚙️ in the folded line too, so it never reads as the agent's thinking.
@@ -3175,6 +3187,19 @@
     } catch (err) { box.textContent = 'could not load this step'; }
   });
 
+  // A turn message said on the way to a tool call (stop: tool_use, since magenta#206): "Checking the deploy."
+  // It keeps its id and link, but sits among the steps it led to, with a few of its words in the folded line.
+  function addLeadIn(t, container, isNew) {
+    const work = workEl(t, container);
+    const row = document.createElement('div');
+    row.className = 'lead';
+    row.dataset.text = (t.text || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    prev = null;
+    row.appendChild(turnEl(t, isNew));
+    work.querySelector('.steps').appendChild(row);
+    describeWork(work);
+    prev = { sender: t.sender, at: new Date(t.created_at).getTime() };
+  }
   function addThought(t, container) {
     const el = document.createElement('div');
     el.className = 'thought';
@@ -3630,9 +3655,15 @@
   // {field} filled with the HTML given for it.
   const WORDS = JSON.parse("{{ interface_words|escapejs }}" || '{}');
   const said = (key, fields = {}) => esc(WORDS[key] || '').replace(/\{(\w+)\}/g, (all, f) => f in fields ? fields[f] : all);
-  document.getElementById('newHint').innerHTML = said('new-hint');
-  document.getElementById('forkWords').innerHTML = `<b>${said('fork-label')}</b>: ${said('fork')}`;
-  document.getElementById('freshWords').innerHTML = `<b>${said('fresh-label')}</b>: ${said('fresh')}`;
+  // Where a text comes from, on hover (Justin, 27 Oct: which line of the page is this?): "Magenta:Interface · fork".
+  const wordsFrom = (el, ...keys) => { el.title = 'Magenta:Interface · ' + keys.join(', '); return el; };
+  wordsFrom(document.getElementById('newHint'), 'new-hint').innerHTML = said('new-hint');
+  wordsFrom(document.getElementById('forkWords'), 'fork-label', 'fork').innerHTML = `<b>${said('fork-label')}</b>: ${said('fork')}`;
+  wordsFrom(document.getElementById('freshWords'), 'fresh-label', 'fresh').innerHTML = `<b>${said('fresh-label')}</b>: ${said('fresh')}`;
+  wordsFrom(document.getElementById('newThreadOf'), 'thread-of');
+  wordsFrom(document.getElementById('closeAskWords'), 'close-ask');
+  wordsFrom(document.getElementById('closeNote'), 'close-note');
+  wordsFrom(document.getElementById('closeGo'), 'close-button');
   const closeBox = document.getElementById('closeBox');
   const HANDOFF_AGENT = 'magent';  // who incorporates a thread (services/agent_commands.HANDOFF_AGENT)
   document.addEventListener('click', async e => {
@@ -3688,9 +3719,11 @@
       const note = document.getElementById('closeNote');
       note.value = ''; note.placeholder = WORDS['close-note'] || ''; note.hidden = !parent;
       document.getElementById('closeGo').textContent = WORDS['close-button'] || 'Close';
+      closeBox._was = closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
+      drawCloseModel(parent);
       closeBox.hidden = false;
     } else if (e.target.closest('#closeCancel')) {
-      closeBox.hidden = true;
+      closeBox.hidden = true; delete vendorPicked[HANDOFF_AGENT];
     } else if (e.target.closest('.mood-head .closethread')) {
       const r = await fetch(`/api/moods/${encodeURIComponent(current)}/archive/`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
@@ -3703,6 +3736,39 @@
       newBox.hidden = true;
     }
   });
+  // The handoff agent's model and effort in the Mood it hands back to, to change just before (Justin, 27 Oct):
+  // the model is the one it runs on there anyway (a handoff never switches: the cache), the effort its handoff_effort.
+  const closeModel = document.getElementById('closeModel');
+  async function drawCloseModel(parent, vendor) {
+    closeModel.hidden = !parent;
+    if (!parent) return;
+    if (!agentsFor[parent] || !closeBox._was) {
+      try {
+        const r = await fetch('/api/moods/' + encodeURIComponent(parent) + '/turns/?limit=1');
+        if (r.ok) noteAgents(parent, (await r.json()).agents);
+      } catch (e) {}
+    }
+    const a = (agentsFor[parent] || {})[HANDOFF_AGENT];
+    if (!a) { closeModel.hidden = true; return; }
+    if (!closeBox._was) closeBox._was = { model: a.model || '', handoff_effort: a.handoff_effort || 'high' };
+    const chosen = closeBox._chosen || closeBox._was;
+    const ctx = a.context || {}, inUse = ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
+    const catalog = catalogFor(HANDOFF_AGENT, a);
+    if (vendor) vendorPicked[HANDOFF_AGENT] = vendor;
+    const models = MODELS.some(([v]) => v === chosen.model) ? MODELS : [...MODELS, [chosen.model, chosen.model]];
+    const model = catalog ? catalogMenus(HANDOFF_AGENT, catalog, chosen.model, inUse, ctx.model)
+      : `<select data-knob="model">` + models.map(([v, label]) => `<option value="${esc(v)}"${v === chosen.model ? ' selected' : ''}>${esc(v ? label : inUse)}</option>`).join('') + '</select>';
+    const effort = `<select data-knob="handoff_effort" title="how hard it thinks for the handoff">`
+      + EFFORTS.map(v => `<option value="${v}"${v === chosen.handoff_effort ? ' selected' : ''}>${EFFORT_LABELS[v] || v}</option>`).join('') + '</select>';
+    closeModel.innerHTML = `${esc(HANDOFF_AGENT)} in #${esc(parent)}: ${model} ${effort}`;
+  }
+  closeModel.addEventListener('change', e => {
+    const el = e.target.closest('select');
+    if (!el) return;
+    const chosen = closeBox._chosen = { ...(closeBox._chosen || closeBox._was) };
+    if (el.dataset.role === 'vendor') { drawCloseModel(closeBox._parent, el.value); return; }
+    chosen[el.dataset.knob] = el.value;
+  });
   // Close the thread: if asked, "/incorporate #<it> [note]" posted in the Mood it came from, as its closer (the
   // handoff agent is woken there, with the tools their sign-in gives); then closed -- archived, with a line in it.
   closeBox.addEventListener('submit', async e => {
@@ -3711,6 +3777,13 @@
     const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
                                              body: JSON.stringify(body) });
     if (ask) {
+      // Its model and effort there first, if changed here: set as any of its settings are, noted as from here.
+      for (const [key, value] of Object.entries(closeBox._chosen || {})) {
+        if (value === (closeBox._was || {})[key]) continue;
+        const r = await post('/api/settings/', { key, value, mood: closeBox._parent, agent: HANDOFF_AGENT, note: 'from the close dialog' });
+        if (!r.ok) { showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+      }
+      closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
       const note = document.getElementById('closeNote').value.trim();
       const r = await post(`/api/moods/${encodeURIComponent(closeBox._parent)}/say/`, { text: `/incorporate #${slug}${note ? ' ' + note : ''}` });
       if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
@@ -3960,6 +4033,18 @@
     if (v.effort) b._how.effort = v.effort;
     if (v.tools) b._tools = v.tools;
     if (v.why) b._why = v.why;
+    // An /announce it heard on this wake: said at the top of the turn (Justin, 27 Oct).
+    if ((v.heard || []).length && !b._heardShown) {
+      b._heardShown = true;
+      const line = document.createElement('div');
+      line.className = 'heard';
+      // Not its words (Justin, 27 Oct): "announcement" links to the message, with its words on hover.
+      line.innerHTML = v.heard.map(h => `📣 heard <b>${esc(shown(h.by))}</b>'s `
+        + (h.message ? `<a href="/moods/${encodeURIComponent(h.from)}/#m-${esc(h.message)}" title="${esc(h.text)}">announcement</a>` : 'announcement')
+        + ` from <a class="moodlink" data-mood="${esc(h.from)}" href="/moods/${encodeURIComponent(h.from)}/">#${esc(h.from)}</a>`).join('<br>');
+      const body = b.querySelector('.abody');
+      if (body) body.prepend(line);
+    }
     if (v.bundle) b._bundle = v.bundle;
   }
   // Whether a turn's first call read its context back from the cache (🔥, warm) or afresh (🧊, cold): its
@@ -4190,9 +4275,13 @@
           // Never a follow-on of its own steps or notes: each message in a turn keeps its time and
           // its link (Justin, 19 Oct: replies with nowhere to take their address from).
           prev = null;
-          body.appendChild(turnEl(it.v, isNew));
-          resolveWaits(container, agent, it.v.created_at, b);
-          resolveTakes(container, agent);
+          if (it.v.stop === 'tool_use') addLeadIn(it.v, body, isNew);
+          else {
+            body.appendChild(turnEl(it.v, isNew));
+            // A wait, or a take, is answered by a turn that ended, not a line on the way (as the poller has it).
+            resolveWaits(container, agent, it.v.created_at, b);
+            resolveTakes(container, agent);
+          }
           // Naming another agent wakes it: its turn is timed from here.
           (it.v.mentions || []).filter(n => n !== agent).forEach(n => {
             (container._askedOf ||= {})[n] = new Date(it.v.created_at).getTime() / 1000;
@@ -4524,7 +4613,7 @@
         openRunOf(el);
         const folded = el.closest('.aturn.folded');
         if (folded) { folded.classList.remove('folded'); drawBlockHead(folded); }
-        const work = el.classList.contains('step') && el.closest('.work');
+        const work = (el.classList.contains('step') || el.closest('.lead')) && el.closest('.work');
         if (work) work.classList.add('open');
         el.scrollIntoView({ block: 'center' });
         el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');

@@ -261,6 +261,15 @@ def api_say(request, slug):
     if posted != said:
         text = f'↩ #m-{answering}\n{posted}' if answering else posted
 
+    # /announce: posted here, marked, and told quietly to every other Mood's emergents (services/announce.py).
+    from .services import announce
+    try:
+        announced = announce.parse(said)
+    except announce.Refused as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    if announced is not None:
+        text = (f'↩ #m-{answering}\n' if answering else '') + announce.MARK + announced
+
     recent = Message.objects.filter(sender=device.entity, source_file=WEB_SOURCE,
                                     created_at__gt=timezone.now() - timedelta(minutes=1)).count()
     if recent >= PER_MINUTE:
@@ -283,6 +292,8 @@ def api_say(request, slug):
     if memo:
         text = voice.with_transcript(text, voice.heard(memo))
     message = post(text)
+    if announced is not None:
+        note = f'announced in {announce.spread(message, device.entity_id, announced)} other Moods'
     if text.startswith('/clips '):
         clips.forget_cached()  # the library has a new save, or one fewer
     from .services import yarn_kept

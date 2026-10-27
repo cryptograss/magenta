@@ -287,6 +287,8 @@ def api_mood_turns(request, slug):
             p['tools'] = said['tools']
         if said and said.get('reason'):
             p['why'] = said['reason']  # what woke it, when it wasn't asked: a look at crosstalk, an unasked look
+        if said and said.get('heard'):
+            p['heard'] = said['heard']  # an /announce from another Mood this wake carried (services/announce.py)
         if said and said['bundle'] in marks:
             p['bundle'] = marks[said['bundle']]
     first = min([i['created_at'] for i in turns_out + steps_out + quiet_out + thoughts_out + compactions_out
@@ -308,7 +310,7 @@ def api_mood_turns(request, slug):
             changes.append({**c, 'turn': retract.mark(turn_payload(msg, text, names), retract.change_of(msg))
                             if msg and text else None})
     clock.lap('changes')
-    from .services import pins, reactions
+    from .services import announce, pins, reactions
     return clock.report(JsonResponse({
         # A poll for what's new: its name only (a rename shows at once); the rest is a first look's.
         'mood': clock('mood', mood_payload, mood, light=after is not None),
@@ -316,6 +318,8 @@ def api_mood_turns(request, slug):
         'reactions': clock('reactions', reactions.in_mood, mood),
         # What's pinned to this Mood's top, newest first (services/pins.py).
         'pins': clock('pins', pins.in_mood, mood),
+        # /announce from other Moods, for the runner's next wake here; never drawn (services/announce.py).
+        'announcements': clock('announcements', announce.in_mood, mood),
         # What was edited or deleted since ?changes_since=, as it stands now; and the time to ask from next.
         'changes': changes,
         'now': timezone.now().isoformat(),
@@ -379,6 +383,7 @@ def agents_in(mood):
                      'effort': resolved['mention_effort'], 'ultracode': bool(resolved['ultracode']),
                      'reads': resolved['catch_up_tokens'],
                      'discretion': resolved['discretion'], 'verbosity': resolved['verbosity'],
+                     'handoff_effort': resolved['handoff_effort'],
                      # Who set each as it stands, and when: the page says so, and flashes one that just changed.
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
                      'context': context_in(mood, name),

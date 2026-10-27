@@ -1013,8 +1013,8 @@ WAIT_ALL = (' To wait for all of them at once, name them together: <wait for="{a
 TAKE_OFFER = ('If the post asks one question that one of you should answer, and it is yours (magent\'s by default; '
               'yours when it is about your work or your skills), reply with only <take to="a few words"/>, the '
               'words naming what you take ("the redeploy question"): you are woken again at once to answer it, '
-              'and the others are told. If you will answer all of it, take it first; the others are held only '
-              'briefly for you. If it asks each of you something different, answer yours.')
+              'and the others are told. Take it before anything else, tools included. If it is theirs and they '
+              'are at work here, wait for them. If it asks each of you something different, answer yours.')
 TAKEN = ('{who} is taking this ("{to}", its words), so answer only what that leaves to you, react, or stay silent '
          '(<silent>why</silent>); to answer with its answer in view, wait for it.')
 TOOK = 'You took this ("{to}"). The others asked were told, and answer only what you leave them. Answer now.'
@@ -1111,6 +1111,8 @@ def settings_changed(agent, page, texts=None):
     return ['', wake_line(texts, 'settings-changed', SETTINGS_CHANGED, said=said, who=who, why=why)]
 
 
+ANNOUNCED_NOTE = ('Announced to every Mood since you were last woken here (with /announce, in another Mood: not said here, '
+                  'but meant for you here too):')
 REACTED_NOTE = ('Reactions to your posts here since you were last woken (a nod, not a question: '
                 'nothing to answer unless one tells you something):')
 
@@ -1379,7 +1381,7 @@ class MoodPoller:
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
                  agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
-                 end_orphans=end_orphans, texts=None, instructions=False, lead='magent', take_wait=45):
+                 end_orphans=end_orphans, texts=None, instructions=False):
         self.api = api
         # Its instructions, gathered for each turn and given as system prompt (poller/instructions.py): for an
         # agent that has them on PickiPedia (blu first), never for one whose instructions live elsewhere yet.
@@ -1438,12 +1440,6 @@ class MoodPoller:
         # 2026-10-16 three quiet looks read a 510k-token session for $4.10
         # each, all to say nothing. A mention is never skipped for its cost.
         self.quiet_look_max_usd = quiet_look_max_usd
-        # A post that asks several emergents: the lead reads it first, and the others are woken once it has
-        # taken it (_TAKE_REPLY), or answered, or `take_wait` seconds have passed (re, 27 Oct: two pollers
-        # firing in the same second both start before either claim can land). The Mood's 'lead' setting
-        # overrides the name.
-        self.lead = lead
-        self.take_wait = timedelta(seconds=take_wait)
         self.last_reply = None
         # Turns at once, at most one per Mood: each Mood is its own context
         # and usually its own person, so one long turn mustn't hold up the
@@ -1778,8 +1774,6 @@ class MoodPoller:
         grace = self.grace if any(not self.unlistened(t) for t in owed) else timedelta(0)
         if self.now() - parse_time(owed[0]['created_at']) < grace:
             return settled, None
-        if self.lead_reads_first(slug, owed):
-            return settled, None
         recent = self.recent_wakes()
         if len(recent) >= self.max_wakes_per_hour:
             # The next slot opens when the oldest of the hour's wakes ages out.
@@ -2035,29 +2029,6 @@ class MoodPoller:
             logger.warning(f'bundle {record.get("id")} not recorded: {e}')
 
     # --- taking a question asked of several, and waiting for another agent --------------
-
-    def lead_reads_first(self, slug, owed):
-        """Whether to hold this wake while the lead reads the posts first: they asked the lead too, this agent
-        isn't it, and the lead has neither taken them (a 'taking ...' quiet) nor answered, within take_wait of
-        the newest. Held, not dropped: looked at again on the next pass, and shown so. Never a wake that resumes
-        a wait or a take of this agent's own: it was staggered once."""
-        lead = self.knob(slug, 'lead', self.lead)
-        if lead == self.agent or slug in self.wait_notes or lead not in others_asked(owed, self.agent):
-            return False
-        newest = max(t['created_at'] for t in owed)
-        if self.now() - parse_time(newest) >= self.take_wait:
-            return False
-        try:
-            page = self.api.recent(slug, limit=60)
-        except Exception:  # noqa: BLE001 -- can't see the Mood: answer as before
-            return False
-        if any(t.get('sender') == lead and (t.get('created_at') or '') > newest and ended(t)
-               for t in page.get('turns') or []):
-            return False
-        if taking_on(owed, page, [lead]):
-            return False
-        self.hold(slug, f'{lead} reads this first', parse_time(newest) + self.take_wait, after=newest)
-        return True
 
     def after_reply(self, slug, owed, reply):
         """A mention's turn has ended: if it took the question (_TAKE_REPLY), it is woken again at once to answer,
@@ -2378,7 +2349,7 @@ class MoodPoller:
                 lines += self.incorporate_brief(*incorporate)
             # No length line at all: the ask says how long and what goes in it. The Mood's (brief, say) would cut it
             # short, and 'thorough' is about chat -- "explain your reasoning" -- not a handoff (Justin, 27 Oct).
-            extras = self.reacted_lines(slug)
+            extras = self.extras_lines(slug, length=False)
         else:
             extras = self.extras_lines(slug)
         return '\n'.join(lines + extras + wake_footer(full, self.texts))
@@ -2439,15 +2410,32 @@ class MoodPoller:
         lines += transcript_of(kept, set(new_ids), limit=room + 10_000, each=EACH_MAX)
         return lines, cost
 
-    def extras_lines(self, slug):
-        return self.reacted_lines(slug) + wake_extras(self.knob(slug, 'verbosity', 'normal'), slug, self.texts)
-
-    def reacted_lines(self, slug):
-        """What's new among the reactions to its posts here (reactions_to), told once: the first time it's
-        woken in a Mood, what was there already is only noted."""
-        try:
+    def extras_lines(self, slug, verbosity=None, length=True):
+        try:  # one look at the Mood, for both
             page = self.api.recent(slug, limit=200)
         except Exception:
+            page = None
+        return (self.announced_lines(slug, page) + self.reacted_lines(slug, page)
+                + (wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts) if length else []))
+
+    def announced_lines(self, slug, page):
+        """/announce made in other Moods, not yet told to it here (memory-lane services/announce.py), once each."""
+        found = (page or {}).get('announcements') or []
+        told = self.state.setdefault('announced', {})
+        mine = set(told.get(slug) or ())
+        fresh = [a for a in found if a.get('id') not in mine]
+        if not fresh:
+            return []
+        told[slug] = (list(mine) + [a['id'] for a in fresh])[-200:]
+        self.save()
+        return ['', wake_line(self.texts, 'announced', ANNOUNCED_NOTE),
+                *[f"[announced by {a.get('by')} in #{a.get('from_mood')} (#m-{a.get('message')}), {str(a.get('created_at'))[:16]}Z] {a.get('text') or ''}"
+                  for a in fresh]]  # the form magenta finds to say the turn heard it (mood_view.HEARD)
+
+    def reacted_lines(self, slug, page):
+        """What's new among the reactions to its posts here (reactions_to), told once: the first time it's
+        woken in a Mood, what was there already is only noted."""
+        if page is None:
             return []
         known = self.state.setdefault('reacted', {})
         first = slug not in known
@@ -3018,10 +3006,6 @@ def build_parser():
                              "(its home went with its container), so a mention starts it over from the record")
     # Retired with poller/letter.md: still taken, and ignored, until hunter's container_startup stops passing it.
     parser.add_argument('--letter', default=None, help=argparse.SUPPRESS)
-    parser.add_argument('--lead', default='magent',
-                        help='Who reads a post that asks several emergents first (the Mood setting "lead" overrides)')
-    parser.add_argument('--take-wait', type=int, default=45,
-                        help='Seconds the others are held for the lead to take or answer such a post')
     parser.add_argument('--instructions', '--rules-bundle', dest='instructions', action='store_true',
                         help="Give each turn the agent's instructions from PickiPedia as system prompt "
                              "(poller/instructions.py); --rules-bundle is the old name, until the inventory says this one")
@@ -3091,7 +3075,7 @@ def main(argv=None):
                           agent_wakes_per_hour=args.agent_wakes_per_hour,
                           only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
                           texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')),
-                          instructions=args.instructions, lead=args.lead, take_wait=args.take_wait)
+                          instructions=args.instructions)
     report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on
