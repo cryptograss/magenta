@@ -2376,8 +2376,9 @@ class MoodPoller:
         if incorporate or handing:
             if incorporate:
                 lines += self.incorporate_brief(*incorporate)
-            # Full length, whatever this Mood's verbosity (Justin, 27 Oct: "definitely don't want brief ... for handoffs").
-            extras = self.reacted_lines(slug) + wake_extras('thorough', slug, self.texts)
+            # No length line at all: the ask says how long and what goes in it. The Mood's (brief, say) would cut it
+            # short, and 'thorough' is about chat -- "explain your reasoning" -- not a handoff (Justin, 27 Oct).
+            extras = self.reacted_lines(slug)
         else:
             extras = self.extras_lines(slug)
         return '\n'.join(lines + extras + wake_footer(full, self.texts))
