@@ -1484,8 +1484,10 @@
   // Each that has answered already, with a ✓ (a wait for several goes on until the last has).
   function waitedFor(why, answered = []) {
     const [names, to] = String(why || '').replace(/^waiting for /, '').split(/ to (.*)/s);
-    return 'waiting for ' + names.split(/,\s*/).map(n => `<b style="color: ${agentColor(n)}"${answered.includes(n) ? ' class="answered" title="has answered"' : ''}>${esc(n)}${answered.includes(n) ? ' ✓' : ''}</b>`).join(', ')
-      + (to ? ' to ' + esc(to) : '');
+    const each = names.split(/,\s*/).map(n => `<b style="color: ${agentColor(n)}"${answered.includes(n) ? ' class="answered" title="has answered"' : ''}>${esc(n)}${answered.includes(n) ? ' ✓' : ''}</b>`);
+    // "re", "re and blu", "re, blu, and magent" (Justin, 27 Oct).
+    const listed = each.length < 3 ? each.join(' and ') : each.slice(0, -1).join(', ') + ', and ' + each[each.length - 1];
+    return 'waiting for ' + listed + (to ? ' to ' + esc(to) : '');
   }
   function humanDuration(ms) {
     const s = Math.round(ms / 1000);
@@ -1514,7 +1516,7 @@
       const dur = humanDuration(resolvedMs - new Date(line.dataset.waitAt).getTime());
       if (verbSpan) {
         const rest = waitedFor(line.dataset.waitReason).replace(/^waiting for /, '');
-        verbSpan.innerHTML = `waited for ${esc(dur)} for ` + (names.length > 1 ? 'all of ' : '') + rest;
+        verbSpan.innerHTML = `waited for ${esc(dur)} for ` + rest;
       }
       if (after && after.parentNode === container) { after.after(line); line.classList.add('waited'); }
       delete line.dataset.waitingFor;
