@@ -3821,6 +3821,8 @@
       dot.textContent = kTokens(words);
       dot.title += ` · thought ${words.toLocaleString()} word${words === 1 ? '' : 's'} first`;
     }
+    // A crosstalk look says so inside its dot, as a turn's ↺ crosstalk does beside its name (Justin, 27 Oct).
+    if (q.why === 'crosstalk') { dot.classList.add('n'); dot.textContent = '↺' + (thought ? ' ' + dot.textContent : ''); }
     row.appendChild(dot);
     if (q.by !== 'screen') resolveWaits(container, q.sender, q.created_at, row);  // finished without a word: answered, for a wait
   }
