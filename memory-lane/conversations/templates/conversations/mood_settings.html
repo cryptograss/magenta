@@ -53,6 +53,14 @@
   .mrow .who { font-weight: 600; }
   .mrow select { max-width: 260px; }
   .mrow .inherited select { color: var(--muted); font-style: italic; }
+  /* Emergent defaults: a row per emergent, a column per setting. */
+  .defaults-wrap { overflow-x: auto; }
+  .defaults { border-collapse: collapse; font-size: 13px; }
+  .defaults th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 4px 6px; white-space: nowrap; }
+  .defaults td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  .defaults td.who { font-weight: 600; }
+  .defaults input[type=number] { width: 80px; }
+  .defaults .inherited select, .defaults .inherited input, .defaults .inherited textarea { color: var(--muted); font-style: italic; }
   .pick-line { margin: 8px 0 12px; display: flex; align-items: center; gap: 8px; }
   .pick-line label { font-size: 12.5px; color: var(--muted); }
   .pick-line select { padding: 4px 8px; min-width: 140px; }
@@ -100,6 +108,9 @@
   <div id="scram"></div>
   <h3>Model, everywhere</h3>
   <div class="cards" id="models">Loading…</div>
+  <h3>Emergent defaults</h3>
+  <p class="note">Each emergent in every Mood and thread, new ones included, unless that Mood sets its own.</p>
+  <div class="defaults-wrap"><table class="defaults" id="defaults"></table></div>
   <h3>One emergent</h3>
   <p class="pick-line"><label for="pickAgent">showing</label> <select id="pickAgent"></select></p>
   <div class="cards" id="cards">Loading…</div>
@@ -144,7 +155,7 @@
     return out;
   }
 
-  function field(key, value, mood, agent) {
+  function field(key, value, mood, agent, bare) {
     const here = setHere(mood, agent, key);
     const attrs = `data-key="${key}" data-mood="${esc(mood || '')}" data-agent="${esc(agent || '')}" ${viewer ? '' : 'disabled'}`;
     let input;
@@ -166,8 +177,9 @@
     } else {
       input = `<input type="number" min="0" ${attrs} value="${esc(value)}">`;
     }
-    return `<div class="row"><label title="${esc(state.knobs[key].help)}">${LABELS[key]}</label>`
-      + `<span class="${here ? '' : 'inherited'}">${input}<span class="status"></span></span></div>`;
+    const cell = `<span class="${here ? '' : 'inherited'}">${input}<span class="status"></span></span>`;
+    if (bare) return cell;
+    return `<div class="row"><label title="${esc(state.knobs[key].help)}">${LABELS[key]}</label>${cell}</div>`;
   }
 
   function card(title, sub, values, mood, agent, skip) {
@@ -225,9 +237,20 @@
       }).join('') + '</div>';
   }
 
+  // Emergent defaults: every setting, one emergent everywhere (agent, no Mood). Model is the row above.
+  function defaultsTable() {
+    const keys = Object.keys(state.knobs).filter(k => k !== 'model');
+    const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
+    return head + state.agents.map(a => {
+      const v = everywhere(a);
+      return `<tr><td class="who">${esc(a)}</td>` + keys.map(k =>
+        `<td>${a === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k) ? field(k, v[k], null, a, true) : ''}</td>`).join('') + '</tr>';
+    }).join('');
+  }
+
   let picked = null;  // which emergent the Mood cards show, kept across saves
   function agentView(a) {
-    const cards = [card(`${a}, everywhere`, 'unless a Mood says otherwise', everywhere(a), null, a, ['model'])];
+    const cards = [];
     for (const m of state.moods) cards.push(card(m.title, `${a} in #${m.slug}`, state.resolved[m.slug][a], m.slug, a));
     return cards.join('') || 'No Moods yet.';
   }
@@ -239,6 +262,7 @@
     document.getElementById('scram').innerHTML = scram
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
     document.getElementById('models').innerHTML = modelRows();
+    document.getElementById('defaults').innerHTML = defaultsTable();
     const picker = document.getElementById('pickAgent');
     if (!picked) picked = state.agents[0] || '';
     picker.innerHTML = state.agents.map(a => `<option value="${esc(a)}" ${a === picked ? 'selected' : ''}>${esc(a)}</option>`).join('')

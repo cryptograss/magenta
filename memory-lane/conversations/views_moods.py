@@ -376,9 +376,17 @@ def agents_in(mood):
     # Which harness reported what it can run (the menu fetches the list itself, from api_agent_models).
     from .models import HarnessModels
     catalogs = dict(HarnessModels.objects.values_list('agent_id', 'harness'))
+    from .models import Message
     out = {}
     for name in agents:
         resolved = knobs.resolve(mood.slug, name)
+        context = context_in(mood, name)
+        # No model set and no turn here yet: the one it last ran on anywhere, so the bar
+        # names a model, never "default" (Justin, 27 Oct).
+        runs = resolved['model'] or (context or {}).get('model') or (
+            Message.objects.filter(sender_id=name, is_sidechain=False, model_backend__isnull=False)
+            .exclude(model_backend__in=('', '<synthetic>')).order_by('-created_at')
+            .values_list('model_backend', flat=True).first() or '')
         out[name] = {'listening': resolved['listening'], 'model': resolved['model'],
                      'effort': resolved['mention_effort'], 'ultracode': bool(resolved['ultracode']),
                      'reads': resolved['catch_up_tokens'],
@@ -386,7 +394,7 @@ def agents_in(mood):
                      'handoff_effort': resolved['handoff_effort'],
                      # Who set each as it stands, and when: the page says so, and flashes one that just changed.
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
-                     'context': context_in(mood, name),
+                     'context': context, 'runs': runs,
                      'catalog': catalogs.get(name)}
         # What's changed in its settings here since its last word: told at its next wake (agent_settings).
         changes, by, note = agent_settings.changed_since(mood.slug, name, rows=every)
