@@ -3624,7 +3624,10 @@
     } else if (e.target.closest('.mood-head .closethread') && !isArchived(current)) {
       // Closing: optionally, its emergents asked first to hand back to the Mood it came from what was settled
       // here (Justin, 27 Oct: "compact back into the mood"), each with a ```handoff block, as any Mood's.
-      const agents = ((headMood || {}).participants || []).filter(n => human[n] === false);
+      // Who has spoken there as of now: the head's list is as the Mood was when it was opened (a look brings only
+      // its name since), so an emergent that spoke after went unasked (Justin, 27 Oct: re left out). The list of Moods, asked again.
+      await loadMoods();
+      const agents = ((moods.find(m => m.slug === current) || headMood || {}).participants || []).filter(n => human[n] === false);
       const parent = (headMood || {}).thread_of || '';
       closeBox._agents = agents; closeBox._parent = parent;
       document.getElementById('closeTitle').textContent = `#${current}`;
