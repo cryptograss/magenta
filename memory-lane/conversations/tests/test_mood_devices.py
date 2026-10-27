@@ -550,3 +550,58 @@ class SignInsAreAnnouncedTest(SignedInCase):
         events = self.client.get('/api/moods/general/turns/').json()['events']
         self.assertEqual([(e['kind'], e['who'], e['tier'], e['label']) for e in events],
                          [('signed-in', 'justin', 'key', 'laptop')])
+
+
+class AnnounceTest(TestCase):
+    """/announce (Justin, 27 Oct): posted where it's typed, told quietly to every other Mood's emergents."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        from conversations.services import mood_auth
+        cache.clear()
+        self.justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        ThinkingEntity.objects.create(name='magent', is_biological_human=False)
+        for slug in ('general', 'jams', 'old'):
+            Mood.objects.create(slug=slug, title=slug)
+        from conversations.services import settings as knobs
+        knobs.change('archived', True, mood=Mood.objects.get(slug='old'), by=self.justin)
+        _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
+        self.client.cookies[mood_auth.COOKIE] = token
+
+    def say(self, text, slug='general'):
+        return self.client.post(f'/api/moods/{slug}/say/', json.dumps({'text': text}), content_type='application/json')
+
+    def test_posted_here_marked_told_quietly_elsewhere(self):
+        r = self.say('/announce Beta is tonight at 8')
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.json()['note'], 'announced in 1 other Moods')
+        here = self.client.get('/api/moods/general/turns/').json()
+        self.assertEqual([t['text'] for t in here['turns']], ['📣 Beta is tonight at 8'])
+        self.assertEqual(here['announcements'], [])
+        there = self.client.get('/api/moods/jams/turns/').json()
+        self.assertEqual((there['turns'], there['events']), ([], []))  # never shown there
+        self.assertEqual([(a['by'], a['from_mood'], a['text']) for a in there['announcements']],
+                         [('justin', 'general', 'Beta is tonight at 8')])
+        self.assertEqual(self.client.get('/api/moods/old/turns/').json()['announcements'], [])  # archived: not told
+        self.assertEqual(self.client.get('/api/moods/').json()['moods'][0]['slug'], 'general')  # jams doesn't look active
+
+    def test_nothing_to_announce_is_refused(self):
+        self.assertEqual(self.say('/announce').status_code, 400)
+        self.assertEqual(self.say('/announcements are fun').status_code, 201)  # not the command
+
+    def test_the_turn_that_heard_it_says_so(self):
+        import uuid as _uuid
+        from conversations.models import Message
+        magent = ThinkingEntity.objects.get(name='magent')
+        jams, sid = Mood.objects.get(slug='jams'), _uuid.uuid4()
+        ThinkingEntity.objects.get_or_create(name='mood-poller', defaults={'is_biological_human': False})
+        wake = ('<mood-wake mood="jams" reason="consider">\nNobody asked.\n\nAnnounced to every Mood:\n'
+                '[announced by justin in #general (#m-0123abcd-0000-4000-8000-000000000000), 2026-10-27T11:31Z] Beta is "tonight" at 8 🎻\n\nKeep replies short. '
+                'This turn has your full tools. Your instructions this turn are bundle b-1 (Special:AgentBundles).')
+        Message.objects.create(id=_uuid.uuid4(), sender_id='mood-poller', mood=jams, session_id=sid, timestamp=1,
+                               content=[{'type': 'text', 'text': wake}])
+        Message.objects.create(id=_uuid.uuid4(), sender=magent, mood=jams, session_id=sid, timestamp=2,
+                               stop_reason='end_turn', content=[{'type': 'text', 'text': 'Noted: 8 tonight.'}])
+        turn = self.client.get('/api/moods/jams/turns/').json()['turns'][0]
+        self.assertEqual(turn['heard'], [{'by': 'justin', 'from': 'general', 'message': '0123abcd-0000-4000-8000-000000000000',
+                                          'text': 'Beta is "tonight" at 8 🎻'}])
