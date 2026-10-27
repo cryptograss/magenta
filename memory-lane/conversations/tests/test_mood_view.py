@@ -461,3 +461,16 @@ class LookTimingTest(TestCase):
         self.assertEqual(poll['title'], 'timing')
         self.assertNotIn('message_count', poll)
         self.assertNotIn('participants', poll)
+
+
+class ThinkingOutLoudTest(TestCase):
+    """re, 27 Oct in #general: "...Not directed at me.<silent>Justin sharing progress.</silent>" posted as words."""
+
+    def test_words_then_silent_is_a_dot_with_its_words_as_thought(self):
+        from conversations.services.mood_view import quiet_reason
+        said = "Justin sharing a link. No @re. Stay quiet.<silent>Justin sharing progress. Not directed at me.</silent>"
+        self.assertEqual(quiet_reason(said), {'reason': 'Justin sharing progress. Not directed at me.', 'by': '',
+                                              'thought': 'Justin sharing a link. No @re. Stay quiet.'})
+        self.assertEqual(quiet_reason('Nothing for me.\n<silent/>')['thought'], 'Nothing for me.')
+        self.assertIsNone(quiet_reason('Use <silent>why</silent> to stay quiet, like that.'))  # mid-sentence: words
+        self.assertNotIn('thought', quiet_reason('<silent>plain</silent>'))
