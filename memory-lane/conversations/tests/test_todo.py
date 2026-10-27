@@ -162,8 +162,9 @@ class TodoTextTest(SimpleTestCase):
             end = html.index(f'\n{indent}}}', start)
             return html[start:end + len(indent) + 2]
         src = "const WIKI = 'https://pickipedia.xyz';\n" + '\n'.join(lift(n) for n in ('esc', 'linkOf', 'todoText'))
-        return lambda text: subprocess.run(
-            ['node', '-e', src + '\nprocess.stdout.write(todoText(process.argv[1]));', '--', text],
+        return lambda text, links=True: subprocess.run(
+            ['node', '-e', src + '\nprocess.stdout.write(todoText(process.argv[1], process.argv[2] !== "nolinks"));',
+             '--', text, 'nolinks' if not links else 'links'],
             capture_output=True, text=True, check=True).stdout
 
     def test_a_page_in_brackets_is_a_link_and_code_is_left_alone(self):
@@ -178,3 +179,6 @@ class TodoTextTest(SimpleTestCase):
         self.assertEqual(todo_text("[[Justin's page]]"),
                          '<a href="https://pickipedia.xyz/wiki/Justin&#39;s_page">Justin&#39;s page</a>')
         self.assertEqual(todo_text('[[]] stays'), '[[]] stays')
+        # A task with a link: the page's todoItem asks for no links inside it (a link in a link).
+        self.assertEqual(todo_text('move [[Cryptograss:Emergents/GeneralOrders]]', links=False),
+                         'move [[Cryptograss:Emergents/GeneralOrders]]')

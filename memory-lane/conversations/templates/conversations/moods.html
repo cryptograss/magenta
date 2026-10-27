@@ -1768,10 +1768,10 @@
   // `code` in a task or a note, as in a message; [[Page]] and [[Page|label]] links to the page, as
   // PickiPedia's <todo> shows them (Justin, 27 Oct: the list names a dozen pages a reader had to
   // search for). Code is set aside first, so brackets inside it stay as written.
-  function todoText(text) {
+  function todoText(text, links = true) {
     const codes = [];
     let h = esc(text).replace(/`([^`\n]+)`/g, (_, c) => `\x01${codes.push('<code>' + c + '</code>') - 1}\x01`);
-    h = h.replace(/\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]/g, (whole, title, label) => {
+    if (links) h = h.replace(/\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]/g, (whole, title, label) => {
       const name = title.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
       return name ? `<a href="${esc(linkOf(name))}">${(label || '').trim() || esc(name)}</a>` : whole;
     });
@@ -1782,9 +1782,10 @@
   function todoItem(it) {
     const who = it.who.map(n => n.toLowerCase() === viewer ? '<span class="you">you</span>' : esc(shown(n.toLowerCase())));
     const meta = [it.merged ? 'merged, says GitHub' : it.kind, who.join(', ')].filter(Boolean).join(' · ');
-    // A task with a link is the link, as on PickiPedia (its <todo> tag).
+    // A task with a link is the link, as on PickiPedia (its <todo> tag), and one link whole: a [[page]]
+    // inside it would be a link in a link, which browsers cut apart. The note is never wrapped.
     const href = it.link ? linkOf(it.link) : '';
-    const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''} title="${esc(it.link)}">${todoText(it.task)}</a>`
+    const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''} title="${esc(it.link)}">${todoText(it.task, false)}</a>`
       : todoText(it.task);
     const id = todoId(it);
     return `<li id="${esc(id)}"><span class="box">${it.done ? '☑' : '☐'}</span><div><span class="task">${task}</span>`
