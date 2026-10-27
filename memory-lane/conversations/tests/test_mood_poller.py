@@ -1172,6 +1172,42 @@ class ConsiderLoopTest(TestCase):
         poller.consider_once()
         self.assertNotIn('justin 👍', self.waker.woken[2][1])  # once
 
+    def test_a_control_tag_after_words_is_told_at_its_next_wake(self):
+        # re's 16:43Z slip: prose, then a trailing <silent> tag, so the tag posted as spoken (Justin and re, 27 Oct).
+        api = ConsiderAPI()
+        poller = self.make(api, FakeScreen('pass'))
+        api.add(post('a', 1))
+        self.at(minutes=2)
+        poller.consider_once()  # first wake here: what was already there is only noted
+        api.add(post('m', 2.5, sender='magent', via='session',
+                     text='A fine question, that. <silent>not for me</silent>') | {'is_human': False})
+        api.add(post('b', 3))
+        self.at(minutes=4)
+        poller.consider_once()
+        prompt = self.waker.woken[1][1]
+        self.assertIn('your 18:02Z reply here (#m-m) ended with <silent> but had words before it', prompt)
+        self.assertIn('“A fine question, that.”', prompt)
+        api.add(post('c', 5))
+        self.at(minutes=6)
+        poller.consider_once()
+        self.assertNotIn('ended with <silent>', self.waker.woken[2][1])  # once
+
+    def test_only_a_tag_at_the_very_end_after_words_counts(self):
+        # A tag alone is a valid control reply; a tag quoted (backticked, or mid-sentence) is just text: no notice.
+        api = ConsiderAPI()
+        poller = self.make(api, FakeScreen('pass'))
+        api.add(post('a', 1))
+        self.at(minutes=2)
+        poller.consider_once()
+        for i, text in enumerate(('<silent>nothing to add</silent>', 'the tag is `<silent>why</silent>`',
+                                  'A <silent>x</silent> b', 'A wait: <wait for="re"/> no, never mind.')):
+            api.add(post(f'q{i}', 2.1 * (i + 1), sender='magent', via='session', text=text) | {'is_human': False})
+        api.add(post('b', 12))
+        self.at(minutes=13)
+        poller.consider_once()
+        self.assertNotIn('ended with <silent>', self.waker.woken[1][1])
+        self.assertNotIn('ended with <wait>', self.waker.woken[1][1])
+
     def test_an_announcement_from_elsewhere_rides_its_next_wake_once(self):
         class Announced(ConsiderAPI):
             announcements = []

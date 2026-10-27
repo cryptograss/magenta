@@ -1141,6 +1141,46 @@ def reactions_to(agent, page, seen):
     return lines, keys
 
 
+NEAR_MISS_NOTE = ('Replies of yours here that ended with a control tag after other words (a tag is a reply only '
+                  'on its own: those posted as spoken, the tag and all):')
+# The tags whose whole-reply rule the poller enforces. A reply that is only one of these is a state, not words;
+# one that ends with it after other words was said out loud instead (Justin and re, 27 Oct).
+_CONTROL_TAGS = (
+    ('silent', re.compile(r'<silent\s*/>|<silent>[^<>]*</silent>', re.S)),
+    ('wait', re.compile(r'<wait\s+for="[^"]{1,100}"(?:\s+to="[^"<>]{0,200}")?\s*/>')),
+    ('react', re.compile(r'<react\s+[^<>]*/>')),
+    ('take', re.compile(r'<take\s+[^<>]*/>')),
+)
+
+
+def near_misses(agent, page, seen):
+    """(lines, keys): `agent`'s own replies here that end with a whole-reply control tag after other words, so
+    the tag went out as spoken text -- one line each, once -- and every one of its replies now, to keep as seen.
+    Not a guess at intent: only a well-formed tag at the very end, with words before it (Justin and re, 27 Oct)."""
+    lines, keys = [], []
+    for turn in page.get('turns') or ():
+        if turn.get('sender') != agent:
+            continue
+        key = turn.get('id')
+        if not key:
+            continue
+        keys.append(key)
+        if key in seen:
+            continue
+        text = str(turn.get('text') or '').rstrip()
+        for name, pattern in _CONTROL_TAGS:
+            m = pattern.search(text)
+            if m is None or text[m.end():].strip() or not text[:m.start()].strip():
+                continue  # only a tag at the very end, with words before it
+            words = ' '.join(text[:m.start()].split())
+            words = words if len(words) <= 80 else words[:79] + '…'
+            at = str(turn.get('created_at') or '')[11:16]
+            lines.append(f'your {at}Z reply here (#m-{str(key)[:8]}) ended with <{name}> but had words before it, '
+                         f'so it posted as a spoken reply: “{words}”')
+            break
+    return lines, keys
+
+
 # /incorporate #<thread> (memory-lane services/agent_commands): the handoff agent folds a thread back into the
 # Mood it came from -- one account, full length whatever the Mood's verbosity, with the handoff's own model and
 # effort (Justin, 27 Oct). Its words live here and on the Dials page (dial 'incorporate'), not in each agent's orders.
@@ -2416,6 +2456,7 @@ class MoodPoller:
         except Exception:
             page = None
         return (self.announced_lines(slug, page) + self.reacted_lines(slug, page)
+                + self.nearmiss_lines(slug, page)
                 + (wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts) if length else []))
 
     def announced_lines(self, slug, page):
@@ -2445,6 +2486,20 @@ class MoodPoller:
         if first or not lines:
             return []
         return ['', wake_line(self.texts, 'reacted', REACTED_NOTE), *lines]
+
+    def nearmiss_lines(self, slug, page):
+        """Its own replies here that ended with a control tag after other words (near_misses), told once: what
+        was there before its first wake in a Mood is only noted, as reactions are."""
+        if page is None:
+            return []
+        known = self.state.setdefault('nearmiss', {})
+        first = slug not in known
+        lines, keys = near_misses(self.agent, page, set(known.get(slug) or ()))
+        known[slug] = keys[-2000:]
+        self.save()
+        if first or not lines:
+            return []
+        return ['', wake_line(self.texts, 'nearmiss', NEAR_MISS_NOTE), *lines]
 
     # --- the consider loop ------------------------------------------------------
     #
