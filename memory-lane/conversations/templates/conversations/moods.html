@@ -310,7 +310,8 @@
   #newBox .hint, #closeBox .hint { font-size: 12.5px; color: var(--muted); }
   #closeBox label { display: flex; gap: 6px; align-items: baseline; font-size: 13.5px; }
   #closeBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
-  #closeBox textarea[hidden] { display: none; }
+  #closeBox textarea[hidden], #closeBox #closeModel[hidden] { display: none; }
+  #closeBox #closeModel select { font: inherit; font-size: 12.5px; }
   #renameBox input, #renameBox textarea, #newBox input, #newBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
                                           background: var(--bg); color: var(--ink); }
   #renameBox input, #newBox input { font-size: 17px; font-weight: 600; }
@@ -1392,6 +1393,7 @@
   <b id="closeTitle"></b>
   <label id="closeAskLine"><input type="checkbox" id="closeAsk" checked> <span id="closeAskWords"></span></label>
   <textarea id="closeNote" rows="2" maxlength="2000" aria-label="A note for them"></textarea>
+  <span class="hint" id="closeModel"></span>
   <span><button type="submit" id="closeGo"></button> <button type="button" id="closeCancel">Cancel</button></span>
 </form>
 <div id="locked"></div>
@@ -3688,9 +3690,11 @@
       const note = document.getElementById('closeNote');
       note.value = ''; note.placeholder = WORDS['close-note'] || ''; note.hidden = !parent;
       document.getElementById('closeGo').textContent = WORDS['close-button'] || 'Close';
+      closeBox._was = closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
+      drawCloseModel(parent);
       closeBox.hidden = false;
     } else if (e.target.closest('#closeCancel')) {
-      closeBox.hidden = true;
+      closeBox.hidden = true; delete vendorPicked[HANDOFF_AGENT];
     } else if (e.target.closest('.mood-head .closethread')) {
       const r = await fetch(`/api/moods/${encodeURIComponent(current)}/archive/`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
@@ -3703,6 +3707,39 @@
       newBox.hidden = true;
     }
   });
+  // The handoff agent's model and effort in the Mood it hands back to, to change just before (Justin, 27 Oct):
+  // the model is the one it runs on there anyway (a handoff never switches: the cache), the effort its handoff_effort.
+  const closeModel = document.getElementById('closeModel');
+  async function drawCloseModel(parent, vendor) {
+    closeModel.hidden = !parent;
+    if (!parent) return;
+    if (!agentsFor[parent] || !closeBox._was) {
+      try {
+        const r = await fetch('/api/moods/' + encodeURIComponent(parent) + '/turns/?limit=1');
+        if (r.ok) noteAgents(parent, (await r.json()).agents);
+      } catch (e) {}
+    }
+    const a = (agentsFor[parent] || {})[HANDOFF_AGENT];
+    if (!a) { closeModel.hidden = true; return; }
+    if (!closeBox._was) closeBox._was = { model: a.model || '', handoff_effort: a.handoff_effort || 'high' };
+    const chosen = closeBox._chosen || closeBox._was;
+    const ctx = a.context || {}, inUse = ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
+    const catalog = catalogFor(HANDOFF_AGENT, a);
+    if (vendor) vendorPicked[HANDOFF_AGENT] = vendor;
+    const models = MODELS.some(([v]) => v === chosen.model) ? MODELS : [...MODELS, [chosen.model, chosen.model]];
+    const model = catalog ? catalogMenus(HANDOFF_AGENT, catalog, chosen.model, inUse, ctx.model)
+      : `<select data-knob="model">` + models.map(([v, label]) => `<option value="${esc(v)}"${v === chosen.model ? ' selected' : ''}>${esc(v ? label : inUse)}</option>`).join('') + '</select>';
+    const effort = `<select data-knob="handoff_effort" title="how hard it thinks for the handoff">`
+      + EFFORTS.map(v => `<option value="${v}"${v === chosen.handoff_effort ? ' selected' : ''}>${EFFORT_LABELS[v] || v}</option>`).join('') + '</select>';
+    closeModel.innerHTML = `${esc(HANDOFF_AGENT)} in #${esc(parent)}: ${model} ${effort}`;
+  }
+  closeModel.addEventListener('change', e => {
+    const el = e.target.closest('select');
+    if (!el) return;
+    const chosen = closeBox._chosen = { ...(closeBox._chosen || closeBox._was) };
+    if (el.dataset.role === 'vendor') { drawCloseModel(closeBox._parent, el.value); return; }
+    chosen[el.dataset.knob] = el.value;
+  });
   // Close the thread: if asked, "/incorporate #<it> [note]" posted in the Mood it came from, as its closer (the
   // handoff agent is woken there, with the tools their sign-in gives); then closed -- archived, with a line in it.
   closeBox.addEventListener('submit', async e => {
@@ -3711,6 +3748,13 @@
     const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
                                              body: JSON.stringify(body) });
     if (ask) {
+      // Its model and effort there first, if changed here: set as any of its settings are, noted as from here.
+      for (const [key, value] of Object.entries(closeBox._chosen || {})) {
+        if (value === (closeBox._was || {})[key]) continue;
+        const r = await post('/api/settings/', { key, value, mood: closeBox._parent, agent: HANDOFF_AGENT, note: 'from the close dialog' });
+        if (!r.ok) { showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+      }
+      closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
       const note = document.getElementById('closeNote').value.trim();
       const r = await post(`/api/moods/${encodeURIComponent(closeBox._parent)}/say/`, { text: `/incorporate #${slug}${note ? ' ' + note : ''}` });
       if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
