@@ -167,7 +167,7 @@ def api_logout(request):
 UPLOADING = re.compile(r'!\[uploading [^\]\n]*…\]\(\)\n?')
 
 
-def _say_checks(text, device):
+def _say_checks(text, device, slug=None):
     """What a text can't be posted as, by this device -- refused with the reason -- or None. The same
     checks wherever the device speaks: in a Mood (api_say) or on a link's Tidings page, which posts
     its comments into the Mood."""
@@ -190,6 +190,12 @@ def _say_checks(text, device):
         command = agent_commands.parse(_reply_to(text)[1], agent_names())
     except agent_commands.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
+    if command and command[0] == 'incorporate':
+        thread = Mood.by_slug(command[2].split()[0].lstrip('#'))
+        if slug and (thread is None or thread.thread_of_id is None or thread.thread_of.slug != slug):
+            return JsonResponse({'error': f'{command[2].split()[0]} is not a thread of this Mood. '
+                                          f'{agent_commands.INCORPORATE_FORM}'}, status=400)
+        return None
     if command:
         # They're Claude Code's; an agent on Pi has /compact too (its runner asks Pi's RPC
         # mode, poller/pi_harness.py), and none of the others yet.
@@ -231,7 +237,7 @@ def api_say(request, slug):
     if len(text) > MAX_CHARS:
         return JsonResponse({'error': f'longer than {MAX_CHARS} characters'}, status=400)
 
-    refused = _say_checks(text, device)
+    refused = _say_checks(text, device, slug)
     if refused:
         return refused
 
@@ -1152,6 +1158,37 @@ def api_archive(request, slug):
     is still answered. Recorded as a setting row: who, and when.
     """
     return _mood_flag(request, slug, 'archived')
+
+
+@require_POST
+def api_close_thread(request, slug):
+    """Close a thread: POST {"incorporated": true|false}. Archived, as any Mood (readable, a mention still answered),
+    and, when it was handed to its Mood to incorporate (the close dialog posts "/incorporate #<it>" there first), a
+    line in it saying so: its history stays, and opening it again is a new thread's choice, fresh or forked
+    (Justin, 27 Oct)."""
+    from .services import settings as knobs
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device, refused = mood_auth.key_device(request, 'close a thread')
+    if refused:
+        return refused
+    mood = Mood.by_slug_or_404(slug)
+    if mood.thread_of_id is None:
+        return JsonResponse({'error': 'not a thread'}, status=400)
+    try:
+        incorporated = json.loads(request.body or b'{}').get('incorporated') is True
+    except (ValueError, AttributeError):
+        return JsonResponse({'error': 'expected {"incorporated": true|false}'}, status=400)
+    from .models import ConversationParticipant
+    from .services.mood_view import NEW_MOOD_SOURCE
+    knobs.change('archived', True, mood=mood, by=device.entity, note='closed')
+    if incorporated:
+        system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=NEW_MOOD_SOURCE,
+                               content={'type': 'incorporated', 'by': device.entity_id, 'into': mood.thread_of.slug},
+                               timestamp=int(time.time() * 1000))
+    return JsonResponse({'slug': mood.slug, 'archived': True, 'incorporated': incorporated})
 
 
 @require_POST

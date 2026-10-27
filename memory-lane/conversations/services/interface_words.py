@@ -6,7 +6,7 @@ One '*' line a text, anywhere on the page:
 
     * fork: its emergents go on from where they are there, remembering all of it
 
-Only the keys below are read, each up to MAX_LENGTH characters, as plain text ({mood}, {parent} and {agents}
+Only the keys below are read, each up to MAX_LENGTH characters, as plain text ({mood}, {parent} and {agent}
 are filled in where a key has them). As with Magenta:Voice, only a trusted editor's revision counts, an example
 in <nowiki>, <pre> or a comment is never read, and the page is read at most every ten minutes; the wiki away,
 the last good read stands a day; never read, the words here do.
@@ -33,11 +33,9 @@ DEFAULTS = {
     'fresh-label': 'Fresh',
     'fresh': 'they start anew here',
     # Closing a thread.
-    'close-ask': 'Ask {agents} to hand back to {parent} what was settled here, and what is still open',
-    'close-note': 'Anything they should be sure to carry back (optional)',
+    'close-ask': 'Have {agent} incorporate it into {parent}: one full account there of what was settled here, and what is still open',
+    'close-note': 'Anything to be sure of (optional)',
     'close-button': 'Close the thread',
-    'close-message': ('{agents}: this thread is closing. Hand back to #{parent} what was settled here and what is '
-                      'still open, as a ```handoff block (to: {parent}), so it goes on there.'),
 }
 
 _SHOWN = re.compile(r'<!--.*?-->|<nowiki>.*?</nowiki>|<pre>.*?</pre>', re.S | re.I)
@@ -76,10 +74,12 @@ def words(fetch=None):
         return found
     try:
         text = (fetch or _fetch)()
-        found = parse(text) if text is not None else cache.get('interface-words:last') or dict(DEFAULTS)
+        # No page (or no trusted revision of it): this file's words, never an older read's -- those may be the
+        # defaults of a deploy since replaced.
+        found = parse(text) if text is not None else dict(DEFAULTS)
     except Exception as e:  # noqa: BLE001 -- the wiki away: the last good read, a while longer
         log.warning('interface words: %s', e)
-        found = cache.get('interface-words:last') or dict(DEFAULTS)
+        found = {**DEFAULTS, **(cache.get('interface-words:last') or {})}
         cache.set('interface-words', found, 60)
         return found
     cache.set('interface-words', found, FRESH_FOR)

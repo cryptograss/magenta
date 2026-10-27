@@ -3312,6 +3312,16 @@
       prev = null;
       return;
     }
+    if (e.type === 'incorporated') {  // closed, and handed to its Mood to incorporate (Justin, 27 Oct)
+      el.className = 'event';
+      const at = blockText(null, e.created_at);
+      el.innerHTML = `⑂ <b>${esc(e.by || 'someone')}</b> closed this thread: handed to `
+        + `<a href="/moods/${encodeURIComponent(e.into)}/">#${esc(e.into)}</a> to incorporate · <span title="${esc(stamp(e.created_at))}">${esc(at.text)}</span>`
+        + ` · opening it again starts a new thread, fresh or forked`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'thread' || (e.type === 'created' && e.from_mood)) {  // a thread opened from here; this one, from there
       el.className = 'event';
       const there = e.type === 'thread' ? e.to_mood : e.from_mood;
@@ -3582,6 +3592,7 @@
   document.getElementById('forkWords').innerHTML = `<b>${said('fork-label')}</b>: ${said('fork')}`;
   document.getElementById('freshWords').innerHTML = `<b>${said('fresh-label')}</b>: ${said('fresh')}`;
   const closeBox = document.getElementById('closeBox');
+  const HANDOFF_AGENT = 'magent';  // who incorporates a thread (services/agent_commands.HANDOFF_AGENT)
   document.addEventListener('click', async e => {
     if (e.target.closest('#rename')) {
       document.getElementById('renameTitle').value = headMood.title;
@@ -3622,18 +3633,18 @@
       newBox.hidden = false;
       document.getElementById('newTitle').focus();
     } else if (e.target.closest('.mood-head .closethread') && !isArchived(current)) {
-      // Closing: optionally, its emergents asked first to hand back to the Mood it came from what was settled
-      // here (Justin, 27 Oct: "compact back into the mood"), each with a ```handoff block, as any Mood's.
-      const agents = ((headMood || {}).participants || []).filter(n => human[n] === false);
+      // Closing: optionally handed to the Mood it came from, to incorporate -- "/incorporate #<it>" posted there,
+      // and the handoff agent writes the one full account (Justin, 27 Oct: one agent, not each of them).
       const parent = (headMood || {}).thread_of || '';
-      closeBox._agents = agents; closeBox._parent = parent;
+      closeBox._parent = parent;
       document.getElementById('closeTitle').textContent = `#${current}`;
-      document.getElementById('closeAskLine').hidden = !agents.length || !parent;
-      document.getElementById('closeAsk').checked = !!agents.length && !!parent;
+      document.getElementById('closeAskLine').hidden = !parent;
+      document.getElementById('closeAsk').checked = !!parent;
+      const handoffAgent = `<b style="color: ${agentColor(HANDOFF_AGENT)}">${esc(HANDOFF_AGENT)}</b>`;
       document.getElementById('closeAskWords').innerHTML = said('close-ask', {
-        agents: agents.map(n => `<b style="color: ${agentColor(n)}">${esc(n)}</b>`).join(', '), parent: `<b>#${esc(parent)}</b>` });
+        agent: handoffAgent, agents: handoffAgent, parent: `<b>#${esc(parent)}</b>` });  // {agents}: the page's words before #incorporate
       const note = document.getElementById('closeNote');
-      note.value = ''; note.placeholder = WORDS['close-note'] || ''; note.hidden = !agents.length || !parent;
+      note.value = ''; note.placeholder = WORDS['close-note'] || ''; note.hidden = !parent;
       document.getElementById('closeGo').textContent = WORDS['close-button'] || 'Close';
       closeBox.hidden = false;
     } else if (e.target.closest('#closeCancel')) {
@@ -3650,26 +3661,24 @@
       newBox.hidden = true;
     }
   });
-  // Close the thread: if asked, a post naming its emergents (so each is woken, with the tools its asker's
-  // sign-in gives) asks them to hand back to the parent; then it's archived -- a mention there is still answered.
+  // Close the thread: if asked, "/incorporate #<it> [note]" posted in the Mood it came from, as its closer (the
+  // handoff agent is woken there, with the tools their sign-in gives); then closed -- archived, with a line in it.
   closeBox.addEventListener('submit', async e => {
     e.preventDefault();
-    const slug = current, ask = document.getElementById('closeAsk').checked && closeBox._agents.length && closeBox._parent;
+    const slug = current, ask = document.getElementById('closeAsk').checked && closeBox._parent;
     const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
                                              body: JSON.stringify(body) });
     if (ask) {
       const note = document.getElementById('closeNote').value.trim();
-      const text = (WORDS['close-message'] || '').replace(/\{agents\}/g, closeBox._agents.map(n => '@' + n).join(' '))
-        .replace(/\{parent\}/g, closeBox._parent) + (note ? '\n\n' + note : '');
-      const r = await post(`/api/moods/${encodeURIComponent(slug)}/say/`, { text });
+      const r = await post(`/api/moods/${encodeURIComponent(closeBox._parent)}/say/`, { text: `/incorporate #${slug}${note ? ' ' + note : ''}` });
       if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     }
-    const r = await post(`/api/moods/${encodeURIComponent(slug)}/archive/`, { archived: true });
+    const r = await post(`/api/moods/${encodeURIComponent(slug)}/close-thread/`, { incorporated: !!ask });
     if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     closeBox.hidden = true;
     await loadMoods();
     drawMoodbar(headMood);
-    if (ask) poll(false);
+    poll(false);
   });
   newBox.addEventListener('submit', async e => {
     e.preventDefault();

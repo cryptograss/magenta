@@ -165,3 +165,40 @@ class OpenThreadTest(TestCase):
         b = bundle('magent', 'setlist', get=get, state_dir=tempfile.mkdtemp(), parent='jams')
         self.assertIn('Only the setlist.', b.text)
         self.assertNotIn('Keep it to the tunes.', b.text)
+
+
+@override_settings(MOOD_RUNNER_KEYS={'magent': KEY})
+class IncorporateThreadTest(TestCase):
+    """Closing a thread hands it to its Mood: "/incorporate #<it>" there, for magent alone; then a line in it."""
+
+    def setUp(self):
+        from conversations.services import mood_auth
+        self.justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
+        ThinkingEntity.objects.update_or_create(name='magent', defaults={'is_biological_human': False})
+        ThinkingEntity.objects.update_or_create(name='re', defaults={'is_biological_human': False})
+        self.jams = Mood.objects.create(slug='jams', title='jams')
+        self.thread = Mood.objects.create(slug='jams-setlist', thread_of=self.jams, forked_at=timezone.now())
+        Mood.objects.create(slug='elsewhere')
+        _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
+        self.client.cookies[mood_auth.COOKIE] = token
+
+    def say(self, slug, text):
+        return self.client.post(f'/api/moods/{slug}/say/', json.dumps({'text': text}), content_type='application/json')
+
+    def test_incorporate_wakes_magent_alone_and_only_for_its_own_thread(self):
+        self.assertEqual(self.say('jams', '/incorporate #jams-setlist the key, mostly').status_code, 201)
+        turn = self.client.get('/api/moods/jams/turns/').json()['turns'][-1]
+        self.assertEqual(turn['mentions'], ['magent'])
+        for slug, text in (('elsewhere', '/incorporate #jams-setlist'), ('jams', '/incorporate #nowhere'), ('jams', '/incorporate')):
+            with self.subTest(text=text):
+                self.assertEqual(self.say(slug, text).status_code, 400)
+
+    def test_closed_it_is_archived_with_a_line_saying_where_it_went(self):
+        from conversations.services import settings as knobs
+        r = self.client.post('/api/moods/jams-setlist/close-thread/', json.dumps({'incorporated': True}),
+                             content_type='application/json')
+        self.assertEqual(r.json(), {'slug': 'jams-setlist', 'archived': True, 'incorporated': True})
+        self.assertIn('jams-setlist', knobs.archived_slugs())
+        events = self.client.get('/api/moods/jams-setlist/turns/').json()['events']
+        self.assertEqual([(e['type'], e.get('into')) for e in events if e['type'] == 'incorporated'], [('incorporated', 'jams')])
+        self.assertEqual(self.client.post('/api/moods/jams/close-thread/', '{}', content_type='application/json').status_code, 400)

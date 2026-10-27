@@ -2462,3 +2462,42 @@ class CrosstalkCapTest(TestCase):
         st['wakes'] = [T0.isoformat()] * poller.considers_per_hour  # the hour's unasked looks, all spent
         self.assertFalse(poller.within_budget('m26'))
         self.assertTrue(poller.within_budget('m26', hourly=False))
+
+
+class IncorporateTest(TestCase):
+    """/incorporate #<thread> (Justin, 27 Oct): one agent folds a thread back into its Mood -- full length, whatever the
+    Mood's verbosity, with the handoff's own model and effort."""
+
+    def test_one_full_account_with_the_threads_record_and_the_handoffs_settings(self):
+        thread = [turn('t1', 'justin', 1, 'Which key for Salt Creek?'), turn('t2', 're', 2, 'A, capo 2.')]
+
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                return {'turns': thread if slug == 'jams-setlist' else []}
+        api = API([mention('jams', dict(turn('a', 'justin', 14, '/incorporate #jams-setlist the key, mostly'), via='web'))],
+                  sessions={'jams': ['s-local']})
+        waker = FakeWaker()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=15), consider=False)
+        poller.settings = {'jams': {'verbosity': 'brief', 'mention_effort': 'low', 'handoff_effort': 'max',
+                                    'handoff_model': 'opus'}}
+        poller.poll_once()
+        prompt = waker.woken[0][1]
+        self.assertIn('This is an /incorporate: #jams-setlist', prompt)
+        self.assertIn('Asked to be sure of: the key, mostly', prompt)
+        self.assertIn('A, capo 2.', prompt)
+        self.assertNotIn('Keep replies here short', prompt)  # brief here, but not for this
+        self.assertIn('longer replies are welcome', prompt)
+        self.assertEqual((waker.options['effort'], waker.options['model']), ('max', 'opus'))
+
+    def test_an_ordinary_mention_keeps_the_moods_own(self):
+        api = FakeAPI([mention('jams', dict(turn('a', 'justin', 14, '@magent which key?'), via='web'))], sessions={'jams': ['s-local']})
+        waker = FakeWaker()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=15), consider=False)
+        poller.settings = {'jams': {'mention_effort': 'low', 'handoff_effort': 'max'}}
+        poller.poll_once()
+        self.assertEqual(waker.options['effort'], 'low')
+        self.assertNotIn('/incorporate', waker.woken[0][1])
