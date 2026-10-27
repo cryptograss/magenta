@@ -734,6 +734,8 @@
   .event.wiki .delta { color: var(--muted); text-decoration: none; }
   .event.wiki summary { cursor: pointer; }
   .event.wiki .each { margin: 4px 0 0 18px; }
+  .event.wiki .wthumb img { height: 32px; max-width: 64px; object-fit: cover; border-radius: 3px; border: 1px solid var(--line);
+                            vertical-align: middle; margin: 0 5px 0 1px; }
   .event code { font-size: 11.5px; }
   /* A link's preview card (services/unfurl.py): its picture at the left, its title and a line. */
   .turn .cards { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; max-width: 520px; }
@@ -3173,6 +3175,7 @@
   function wikiLine(e, one) {
     const who = `<b>${esc(e.user || 'someone')}</b>`;
     const page = (e.title || '').replace(/_/g, ' ').match(/^User( talk)?:([^/#]+)/i);
+    if (e.kind === 'upload') return `🖼 ${who} uploaded ${one}`;
     if (!page) return `✎ ${who} ${e.kind === 'new' ? 'started' : 'edited'} ${one}`;
     const owner = page[2].trim(), talk = !!page[1];
     const rest = one.slice(one.indexOf('</a>') + 4);  // the change's size and comment, after the page's link
@@ -3187,21 +3190,27 @@
     if (e.type === 'wiki') {  // a change on PickiPedia (services/wiki_feed.py), at the wiki's own time
       const page = `${WIKI}/wiki/${encodeURIComponent((e.title || '').replace(/ /g, '_'))}`;
       const diff = e.revid ? `${WIKI}/index.php?diff=${encodeURIComponent(e.revid)}` : page;
-      const one = `<a href="${esc(page)}" target="_blank" rel="noopener">${esc(e.title)}</a>`
-        + (e.kind === 'new' ? ' (new)' : ` <a class="delta" href="${esc(diff)}" target="_blank" rel="noopener">(${e.delta > 0 ? '+' : ''}${Number(e.delta) || 0})</a>`)
-        + (e.comment ? ` · <i>${esc(e.comment)}</i>` : '');
-      // A run of changes by one account folds into one line, opened on demand.
+      // An upload: its picture, small, beside its name (Justin, 27 Oct).
+      const thumb = e.kind === 'upload' && e.thumb && /^https:\/\//.test(e.thumb)
+        ? `<a class="wthumb" href="${esc(page)}" target="_blank" rel="noopener"><img src="${esc(e.thumb)}" alt="" loading="lazy"></a>` : '';
+      const one = thumb + `<a href="${esc(page)}" target="_blank" rel="noopener">${esc((e.title || '').replace(/^File:/, ''))}</a>`
+        + (e.kind === 'new' || e.kind === 'upload' ? (e.kind === 'new' ? ' (new)' : '') : ` <a class="delta" href="${esc(diff)}" target="_blank" rel="noopener">(${e.delta > 0 ? '+' : ''}${Number(e.delta) || 0})</a>`)
+        // The Media Uploader's own words ("Uploaded a work by null from null with Media Uploader") say nothing.
+        + (e.comment && !(e.kind === 'upload' && /^Uploaded a work by /.test(e.comment)) ? ` · <i>${esc(e.comment)}</i>` : '');
+      // A run of changes by one account folds into one line, opened on demand; its pictures stay in view.
       const last = container.lastElementChild;
       if (last && last.classList.contains('wiki') && last.dataset.user === (e.user || '')) {
         const n = Number(last.dataset.n) + 1;
         last.dataset.n = n;
         if (n === 2) last.innerHTML = `<details><summary></summary><div class="each">${last.dataset.first}</div></details>`;
         last.querySelector('.each').insertAdjacentHTML('beforeend', `<div>${one}</div>`);
-        last.querySelector('summary').innerHTML = `✎ <b>${esc(e.user || 'someone')}</b> made ${n} changes on PickiPedia · ${esc(stamp(e.at || e.created_at))}`;
+        if (thumb) last.dataset.thumbs = (last.dataset.thumbs || '') + thumb;
+        last.querySelector('summary').innerHTML = `✎ <b>${esc(e.user || 'someone')}</b> made ${n} changes on PickiPedia · ${esc(stamp(e.at || e.created_at))}`
+          + (last.dataset.thumbs ? ` ${last.dataset.thumbs}` : '');
         return;
       }
       el.className = 'event wiki';
-      el.dataset.user = e.user || ''; el.dataset.n = 1; el.dataset.first = `<div>${one}</div>`;
+      el.dataset.user = e.user || ''; el.dataset.n = 1; el.dataset.first = `<div>${one}</div>`; el.dataset.thumbs = thumb;
       el.innerHTML = wikiLine(e, one) + ` · ${esc(stamp(e.at || e.created_at))}`;
       container.appendChild(el);
       prev = null;
