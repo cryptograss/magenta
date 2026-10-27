@@ -980,6 +980,11 @@
   .tdot.empty { min-width: 12px; width: 12px; height: 12px; padding: 0; }
   .work-head .what { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .work .steps .trow { margin: 4px 0; }
+  /* What the agent said on its way to a tool call (stop: tool_use): a lead-in, folded with the steps it led to,
+     so a turn reads as one answer, not two near-identical posts (Justin and re, 27 Oct). */
+  .work .steps .lead { margin: 4px 0 8px; }
+  .work .steps .lead .turn { margin: 0; }
+  .work-head .lead-sum { color: var(--muted); font-style: italic; max-width: 28em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .work .steps .trow .harness { margin-right: 4px; font-size: 13px; vertical-align: middle; }  /* the harness's note, not its thinking */
   .work .steps .trow .thought { display: none; }
   .work .steps .trow.on .thought { display: block; }
@@ -3091,7 +3096,10 @@
     };
     [...el.querySelector('.steps').children].forEach((row, i) => {
       if (row.classList.contains('step')) verbs.push(row.dataset.verb);
-      else if (row.classList.contains('trow')) {
+      else if (row.classList.contains('lead')) {
+        said();
+        parts.push(`<span class="lead-sum" title="${esc(row.dataset.text)}">“${esc(row.dataset.text)}”</span>`);
+      } else if (row.classList.contains('trow')) {
         said();
         const dot = row.querySelector('.tdot');
         // The harness's note keeps its ⚙️ in the folded line too, so it never reads as the agent's thinking.
@@ -3179,6 +3187,19 @@
     } catch (err) { box.textContent = 'could not load this step'; }
   });
 
+  // A turn message said on the way to a tool call (stop: tool_use, since magenta#206): "Checking the deploy."
+  // It keeps its id and link, but sits among the steps it led to, with a few of its words in the folded line.
+  function addLeadIn(t, container, isNew) {
+    const work = workEl(t, container);
+    const row = document.createElement('div');
+    row.className = 'lead';
+    row.dataset.text = (t.text || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    prev = null;
+    row.appendChild(turnEl(t, isNew));
+    work.querySelector('.steps').appendChild(row);
+    describeWork(work);
+    prev = { sender: t.sender, at: new Date(t.created_at).getTime() };
+  }
   function addThought(t, container) {
     const el = document.createElement('div');
     el.className = 'thought';
@@ -4248,9 +4269,13 @@
           // Never a follow-on of its own steps or notes: each message in a turn keeps its time and
           // its link (Justin, 19 Oct: replies with nowhere to take their address from).
           prev = null;
-          body.appendChild(turnEl(it.v, isNew));
-          resolveWaits(container, agent, it.v.created_at, b);
-          resolveTakes(container, agent);
+          if (it.v.stop === 'tool_use') addLeadIn(it.v, body, isNew);
+          else {
+            body.appendChild(turnEl(it.v, isNew));
+            // A wait, or a take, is answered by a turn that ended, not a line on the way (as the poller has it).
+            resolveWaits(container, agent, it.v.created_at, b);
+            resolveTakes(container, agent);
+          }
           // Naming another agent wakes it: its turn is timed from here.
           (it.v.mentions || []).filter(n => n !== agent).forEach(n => {
             (container._askedOf ||= {})[n] = new Date(it.v.created_at).getTime() / 1000;
@@ -4582,7 +4607,7 @@
         openRunOf(el);
         const folded = el.closest('.aturn.folded');
         if (folded) { folded.classList.remove('folded'); drawBlockHead(folded); }
-        const work = el.classList.contains('step') && el.closest('.work');
+        const work = (el.classList.contains('step') || el.closest('.lead')) && el.closest('.work');
         if (work) work.classList.add('open');
         el.scrollIntoView({ block: 'center' });
         el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
