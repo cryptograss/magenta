@@ -5419,9 +5419,18 @@
   const agentsWhole = () => agentsOpen;
   function agentGist(a) {
     const ctx = a.context || {};
-    // The ear as the @ (Justin, 27 Oct); effort and model scrunched: lo/med/hi, and a long model to its maker.
+    // The ear as the @ (Justin, 27 Oct); effort and model scrunched: lo/med/hi, and the model cut from its id.
     const EFFORT_SHORT = { low: 'lo', medium: 'med', high: 'hi', xhigh: 'x', max: 'max' };
-    const long = m => { const s = shortModel((m || '').split('/').pop()); return s.length > 10 ? s.split(/[\s-]/)[0] : s; };
+    // OpenRouter names no model briefly, so cut one from the id, no table: drop the maker the id repeats
+    // (~deepseek/deepseek-pro-latest -> pro) and a trailing 'latest'; keep versions (sonnet 5.5, v4.1-flash).
+    const long = m => {
+      if (!m) return 'default';
+      const parts = String(m).split('/');
+      let s = shortModel(parts.pop().replace(/^~/, ''));
+      const maker = (parts.pop() || '').replace(/^~/, '');
+      if (maker && s.toLowerCase().startsWith(maker.toLowerCase() + '-')) s = s.slice(maker.length + 1);
+      return s.replace(/[\s-]latest$/i, '') || maker || 'default';
+    };
     return `${describeListening(a.listening)} · ${long(a.model || ctx.model) || 'default'}`
       + ` · ${EFFORT_SHORT[a.effort] || a.effort || 'default'}`;
   }
