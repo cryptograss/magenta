@@ -1128,6 +1128,11 @@
   .hush { display: flex; flex-wrap: wrap; gap: 8px; max-width: 760px; margin: 0 auto; padding: 6px 16px 0;
           font-size: 12.5px; color: var(--muted); }
   .hush:empty { display: none; }
+  /* Folded, the agents stay one row whatever a model's or name's length: the line scrolls sideways instead
+     of wrapping (Justin, 27 Oct: long model names pushed it to two rows). */
+  .hush:has(.agent.gist) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 4px; }
+  .hush:has(.agent.gist)::-webkit-scrollbar { display: none; }
+  .hush:has(.agent.gist) .agent { flex: 0 0 auto; }
   /* An agent's setting someone else just changed: a moment's glow (renderAgents). */
   @keyframes justset { 0%, 60% { box-shadow: 0 0 0 2px var(--accent); background: var(--accent-soft); } 100% { box-shadow: 0 0 0 0 transparent; } }
   .hush .justset { animation: justset 4s ease-out; border-radius: 4px; }
@@ -1151,8 +1156,8 @@
   .hush .fold { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 2px; }
   .hush .fold:hover { color: var(--accent); }
   /* Each reads as a menu (Sky, 16 Oct: memory-lane#201): boxed like the menus it opens into, a caret after it. */
-  .hush .agent.gist { color: var(--who); cursor: pointer; margin-right: 6px; background: var(--panel);
-                      border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+  .hush .agent.gist { color: var(--who); cursor: pointer; margin-right: 0; background: var(--panel);
+                      border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
   .hush .agent.gist::after { content: ' ▾'; color: var(--muted); }
   .hush .agent.gist:hover { border-color: var(--who); }
   .hush .agent.gist:hover::after { color: var(--who); }
@@ -5414,10 +5419,20 @@
   const agentsWhole = () => agentsOpen;
   function agentGist(a) {
     const ctx = a.context || {};
-    const model = a.model ? shortModel(a.model.split('/').pop()) : ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
-    // Listening is the usual; hushed or mentions-only is worth the room.
-    return (a.listening.mode === 'on' ? '' : describeListening(a.listening) + ' · ')
-      + `${model} · ${EFFORT_LABELS[a.effort] || a.effort || 'default'}`;
+    // The ear as the @ (Justin, 27 Oct); effort and model scrunched: lo/med/hi, and the model cut from its id.
+    const EFFORT_SHORT = { low: 'lo', medium: 'med', high: 'hi', xhigh: 'x', max: 'max' };
+    // OpenRouter names no model briefly, so cut one from the id, no table: drop the maker the id repeats
+    // (~deepseek/deepseek-pro-latest -> pro) and a trailing 'latest'; keep versions (sonnet 5.5, v4.1-flash).
+    const long = m => {
+      if (!m) return 'default';
+      const parts = String(m).split('/');
+      let s = shortModel(parts.pop().replace(/^~/, ''));
+      const maker = (parts.pop() || '').replace(/^~/, '');
+      if (maker && s.toLowerCase().startsWith(maker.toLowerCase() + '-')) s = s.slice(maker.length + 1);
+      return s.replace(/[\s-]latest$/i, '') || maker || 'default';
+    };
+    return `${describeListening(a.listening)} · ${long(a.model || ctx.model) || 'default'}`
+      + ` · ${EFFORT_SHORT[a.effort] || a.effort || 'default'}`;
   }
   document.addEventListener('click', e => {
     if (!e.target.closest('#hush .fold, #hush .gist')) return;
@@ -5434,7 +5449,7 @@
     if (!whole) {
       return fold + Object.entries(agents).map(([agent, a]) =>
         `<span class="agent gist${a.listening.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}`
-        + ` title="${esc(agent)}: ${esc(describeListening(a.listening))}; click for its settings">${esc(agentGist(a))}</span>`).join('');
+        + ` title="${esc(agent)}: ${esc(describeListening(a.listening))}; model ${esc(a.model || 'default')}; click for its settings">${esc(agentGist(a))}</span>`).join('');
     }
     const head = '<span class="agent heads">' + AGENT_HEADS.map(([label, what]) =>
       `<span class="cell"${what ? ` title="${esc(what)}"` : ''}>${esc(label)}</span>`).join('') + '</span>';
