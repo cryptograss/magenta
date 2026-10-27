@@ -3821,8 +3821,8 @@
       dot.textContent = kTokens(words);
       dot.title += ` · thought ${words.toLocaleString()} word${words === 1 ? '' : 's'} first`;
     }
-    // A crosstalk look says so inside its dot, as a turn's ↺ crosstalk does beside its name (Justin, 27 Oct).
-    if (q.why === 'crosstalk') { dot.classList.add('n'); dot.textContent = '↺' + (thought ? ' ' + dot.textContent : ''); }
+    // A crosstalk look says so inside its dot, as a turn's ⇆ crosstalk does beside its name (Justin, 27 Oct).
+    if (q.why === 'crosstalk') { dot.classList.add('n'); dot.textContent = '⇆' + (thought ? ' ' + dot.textContent : ''); }
     row.appendChild(dot);
     if (q.by !== 'screen') resolveWaits(container, q.sender, q.created_at, row);  // finished without a word: answered, for a wait
   }
@@ -3993,7 +3993,7 @@
   // Why it was woken, when nobody asked it (mood_view.turn_wakes; Justin, 26 Oct: "it needs to be clear that
   // the look was triggered by the crosstalk rule"): a small word beside its name, the rule on hover.
   const WHY_MARKS = {
-    crosstalk: ['↺ crosstalk', 'A look at what others said here while it was on its last turn, which it hadn\'t seen: '
+    crosstalk: ['⇆ crosstalk', 'A look at what others said here while it was on its last turn, which it hadn\'t seen: '
       + 'once, right after that turn ended, asking only whether it bears on what it had just said (the crosstalk rule)'],
     consider: ['unasked', 'Not asked: it looked in of its own accord, as this Mood\'s discretion dial allows'],
     quiet: ['quiet look', 'Not asked: the Mood had been quiet a while, and it looked in to see if anything wanted picking up'],
