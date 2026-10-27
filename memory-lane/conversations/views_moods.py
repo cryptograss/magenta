@@ -71,7 +71,18 @@ def moods_page(request, slug=None, section=''):
         'page_version': page_version(),
         # The slash commands, for the composer to offer as one is typed (services/agent_commands).
         'slash_commands': json.dumps(agent_commands.suggestions()),
+        # The words people read where they're settable on PickiPedia (Magenta:Interface; services/interface_words.py).
+        'interface_words': json.dumps(interface_words()),
     })
+
+
+def interface_words():
+    """services/interface_words.words(), or its defaults if anything about the page is amiss: the page loads regardless."""
+    from .services import interface_words as words
+    try:
+        return words.words()
+    except Exception:  # noqa: BLE001
+        return dict(words.DEFAULTS)
 
 
 def push_key():
