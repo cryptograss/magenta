@@ -196,6 +196,20 @@ class RecallTest(TestCase):
         self.assertIsNotNone(hit)
         self.assertIn(hit[0].id, late)
 
+    def test_day_zero_clamps_end_to_now_then_locks_from_day_one(self):
+        # A freshly summoned agent (blu): its first reply lands mid-day, before any sealed day exists.
+        at = datetime(2026, 11, 1, 13, 0, tzinfo=timezone.utc)
+        reply = say('blu', 'The first reply, hearable and mine. ' * 2, at + timedelta(hours=1))
+        # Day 0: the pinned end (midnight) would fence the whole life out; the clamp keeps its voice non-empty.
+        day0 = recall.how_i_speak('blu', count=2, shortest=20, now=at + timedelta(hours=2))   # Nov 1 15:00
+        self.assertEqual([m.id for m, _ in day0], [reply.id])
+        # Day 1: the boundary locks in -- two calls on the same day draw the same voice, and yesterday's
+        # reply is in the recent stretch (it enters the voice the moment the day seals, not before).
+        first = recall.how_i_speak('blu', count=2, shortest=20, now=at + timedelta(days=1, hours=3))   # Nov 2 16:00
+        second = recall.how_i_speak('blu', count=2, shortest=20, now=at + timedelta(days=1, hours=9))  # Nov 2 22:00
+        self.assertEqual([m.id for m, _ in first], [m.id for m, _ in second])
+        self.assertEqual([m.id for m, _ in first], [reply.id])
+
     def test_how_i_speak_text_says_what_each_answered_who_starred_it_and_what_corrected_it(self):
         from conversations.services import reactions
         now = RE_ARRIVES + timedelta(days=4)

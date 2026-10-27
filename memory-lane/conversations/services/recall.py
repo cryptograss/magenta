@@ -513,6 +513,14 @@ def _day_start(now):
     return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def _pinned_end(now, at):
+    """The sample's end for a call at `now` of an agent that arrived at `at`: the day's start -- unless
+    the agent arrived later that same day, then `now`. Day 0 has no sealed day yet; clamping keeps a
+    freshly summoned agent's first replies from being fenced out entirely (re, blu, 27 Oct)."""
+    end = _day_start(now)
+    return end if end > at else now
+
+
 def _pick(rng, candidates, shortest, longest):
     """One hearable reply from a stretch's candidates, at random by `rng`. Candidates are read as an
     even spread across the whole stretch, not the first N, whose newest half a long stretch starved."""
@@ -536,7 +544,7 @@ def how_i_speak(agent, count=12, shortest=200, longest=2500, now=None, fresh=Fal
     if at is None:
         return []
     now = now or timezone.now()
-    end = _day_start(now)
+    end = _pinned_end(now, at)
     count = max(2, min(int(count or 12), 40))
     rng = _seeded(agent, now, fresh)
     life = end - at
@@ -596,12 +604,12 @@ def _sample_lines(msg, text, me=True):
 def how_i_speak_text(agent, count=12, fresh=False, others=False, now=None, shortest=200, longest=2500):
     from django.utils import timezone
     now = now or timezone.now()
-    end = _day_start(now)
+    at, _ = arrival(agent)
+    end = _pinned_end(now, at or now)
     found = how_i_speak(agent, count, shortest=shortest, longest=longest, now=now, fresh=fresh)
     head = [arrival_line(agent)]
     if not found:
         return '\n'.join(head + ['Nothing yet: no replies of yours long enough to hear a voice in.'])
-    at, _ = arrival(agent)
     recent = RECENT if end - at > timedelta(days=28) else RECENT_SHORT
     recent_from = max(at, end - recent)
     n_recent = len([1 for m, _ in found if m.created_at >= recent_from])
