@@ -3874,7 +3874,8 @@
       return;
     }
     // What it thought before choosing not to speak: shown when its dot is pressed (Justin, 20 Oct).
-    const thought = ((container._held || {})[q.sender] || []).map(t => t.text).filter(Boolean).join('\n\n');
+    // Its thinking, and any words it wrote before choosing silence (q.thought: mood_view._QUIET_TAIL).
+    const thought = [...((container._held || {})[q.sender] || []).map(t => t.text), q.thought].filter(Boolean).join('\n\n');
     if (container._held) delete container._held[q.sender];
     let row = lastOf(container);
     if (!row || !row.classList.contains('quiet')) {

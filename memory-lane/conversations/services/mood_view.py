@@ -65,6 +65,9 @@ def prose(content):
 # An agent's choice not to speak: <silent/>, or <silent>why</silent>.
 # by="screen": the runner's quick screen let it pass, not the agent itself.
 _QUIET = re.compile(r'^<silent\s*/>$|^<silent(?:\s+by="(\w+)")?>(.*)</silent>$', re.S)
+# One that thought out loud first: words, then the tag at the very end. Still a choice not to speak (Justin,
+# 27 Oct: re's "...Stay quiet.<silent>...</silent>" posted as a message): a dot, its words kept as its thought.
+_QUIET_TAIL = re.compile(r'^(.*\S)\s*(?:<silent\s*/>|<silent>([^<>]*)</silent>)\s*$', re.S)
 
 
 # An agent waiting for another asked the same thing (poller/mood_poller.py _WAIT_REPLY): no answer yet, so a
@@ -80,6 +83,9 @@ def quiet_reason(text):
     chose), or None if the text isn't one. A wait for another agent is one, and a take."""
     match = _QUIET.match(text)
     if not match:
+        tail = _QUIET_TAIL.match(text or '')
+        if tail:
+            return {'reason': (tail.group(2) or '').strip(), 'by': '', 'thought': tail.group(1).strip()}
         take = _TAKE.match(text or '')
         if take:
             to = take.group(1).split()
