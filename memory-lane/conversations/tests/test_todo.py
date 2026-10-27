@@ -176,5 +176,5 @@ class TodoTextTest(SimpleTestCase):
                          'see <a href="https://pickipedia.xyz/wiki/Special%3AVerifyBotEdits">the queue</a>')
         self.assertEqual(todo_text('run `x [[not a link]]` and <b>'), 'run <code>x [[not a link]]</code> and &lt;b&gt;')
         self.assertEqual(todo_text("[[Justin's page]]"),
-                         '<a href="https://pickipedia.xyz/wiki/Justin\'s_page">Justin&#39;s page</a>')
+                         '<a href="https://pickipedia.xyz/wiki/Justin&#39;s_page">Justin&#39;s page</a>')
         self.assertEqual(todo_text('[[]] stays'), '[[]] stays')
