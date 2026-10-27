@@ -48,6 +48,13 @@
   .vrow .found .opt:hover { color: var(--accent); }
   .vrow .found .opt small { display: block; color: var(--muted); font-size: 11.5px; }
   .vrow .found .lib { font-size: 10.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 8px; padding: 0 5px; margin-left: 4px; }
+  /* Models, everywhere: a compact row per emergent. */
+  .mrow { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; margin: 6px 0; }
+  .mrow .who { font-weight: 600; }
+  .mrow input { max-width: 380px; }
+  .pick-line { margin: 8px 0 12px; display: flex; align-items: center; gap: 8px; }
+  .pick-line label { font-size: 12.5px; color: var(--muted); }
+  .pick-line select { padding: 4px 8px; min-width: 140px; }
   .row .inherited select, .row .inherited input, .row .inherited textarea { color: var(--muted); font-style: italic; }
   select, input, textarea { font: inherit; font-size: 13px; padding: 3px 6px; border: 1px solid var(--line);
                             border-radius: 5px; background: var(--panel); color: var(--ink); max-width: 100%; }
@@ -85,12 +92,17 @@
   <span class="who" id="who"></span>
 </header>
 <main>
-  <h1>How each emergent carries itself in each Mood</h1>
+  <h1>Settings</h1>
   <p class="lede">The most specific setting wins: one emergent in one Mood, then everyone in that Mood, then the emergent
-    everywhere, then the defaults. Grey italic values are inherited. Every change is kept below, with who made it.</p>
+    everywhere, then the defaults. Grey italic values are inherited. Set a model for one emergent everywhere at the top;
+    dig into one emergent below. Every change is kept at the bottom, with who made it.</p>
   <div id="scram"></div>
+  <h3>Model, everywhere</h3>
+  <div class="cards" id="models">Loading…</div>
+  <h3>One emergent</h3>
+  <p class="pick-line"><label for="pickAgent">showing</label> <select id="pickAgent"></select></p>
   <div class="cards" id="cards">Loading…</div>
-  <h3>Every Mood, every emergent</h3>
+  <h3>For all emergents together</h3>
   <div class="cards" id="global"></div>
   <h3 id="voices">Voices: who is read in which</h3>
   <div id="voicesList" class="voices">Loading…</div>
@@ -157,10 +169,34 @@
       + `<span class="${here ? '' : 'inherited'}">${input}<span class="status"></span></span></div>`;
   }
 
-  function card(title, sub, values, mood, agent) {
+  function card(title, sub, values, mood, agent, skip) {
     return `<div class="card"><h2>${esc(title)}</h2><div class="sub">${esc(sub)}</div>`
-      + Object.keys(state.knobs).filter(k => agent === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k))
+      + Object.keys(state.knobs)
+        .filter(k => !(skip || []).includes(k))
+        .filter(k => agent === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k))
         .map(k => field(k, values[k], mood, agent)).join('') + '</div>';
+  }
+
+  // The one thing asked for at the top: one model per emergent, set everywhere (agent, no Mood).
+  function modelRows() {
+    return `<div class="card"><h2>Model, everywhere</h2>`
+      + `<div class="sub">one model for each emergent in every Mood; a Mood's own still overrides</div>`
+      + state.agents.map(a => {
+        const v = everywhere(a).model;
+        const here = setHere(null, a, 'model');
+        const attrs = `data-key="model" data-mood="" data-agent="${esc(a)}" ${viewer ? '' : 'disabled'}`;
+        return `<div class="mrow"><span class="who">${esc(a)}</span>`
+          + `<span class="${here ? '' : 'inherited'}">`
+          + `<input type="text" ${attrs} placeholder="(harness default)" title="${esc(state.knobs.model.help)}" value="${esc(v)}">`
+          + `<span class="status"></span></span></div>`;
+      }).join('') + '</div>';
+  }
+
+  let picked = null;  // which emergent the Mood cards show, kept across saves
+  function agentView(a) {
+    const cards = [card(`${a}, everywhere`, 'unless a Mood says otherwise', everywhere(a), null, a, ['model'])];
+    for (const m of state.moods) cards.push(card(m.title, `${a} in #${m.slug}`, state.resolved[m.slug][a], m.slug, a));
+    return cards.join('') || 'No Moods yet.';
   }
 
   function render() {
@@ -169,16 +205,15 @@
     const scram = state.scram;
     document.getElementById('scram').innerHTML = scram
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
-    const cards = [];
-    for (const m of state.moods) {
-      for (const a of state.agents) cards.push(card(m.title, `${a} in #${m.slug}`, state.resolved[m.slug][a], m.slug, a));
-    }
-    document.getElementById('cards').innerHTML = cards.join('') || 'No Moods yet.';
-    const globals = state.agents.map(a => card(`${a}, everywhere`, `unless a Mood says otherwise`, everywhere(a), null, a));
-    globals.push(`<div class="card"><h2>Budget</h2><div class="sub">for all emergents together</div>`
+    document.getElementById('models').innerHTML = modelRows();
+    const picker = document.getElementById('pickAgent');
+    if (!picked) picked = state.agents[0] || '';
+    picker.innerHTML = state.agents.map(a => `<option value="${esc(a)}" ${a === picked ? 'selected' : ''}>${esc(a)}</option>`).join('')
+      || '<option value="">nobody</option>';
+    document.getElementById('cards').innerHTML = picked ? agentView(picked) : 'No emergents yet.';
+    document.getElementById('global').innerHTML = [`<div class="card"><h2>Budget</h2><div class="sub">for all emergents together</div>`
       + `<div class="row"><label title="${esc(state.global_knobs.consider_usd_per_day.help)}">$ a day</label>`
-      + `<span><input type="number" min="0" step="0.5" data-key="consider_usd_per_day" data-mood="" data-agent="" value="${esc(state.global.consider_usd_per_day)}" ${viewer ? '' : 'disabled'}><span class="status"></span></span></div></div>`);
-    document.getElementById('global').innerHTML = globals.join('');
+      + `<span><input type="number" min="0" step="0.5" data-key="consider_usd_per_day" data-mood="" data-agent="" value="${esc(state.global.consider_usd_per_day)}" ${viewer ? '' : 'disabled'}><span class="status"></span></span></div></div>`].join('');
     document.getElementById('history').innerHTML = state.history.map(h =>
       `<tr><td>${esc(when(h.at))}</td><td>${esc(h.set_by || '')}</td><td>${esc(h.mood ? '#' + h.mood : 'everywhere')}${h.agent ? ' · ' + esc(h.agent) : ''}</td>`
       + `<td>${esc(h.key)}</td><td class="value">${esc(JSON.stringify(h.value))}</td><td>${esc(h.note)}</td></tr>`).join('')
@@ -301,6 +336,10 @@
     setTimeout(load, 600);
   }
   document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.key) save(e.target); });
+  document.getElementById('pickAgent').addEventListener('change', e => {
+    picked = e.target.value;
+    document.getElementById('cards').innerHTML = picked ? agentView(picked) : '';
+  });
   load();
 })();
 </script>
