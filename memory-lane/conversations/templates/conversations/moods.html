@@ -3655,9 +3655,15 @@
   // {field} filled with the HTML given for it.
   const WORDS = JSON.parse("{{ interface_words|escapejs }}" || '{}');
   const said = (key, fields = {}) => esc(WORDS[key] || '').replace(/\{(\w+)\}/g, (all, f) => f in fields ? fields[f] : all);
-  document.getElementById('newHint').innerHTML = said('new-hint');
-  document.getElementById('forkWords').innerHTML = `<b>${said('fork-label')}</b>: ${said('fork')}`;
-  document.getElementById('freshWords').innerHTML = `<b>${said('fresh-label')}</b>: ${said('fresh')}`;
+  // Where a text comes from, on hover (Justin, 27 Oct: which line of the page is this?): "Magenta:Interface · fork".
+  const wordsFrom = (el, ...keys) => { el.title = 'Magenta:Interface · ' + keys.join(', '); return el; };
+  wordsFrom(document.getElementById('newHint'), 'new-hint').innerHTML = said('new-hint');
+  wordsFrom(document.getElementById('forkWords'), 'fork-label', 'fork').innerHTML = `<b>${said('fork-label')}</b>: ${said('fork')}`;
+  wordsFrom(document.getElementById('freshWords'), 'fresh-label', 'fresh').innerHTML = `<b>${said('fresh-label')}</b>: ${said('fresh')}`;
+  wordsFrom(document.getElementById('newThreadOf'), 'thread-of');
+  wordsFrom(document.getElementById('closeAskWords'), 'close-ask');
+  wordsFrom(document.getElementById('closeNote'), 'close-note');
+  wordsFrom(document.getElementById('closeGo'), 'close-button');
   const closeBox = document.getElementById('closeBox');
   const HANDOFF_AGENT = 'magent';  // who incorporates a thread (services/agent_commands.HANDOFF_AGENT)
   document.addEventListener('click', async e => {
