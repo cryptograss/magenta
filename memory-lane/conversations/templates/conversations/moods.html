@@ -412,17 +412,17 @@
   .inner { --gutter: 36px; max-width: 760px; margin: 0 auto;
            padding: 0 max(22px, calc(var(--gutter) - max(0px, (100cqw - 760px) / 2))) 0 22px; }
 
-  /* A Mood's head: one slim line at the top that stays (Justin, 27 Oct: "I never look at the top of the mood"),
-     its description, threads and people a click away. */
-  .mood-head { max-width: 760px; margin: 0 auto; padding: 3px 12px; box-sizing: border-box; border-bottom: 1px solid var(--line); }
-  .mood-head .mbar { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12.5px; color: var(--muted); cursor: pointer; }
-  .mood-head .mtoggle { font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; width: 1em; flex: none; }
-  .mood-head h1 { font-size: 13px; margin: 0; color: var(--ink); flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mood-head .mdesc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mood-head .macts { flex: none; display: flex; align-items: baseline; gap: 6px; }
-  .mood-head .macts a { color: var(--muted); }
-  .mood-head .mbody { padding: 4px 0 6px 1.6em; }
+  /* A Mood's head: a slim drawer at the top that stays, a handle in its middle (Justin, 27 Oct: "I never look at
+     the top of the mood"; then "even thinner ... a really slim drawer with a handle in the middle"). Pulled open:
+     its title, description, instructions, ⑂ thread, threads and people. */
+  .mood-head { max-width: 760px; margin: 0 auto; box-sizing: border-box; border-bottom: 1px solid var(--line); }
+  .mood-head .mbody { padding: 6px 12px 2px; }
   .mood-head .mbody[hidden] { display: none; }
+  .mood-head .handle { display: block; width: 100%; height: 9px; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
+  .mood-head .handle::after { content: ''; position: absolute; left: 50%; top: 3px; width: 36px; height: 3px; margin-left: -18px;
+                              border-radius: 2px; background: var(--line); transition: background .15s, width .15s, margin .15s; }
+  .mood-head .handle:hover::after, .mood-head .handle:focus-visible::after { background: var(--accent); width: 56px; margin-left: -28px; }
+  .mood-head h1 { font-size: 16px; margin: 0 0 2px; }
   .mood-head .desc { color: var(--muted); margin: 0 0 4px; font-size: 13.5px; }
   .mood-head .meta { font-size: 12px; color: var(--muted); }
   .mood-head .meta a { color: var(--muted); }
@@ -1964,24 +1964,22 @@
     if (!m) { moodbar.innerHTML = ''; return; }
     const block = m.eth_blockheight ? 'opened at block ' + m.eth_blockheight.toLocaleString() : '';
     const thread = threadLine(m);
+    const tip = headOpen ? 'Close the drawer' : `${m.title}: its description, instructions, ⑂ thread and people`;
     moodbar.innerHTML = `<div class="mood-head${headOpen ? ' open' : ''}">
-      <div class="mbar" title="${headOpen ? 'Fold it away' : 'Its description, threads and people'}">
-        <button type="button" class="mtoggle" aria-expanded="${headOpen}" aria-label="The Mood's description, threads and people">${headOpen ? '▾' : '▸'}</button>
-        <h1>${esc(m.title)}</h1>
-        <span class="mdesc">${m.thread_of ? `⑂ of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
-        <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}</span>
-      </div>
       <div class="mbody"${headOpen ? '' : ' hidden'}>
+        <h1>${esc(m.title)}</h1>
         ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
         ${thread}
-        <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record' : ''}</div>
+        <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record · ' : ''}
+          <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}</div>
         <div class="people" id="people">${(m.participants || []).map(n =>
           `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
       </div>
+      <button type="button" class="handle" aria-expanded="${headOpen}" aria-label="${esc(tip)}" title="${esc(tip)}"></button>
     </div>`;
   }
   moodbar.addEventListener('click', e => {
-    if (!e.target.closest('.mbar') || e.target.closest('a, button:not(.mtoggle)')) return;
+    if (!e.target.closest('.handle')) return;
     headOpen = !headOpen;
     store.set('headOpen', headOpen);
     drawMoodbar(headMood);
