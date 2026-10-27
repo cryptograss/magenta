@@ -383,6 +383,13 @@
   #grip { width: 5px; margin-left: -3px; flex: none; cursor: col-resize; position: relative; z-index: 1; }
   #grip:hover, body.sizing #grip { background: var(--accent-soft); }
   body.sizing { cursor: col-resize; user-select: none; }
+  /* Its handle, in the middle of the edge: a click folds the Moods away, or brings them back; dragging still sizes
+     (Justin, 27 Oct: "I like being able to drag, but I also crave being able to collapse it"). */
+  #grip .handle { position: absolute; top: 50%; left: 50%; width: 4px; height: 40px; margin: -20px 0 0 -2px; padding: 0; border: 0;
+                  border-radius: 2px; background: var(--line); cursor: pointer; transition: background .15s, height .15s, margin .15s; }
+  #grip .handle:hover, #grip .handle:focus-visible { background: var(--accent); height: 60px; margin-top: -30px; }
+  body.nav-shut .layout > nav { display: none; }
+  body.nav-shut #grip { width: 9px; margin-left: 0; cursor: default; border-right: 1px solid var(--line); }
   .badge {
     display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 9px;
     background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
@@ -1391,7 +1398,7 @@
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
-  <div id="grip" title="Drag to resize; double-click to reset"></div>
+  <div id="grip" title="Drag to resize; double-click to reset"><button type="button" class="handle" aria-label="Fold the Moods away" title="Fold the Moods away"></button></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
   <main id="main"><div id="topbar"><div id="moodbar"></div><div id="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
@@ -1902,7 +1909,21 @@
     else document.documentElement.style.removeProperty('--nav-width');
   }
   navWidth(store.get('navWidth', 0));
+  const gripHandle = grip.querySelector('.handle');
+  function navShut(shut) {
+    document.body.classList.toggle('nav-shut', shut);
+    const what = shut ? 'Bring the Moods back' : 'Fold the Moods away';
+    gripHandle.title = what; gripHandle.setAttribute('aria-label', what);
+    grip.title = shut ? '' : 'Drag to resize; double-click to reset';
+  }
+  navShut(!!store.get('navShut', false));
+  gripHandle.addEventListener('click', () => {
+    const shut = !document.body.classList.contains('nav-shut');
+    navShut(shut);
+    store.set('navShut', shut);
+  });
   grip.addEventListener('pointerdown', e => {
+    if (e.target.closest('.handle') || document.body.classList.contains('nav-shut')) return;
     e.preventDefault();
     grip.setPointerCapture(e.pointerId);
     document.body.classList.add('sizing');
@@ -1914,7 +1935,7 @@
     document.body.classList.remove('sizing');
     store.set('navWidth', Math.round(nav.getBoundingClientRect().width));
   });
-  grip.addEventListener('dblclick', () => { navWidth(0); store.set('navWidth', 0); });
+  grip.addEventListener('dblclick', e => { if (!e.target.closest('.handle')) { navWidth(0); store.set('navWidth', 0); } });
 
   function renderMe() {
     const opts = ['<option value="">nobody</option>'].concat(
