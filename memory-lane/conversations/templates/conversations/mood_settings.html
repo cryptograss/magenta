@@ -49,9 +49,18 @@
   .vrow .found .opt small { display: block; color: var(--muted); font-size: 11.5px; }
   .vrow .found .lib { font-size: 10.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 8px; padding: 0 5px; margin-left: 4px; }
   /* Models, everywhere: a compact row per emergent. */
-  .mrow { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; margin: 6px 0; }
+  .mrow { display: grid; grid-template-columns: 110px 1fr auto; gap: 8px; align-items: center; margin: 6px 0; }
   .mrow .who { font-weight: 600; }
-  .mrow input { max-width: 380px; }
+  .mrow select { max-width: 260px; }
+  .mrow .inherited select { color: var(--muted); font-style: italic; }
+  /* Emergent defaults: a row per emergent, a column per setting. */
+  .defaults-wrap { overflow-x: auto; }
+  .defaults { border-collapse: collapse; font-size: 13px; }
+  .defaults th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 4px 6px; white-space: nowrap; }
+  .defaults td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  .defaults td.who { font-weight: 600; }
+  .defaults input[type=number] { width: 80px; }
+  .defaults .inherited select, .defaults .inherited input, .defaults .inherited textarea { color: var(--muted); font-style: italic; }
   .pick-line { margin: 8px 0 12px; display: flex; align-items: center; gap: 8px; }
   .pick-line label { font-size: 12.5px; color: var(--muted); }
   .pick-line select { padding: 4px 8px; min-width: 140px; }
@@ -99,6 +108,9 @@
   <div id="scram"></div>
   <h3>Model, everywhere</h3>
   <div class="cards" id="models">Loading…</div>
+  <h3>Emergent defaults</h3>
+  <p class="note">Each emergent in every Mood and thread, new ones included, unless that Mood sets its own.</p>
+  <div class="defaults-wrap"><table class="defaults" id="defaults"></table></div>
   <h3>One emergent</h3>
   <p class="pick-line"><label for="pickAgent">showing</label> <select id="pickAgent"></select></p>
   <div class="cards" id="cards">Loading…</div>
@@ -143,7 +155,7 @@
     return out;
   }
 
-  function field(key, value, mood, agent) {
+  function field(key, value, mood, agent, bare) {
     const here = setHere(mood, agent, key);
     const attrs = `data-key="${key}" data-mood="${esc(mood || '')}" data-agent="${esc(agent || '')}" ${viewer ? '' : 'disabled'}`;
     let input;
@@ -161,12 +173,13 @@
     } else if (key === 'idle_after') {
       input = `<input type="number" min="0" step="5" ${attrs} data-scale="60" value="${Math.round((value || 0) / 60)}">`;
     } else if (key === 'model') {
-      input = `<input type="text" ${attrs} placeholder="(harness default)" value="${esc(value)}">`;
+      input = modelField(attrs, value, agent);
     } else {
       input = `<input type="number" min="0" ${attrs} value="${esc(value)}">`;
     }
-    return `<div class="row"><label title="${esc(state.knobs[key].help)}">${LABELS[key]}</label>`
-      + `<span class="${here ? '' : 'inherited'}">${input}<span class="status"></span></span></div>`;
+    const cell = `<span class="${here ? '' : 'inherited'}">${input}<span class="status"></span></span>`;
+    if (bare) return cell;
+    return `<div class="row"><label title="${esc(state.knobs[key].help)}">${LABELS[key]}</label>${cell}</div>`;
   }
 
   function card(title, sub, values, mood, agent, skip) {
@@ -175,6 +188,33 @@
         .filter(k => !(skip || []).includes(k))
         .filter(k => agent === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k))
         .map(k => field(k, values[k], mood, agent)).join('') + '</div>';
+  }
+
+  // A model: vendor, then its model, where the emergent's harness reports a catalog (Pi); else the aliases.
+  const catalogs = {};  // agent -> {vendors}, or null (none reported)
+  const vendorPicked = {};  // agent -> a vendor picked, before one of its models is
+  const ALIASES = ['opus', 'sonnet', 'fable', 'haiku'];
+  function vendorOf(m) { const i = (m || '').indexOf('/'); return i > 0 ? m.slice(0, i) : ''; }
+  function modelField(attrs, value, agent) {
+    const c = agent ? catalogs[agent] : null;
+    if (!c) {
+      const opts = !value || ALIASES.includes(value) ? ALIASES : [...ALIASES, value];
+      return `<select ${attrs}><option value="">(harness default)</option>${opts.map(o =>
+        `<option value="${esc(o)}" ${o === value ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+    }
+    const vendor = vendorPicked[agent] || vendorOf(value);
+    const vendors = c.vendors.filter(v => v.usable || v.name === vendor).sort((a, b) => a.name.localeCompare(b.name));
+    const v = vendors.find(x => x.name === vendor);
+    const first = `<select data-role="vendor" data-for="${esc(agent)}" title="vendor" ${viewer ? '' : 'disabled'}>`
+      + `<option value="" ${v ? '' : 'selected'}>${value ? 'vendor…' : '(harness default)'}</option>`
+      + vendors.map(x => `<option value="${esc(x.name)}" ${x === v ? 'selected' : ''}>${esc(x.name)}${x.usable ? '' : ' · no key'}</option>`).join('')
+      + '</select>';
+    if (!v) return first;
+    const ids = v.models.map(m => `${v.name}/${m[0]}`);
+    return first + ` <select ${attrs} title="model"><option value="" ${value ? '' : 'selected'}>${value ? '↺ default' : 'pick a model…'}</option>`
+      + (value && !ids.includes(value) && vendorOf(value) === v.name ? `<option value="${esc(value)}" selected>${esc(value.slice(v.name.length + 1))}</option>` : '')
+      + ids.map(id => `<option value="${esc(id)}" ${id === value ? 'selected' : ''}>${esc(id.slice(v.name.length + 1))}</option>`).join('')
+      + '</select>';
   }
 
   // The one thing asked for at the top: one model per emergent, set everywhere (agent, no Mood).
@@ -187,14 +227,30 @@
         const attrs = `data-key="model" data-mood="" data-agent="${esc(a)}" ${viewer ? '' : 'disabled'}`;
         return `<div class="mrow"><span class="who">${esc(a)}</span>`
           + `<span class="${here ? '' : 'inherited'}">`
-          + `<input type="text" ${attrs} placeholder="(harness default)" title="${esc(state.knobs.model.help)}" value="${esc(v)}">`
-          + `<span class="status"></span></span></div>`;
+          + modelField(attrs, v, a)
+          + `<span class="status"></span></span>`
+          // Effort beside it, optional: effort when mentioned, everywhere; left alone unless changed.
+          + `<span class="${setHere(null, a, 'mention_effort') ? '' : 'inherited'}">`
+          + `<select data-key="mention_effort" data-mood="" data-agent="${esc(a)}" title="${esc(state.knobs.mention_effort.help)}" ${viewer ? '' : 'disabled'}>`
+          + state.efforts.map(e => `<option value="${e}" ${e === everywhere(a).mention_effort ? 'selected' : ''}>${EFFORT_LABELS[e] || e}</option>`).join('')
+          + `</select><span class="status"></span></span></div>`;
       }).join('') + '</div>';
+  }
+
+  // Emergent defaults: every setting, one emergent everywhere (agent, no Mood). Model is the row above.
+  function defaultsTable() {
+    const keys = Object.keys(state.knobs).filter(k => k !== 'model');
+    const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
+    return head + state.agents.map(a => {
+      const v = everywhere(a);
+      return `<tr><td class="who">${esc(a)}</td>` + keys.map(k =>
+        `<td>${a === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k) ? field(k, v[k], null, a, true) : ''}</td>`).join('') + '</tr>';
+    }).join('');
   }
 
   let picked = null;  // which emergent the Mood cards show, kept across saves
   function agentView(a) {
-    const cards = [card(`${a}, everywhere`, 'unless a Mood says otherwise', everywhere(a), null, a, ['model'])];
+    const cards = [];
     for (const m of state.moods) cards.push(card(m.title, `${a} in #${m.slug}`, state.resolved[m.slug][a], m.slug, a));
     return cards.join('') || 'No Moods yet.';
   }
@@ -206,6 +262,7 @@
     document.getElementById('scram').innerHTML = scram
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
     document.getElementById('models').innerHTML = modelRows();
+    document.getElementById('defaults').innerHTML = defaultsTable();
     const picker = document.getElementById('pickAgent');
     if (!picked) picked = state.agents[0] || '';
     picker.innerHTML = state.agents.map(a => `<option value="${esc(a)}" ${a === picked ? 'selected' : ''}>${esc(a)}</option>`).join('')
@@ -314,6 +371,9 @@
 
   async function load() {
     state = await (await fetch('/api/settings/')).json();
+    await Promise.all(state.agents.filter(a => catalogs[a] === undefined).map(a =>
+      fetch(`/api/agents/${encodeURIComponent(a)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
+        .then(c => { catalogs[a] = c; })));
     render();
     loadVoices();
   }
@@ -335,7 +395,10 @@
     status.className = 'status saved'; status.textContent = 'saved';
     setTimeout(load, 600);
   }
-  document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.key) save(e.target); });
+  document.addEventListener('change', e => {
+    if (e.target.dataset && e.target.dataset.role === 'vendor') { vendorPicked[e.target.dataset.for] = e.target.value; render(); return; }
+    if (e.target.dataset && e.target.dataset.key) save(e.target);
+  });
   document.getElementById('pickAgent').addEventListener('change', e => {
     picked = e.target.value;
     document.getElementById('cards').innerHTML = picked ? agentView(picked) : '';
