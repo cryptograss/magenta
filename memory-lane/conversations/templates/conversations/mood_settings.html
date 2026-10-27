@@ -185,10 +185,12 @@
     return `<div class="row"><label title="${esc(state.knobs[key].help)}">${LABELS[key]}</label>${cell}</div>`;
   }
 
+  // Set in each Mood's own bar, so not here (Justin, 27 Oct).
+  const IN_THE_MOOD = ['listening', 'model', 'discretion', 'verbosity'];
   function card(title, sub, values, mood, agent, skip) {
     return `<div class="card"><h2>${esc(title)}</h2><div class="sub">${esc(sub)}</div>`
       + Object.keys(state.knobs)
-        .filter(k => !(skip || []).includes(k))
+        .filter(k => !(skip || []).includes(k) && !IN_THE_MOOD.includes(k))
         .filter(k => agent === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k))
         .map(k => field(k, values[k], mood, agent)).join('') + '</div>';
   }
@@ -262,9 +264,9 @@
   }
 
 
-  // Emergent defaults: every setting, one emergent everywhere (agent, no Mood). Model is the row above.
+  // Emergent defaults: one emergent everywhere (agent, no Mood). Model is the row above; the Mood's bar has the rest.
   function defaultsTable() {
-    const keys = Object.keys(state.knobs).filter(k => k !== 'model');
+    const keys = Object.keys(state.knobs).filter(k => !IN_THE_MOOD.includes(k));
     const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
     return head + state.agents.map(a => {
       const v = everywhere(a);
