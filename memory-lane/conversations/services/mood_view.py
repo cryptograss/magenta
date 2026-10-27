@@ -468,6 +468,8 @@ def wiki_sentence(c):
     """A PickiPedia change in words, without its links: the reply quote's and the narrator's."""
     user = c.get('user', 'someone')
     page = user_page_of(c.get('title'))
+    if c.get('kind') == 'upload':
+        return f"🖼 {user} uploaded {c.get('title', 'a file')} to PickiPedia"
     if page is None:
         return f"✎ {user} {'started' if c.get('kind') == 'new' else 'edited'} {c.get('title', '')} on PickiPedia"
     owner, talk = page

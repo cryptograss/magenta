@@ -382,6 +382,30 @@ class WikiFeedTest(TestCase):
         self.assertEqual(body['turns'], [])  # lines, not words: nothing to answer
         self.assertEqual(self.client.get('/api/moods/').json()['moods'][0]['message_count'], 0)
 
+    def test_an_upload_is_news_with_its_thumbnail_and_the_rest_of_the_log_is_not(self):
+        # Justin, 27 Oct: Aunt Rhonda uploaded a picture, and #general never said so.
+        from conversations.services import wiki_feed
+        changes = [{'type': 'log', 'logtype': 'upload', 'logaction': 'upload', 'ns': 6, 'title': 'File:Rose and Fib.jpg',
+                    'rcid': 12, 'revid': 0, 'user': 'Auntrhonda', 'oldlen': 0, 'newlen': 0,
+                    'timestamp': '2026-10-27T02:57:48Z', 'comment': 'Uploaded with Media Uploader'},
+                   {'type': 'log', 'logtype': 'newusers', 'title': 'User:Caruso', 'rcid': 11, 'user': 'Caruso',
+                    'timestamp': '2026-10-26T17:00:04Z', 'comment': ''},
+                   {'type': 'edit', 'title': 'Page 10', 'rcid': 10, 'revid': 910, 'user': 'JMyles', 'oldlen': 1,
+                    'newlen': 3, 'timestamp': '2026-10-26T16:00:00Z', 'comment': ''}]
+        pages = {'pages': [{'title': 'File:Rose and Fib.jpg', 'imageinfo': [
+            {'url': 'https://pickipedia.xyz/images/a/ab/Rose_and_Fib.jpg',
+             'thumburl': 'https://pickipedia.xyz/images/thumb/a/ab/Rose_and_Fib.jpg/120px-Rose_and_Fib.jpg'}]}]}
+        answers = iter([{'query': {'recentchanges': changes}}, {'query': pages}])
+        http = mock.Mock(get=mock.Mock(side_effect=lambda *a, **k: mock.Mock(json=lambda a=next(answers): a)))
+        self.assertEqual(wiki_feed.refresh(http), 2)
+        self.assertIn('log', http.get.call_args_list[0].kwargs['params']['rctype'])
+        self.assertEqual(http.get.call_args_list[1].kwargs['params']['iiurlwidth'], wiki_feed.THUMB)
+        events = self.client.get('/api/moods/general/turns/').json()['events']
+        self.assertEqual([(e['kind'], e['title']) for e in events], [('edit', 'Page 10'), ('upload', 'File:Rose and Fib.jpg')])
+        self.assertTrue(events[1]['thumb'].endswith('120px-Rose_and_Fib.jpg'))
+        from conversations.services.mood_view import event_line
+        self.assertEqual(event_line(events[1]), '🖼 Auntrhonda uploaded File:Rose and Fib.jpg to PickiPedia')
+
     def test_a_moods_todo_list_is_shown_in_that_mood_only(self):
         from conversations.models import MoodAlias
         from conversations.services import wiki_feed
