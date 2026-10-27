@@ -105,7 +105,10 @@
     listening: 'listening', consider_after: 'consider after (s)', idle_after: 'first unprompted look (min)',
     considers_per_hour: 'considerations / hour', mention_effort: 'effort when mentioned',
     consider_effort: 'effort when considering', model: 'model', ultracode: 'ultracode', catch_up_tokens: 'reads (tokens)', discretion: 'discretion', verbosity: 'verbosity',
+    handoff_model: 'handoff model', handoff_effort: 'handoff effort',
   };
+  // /incorporate and /handoff are magent's alone (services/agent_commands.HANDOFF_AGENT): their settings show only there.
+  const HANDOFF_AGENT = 'magent', HANDOFF_KEYS = ['handoff_model', 'handoff_effort'];
   // As the terminal names them.
   const EFFORT_LABELS = { xhigh: 'extra' };
   let state = null;
@@ -137,7 +140,7 @@
       input = `<select ${attrs} data-kind="listening">${['on', 'mentions', 'off'].map(m =>
         `<option value="${m}" ${v.mode === m ? 'selected' : ''}>${m === 'mentions' ? 'mentions only' : m}</option>`).join('')}</select>`
         + (v.until ? ` <span class="note">until ${esc(when(v.until))}</span>` : '');
-    } else if (key === 'mention_effort' || key === 'consider_effort') {
+    } else if (key === 'mention_effort' || key === 'consider_effort' || key === 'handoff_effort') {
       input = `<select ${attrs}>${state.efforts.map(e => `<option value="${e}" ${e === value ? 'selected' : ''}>${EFFORT_LABELS[e] || e}</option>`).join('')}</select>`;
     } else if (key === 'discretion' || key === 'verbosity') {
       input = `<select ${attrs}>${state.choices[key].map(c => `<option value="${c}" ${c === value ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
@@ -147,6 +150,8 @@
       input = `<input type="number" min="0" step="5" ${attrs} data-scale="60" value="${Math.round((value || 0) / 60)}">`;
     } else if (key === 'model') {
       input = `<input type="text" ${attrs} placeholder="(harness default)" value="${esc(value)}">`;
+    } else if (key === 'handoff_model') {
+      input = `<input type="text" ${attrs} placeholder="(this Mood's model)" value="${esc(value)}">`;
     } else {
       input = `<input type="number" min="0" ${attrs} value="${esc(value)}">`;
     }
@@ -156,7 +161,8 @@
 
   function card(title, sub, values, mood, agent) {
     return `<div class="card"><h2>${esc(title)}</h2><div class="sub">${esc(sub)}</div>`
-      + Object.keys(state.knobs).map(k => field(k, values[k], mood, agent)).join('') + '</div>';
+      + Object.keys(state.knobs).filter(k => agent === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k))
+        .map(k => field(k, values[k], mood, agent)).join('') + '</div>';
   }
 
   function render() {
