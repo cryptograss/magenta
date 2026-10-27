@@ -302,12 +302,15 @@
   #promotePick .cancel { background: none; color: var(--muted); }
   #noAgents p { margin: 0 0 10px; }
   #noAgents button { font: inherit; border: 0; border-radius: 6px; padding: 6px 16px; background: var(--accent); color: #fff; cursor: pointer; }
-  #renameBox, #newBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
+  #renameBox, #newBox, #closeBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
                background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.18);
                padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-  #renameBox[hidden], #newBox[hidden] { display: none; }
+  #renameBox[hidden], #newBox[hidden], #closeBox[hidden] { display: none; }
   #renameBox .archive { float: right; color: var(--muted); }
-  #newBox .hint { font-size: 12.5px; color: var(--muted); }
+  #newBox .hint, #closeBox .hint { font-size: 12.5px; color: var(--muted); }
+  #closeBox label { display: flex; gap: 6px; align-items: baseline; font-size: 13.5px; }
+  #closeBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  #closeBox textarea[hidden] { display: none; }
   #renameBox input, #renameBox textarea, #newBox input, #newBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
                                           background: var(--bg); color: var(--ink); }
   #renameBox input, #newBox input { font-size: 17px; font-weight: 600; }
@@ -334,6 +337,10 @@
     border-left: 3px solid transparent;
   }
   nav a.mood:hover { background: var(--hover); }
+  /* A thread, under the Mood it came from (Justin, 27 Oct). */
+  nav a.mood.sub { padding-left: calc(14px + 14px * var(--depth, 1)); padding-top: 3px; padding-bottom: 3px; }
+  nav a.mood.sub .title { font-size: 13px; font-weight: 500; }
+  nav a.mood.sub .title::before { content: '⑂'; color: var(--muted); font-weight: 400; margin-right: -3px; }
   nav a.mood.active { background: var(--accent-soft); border-left-color: var(--accent); }
   nav a.mood .title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
   nav a.mood .meta { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
@@ -429,9 +436,9 @@
   /* A thread (services: Mood.thread_of): where it came from, and the threads opened from here. */
   .mood-head .thread { font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
   .mood-head .thread a { color: var(--accent); }
-  .mood-head .thread button, .mood-head button.newthread { font: inherit; font-size: 12px; border: 1px solid var(--line);
+  .mood-head .thread button, .mood-head button.newthread, .mood-head .macts button.closethread { font: inherit; font-size: 12px; border: 1px solid var(--line);
                                background: none; color: var(--muted); border-radius: 6px; padding: 0 7px; cursor: pointer; margin-left: 4px; }
-  .mood-head .thread button:hover, .mood-head button.newthread:hover { color: var(--accent); border-color: var(--accent); }
+  .mood-head .thread button:hover, .mood-head button.newthread:hover, .mood-head .macts button.closethread:hover { color: var(--accent); border-color: var(--accent); }
   #newBox .forkchoice { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
   #newBox .forkchoice[hidden] { display: none; }
 
@@ -1371,12 +1378,18 @@
   <input id="newTitle" maxlength="200" aria-label="Title" placeholder="What the new Mood is about">
   <textarea id="newDesc" rows="2" maxlength="2000" aria-label="Description" placeholder="A line or two more (optional)"></textarea>
   <div class="forkchoice" id="newThread" hidden>
-    <span class="hint">A thread of <b id="newThreadOf"></b>, with its settings and (until it has its own) its instructions:</span>
-    <label><input type="radio" name="threadKind" value="fork" checked> <b>Fork</b>: its emergents go on from where they are there, remembering all of it</label>
-    <label><input type="radio" name="threadKind" value="fresh"> <b>Fresh</b>: they start anew here</label>
+    <span class="hint" id="newThreadOf"></span>
+    <label><input type="radio" name="threadKind" value="fork" checked> <span id="forkWords"></span></label>
+    <label><input type="radio" name="threadKind" value="fresh"> <span id="freshWords"></span></label>
   </div>
-  <span class="hint" id="newHint">Its first @magent starts a new session there, briefed by the letter magent left itself.</span>
+  <span class="hint" id="newHint"></span>
   <span><button type="submit">Start</button> <button type="button" id="newCancel">Cancel</button></span>
+</form>
+<form id="closeBox" hidden>
+  <b id="closeTitle"></b>
+  <label id="closeAskLine"><input type="checkbox" id="closeAsk" checked> <span id="closeAskWords"></span></label>
+  <textarea id="closeNote" rows="2" maxlength="2000" aria-label="A note for them"></textarea>
+  <span><button type="submit" id="closeGo"></button> <button type="button" id="closeCancel">Cancel</button></span>
 </form>
 <div id="locked"></div>
 <div id="search" hidden role="search">
@@ -1633,15 +1646,22 @@
 
   let archivedOpen = false;
   function renderNav() {
-    const item = m => `
-      <a class="mood ${m.slug === current ? 'active' : ''}" href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
+    const item = ([m, depth]) => `
+      <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
         <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
-    const live = moods.filter(m => !m.archived), archived = moods.filter(m => m.archived);  // pinned come first, from the server
+    // A thread under the Mood it came from, indented (Justin, 27 Oct); one whose Mood isn't in the same list stands alone.
+    const nest = list => {
+      const here = new Set(list.map(m => m.slug)), out = [];
+      const add = (m, depth) => { out.push([m, depth]); list.filter(t => t.thread_of === m.slug).forEach(t => add(t, depth + 1)); };
+      list.filter(m => !m.thread_of || !here.has(m.thread_of)).forEach(m => add(m, 0));
+      return out;
+    };
+    const live = nest(moods.filter(m => !m.archived)), archived = nest(moods.filter(m => m.archived));  // pinned come first, from the server
     // The one open stays in view: an archived Mood opened shows its fold open.
-    const open = archivedOpen || archived.some(m => m.slug === current);
+    const open = archivedOpen || archived.some(([m]) => m.slug === current);
     document.getElementById('moodList').innerHTML =
       `<div class="label">Moods${keyHolder ? '<button type="button" id="newMood" title="Start a Mood" aria-label="Start a Mood">＋</button>' : ''}</div>`
       + live.map(item).join('')
@@ -1969,7 +1989,7 @@
         <button type="button" class="mtoggle" aria-expanded="${headOpen}" aria-label="The Mood's description, threads and people">${headOpen ? '▾' : '▸'}</button>
         <h1>${esc(m.title)}</h1>
         <span class="mdesc">${m.thread_of ? `⑂ of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
-        <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}</span>
+        <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}${m.thread_of && keyHolder ? `<button type="button" class="closethread" title="${isArchived(m.slug) ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${isArchived(m.slug) ? 'reopen' : 'close'}</button>` : ''}</span>
       </div>
       <div class="mbody"${headOpen ? '' : ' hidden'}>
         ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
@@ -3554,6 +3574,14 @@
   const isArchived = slug => !!(moods.find(m => m.slug === slug) || {}).archived;
   const isPinned = slug => !!(moods.find(m => m.slug === slug) || {}).pinned;
   const newBox = document.getElementById('newBox');
+  // The words people read here, as Magenta:Interface has them (services/interface_words.py): escaped, then any
+  // {field} filled with the HTML given for it.
+  const WORDS = JSON.parse("{{ interface_words|escapejs }}" || '{}');
+  const said = (key, fields = {}) => esc(WORDS[key] || '').replace(/\{(\w+)\}/g, (all, f) => f in fields ? fields[f] : all);
+  document.getElementById('newHint').innerHTML = said('new-hint');
+  document.getElementById('forkWords').innerHTML = `<b>${said('fork-label')}</b>: ${said('fork')}`;
+  document.getElementById('freshWords').innerHTML = `<b>${said('fresh-label')}</b>: ${said('fresh')}`;
+  const closeBox = document.getElementById('closeBox');
   document.addEventListener('click', async e => {
     if (e.target.closest('#rename')) {
       document.getElementById('renameTitle').value = headMood.title;
@@ -3585,7 +3613,7 @@
       newBox._threadOf = e.target.closest('.newthread') ? current : null;
       document.getElementById('newThread').hidden = !newBox._threadOf;
       document.getElementById('newHint').hidden = !!newBox._threadOf;
-      document.getElementById('newThreadOf').textContent = newBox._threadOf ? '#' + newBox._threadOf : '';
+      document.getElementById('newThreadOf').innerHTML = newBox._threadOf ? said('thread-of', { mood: `<b>#${esc(newBox._threadOf)}</b>` }) : '';
       newBox.querySelector('input[name=threadKind][value=fork]').checked = true;
       document.getElementById('newTitle').placeholder = newBox._threadOf ? 'What the thread is about' : 'What the new Mood is about';
       newBox.querySelector('button[type=submit]').textContent = newBox._threadOf ? 'Open the thread' : 'Start';
@@ -3593,6 +3621,23 @@
       document.getElementById('newDesc').value = '';
       newBox.hidden = false;
       document.getElementById('newTitle').focus();
+    } else if (e.target.closest('.mood-head .closethread') && !isArchived(current)) {
+      // Closing: optionally, its emergents asked first to hand back to the Mood it came from what was settled
+      // here (Justin, 27 Oct: "compact back into the mood"), each with a ```handoff block, as any Mood's.
+      const agents = ((headMood || {}).participants || []).filter(n => human[n] === false);
+      const parent = (headMood || {}).thread_of || '';
+      closeBox._agents = agents; closeBox._parent = parent;
+      document.getElementById('closeTitle').textContent = `#${current}`;
+      document.getElementById('closeAskLine').hidden = !agents.length || !parent;
+      document.getElementById('closeAsk').checked = !!agents.length && !!parent;
+      document.getElementById('closeAskWords').innerHTML = said('close-ask', {
+        agents: agents.map(n => `<b style="color: ${agentColor(n)}">${esc(n)}</b>`).join(', '), parent: `<b>#${esc(parent)}</b>` });
+      const note = document.getElementById('closeNote');
+      note.value = ''; note.placeholder = WORDS['close-note'] || ''; note.hidden = !agents.length || !parent;
+      document.getElementById('closeGo').textContent = WORDS['close-button'] || 'Close';
+      closeBox.hidden = false;
+    } else if (e.target.closest('#closeCancel')) {
+      closeBox.hidden = true;
     } else if (e.target.closest('.mood-head .closethread')) {
       const r = await fetch(`/api/moods/${encodeURIComponent(current)}/archive/`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
@@ -3600,11 +3645,31 @@
       });
       if (!r.ok) { showError('thread: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
       await loadMoods();
-      const line = document.querySelector('.mood-head .thread');
-      if (line && headMood) line.outerHTML = threadLine(headMood);
+      drawMoodbar(headMood);
     } else if (e.target.closest('#newCancel')) {
       newBox.hidden = true;
     }
+  });
+  // Close the thread: if asked, a post naming its emergents (so each is woken, with the tools its asker's
+  // sign-in gives) asks them to hand back to the parent; then it's archived -- a mention there is still answered.
+  closeBox.addEventListener('submit', async e => {
+    e.preventDefault();
+    const slug = current, ask = document.getElementById('closeAsk').checked && closeBox._agents.length && closeBox._parent;
+    const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                             body: JSON.stringify(body) });
+    if (ask) {
+      const note = document.getElementById('closeNote').value.trim();
+      const text = (WORDS['close-message'] || '').replace(/\{agents\}/g, closeBox._agents.map(n => '@' + n).join(' '))
+        .replace(/\{parent\}/g, closeBox._parent) + (note ? '\n\n' + note : '');
+      const r = await post(`/api/moods/${encodeURIComponent(slug)}/say/`, { text });
+      if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+    }
+    const r = await post(`/api/moods/${encodeURIComponent(slug)}/archive/`, { archived: true });
+    if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+    closeBox.hidden = true;
+    await loadMoods();
+    drawMoodbar(headMood);
+    if (ask) poll(false);
   });
   newBox.addEventListener('submit', async e => {
     e.preventDefault();

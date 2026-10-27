@@ -265,6 +265,8 @@ MOOD_WIKI_RULES_EDITORS = [n for n in os.getenv('MOOD_WIKI_RULES_EDITORS', '').s
 # `manage.py test`: no test waits on the wiki.
 import sys as _sys  # noqa: E402
 VOICE_WORDS_FROM_WIKI = os.getenv('VOICE_WORDS_FROM_WIKI', '0' if _sys.argv[1:2] == ['test'] else '1') != '0'
+# The page's words for people (services/interface_words.py, Magenta:Interface): likewise.
+INTERFACE_WORDS_FROM_WIKI = os.getenv('INTERFACE_WORDS_FROM_WIKI', '0' if _sys.argv[1:2] == ['test'] else '1') != '0'
 # Each person's PickiPedia name, from hunter's inventory: "<name> <WikiName>" lines.
 MOOD_WIKI_NAMES = os.getenv('MOOD_WIKI_NAMES', '')
 # Editing and deleting (conversations/services/retract.py): what's taken back is sealed to this
