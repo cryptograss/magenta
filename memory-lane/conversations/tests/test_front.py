@@ -186,7 +186,8 @@ class RankingAndPinsTest(FrontBase):
                          [('justin', 'jams'), ('skyler', 'magenta-interface'), ('skyler', 'jams')])
         html = self.client.get('/').content.decode()
         self.assertIn('class="enter" href="/moods/tidings/"', html)                      # come in: Tidings
-        self.assertIn(f'class="it" href="/moods/tidings/{tiding.id}/"', html)            # a link: its discussion
+        self.assertIn('class="title" href="https://example.org/x"', html)              # a link's title: out to it
+        self.assertIn(f'<a href="/moods/tidings/{tiding.id}/">0 comments</a>', html)     # its comments: its discussion
         self.assertIn('<li><a href="/moods/magenta-interface/">', html)                 # who spoke: that Mood
 
 

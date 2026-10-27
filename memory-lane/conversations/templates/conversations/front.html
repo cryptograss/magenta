@@ -44,9 +44,10 @@
   .tidings .score b { display: block; color: var(--ink); font-size: 14px; }
   .tidings .title { color: var(--ink); font-weight: 600; }
   .tidings .meta { font-size: 12.5px; color: var(--muted); }
-  .tidings a.it { color: inherit; display: block; }
-  .tidings a.it:hover { text-decoration: none; }
-  .tidings a.it:hover .title { color: var(--accent); }
+  .tidings .it { color: inherit; display: block; }
+  .tidings .title:hover { color: var(--accent); text-decoration: none; }
+  .tidings .meta a { color: var(--muted); }
+  .tidings .meta a:hover { color: var(--accent); }
   .lately li a { padding: 6px 0; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; color: var(--muted); }
   .lately li a:hover { text-decoration: none; }
   .lately li a:hover .where { text-decoration: underline; }
@@ -81,10 +82,10 @@
         {% for link in front.tidings %}
         <li>
           <span class="score" title="upvotes"><b>{{ link.score }}</b>▲</span>
-          <a class="it" href="/moods/tidings/{{ link.id }}/">
-            <span class="title">{{ link.title }}</span>{% if link.pinned %} <span title="Pinned to the top">📌</span>{% endif %}
-            <div class="meta">{{ link.host }} · {{ link.comments }} comment{{ link.comments|pluralize }}</div>
-          </a>
+          <div class="it">
+            <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a>{% if link.pinned %} <span title="Pinned to the top">📌</span>{% endif %}
+            <div class="meta">{{ link.host }} · <a href="/moods/tidings/{{ link.id }}/">{{ link.comments }} comment{{ link.comments|pluralize }}</a></div>
+          </div>
         </li>
         {% endfor %}
       </ol>
