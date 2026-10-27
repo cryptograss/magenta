@@ -2570,16 +2570,15 @@ class IncorporateTest(TestCase):
         state = Path(tempfile.mkdtemp()) / 'state.json'
         state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
         poller = MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=15), consider=False)
-        poller.settings = {'jams': {'verbosity': 'brief', 'mention_effort': 'low', 'handoff_effort': 'max',
-                                    'handoff_model': 'opus'}}
+        poller.settings = {'jams': {'verbosity': 'brief', 'mention_effort': 'low', 'handoff_effort': 'max', 'model': 'sonnet'}}
         poller.poll_once()
         prompt = waker.woken[0][1]
         self.assertIn('This is an /incorporate: #jams-setlist', prompt)
         self.assertIn('Asked to be sure of: the key, mostly', prompt)
         self.assertIn('A, capo 2.', prompt)
         self.assertNotIn('Keep replies here short', prompt)  # brief here, but not for this
-        self.assertIn('longer replies are welcome', prompt)
-        self.assertEqual((waker.options['effort'], waker.options['model']), ('max', 'opus'))
+        self.assertNotIn('longer replies are welcome', prompt)  # nor the chat-shaped 'thorough': the ask says how long
+        self.assertEqual((waker.options['effort'], waker.options['model']), ('max', 'sonnet'))  # the Mood's model: its cache
 
     def test_an_ordinary_mention_keeps_the_moods_own(self):
         api = FakeAPI([mention('jams', dict(turn('a', 'justin', 14, '@magent which key?'), via='web'))], sessions={'jams': ['s-local']})

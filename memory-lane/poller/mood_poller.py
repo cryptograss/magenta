@@ -2347,23 +2347,17 @@ class MoodPoller:
         if incorporate or handing:
             if incorporate:
                 lines += self.incorporate_brief(*incorporate)
-            # Full length, whatever this Mood's verbosity (Justin, 27 Oct: "definitely don't want brief ... for handoffs").
-            extras = self.extras_lines(slug, verbosity='thorough')
+            # No length line at all: the ask says how long and what goes in it. The Mood's (brief, say) would cut it
+            # short, and 'thorough' is about chat -- "explain your reasoning" -- not a handoff (Justin, 27 Oct).
+            extras = self.extras_lines(slug, length=False)
         else:
             extras = self.extras_lines(slug)
         return '\n'.join(lines + extras + wake_footer(full, self.texts))
 
     def handoff_options(self, slug):
-        """An /incorporate's or /handoff's effort and model: the handoff settings here. Its model only on the harness the
-        Mood's model runs on: the turn resumes this Mood's session, which only that harness has."""
-        options = {'effort': self.knob(slug, 'handoff_effort', 'high')}
-        model = self.knob(slug, 'handoff_model')
-        harness_for = getattr(self.waker, 'harness_for', None)
-        if model and harness_for and harness_for(model) != harness_for(self.knob(slug, 'model')):
-            logger.warning(f'{slug}: handoff_model {model} is on another harness than this Mood\'s model; not used')
-        elif model:
-            options['model'] = model
-        return options
+        """An /incorporate's or /handoff's effort: the handoff's own. Never its own model: the turn resumes this Mood's
+        session, and another model reads all of it again uncached (Justin, 27 Oct: "a cache miss")."""
+        return {'effort': self.knob(slug, 'handoff_effort', 'high')}
 
     def incorporate_brief(self, thread, note=''):
         """The /incorporate ask, and the thread's record word for word (its newest INCORPORATE_ROOM characters)."""
@@ -2416,13 +2410,13 @@ class MoodPoller:
         lines += transcript_of(kept, set(new_ids), limit=room + 10_000, each=EACH_MAX)
         return lines, cost
 
-    def extras_lines(self, slug, verbosity=None):
+    def extras_lines(self, slug, verbosity=None, length=True):
         try:  # one look at the Mood, for both
             page = self.api.recent(slug, limit=200)
         except Exception:
             page = None
         return (self.announced_lines(slug, page) + self.reacted_lines(slug, page)
-                + wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts))
+                + (wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts) if length else []))
 
     def announced_lines(self, slug, page):
         """/announce made in other Moods, not yet told to it here (memory-lane services/announce.py), once each."""
