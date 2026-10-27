@@ -73,7 +73,8 @@ handle_mentions_of_me = keyed(lambda me, a: _recall().mentions_text(
 handle_who_i_know = keyed(lambda me, a: _recall().who_i_know_text(me, limit=a.get('limit', 40)))
 handle_my_history_with = keyed(lambda me, a: _recall().history_with_text(
     me, a.get('name', ''), limit=a.get('limit', 30), before=a.get('before')))
-handle_how_i_speak = keyed(lambda me, a: _recall().how_i_speak_text(me, count=a.get('count', 12)))
+handle_how_i_speak = keyed(lambda me, a: _recall().how_i_speak_text(
+    me, count=a.get('count', 12), fresh=bool(a.get('fresh', False)), others=bool(a.get('others', False))))
 
 
 async def handle_get_latest_continuation():

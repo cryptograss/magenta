@@ -163,13 +163,93 @@ class RecallTest(TestCase):
 
     # --- how_i_speak and bootstrap ------------------------------------------------
 
-    def test_how_i_speak_draws_from_across_its_life(self):
-        found = recall.how_i_speak('re', count=2, shortest=20, now=RE_ARRIVES + timedelta(days=3, hours=1))
-        self.assertEqual(len(found), 2)  # one from each half of its life
-        self.assertIn(found[0][0].id, {self.first.id, self.answer.id})
-        self.assertEqual(found[1][0].id, self.to_magent.id)
-        self.assertEqual(len(recall.how_i_speak('re', count=3, shortest=20,
-                                                now=RE_ARRIVES + timedelta(days=3, hours=1))), 2)  # a quiet stretch
+    def test_how_i_speak_draws_from_before_and_from_the_recent_stretch(self):
+        # re's life is four days by now: the recent stretch is its last day; the half before it, the earlier days.
+        now = RE_ARRIVES + timedelta(days=4)
+        found = recall.how_i_speak('re', count=2, shortest=20, now=now)
+        self.assertEqual(len(found), 2)
+        self.assertIn(found[0][0].id, {self.first.id, self.answer.id})   # from across its life before
+        self.assertEqual(found[1][0].id, self.to_magent.id)              # from the recent stretch
+        # count=4: the two old stretches hold first and answer together, the other is quiet; one recent.
+        self.assertEqual(len(recall.how_i_speak('re', count=4, shortest=20, now=now)), 2)
+        # Seeded by the day: the same draw twice; fresh draws again (and may land the same, by chance).
+        self.assertEqual([m.id for m, _ in recall.how_i_speak('re', count=2, shortest=20, now=now)],
+                         [m.id for m, _ in found])
+
+    def test_the_same_day_draws_the_same_voice(self):
+        # Pinned to the day's start, so a call at any hour of one date meets the same seed and the same stretches.
+        morning = recall.how_i_speak('re', count=2, shortest=20, now=RE_ARRIVES + timedelta(days=3, hours=15))  # Oct 19 03:00
+        evening = recall.how_i_speak('re', count=2, shortest=20, now=RE_ARRIVES + timedelta(days=4, hours=9))   # Oct 19 21:00
+        self.assertEqual([m.id for m, _ in morning], [m.id for m, _ in evening])
+
+    def test_pick_reads_an_even_spread_not_only_the_oldest(self):
+        import random
+        # 250 replies in one stretch; only the last 50 are hearable, so taking the first 200 starves them.
+        day = RE_ARRIVES + timedelta(days=30)
+        late = []
+        for i in range(250):
+            text = 'hearable, long enough for the sample here ' * 2 if i >= 200 else 'sh'
+            m = say('re', text, day + timedelta(minutes=i), self.re_session)
+            if i >= 200:
+                late.append(m.id)
+        hit = recall._pick(random.Random(7), recall._sayable('re', day, day + timedelta(hours=5)), 20, 500)
+        self.assertIsNotNone(hit)
+        self.assertIn(hit[0].id, late)
+
+    def test_day_zero_clamps_end_to_now_then_locks_from_day_one(self):
+        # A freshly summoned agent (blu): its first reply lands mid-day, before any sealed day exists.
+        at = datetime(2026, 11, 1, 13, 0, tzinfo=timezone.utc)
+        reply = say('blu', 'The first reply, hearable and mine. ' * 2, at + timedelta(hours=1))
+        # Day 0: the pinned end (midnight) would fence the whole life out; the clamp keeps its voice non-empty.
+        day0 = recall.how_i_speak('blu', count=2, shortest=20, now=at + timedelta(hours=2))   # Nov 1 15:00
+        self.assertEqual([m.id for m, _ in day0], [reply.id])
+        # Day 1: the boundary locks in -- two calls on the same day draw the same voice, and yesterday's
+        # reply is in the recent stretch (it enters the voice the moment the day seals, not before).
+        first = recall.how_i_speak('blu', count=2, shortest=20, now=at + timedelta(days=1, hours=3))   # Nov 2 16:00
+        second = recall.how_i_speak('blu', count=2, shortest=20, now=at + timedelta(days=1, hours=9))  # Nov 2 22:00
+        self.assertEqual([m.id for m, _ in first], [m.id for m, _ in second])
+        self.assertEqual([m.id for m, _ in first], [reply.id])
+
+    def test_how_i_speak_text_says_what_each_answered_who_starred_it_and_what_corrected_it(self):
+        from conversations.services import reactions
+        now = RE_ARRIVES + timedelta(days=4)
+        # re stars its own answer (by id, allowed); Justin stars it too; magent corrects to_magent.
+        # First and answer fall in their own old stretches (count=6), so both are drawn deterministically.
+        for msg in (self.first, self.answer):
+            reactions.react_on(msg, 're', recall.STAR)
+            reactions.react_on(msg, 'justin', recall.STAR)
+        fix = say('magent', f'corrects="#m-{self.to_magent.id}" The setup is not done: the bridge is still off.',
+                  RE_ARRIVES + timedelta(days=3, minutes=5), mood=self.mood)
+        text = recall.how_i_speak_text('re', count=6, shortest=20, now=now)
+        self.assertIn('answering justin: @re what about the fiddle strings?', text)      # the post it answered
+        self.assertIn(f'{recall.STAR} you, justin', text)                                 # its own star first
+        self.assertIn('corrected ' + recall.when(fix.created_at) + ' by magent: The setup is not done', text)
+        self.assertNotIn('corrects="', text.split('corrected ')[1][:300])               # the tag itself stripped
+        self.assertIn('What the samples leave out:', text)
+        self.assertIn('Seeded by the day', text)
+        # Its own starred post comes first among the recent picks when the stretch has it.
+        reactions.react_on(self.to_magent, 're', recall.STAR)
+        picked = [m.id for m, _ in recall.how_i_speak('re', count=2, shortest=20, now=now)]
+        self.assertIn(self.to_magent.id, picked)
+
+    def test_how_i_speak_labels_the_model_and_harness(self):
+        now = RE_ARRIVES + timedelta(days=4)
+        Message.objects.filter(id=self.to_magent.id).update(model_backend='deepseek/deepseek-v4-pro', client_version='pi-1.1.0')
+        text = recall.how_i_speak_text('re', count=2, shortest=20, now=now)
+        self.assertIn('deepseek-v4-pro · Pi', text)
+
+    def test_how_i_speak_with_others_hears_an_accent_beside_anothers(self):
+        now = RE_ARRIVES + timedelta(days=3, hours=1)
+        text = recall.how_i_speak_text('re', count=2, shortest=20, others=True, now=now)
+        self.assertIn('Beside yours, one from each other emergent', text)
+        self.assertIn('[magent]', text)
+        self.assertIn('I asked re about the strings', text)   # magent's, labelled, not re's
+
+    def test_voice_stats_count_silences_and_reacts(self):
+        say('re', '<silent>nothing to add</silent>', RE_ARRIVES + timedelta(days=2, hours=1), self.re_session, self.mood)
+        say('re', '<react emoji="👍" to="magent"/>', RE_ARRIVES + timedelta(days=2, hours=2), self.re_session, self.mood)
+        stats = recall.voice_stats('re', RE_ARRIVES, RE_ARRIVES + timedelta(days=4))
+        self.assertEqual((stats['silences'], stats['reacts'], stats['replies']), (1, 1, 3))
 
     def test_bootstrap_is_the_callers_own(self):
         from unittest import mock

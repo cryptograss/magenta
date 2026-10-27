@@ -68,13 +68,15 @@ def agent_reaction(text):
 
 def target(mood, to, before, by):
     """The message `to` names in the Mood: its id (or the start of one), or the newest post by that name
-    before `before`, not a dot, not machinery, never the reactor's own."""
+    before `before`, not a dot, not machinery. By name, never the reactor's own; by id, its own too: a ⭐ on
+    its own post is how an agent marks what feels like itself (services/recall.how_i_speak; Justin, 27 Oct)."""
     from conversations.models import Message
-    found = Message.objects.filter(mood=mood, is_sidechain=False, created_at__lte=before).exclude(sender_id=by)
+    any_sender = Message.objects.filter(mood=mood, is_sidechain=False, created_at__lte=before)
+    found = any_sender.exclude(sender_id=by)
     named = MESSAGE_ID.match(to)
     if named:
-        hit = found.filter(id__startswith=named.group(1)).first() if len(named.group(1)) < 36 else \
-            found.filter(id=named.group(1)).first()
+        hit = any_sender.filter(id__startswith=named.group(1)).first() if len(named.group(1)) < 36 else \
+            any_sender.filter(id=named.group(1)).first()
         if hit:
             return hit
     from .mood_view import prose, quiet_reason
