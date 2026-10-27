@@ -150,8 +150,11 @@ class PiTranslator:
             # The message's usage goes on its last block, whatever it is, so it's counted once.
             extra = {'usage': mine} if i == len(blocks) - 1 else {}
             if block.get('type') == 'text':
+                # How the message stopped, in the record's words, so a text said on the way to a tool call
+                # (toolUse) reads as a progress line, not the turn's answer: the poller's waits and stagger
+                # lift on an ended turn only (re's review of magenta#206).
                 out.append(self.event('assistant_message', at, id=self.id(millis, 'assistant', i), text=block.get('text', ''),
-                                      model=model, **extra))
+                                      model=model, stop_reason=STOP_REASONS.get(self.last_stop, 'end_turn'), **extra))
                 if block.get('text', '').strip():
                     self.reply = block['text']
             elif block.get('type') == 'thinking':

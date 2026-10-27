@@ -69,6 +69,21 @@ class TranslatorTest(TestCase):
         self.assertEqual(ended['outcome'], 'failed')
         self.assertIn('Third-party apps', ended['error'])
 
+    def test_a_text_on_the_way_to_a_tool_call_is_not_the_turns_end(self):
+        # re, 27 Oct: Pi turns carried no stop, so every progress line read as an ended turn to the poller.
+        t = PiTranslator(SESSION)
+        t.feed({'type': 'session', 'timestamp': '2026-10-27T10:54:00.000Z'})
+        on_the_way = t.feed({'type': 'message_end', 'message': {
+            'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
+            'content': [{'type': 'text', 'text': 'Checking the deploy.'},
+                        {'type': 'toolCall', 'id': 'c1', 'name': 'read', 'arguments': {'path': 'x'}}]}})
+        self.assertEqual([e['type'] for e in on_the_way], ['assistant_message', 'tool_call'])
+        self.assertEqual(on_the_way[0]['stop_reason'], 'tool_use')
+        answer = t.feed({'type': 'message_end', 'message': {
+            'role': 'assistant', 'stopReason': 'stop', 'usage': {},
+            'content': [{'type': 'text', 'text': 'Yes, redeploy.'}]}})
+        self.assertEqual(answer[0]['stop_reason'], 'end_turn')
+
     def test_a_compaction_and_an_aborted_run(self):
         t = PiTranslator(SESSION)
         compacted = t.feed({'type': 'compaction_end', 'reason': 'threshold',

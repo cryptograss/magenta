@@ -70,13 +70,22 @@ _QUIET = re.compile(r'^<silent\s*/>$|^<silent(?:\s+by="(\w+)")?>(.*)</silent>$',
 # An agent waiting for another asked the same thing (poller/mood_poller.py _WAIT_REPLY): no answer yet, so a
 # silence -- a dot saying whom it's waiting for -- never a turn, an answer, or a mention.
 _WAIT = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"(?:\s+to="([^"<>]{0,200})")?\s*/>\s*$')
+# An agent taking a question that asked several of them (poller _TAKE_REPLY): a claim, shown as a line ("magent is
+# taking the redeploy question", Justin, 27 Oct), never an answer; its answer follows in its next turn.
+_TAKE = re.compile(r'^\s*<take\s+to="([^"<>]{1,200})"\s*/>\s*$')
 
 
 def quiet_reason(text):
     """{'reason', 'by'} for a silent reply ('by' is '' when the agent itself
-    chose), or None if the text isn't one. A wait for another agent is one."""
+    chose), or None if the text isn't one. A wait for another agent is one, and a take."""
     match = _QUIET.match(text)
     if not match:
+        take = _TAKE.match(text or '')
+        if take:
+            to = take.group(1).split()
+            # type: what it is, so a reader needn't match the words (re's review of magenta#206).
+            return {'reason': 'taking ' + ' '.join((to[1:] if to and to[0].lower() == 'to' else to)[:8]), 'by': '',
+                    'type': 'take'}
         wait = _WAIT.match(text or '')
         if not wait:
             return None
