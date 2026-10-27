@@ -56,6 +56,19 @@ class ResolveTest(TestCase):
                 with self.assertRaises(knobs.Invalid):
                     knobs.change(key, value)
 
+    def test_set_in_every_mood_overrides_what_moods_set_and_leaves_the_rest(self):
+        knobs.change('model', 'haiku', mood=self.m26, agent=self.magent, by=self.justin)
+        knobs.change('model', 'fable', mood=self.general, by=self.justin)  # everyone in #general
+        knobs.change('mention_effort', 'low', mood=self.m26, agent=self.magent, by=self.justin)
+        rows = knobs.change_every_mood('model', 'opus', self.magent, by=self.justin)
+        self.assertEqual(len(rows), 3)  # everywhere, and the two Moods that said otherwise
+        for slug in ('m26', 'general'):
+            self.assertEqual(knobs.resolve(slug, 'magent')['model'], 'opus')
+        self.assertEqual(knobs.resolve('m26', 'magent')['mention_effort'], 'low')  # not asked: left as it was
+        self.assertEqual(knobs.resolve('general', 'otheragent')['model'], 'fable')
+        newer = Mood.objects.create(slug='newer')
+        self.assertEqual(knobs.resolve(newer.slug, 'magent')['model'], 'opus')
+
     def test_moderation_is_not_a_setting_anyone_can_change(self):
         with self.assertRaises(knobs.Invalid):
             knobs.change('scram', True)
@@ -90,6 +103,15 @@ class SettingsAPITest(TestCase):
         state = self.client.get('/api/settings/').json()
         self.assertEqual(state['resolved']['m26']['magent']['verbosity'], 'brief')
         self.assertEqual(state['history'][0]['set_by'], 'justin')
+
+    def test_set_in_every_mood_from_the_page(self):
+        knobs.change('mention_effort', 'low', mood=self.m26, agent=self.magent, by=self.justin)
+        with self.as_(self.justin):
+            made = self.post({'key': 'mention_effort', 'value': 'max', 'agent': 'magent', 'every_mood': True})
+            self.assertEqual(made.status_code, 201)
+            self.assertEqual(len(made.json()['set']), 2)
+            self.assertEqual(self.post({'key': 'model', 'value': 'opus', 'every_mood': True}).status_code, 400)
+        self.assertEqual(knobs.resolve('m26', 'magent')['mention_effort'], 'max')
 
     def test_bad_requests_say_why(self):
         with self.as_(self.justin):

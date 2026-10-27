@@ -51,6 +51,9 @@
   /* Models, everywhere: a compact row per emergent. */
   .mrow { display: grid; grid-template-columns: 110px 1fr auto; gap: 8px; align-items: center; margin: 6px 0; }
   .mrow .who { font-weight: 600; }
+  .setline { margin-top: 10px; }
+  .setline button { font: inherit; padding: 4px 16px; border-radius: 5px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  .setline button:disabled { opacity: .45; cursor: default; }
   .mrow select { max-width: 260px; }
   .mrow .inherited select { color: var(--muted); font-style: italic; }
   /* Emergent defaults: a row per emergent, a column per setting. */
@@ -103,10 +106,10 @@
 <main>
   <h1>Settings</h1>
   <p class="lede">The most specific setting wins: one emergent in one Mood, then everyone in that Mood, then the emergent
-    everywhere, then the defaults. Grey italic values are inherited. Set a model for one emergent everywhere at the top;
+    everywhere, then the defaults. Grey italic values are inherited. Set a model or effort for an emergent in every Mood at once at the top;
     dig into one emergent below. Every change is kept at the bottom, with who made it.</p>
   <div id="scram"></div>
-  <h3>Model, everywhere</h3>
+  <h3>Set a model magenta-wide for:</h3>
   <div class="cards" id="models">Loading…</div>
   <h3>Emergent defaults</h3>
   <p class="note">Each emergent in every Mood and thread, new ones included, unless that Mood sets its own.</p>
@@ -195,47 +198,69 @@
   const vendorPicked = {};  // agent -> a vendor picked, before one of its models is
   const ALIASES = ['opus', 'sonnet', 'fable', 'haiku'];
   function vendorOf(m) { const i = (m || '').indexOf('/'); return i > 0 ? m.slice(0, i) : ''; }
-  function modelField(attrs, value, agent) {
+  function modelField(attrs, value, agent, blank) {
     const c = agent ? catalogs[agent] : null;
     if (!c) {
       const opts = !value || ALIASES.includes(value) ? ALIASES : [...ALIASES, value];
-      return `<select ${attrs}><option value="">(harness default)</option>${opts.map(o =>
+      return `<select ${attrs}><option value="">${blank || '(harness default)'}</option>${opts.map(o =>
         `<option value="${esc(o)}" ${o === value ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     }
     const vendor = vendorPicked[agent] || vendorOf(value);
     const vendors = c.vendors.filter(v => v.usable || v.name === vendor).sort((a, b) => a.name.localeCompare(b.name));
     const v = vendors.find(x => x.name === vendor);
     const first = `<select data-role="vendor" data-for="${esc(agent)}" title="vendor" ${viewer ? '' : 'disabled'}>`
-      + `<option value="" ${v ? '' : 'selected'}>${value ? 'vendor…' : '(harness default)'}</option>`
+      + `<option value="" ${v ? '' : 'selected'}>${value ? 'vendor…' : blank || '(harness default)'}</option>`
       + vendors.map(x => `<option value="${esc(x.name)}" ${x === v ? 'selected' : ''}>${esc(x.name)}${x.usable ? '' : ' · no key'}</option>`).join('')
       + '</select>';
     if (!v) return first;
     const ids = v.models.map(m => `${v.name}/${m[0]}`);
-    return first + ` <select ${attrs} title="model"><option value="" ${value ? '' : 'selected'}>${value ? '↺ default' : 'pick a model…'}</option>`
+    return first + ` <select ${attrs} title="model"><option value="" ${value ? '' : 'selected'}>${value ? (blank || '↺ default') : 'pick a model…'}</option>`
       + (value && !ids.includes(value) && vendorOf(value) === v.name ? `<option value="${esc(value)}" selected>${esc(value.slice(v.name.length + 1))}</option>` : '')
       + ids.map(id => `<option value="${esc(id)}" ${id === value ? 'selected' : ''}>${esc(id.slice(v.name.length + 1))}</option>`).join('')
       + '</select>';
   }
 
   // The one thing asked for at the top: one model per emergent, set everywhere (agent, no Mood).
+  // Set magenta-wide (Justin, 27 Oct): what's picked here waits for Set, then is written for that
+  // emergent in every Mood (and everywhere, for new ones). Anything left blank stays as it is.
+  const WIDE_KEYS = ['model', 'mention_effort', 'consider_effort'];
+  const wide = {};  // agent -> {key: value}, picked and not yet set
   function modelRows() {
-    return `<div class="card"><h2>Model, everywhere</h2>`
-      + `<div class="sub">one model for each emergent in every Mood; a Mood's own still overrides</div>`
-      + state.agents.map(a => {
-        const v = everywhere(a).model;
-        const here = setHere(null, a, 'model');
-        const attrs = `data-key="model" data-mood="" data-agent="${esc(a)}" ${viewer ? '' : 'disabled'}`;
-        return `<div class="mrow"><span class="who">${esc(a)}</span>`
-          + `<span class="${here ? '' : 'inherited'}">`
-          + modelField(attrs, v, a)
-          + `<span class="status"></span></span>`
-          // Effort beside it, optional: effort when mentioned, everywhere; left alone unless changed.
-          + `<span class="${setHere(null, a, 'mention_effort') ? '' : 'inherited'}">`
-          + `<select data-key="mention_effort" data-mood="" data-agent="${esc(a)}" title="${esc(state.knobs.mention_effort.help)}" ${viewer ? '' : 'disabled'}>`
-          + state.efforts.map(e => `<option value="${e}" ${e === everywhere(a).mention_effort ? 'selected' : ''}>${EFFORT_LABELS[e] || e}</option>`).join('')
-          + `</select><span class="status"></span></span></div>`;
-      }).join('') + '</div>';
+    const leave = '(leave as is)';
+    const dis = viewer ? '' : 'disabled';
+    const effort = (a, key) => `<select data-wide="${key}" data-agent="${esc(a)}" title="${esc(LABELS[key])}: ${esc(state.knobs[key].help)}" ${dis}>`
+      + `<option value="">${esc(LABELS[key])}: ${leave}</option>`
+      + state.efforts.map(e => `<option value="${e}" ${e === (wide[a] || {})[key] ? 'selected' : ''}>${esc(LABELS[key])}: ${EFFORT_LABELS[e] || e}</option>`).join('')
+      + '</select>';
+    const any = Object.values(wide).some(w => Object.values(w).some(Boolean));
+    return `<div class="card">`
+      + state.agents.map(a => `<div class="mrow"><span class="who">${esc(a)}</span><span>`
+        + modelField(`data-wide="model" data-agent="${esc(a)}" ${dis}`, (wide[a] || {}).model || '', a, leave)
+        + `</span><span>${effort(a, 'mention_effort')} ${effort(a, 'consider_effort')}</span></div>`).join('')
+      + `<div class="setline"><button type="button" id="setWide" ${viewer && any ? '' : 'disabled'}>Set</button>`
+      + ` <span class="status" id="wideStatus"></span></div></div>`;
   }
+  async function setWide() {
+    const status = document.getElementById('wideStatus');
+    const asks = [];
+    for (const [agent, w] of Object.entries(wide)) for (const [key, value] of Object.entries(w)) if (value) asks.push({ agent, key, value });
+    if (!asks.length) return;
+    status.className = 'status'; status.textContent = 'setting…';
+    const failed = [];
+    for (const ask of asks) {
+      const r = await fetch('/api/settings/', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ ...ask, mood: null, every_mood: true, note: 'magenta-wide' }),
+      });
+      if (!r.ok) failed.push(`${ask.agent} ${ask.key}: ${(await r.json().catch(() => ({}))).error || r.status}`);
+    }
+    if (failed.length) { status.className = 'status err'; status.textContent = failed.join('; '); return; }
+    for (const k of Object.keys(wide)) delete wide[k];
+    for (const k of Object.keys(vendorPicked)) delete vendorPicked[k];
+    status.className = 'status saved'; status.textContent = 'set in every Mood';
+    setTimeout(load, 900);
+  }
+
 
   // Emergent defaults: every setting, one emergent everywhere (agent, no Mood). Model is the row above.
   function defaultsTable() {
@@ -397,8 +422,15 @@
   }
   document.addEventListener('change', e => {
     if (e.target.dataset && e.target.dataset.role === 'vendor') { vendorPicked[e.target.dataset.for] = e.target.value; render(); return; }
+    if (e.target.dataset && e.target.dataset.wide) {
+      const a = e.target.dataset.agent;
+      (wide[a] = wide[a] || {})[e.target.dataset.wide] = e.target.value;
+      document.getElementById('models').innerHTML = modelRows();
+      return;
+    }
     if (e.target.dataset && e.target.dataset.key) save(e.target);
   });
+  document.addEventListener('click', e => { if (e.target.id === 'setWide') setWide(); });
   document.getElementById('pickAgent').addEventListener('change', e => {
     picked = e.target.value;
     document.getElementById('cards').innerHTML = picked ? agentView(picked) : '';
