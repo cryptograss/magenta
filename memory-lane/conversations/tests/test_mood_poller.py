@@ -2501,3 +2501,18 @@ class IncorporateTest(TestCase):
         poller.poll_once()
         self.assertEqual(waker.options['effort'], 'low')
         self.assertNotIn('/incorporate', waker.woken[0][1])
+
+    def test_a_handoff_is_one_full_block_with_the_same_settings(self):
+        api = FakeAPI([mention('jams', dict(turn('a', 'justin', 14, '/handoff #jams-fresh the setlist'), via='web'))],
+                      sessions={'jams': ['s-local']})
+        waker = FakeWaker()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=15), consider=False)
+        poller.settings = {'jams': {'verbosity': 'brief', 'handoff_effort': 'max'}}
+        poller.poll_once()
+        prompt = waker.woken[0][1]
+        self.assertIn('take what is here to #jams-fresh (the setlist)', prompt)
+        self.assertIn('```handoff block (to: jams-fresh)', prompt)
+        self.assertNotIn('Keep replies here short', prompt)
+        self.assertEqual(waker.options['effort'], 'max')

@@ -202,3 +202,10 @@ class IncorporateThreadTest(TestCase):
         events = self.client.get('/api/moods/jams-setlist/turns/').json()['events']
         self.assertEqual([(e['type'], e.get('into')) for e in events if e['type'] == 'incorporated'], [('incorporated', 'jams')])
         self.assertEqual(self.client.post('/api/moods/jams/close-thread/', '{}', content_type='application/json').status_code, 400)
+
+    def test_handoff_to_another_mood_wakes_magent_alone(self):
+        self.assertEqual(self.say('jams', '/handoff #elsewhere the setlist').status_code, 201)
+        self.assertEqual(self.client.get('/api/moods/jams/turns/').json()['turns'][-1]['mentions'], ['magent'])
+        for text in ('/handoff #nowhere', '/handoff #jams', '/handoff'):
+            with self.subTest(text=text):
+                self.assertEqual(self.say('jams', text).status_code, 400)

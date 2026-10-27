@@ -196,6 +196,11 @@ def _say_checks(text, device, slug=None):
             return JsonResponse({'error': f'{command[2].split()[0]} is not a thread of this Mood. '
                                           f'{agent_commands.INCORPORATE_FORM}'}, status=400)
         return None
+    if command and command[0] == 'handoff':
+        to = command[2].split()[0]
+        if slug and (Mood.by_slug(to.lstrip('#')) is None or to.lstrip('#') == slug):
+            return JsonResponse({'error': f'{to}: no other Mood by that name. {agent_commands.HANDOFF_FORM}'}, status=400)
+        return None
     if command:
         # They're Claude Code's; an agent on Pi has /compact too (its runner asks Pi's RPC
         # mode, poller/pi_harness.py), and none of the others yet.

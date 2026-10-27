@@ -41,6 +41,9 @@ FORM = {name: f'/{name} <agent>[,<agent>…]' + (' <what to keep>' if words else
 HANDOFF_AGENT = 'magent'
 INCORPORATE_FORM = '/incorporate #<thread> [what to be sure to carry back]'
 INCORPORATE = re.compile(r'/incorporate(?=\s|\Z)\s*(?:#([a-z0-9][a-z0-9-]{0,79})(?![\w-]))?\s*(.*)\Z', re.I | re.S)
+# The other direction: what's here, taken to another Mood (a fresh thread, or anywhere) as one handoff, by the same agent.
+HANDOFF_FORM = '/handoff #<mood> [what about]'
+HANDOFF = re.compile(r'/handoff(?=\s|\Z)\s*(?:#([a-z0-9][a-z0-9-]{0,79})(?![\w-]))?\s*(.*)\Z', re.I | re.S)
 
 
 class Invalid(ValueError):
@@ -52,11 +55,13 @@ def parse(text, agents):
     Raises Invalid if it means to be one and isn't written as one. `agents`: the agents' names."""
     text = (text or '').strip()
     agents = {a.lower() for a in agents}
-    incorporate = INCORPORATE.match(text)
-    if incorporate:
-        if not incorporate.group(1):
-            raise Invalid(f'which thread? {INCORPORATE_FORM}')
-        return 'incorporate', [HANDOFF_AGENT], f'#{incorporate.group(1).lower()} {incorporate.group(2).strip()}'.strip()
+    for name, pattern, form, which in (('incorporate', INCORPORATE, INCORPORATE_FORM, 'thread'),
+                                       ('handoff', HANDOFF, HANDOFF_FORM, 'Mood')):
+        found = pattern.match(text)
+        if found:
+            if not found.group(1):
+                raise Invalid(f'which {which}? {form}')
+            return name, [HANDOFF_AGENT], f'#{found.group(1).lower()} {found.group(2).strip()}'.strip()
     head = re.match(r'/([a-z]+)(?=\s|\Z)', text, re.I)
     if not head or head.group(1).lower() not in COMMANDS:
         # The old way, "@magent /compact ..." (anywhere: "hey @magent /compact"): said how it's written now.
@@ -90,6 +95,7 @@ def suggestions():
     """Every slash command the composer offers, as [name, form, what it does]: these, and /clips."""
     out = [[name, FORM[name], what] for name, (what, _) in COMMANDS.items()]
     out.append(['incorporate', INCORPORATE_FORM, f'{HANDOFF_AGENT} folds a thread of this Mood back into it: one full account'])
+    out.append(['handoff', HANDOFF_FORM, f'{HANDOFF_AGENT} takes what is here to another Mood (a fresh thread, say): one full handoff'])
     return out + [['clips', '/clips <name> | save <name> <yarn link> | forget <name>',
                    "the team's saved clips: post one by name, save one, forget one, or list them"]]
 

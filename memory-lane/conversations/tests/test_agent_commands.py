@@ -105,3 +105,6 @@ class IncorporateParseTest(TestCase):
         with self.assertRaises(ac.Invalid):
             ac.parse('/incorporate the setlist', AGENTS)
         self.assertIn('incorporate', [s[0] for s in ac.suggestions()])
+        self.assertEqual(ac.parse('/handoff #jams the setlist', AGENTS), ('handoff', ['magent'], '#jams the setlist'))
+        with self.assertRaises(ac.Invalid):
+            ac.parse('/handoff', AGENTS)

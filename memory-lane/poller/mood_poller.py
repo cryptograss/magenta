@@ -1107,6 +1107,23 @@ INCORPORATE_ASK = ('This is an /incorporate: #{thread}, a thread of this Mood, h
 INCORPORATE_ROOM = 60_000  # characters of the thread's record word for word (a prompt is at most MAX_PROMPT_CHARS); older, counted
 
 
+HANDOFF_COMMAND = re.compile(r'\A\s*(?:↩ #m-[0-9a-f-]+\n)?/handoff\s+#([a-z0-9][a-z0-9-]{0,79})(?![\w-])\s*(.*)\Z', re.I | re.S)
+HANDOFF_ASK = ('This is a /handoff: take what is here to #{to}{about}. Reply with one ```handoff block (to: {to}), '
+               'its context the full account someone there needs to go on without reading this Mood -- not short, '
+               'whatever this Mood says about length: what was decided and why, what was built or changed, with links '
+               '(PRs, pages, #m-<id> for the messages that matter), what is still open and whose it is. A line or two '
+               'outside the block, here, saying it went.')
+
+
+def handoff_of(owed):
+    """(to, about) for the first post owed that is a /handoff, else None."""
+    for t in owed:
+        m = HANDOFF_COMMAND.match(t.get('text') or '')
+        if m:
+            return m.group(1).lower(), m.group(2).strip()
+    return None
+
+
 def incorporate_of(owed):
     """(thread, what to be sure of) for the first post owed that is an /incorporate, else None."""
     for t in owed:
@@ -1777,7 +1794,7 @@ class MoodPoller:
         self.save()
         options = dict(effort=self.knob(slug, 'mention_effort', self.mention_effort), model=self.knob(slug, 'model'),
                        full=full)
-        if not commands and incorporate_of(owed):
+        if not commands and (incorporate_of(owed) or handoff_of(owed)):
             options.update(self.handoff_options(slug))
         if commands:
             del options['effort']
@@ -2265,9 +2282,13 @@ class MoodPoller:
             handed = []
         if handed:
             lines += ['', wake_line(self.texts, 'handed', HANDED_NOTE), *handed]
-        incorporate = incorporate_of(owed)
-        if incorporate:
-            lines += self.incorporate_brief(*incorporate)
+        incorporate, handing = incorporate_of(owed), handoff_of(owed)
+        if handing and not incorporate:
+            to, about = handing
+            lines += ['', wake_line(self.texts, 'handoff', HANDOFF_ASK, to=to, about=f' ({about})' if about else '')]
+        if incorporate or handing:
+            if incorporate:
+                lines += self.incorporate_brief(*incorporate)
             # Full length, whatever this Mood's verbosity (Justin, 27 Oct: "definitely don't want brief ... for handoffs").
             extras = self.reacted_lines(slug) + wake_extras('thorough', slug, self.texts)
         else:
@@ -2275,7 +2296,7 @@ class MoodPoller:
         return '\n'.join(lines + extras + wake_footer(full, self.texts))
 
     def handoff_options(self, slug):
-        """An /incorporate's effort and model: the handoff's own settings here. Its model only on the harness the
+        """An /incorporate's or /handoff's effort and model: the handoff settings here. Its model only on the harness the
         Mood's model runs on: the turn resumes this Mood's session, which only that harness has."""
         options = {'effort': self.knob(slug, 'handoff_effort', 'high')}
         model = self.knob(slug, 'handoff_model')
