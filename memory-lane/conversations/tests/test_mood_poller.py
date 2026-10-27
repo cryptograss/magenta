@@ -829,7 +829,7 @@ class MentionContextTest(TestCase):
         # Nobody has taken it: the take is offered beside the wait (Justin, 27 Oct: "I'll take this one").
         self.assertIn('reply with only <take to="a few words"/>', lines[2])
         # re has taken it (its 'taking ...' quiet after the post): told so, offered the wait on re, no take.
-        taken = dict(page, quiet=[{'sender': 're', 'by': '', 'reason': 'taking the redeploy question',
+        taken = dict(page, quiet=[{'sender': 're', 'by': '', 'reason': 'taking the redeploy question', 'type': 'take',
                                    'created_at': (T0 + timedelta(minutes=101)).isoformat()}])
         told = also_asked(owed, 'magent', taken)
         self.assertIn('re is taking this ("the redeploy question", its words)', told[2])
@@ -839,6 +839,11 @@ class MentionContextTest(TestCase):
         # A take from before the post, or by the screen, is not one on this post.
         stale = dict(page, quiet=[dict(taken['quiet'][0], created_at=(T0 + timedelta(minutes=99)).isoformat())])
         self.assertIn('<take to=', '\n'.join(also_asked(owed, 'magent', stale)))
+        # An older server, with the words and no type: still seen; a dot that merely begins so, by the screen: not.
+        untyped = dict(page, quiet=[{k: v for k, v in taken['quiet'][0].items() if k != 'type'}])
+        self.assertIn('re is taking this', also_asked(owed, 'magent', untyped)[2])
+        screened = dict(page, quiet=[dict(taken['quiet'][0], by='screen')])
+        self.assertIn('<take to=', '\n'.join(also_asked(owed, 'magent', screened)))
         self.assertEqual(also_asked([dict(owed[0], mentions=['magent', 'skyler'])], 'magent', page), [])  # a person isn't
         self.assertEqual(also_asked(owed, 'magent', None), [])  # nothing known: nothing said
         # re writing to magent, naming itself ("when your @re landed"): re isn't asked, it's asking.
@@ -2287,7 +2292,8 @@ class WaitingTest(TestCase):
         self.assertEqual(quiet_reason('<wait for="re"/>'), {'reason': 'waiting for re', 'by': ''})
         self.assertTrue(is_wrapper('<wait for="re"/>'))             # so the mentions endpoint passes it by
         # A take is one too: a claim, shown as a line, never an answer (its answer is the next turn).
-        self.assertEqual(quiet_reason('<take to="the redeploy question"/>'), {'reason': 'taking the redeploy question', 'by': ''})
+        self.assertEqual(quiet_reason('<take to="the redeploy question"/>'),
+                         {'reason': 'taking the redeploy question', 'by': '', 'type': 'take'})
         self.assertTrue(is_wrapper('<take to="x"/>'))
 
     def test_something_new_for_it_ends_the_wait(self):

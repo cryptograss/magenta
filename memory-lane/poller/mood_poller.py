@@ -1013,7 +1013,8 @@ WAIT_ALL = (' To wait for all of them at once, name them together: <wait for="{a
 TAKE_OFFER = ('If the post asks one question that one of you should answer, and it is yours (magent\'s by default; '
               'yours when it is about your work or your skills), reply with only <take to="a few words"/>, the '
               'words naming what you take ("the redeploy question"): you are woken again at once to answer it, '
-              'and the others are told. If it asks each of you something different, answer yours.')
+              'and the others are told. If you will answer all of it, take it first; the others are held only '
+              'briefly for you. If it asks each of you something different, answer yours.')
 TAKEN = ('{who} is taking this ("{to}", its words), so answer only what that leaves to you, react, or stay silent '
          '(<silent>why</silent>); to answer with its answer in view, wait for it.')
 TOOK = 'You took this ("{to}"). The others asked were told, and answer only what you leave them. Answer now.'
@@ -1032,8 +1033,9 @@ def taking_on(owed, page, names):
     last = max((t.get('created_at') or '' for t in owed), default='')
     found = {}
     for q in sorted(page.get('quiet') or [], key=lambda q: q.get('created_at') or ''):
+        is_take = q.get('type') == 'take' or str(q.get('reason') or '').startswith('taking ')  # the words: an older server
         if (q.get('sender') in names and q.get('by', '') not in ('screen', 'failed') and (q.get('created_at') or '') > last
-                and str(q.get('reason') or '').startswith('taking ')):
+                and is_take):
             found[q['sender']] = str(q['reason'])[len('taking '):]
     return found
 

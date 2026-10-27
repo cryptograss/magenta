@@ -83,7 +83,9 @@ def quiet_reason(text):
         take = _TAKE.match(text or '')
         if take:
             to = take.group(1).split()
-            return {'reason': 'taking ' + ' '.join((to[1:] if to and to[0].lower() == 'to' else to)[:8]), 'by': ''}
+            # type: what it is, so a reader needn't match the words (re's review of magenta#206).
+            return {'reason': 'taking ' + ' '.join((to[1:] if to and to[0].lower() == 'to' else to)[:8]), 'by': '',
+                    'type': 'take'}
         wait = _WAIT.match(text or '')
         if not wait:
             return None

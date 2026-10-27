@@ -3735,7 +3735,7 @@
   function addQuiet(q, container) {
     // Taking a question that asked several (the poller's <take/>): a line, "magent is taking the redeploy
     // question", that reads "took" once its answer lands (resolveTakes).
-    if (q.by !== 'screen' && /^taking /.test(q.reason || '')) {
+    if (q.by !== 'screen' && (q.type === 'take' || /^taking /.test(q.reason || ''))) {
       if (container._held) delete container._held[q.sender];
       const line = document.createElement('div');
       line.className = 'waitline';
