@@ -1111,6 +1111,8 @@ def settings_changed(agent, page, texts=None):
     return ['', wake_line(texts, 'settings-changed', SETTINGS_CHANGED, said=said, who=who, why=why)]
 
 
+ANNOUNCED_NOTE = ('Announced to every Mood since you were last woken here (with /announce, in another Mood: not said here, '
+                  'but meant for you here too):')
 REACTED_NOTE = ('Reactions to your posts here since you were last woken (a nod, not a question: '
                 'nothing to answer unless one tells you something):')
 
@@ -2377,7 +2379,7 @@ class MoodPoller:
             if incorporate:
                 lines += self.incorporate_brief(*incorporate)
             # Full length, whatever this Mood's verbosity (Justin, 27 Oct: "definitely don't want brief ... for handoffs").
-            extras = self.reacted_lines(slug) + wake_extras('thorough', slug, self.texts)
+            extras = self.extras_lines(slug, verbosity='thorough')
         else:
             extras = self.extras_lines(slug)
         return '\n'.join(lines + extras + wake_footer(full, self.texts))
@@ -2445,15 +2447,31 @@ class MoodPoller:
         lines += transcript_of(kept, set(new_ids), limit=room + 10_000, each=EACH_MAX)
         return lines, cost
 
-    def extras_lines(self, slug):
-        return self.reacted_lines(slug) + wake_extras(self.knob(slug, 'verbosity', 'normal'), slug, self.texts)
-
-    def reacted_lines(self, slug):
-        """What's new among the reactions to its posts here (reactions_to), told once: the first time it's
-        woken in a Mood, what was there already is only noted."""
-        try:
+    def extras_lines(self, slug, verbosity=None):
+        try:  # one look at the Mood, for both
             page = self.api.recent(slug, limit=200)
         except Exception:
+            page = None
+        return (self.announced_lines(slug, page) + self.reacted_lines(slug, page)
+                + wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts))
+
+    def announced_lines(self, slug, page):
+        """/announce made in other Moods, not yet told to it here (memory-lane services/announce.py), once each."""
+        found = (page or {}).get('announcements') or []
+        told = self.state.setdefault('announced', {})
+        mine = set(told.get(slug) or ())
+        fresh = [a for a in found if a.get('id') not in mine]
+        if not fresh:
+            return []
+        told[slug] = (list(mine) + [a['id'] for a in fresh])[-200:]
+        self.save()
+        return ['', wake_line(self.texts, 'announced', ANNOUNCED_NOTE),
+                *[f"[{a.get('by')}, in #{a.get('from_mood')}, {str(a.get('created_at'))[:16]}Z] {a.get('text') or ''}" for a in fresh]]
+
+    def reacted_lines(self, slug, page):
+        """What's new among the reactions to its posts here (reactions_to), told once: the first time it's
+        woken in a Mood, what was there already is only noted."""
+        if page is None:
             return []
         known = self.state.setdefault('reacted', {})
         first = slug not in known

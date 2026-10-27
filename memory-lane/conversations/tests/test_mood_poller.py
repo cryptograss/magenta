@@ -1172,6 +1172,24 @@ class ConsiderLoopTest(TestCase):
         poller.consider_once()
         self.assertNotIn('justin 👍', self.waker.woken[2][1])  # once
 
+    def test_an_announcement_from_elsewhere_rides_its_next_wake_once(self):
+        class Announced(ConsiderAPI):
+            announcements = []
+            def recent(inner, slug, limit=40):
+                return {**super().recent(slug, limit), 'announcements': inner.announcements}
+        api = Announced()
+        poller = self.make(api, FakeScreen('pass'))
+        api.announcements = [{'id': 'a1', 'by': 'justin', 'from_mood': 'general', 'created_at': '2026-10-27T11:31:00',
+                              'text': 'Beta is tonight at 8'}]
+        api.add(post('a', 1))
+        self.at(minutes=2)
+        poller.consider_once()
+        self.assertIn('[justin, in #general, 2026-10-27T11:31Z] Beta is tonight at 8', self.waker.woken[0][1])
+        api.add(post('b', 3))
+        self.at(minutes=4)
+        poller.consider_once()
+        self.assertNotIn('Beta is tonight', self.waker.woken[1][1])  # once
+
     def test_never_its_own(self):
         api = ConsiderAPI()
         poller = self.make(api, FakeScreen('pass'))

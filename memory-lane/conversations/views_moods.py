@@ -308,7 +308,7 @@ def api_mood_turns(request, slug):
             changes.append({**c, 'turn': retract.mark(turn_payload(msg, text, names), retract.change_of(msg))
                             if msg and text else None})
     clock.lap('changes')
-    from .services import pins, reactions
+    from .services import announce, pins, reactions
     return clock.report(JsonResponse({
         # A poll for what's new: its name only (a rename shows at once); the rest is a first look's.
         'mood': clock('mood', mood_payload, mood, light=after is not None),
@@ -316,6 +316,8 @@ def api_mood_turns(request, slug):
         'reactions': clock('reactions', reactions.in_mood, mood),
         # What's pinned to this Mood's top, newest first (services/pins.py).
         'pins': clock('pins', pins.in_mood, mood),
+        # /announce from other Moods, for the runner's next wake here; never drawn (services/announce.py).
+        'announcements': clock('announcements', announce.in_mood, mood),
         # What was edited or deleted since ?changes_since=, as it stands now; and the time to ask from next.
         'changes': changes,
         'now': timezone.now().isoformat(),
