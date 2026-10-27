@@ -383,6 +383,7 @@ def agents_in(mood):
                      'effort': resolved['mention_effort'], 'ultracode': bool(resolved['ultracode']),
                      'reads': resolved['catch_up_tokens'],
                      'discretion': resolved['discretion'], 'verbosity': resolved['verbosity'],
+                     'handoff_effort': resolved['handoff_effort'],
                      # Who set each as it stands, and when: the page says so, and flashes one that just changed.
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
                      'context': context_in(mood, name),
