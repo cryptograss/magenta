@@ -3784,6 +3784,17 @@
       container.appendChild(line);
       return;
     }
+    // Held by its runner while the lead read a post that asked both (by="held", the stagger of magenta#206): a
+    // line, so the round reads true afterwards (Justin, 27 Oct: "nor does it now say that re waited").
+    if (q.by === 'held') {
+      const line = document.createElement('div');
+      line.className = 'waitline';
+      line.style.setProperty('--who', agentColor(q.sender));
+      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> ${esc(q.reason || 'was held')}`
+        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      container.appendChild(line);
+      return;
+    }
     // A turn that came back with nothing, tried twice (the runner says so, by="failed"): a line, not a dot --
     // it isn't a choice not to speak, and whoever asked should know to ask again.
     if (q.by === 'failed') {

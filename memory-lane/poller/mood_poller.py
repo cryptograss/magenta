@@ -1379,7 +1379,7 @@ class MoodPoller:
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
                  agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
-                 end_orphans=end_orphans, texts=None, instructions=False, lead='magent', take_wait=45):
+                 end_orphans=end_orphans, texts=None, instructions=False, lead='magent', take_wait=20):
         self.api = api
         # Its instructions, gathered for each turn and given as system prompt (poller/instructions.py): for an
         # agent that has them on PickiPedia (blu first), never for one whose instructions live elsewhere yet.
@@ -1439,7 +1439,7 @@ class MoodPoller:
         # each, all to say nothing. A mention is never skipped for its cost.
         self.quiet_look_max_usd = quiet_look_max_usd
         # A post that asks several emergents: the lead reads it first, and the others are woken once it has
-        # taken it (_TAKE_REPLY), or answered, or `take_wait` seconds have passed (re, 27 Oct: two pollers
+        # taken it (_TAKE_REPLY), or said anything else, or `take_wait` seconds have passed (re, 27 Oct: two pollers
         # firing in the same second both start before either claim can land). The Mood's 'lead' setting
         # overrides the name.
         self.lead = lead
@@ -2038,26 +2038,50 @@ class MoodPoller:
 
     def lead_reads_first(self, slug, owed):
         """Whether to hold this wake while the lead reads the posts first: they asked the lead too, this agent
-        isn't it, and the lead has neither taken them (a 'taking ...' quiet) nor answered, within take_wait of
-        the newest. Held, not dropped: looked at again on the next pass, and shown so. Never a wake that resumes
-        a wait or a take of this agent's own: it was staggered once."""
+        isn't it, and the lead has said nothing since, within take_wait of the newest. A take is always the
+        lead's first reply (TAKE_OFFER), so its first word of any other kind, a line on the way to a tool or a
+        tool step, says it didn't take them: the questions were separate, and the others go (Justin, 27 Oct:
+        re held a minute for nothing). Held, not dropped: looked at again on the next pass, shown so while it
+        lasts, and left in the record as a line once it's over ('held 41 s while magent read first'). Never a
+        wake that resumes a wait or a take of this agent's own: it was staggered once."""
         lead = self.knob(slug, 'lead', self.lead)
-        if lead == self.agent or slug in self.wait_notes or lead not in others_asked(owed, self.agent):
+        staggered = self.state.setdefault('staggered', {})
+
+        def over():
+            held = staggered.pop(slug, None)
+            if held:
+                secs = max(1, int((self.now() - parse_time(held['since'])).total_seconds()))
+                self.quiet_line(slug, f"held {secs} s while {held['lead']} read first", by='held')
+                self.save()
             return False
+        if lead == self.agent or slug in self.wait_notes or lead not in others_asked(owed, self.agent):
+            return over()
         newest = max(t['created_at'] for t in owed)
         if self.now() - parse_time(newest) >= self.take_wait:
-            return False
+            return over()
         try:
             page = self.api.recent(slug, limit=60)
         except Exception:  # noqa: BLE001 -- can't see the Mood: answer as before
-            return False
-        if any(t.get('sender') == lead and (t.get('created_at') or '') > newest and ended(t)
-               for t in page.get('turns') or []):
-            return False
-        if taking_on(owed, page, [lead]):
-            return False
+            return over()
+        spoke = [t for t in (page.get('turns') or []) + (page.get('steps') or [])
+                 if t.get('sender') == lead and (t.get('created_at') or '') > newest]
+        if spoke or taking_on(owed, page, [lead]):
+            return over()
+        if slug not in staggered:
+            staggered[slug] = {'since': self.now().isoformat(), 'lead': lead}
+            self.save()
         self.hold(slug, f'{lead} reads this first', parse_time(newest) + self.take_wait, after=newest)
         return True
+
+    def quiet_line(self, slug, reason, by):
+        """A line in the record that isn't the agent's choice, marked whose it is (by='held': the runner held
+        it). Not a dot: the page shows it as it shows a wait."""
+        if self.dry_run:
+            return
+        try:
+            self.api.quiet(slug, reason, by=by)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f'{slug}: could not leave the line: {e}')
 
     def after_reply(self, slug, owed, reply):
         """A mention's turn has ended: if it took the question (_TAKE_REPLY), it is woken again at once to answer,
@@ -3026,7 +3050,7 @@ def build_parser():
     parser.add_argument('--letter', default=None, help=argparse.SUPPRESS)
     parser.add_argument('--lead', default='magent',
                         help='Who reads a post that asks several emergents first (the Mood setting "lead" overrides)')
-    parser.add_argument('--take-wait', type=int, default=45,
+    parser.add_argument('--take-wait', type=int, default=20,
                         help='Seconds the others are held for the lead to take or answer such a post')
     parser.add_argument('--instructions', '--rules-bundle', dest='instructions', action='store_true',
                         help="Give each turn the agent's instructions from PickiPedia as system prompt "

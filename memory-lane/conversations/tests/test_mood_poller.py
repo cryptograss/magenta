@@ -2323,6 +2323,10 @@ class TakingTest(TestCase):
             def recent(inner, slug, limit=40):
                 return test.page
 
+            def quiet(inner, slug, reason, by='screen'):
+                inner.quiets = getattr(inner, 'quiets', []) + [(slug, reason, by)]
+                return True
+
         ask = dict(turn('ask', 'justin', 0, '@magent @re good for redeploy?'), via='web', mentions=list(mentions))
         self.api = API([mention('m26', ask)], sessions={'m26': ['s-local']})
         state = Path(tempfile.mkdtemp()) / 'state.json'
@@ -2366,18 +2370,27 @@ class TakingTest(TestCase):
         self.assertIn('<wait for="magent" to="a few words"/>', prompt)
         self.assertNotIn('<take to=', prompt)
         self.assertEqual(self.api.holds[-1][1], '')                 # the hold lifted with the wake
+        self.assertEqual(self.api.quiets[-1][1], 'held 15 s while magent read first')
 
-    def test_the_lead_answering_without_a_take_releases_the_other(self):
+    def test_the_leads_first_word_that_is_not_a_take_releases_the_other(self):
         poller = self.make(['Mine too.'], agent='re')
         self.assertEqual(poller.poll_once(), [])
-        # A progress line on the way ("Reads done.") isn't the answer: still held (re, 27 Oct).
+        # A take is always the lead's first reply: a line on the way to a tool instead says it didn't take
+        # them, so the questions were separate (Justin, 27 Oct: re held a minute for nothing).
         self.page['turns'] = [dict(turn('p1', 'magent', 1, 'Checking the deploy.'), stop='tool_use')]
         self.clock[0] += timedelta(seconds=10)
-        self.assertEqual(poller.poll_once(), [])
-        self.page['turns'].append(dict(turn('a1', 'magent', 1, 'Yes, redeploy.'), stop='end_turn'))
-        self.clock[0] += timedelta(seconds=5)
         self.assertEqual(poller.poll_once(), ['m26'])
         self.assertIn('<take to=', self.waker.woken[0][1])          # nothing taken: the offer stands
+        # And the hold is in the record, as a line: how long, and for whom.
+        self.assertEqual(self.api.quiets, [('m26', 'held 10 s while magent read first', 'held')])
+        self.assertNotIn('m26', poller.state['staggered'])
+
+    def test_a_tool_step_by_the_lead_releases_too(self):
+        poller = self.make(['Mine.'], agent='re')
+        self.assertEqual(poller.poll_once(), [])
+        self.page['steps'] = [dict(turn('s1', 'magent', 1, ''), tool='Bash', verb='ran')]
+        self.clock[0] += timedelta(seconds=3)
+        self.assertEqual(poller.poll_once(), ['m26'])
 
     def test_the_cap_releases_the_other_with_the_offer(self):
         poller = self.make(['Mine.'], agent='re', take_wait=20)
@@ -2385,6 +2398,7 @@ class TakingTest(TestCase):
         self.clock[0] += timedelta(seconds=21)
         self.assertEqual(poller.poll_once(), ['m26'])
         self.assertIn('<take to=', self.waker.woken[0][1])
+        self.assertEqual(self.api.quiets[-1][1], 'held 21 s while magent read first')
 
     def test_no_stagger_when_the_lead_was_not_asked_or_is_this_agent(self):
         poller = self.make(['Mine.'], agent='re', mentions=('re', 'blu'))
