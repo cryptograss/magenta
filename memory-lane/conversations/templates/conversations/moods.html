@@ -810,6 +810,13 @@
   #composer textarea { flex: 1; font-family: inherit; line-height: inherit; min-height: 44px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
   #composer button { font: inherit; padding: 8px 14px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
   #composer button:disabled { opacity: .5; cursor: default; }
+  /* A tiny chevron at the top centre: pull the box up to write at length, and back down (Justin, 27 Oct). */
+  #composer .expand { position: absolute; top: -7px; left: 50%; transform: translateX(-50%);
+    width: 42px; height: 13px; padding: 0; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--panel); color: var(--muted); font-size: 9px; line-height: 11px; text-align: center;
+    cursor: pointer; z-index: 2; }
+  #composer .expand:hover { color: var(--accent); border-color: var(--accent); }
+  body.say-expanded #composer textarea { max-height: 85vh; }
   /* A word from the page (an error, a note) goes on its own line under the box: beside it, a
      long one squeezed the box to a sliver on a phone, and you couldn't type to clear it. */
   #composer textarea { min-width: 0; }
@@ -1441,6 +1448,7 @@
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
     <form id="composer" autocomplete="off">
       <div id="suggest"></div>
+      <button type="button" id="expandComposer" class="expand" title="Expand the box to write at length" aria-label="Expand the message box" aria-expanded="false">▴</button>
       <button type="button" id="agentsBtn" title="Emergents here: listening, model, effort" aria-label="Emergent settings" aria-expanded="false">⚙</button>
       <div id="tray" hidden></div>
       <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
@@ -5959,7 +5967,7 @@
   // On a phone: one line until there's more to say, growing with the text (to 40% of the screen).
   const phone = matchMedia(PHONE).matches;
   function fitSay() {
-    if (!phone) return;
+    if (!phone || document.body.classList.contains('say-expanded')) return;
     // Empty, it's one line again: an empty textarea's scrollHeight counts its
     // placeholder, wrapped to the box's width, so measuring it then made the
     // box as tall as the placeholder written a word per line.
@@ -5970,6 +5978,20 @@
   // Short: a phone's box is narrow, and a placeholder can't wrap or end in an ellipsis there.
   sayBox.addEventListener('input', fitSay);
   addEventListener('resize', fitSay);  // turning the phone rewraps what's typed
+
+  // The chevron at the box's top centre: pull it up to a long box, and back to the size it was (Justin, 27 Oct).
+  const expandBtn = document.getElementById('expandComposer');
+  const expandSay = on => {
+    const was = expandSay.height ?? '';
+    if (on) expandSay.height = sayBox.style.height;  // whatever it was: a drag, or fitSay's
+    sayBox.style.height = on ? Math.round(innerHeight * 0.6) + 'px' : was;
+    document.body.classList.toggle('say-expanded', on);
+    expandBtn.textContent = on ? '▾' : '▴';
+    expandBtn.title = on ? 'Collapse the box' : 'Expand the box to write at length';
+    expandBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) { sayBox.focus(); sayBox.setSelectionRange(sayBox.value.length, sayBox.value.length); }
+  };
+  expandBtn.addEventListener('click', () => expandSay(!document.body.classList.contains('say-expanded')));
 
   // Tell the Mood this person is typing: at most every 3s while there is
   // text, and once when it is cleared or sent.
