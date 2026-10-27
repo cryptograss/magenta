@@ -91,11 +91,17 @@ _SILENT_REPLY = re.compile(r'^\s*<silent\s*/>\s*$|^\s*<silent>.*</silent>\s*$|^\
 _WAIT_REPLY = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"(?:\s+to="([^"<>]{0,200})")?\s*/>\s*$')
 WAIT_TO_WORDS = 8      # words of a wait's to="..." shown; the rest are cut
 WAIT_FOR = timedelta(minutes=5)   # between check-ins
+# "I'll take this one" (Justin, 27 Oct): a post that asked several emergents one question, and this one answers
+# it. A reply of only <take to="a few words"/>: recorded as a claim (a line in the Mood, "magent is taking the
+# redeploy question"), then this agent is woken again at once to answer; the others asked see the claim in their
+# wake and answer only what it leaves them. Judgement, not a rule: a post that asks each something different is
+# answered by each, with no take.
+_TAKE_REPLY = re.compile(r'^\s*<take\s+to="([^"<>]{1,200})"\s*/>\s*$')
 # Linux caps a single argument at 128 KiB; a prompt is an argument.
 MAX_PROMPT_CHARS = 100_000
 # Text that could pass for the wrapper's own tags, so a post can't close
 # <mood-wake> early and write what looks like the poller's instructions.
-_WRAPPER_TAG = re.compile(r'<(/?)(mood-wake)', re.I)
+_WRAPPER_TAG = re.compile(r'<(/?)(mood-wake|take|wait)', re.I)
 
 
 def utc_seconds():
@@ -1002,12 +1008,35 @@ WAIT_OFFER = ('If you would rather answer after them, reply with only <wait for=
 # night, 26 Oct: "mention me when you've both revealed" cost a wake each; the parser took "re,blu" all along).
 WAIT_ALL = (' To wait for all of them at once, name them together: <wait for="{all}" to="a few words"/>; you are '
             'woken once the last has answered.')
+# Offered beside the wait when others were asked too and nobody has taken it. Who takes is judgement: magent by
+# default, another when the post is about its work or its skills (Justin, 27 Oct).
+TAKE_OFFER = ('If the post asks one question that one of you should answer, and it is yours (magent\'s by default; '
+              'yours when it is about your work or your skills), reply with only <take to="a few words"/>, the '
+              'words naming what you take ("the redeploy question"): you are woken again at once to answer it, '
+              'and the others are told. If it asks each of you something different, answer yours.')
+TAKEN = ('{who} is taking this ("{to}", its words), so answer only what that leaves to you, react, or stay silent '
+         '(<silent>why</silent>); to answer with its answer in view, wait for it.')
+TOOK = 'You took this ("{to}"). The others asked were told, and answer only what you leave them. Answer now.'
+
+
+def taking_on(owed, page, names):
+    """{name: what} for each of `names` whose newest quiet since the posts `owed`, as the Mood's turns API
+    shows them (page['quiet']), is a take ('taking the redeploy question')."""
+    last = max((t.get('created_at') or '' for t in owed), default='')
+    found = {}
+    for q in sorted(page.get('quiet') or [], key=lambda q: q.get('created_at') or ''):
+        if (q.get('sender') in names and q.get('by', '') not in ('screen', 'failed') and (q.get('created_at') or '') > last
+                and str(q.get('reason') or '').startswith('taking ')):
+            found[q['sender']] = str(q['reason'])[len('taking '):]
+    return found
 
 
 def also_asked(owed, agent, page, may_wait=True, texts=None):
     """Lines telling a woken agent which other agents the posts that woke it asked too, and whether each was at
     work here as its wake was written (Justin, 24 Oct: two agents answering one question blind, neither knowing
-    the other was). Nothing waits on anyone: each is woken by its own poller. `page`: the Mood's turns API."""
+    the other was). Nothing waits on anyone: each is woken by its own poller. `page`: the Mood's turns API.
+    With one of them taking it (TAKE_OFFER, taking_on), told so, and offered the wait on that one; else, when it
+    may wait, offered the take too."""
     page = page or {}
     working = {a.get('agent'): a.get('doing') for a in page.get('activities') or [] if a.get('agent')}
     agents = set(page.get('agents') or {}) | set(working)
@@ -1029,10 +1058,17 @@ def also_asked(owed, agent, page, may_wait=True, texts=None):
         return 'has answered, below' if name in answered else 'not at work here yet'
     said = '; '.join(f'{name}, {state(name)}' for name in asked)
     # Justin's words (24 Oct): "mentioned, and likely woken" -- whether they answer is theirs to say.
-    also = wake_line(texts, 'wait-all', WAIT_ALL, all=','.join(asked)) if len(asked) > 1 else ''
-    wait = (' ' + wake_line(texts, 'wait-offer', WAIT_OFFER, first=asked[0], agent=agent, also=also).strip()
+    taken = taking_on(owed, page, asked)
+    first = next(iter(taken), asked[0])  # one taking it is the one to wait for
+    also = wake_line(texts, 'wait-all', WAIT_ALL, all=','.join(asked)) if len(asked) > 1 and not taken else ''
+    wait = (' ' + wake_line(texts, 'wait-offer', WAIT_OFFER, first=first, agent=agent, also=also).strip()
             if may_wait else '')
-    return ['', wake_line(texts, 'others-asked', OTHERS_ASKED, said=said, wait=wait)]
+    lines = ['', wake_line(texts, 'others-asked', OTHERS_ASKED, said=said, wait=wait)]
+    if taken:
+        lines.append(wake_line(texts, 'taken', TAKEN, who=first, to=taken[first]))
+    elif may_wait:
+        lines.append(wake_line(texts, 'take-offer', TAKE_OFFER))
+    return lines
 
 
 def others_asked(owed, agent):
@@ -1295,7 +1331,7 @@ class MoodPoller:
                  consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
                  agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
-                 end_orphans=end_orphans, texts=None, instructions=False):
+                 end_orphans=end_orphans, texts=None, instructions=False, lead='magent', take_wait=45):
         self.api = api
         # Its instructions, gathered for each turn and given as system prompt (poller/instructions.py): for an
         # agent that has them on PickiPedia (blu first), never for one whose instructions live elsewhere yet.
@@ -1354,6 +1390,12 @@ class MoodPoller:
         # 2026-10-16 three quiet looks read a 510k-token session for $4.10
         # each, all to say nothing. A mention is never skipped for its cost.
         self.quiet_look_max_usd = quiet_look_max_usd
+        # A post that asks several emergents: the lead reads it first, and the others are woken once it has
+        # taken it (_TAKE_REPLY), or answered, or `take_wait` seconds have passed (re, 27 Oct: two pollers
+        # firing in the same second both start before either claim can land). The Mood's 'lead' setting
+        # overrides the name.
+        self.lead = lead
+        self.take_wait = timedelta(seconds=take_wait)
         self.last_reply = None
         # Turns at once, at most one per Mood: each Mood is its own context
         # and usually its own person, so one long turn mustn't hold up the
@@ -1688,6 +1730,8 @@ class MoodPoller:
         grace = self.grace if any(not self.unlistened(t) for t in owed) else timedelta(0)
         if self.now() - parse_time(owed[0]['created_at']) < grace:
             return settled, None
+        if self.lead_reads_first(slug, owed):
+            return settled, None
         recent = self.recent_wakes()
         if len(recent) >= self.max_wakes_per_hour:
             # The next slot opens when the oldest of the hour's wakes ages out.
@@ -1940,11 +1984,44 @@ class MoodPoller:
         except Exception as e:  # noqa: BLE001 -- the turn happened; only its record is lost, and said so
             logger.warning(f'bundle {record.get("id")} not recorded: {e}')
 
-    # --- waiting for another agent -------------------------------------------------
+    # --- taking a question asked of several, and waiting for another agent --------------
+
+    def lead_reads_first(self, slug, owed):
+        """Whether to hold this wake while the lead reads the posts first: they asked the lead too, this agent
+        isn't it, and the lead has neither taken them (a 'taking ...' quiet) nor answered, within take_wait of
+        the newest. Held, not dropped: looked at again on the next pass, and shown so. Never a wake that resumes
+        a wait or a take of this agent's own: it was staggered once."""
+        lead = self.knob(slug, 'lead', self.lead)
+        if lead == self.agent or slug in self.wait_notes or lead not in others_asked(owed, self.agent):
+            return False
+        newest = max(t['created_at'] for t in owed)
+        if self.now() - parse_time(newest) >= self.take_wait:
+            return False
+        try:
+            page = self.api.recent(slug, limit=60)
+        except Exception:  # noqa: BLE001 -- can't see the Mood: answer as before
+            return False
+        if any(t.get('sender') == lead and (t.get('created_at') or '') > newest for t in page.get('turns') or []):
+            return False
+        if taking_on(owed, page, [lead]):
+            return False
+        self.hold(slug, f'{lead} reads this first', parse_time(newest) + self.take_wait, after=newest)
+        return True
 
     def after_reply(self, slug, owed, reply):
-        """A mention's turn has ended: if it chose to wait for another agent asked too, it waits. A wait not
-        taken is said at its next wake, at once, so the question is still answered."""
+        """A mention's turn has ended: if it took the question (_TAKE_REPLY), it is woken again at once to answer,
+        told so; if it chose to wait for another agent asked too, it waits. A wait not taken is said at its next
+        wake, at once, so the question is still answered."""
+        take = _TAKE_REPLY.match(reply or '')
+        if take and owed:
+            to = wait_to(take.group(1))
+            now = self.now()
+            logger.info(f'{slug}: took it ({to}); answering next')
+            # The wait machinery with nothing to wait for: over at the next pass, its note the wake's.
+            self.state['waits'][slug] = {'for': [], 'owed': owed, 'since': now.isoformat(), 'until': now.isoformat(),
+                                         'refused': TOOK.format(to=to)}
+            self.save()
+            return
         match = _WAIT_REPLY.match(reply or '')
         if not match or not owed:
             return
@@ -2853,6 +2930,10 @@ def build_parser():
                              "(its home went with its container), so a mention starts it over from the record")
     # Retired with poller/letter.md: still taken, and ignored, until hunter's container_startup stops passing it.
     parser.add_argument('--letter', default=None, help=argparse.SUPPRESS)
+    parser.add_argument('--lead', default='magent',
+                        help='Who reads a post that asks several emergents first (the Mood setting "lead" overrides)')
+    parser.add_argument('--take-wait', type=int, default=45,
+                        help='Seconds the others are held for the lead to take or answer such a post')
     parser.add_argument('--instructions', '--rules-bundle', dest='instructions', action='store_true',
                         help="Give each turn the agent's instructions from PickiPedia as system prompt "
                              "(poller/instructions.py); --rules-bundle is the old name, until the inventory says this one")
@@ -2922,7 +3003,7 @@ def main(argv=None):
                           agent_wakes_per_hour=args.agent_wakes_per_hour,
                           only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
                           texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')),
-                          instructions=args.instructions)
+                          instructions=args.instructions, lead=args.lead, take_wait=args.take_wait)
     report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on

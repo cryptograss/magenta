@@ -1535,6 +1535,15 @@
       delete line.dataset.waitingFor;
     });
   }
+  // Its answer has landed: "is taking X" reads "took X".
+  function resolveTakes(container, agentName) {
+    container.querySelectorAll('.waitline[data-taking-by]').forEach(line => {
+      if (line.dataset.takingBy !== agentName) return;
+      const verbSpan = line.querySelector('.wait-verb');
+      if (verbSpan) verbSpan.textContent = verbSpan.textContent.replace(/^is taking /, 'took ');
+      delete line.dataset.takingBy;
+    });
+  }
   function agentColor(name) {
     if (AGENT_COLORS[name]) return AGENT_COLORS[name];
     let h = 0;
@@ -3724,6 +3733,19 @@
   });
 
   function addQuiet(q, container) {
+    // Taking a question that asked several (the poller's <take/>): a line, "magent is taking the redeploy
+    // question", that reads "took" once its answer lands (resolveTakes).
+    if (q.by !== 'screen' && /^taking /.test(q.reason || '')) {
+      if (container._held) delete container._held[q.sender];
+      const line = document.createElement('div');
+      line.className = 'waitline';
+      line.style.setProperty('--who', agentColor(q.sender));
+      line.dataset.takingBy = q.sender;
+      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> <span class="wait-verb">is ${esc(q.reason)}</span>`
+        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      container.appendChild(line);
+      return;
+    }
     // A wait for another agent stays in the thread as a line, the status line's words and colours:
     // "magent is waiting for re to settle the schema" (Justin, 25 Oct), not a dot.
     if (q.by !== 'screen' && /^waiting for /.test(q.reason || '')) {
@@ -4145,6 +4167,7 @@
           prev = null;
           body.appendChild(turnEl(it.v, isNew));
           resolveWaits(container, agent, it.v.created_at, b);
+          resolveTakes(container, agent);
           // Naming another agent wakes it: its turn is timed from here.
           (it.v.mentions || []).filter(n => n !== agent).forEach(n => {
             (container._askedOf ||= {})[n] = new Date(it.v.created_at).getTime() / 1000;
