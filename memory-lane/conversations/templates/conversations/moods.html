@@ -2213,7 +2213,9 @@
   // be read -- by ▶, ⏩, or reading as they come -- and a falling one when reading aloud has read all
   // there is and is still listening for more. Made here as WAV, and played through the reader itself,
   // so they sound wherever reading does, a locked phone too.
-  const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]] };
+  const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]],
+                        tick: [[1760, .035]] };  // "still coming": the tiniest sound (Justin, 28 Oct)
+  const CHIME_GAIN = { tick: .07 };
   const chimeUrls = {};
   function chimeUrl(kind) {
     if (chimeUrls[kind]) return chimeUrls[kind];
@@ -2224,7 +2226,7 @@
       const n = Math.floor(rate * len);
       for (let i = 0; i < n && at + i < pcm.length; i++) {
         const swell = Math.min(1, i / (rate * .005)) * Math.exp(-4 * i / n);  // a soft start, a bell's fall
-        pcm[at + i] = Math.round(Math.sin(2 * Math.PI * freq * i / rate) * swell * .35 * 32767);
+        pcm[at + i] = Math.round(Math.sin(2 * Math.PI * freq * i / rate) * swell * (CHIME_GAIN[kind] || .35) * 32767);
       }
       at += n;
     }
@@ -6864,6 +6866,7 @@
     const fresh = events.filter(e => (said(e) || redeployed(e)) && e.id && !readHeard.has(e.id))
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     for (const e of fresh) { readHeard.add(e.id); readQueue.push(e); }
+    if (readRecording) prefetchNext();  // came while recording: ready for when it stops
     if (fresh.length) saveReadPlace();
     // Next time from a minute before the newest: a clock a little off misses nothing, and ids keep it once.
     // A full page (reading a stretch through from a message): on from its last, or it would ask the same again.
@@ -6978,7 +6981,7 @@
   // recording's done; a message's own ▶ stops. Messages that come meanwhile are queued.
   function recordingHold(on) {
     readRecording = on;
-    if (on) { reader.pause(); if (speaking) stopSpeaking(); }
+    if (on) { reader.pause(); if (speaking) stopSpeaking(); prefetchNext(); }
     else if (clipDone && reader.paused && !readHeld) atSpeed(reader).play().catch(() => {});
     if (!on) readNext();
     renderReadBar();
@@ -7015,6 +7018,40 @@
                              rate: Math.round(reader.playbackRate * 100) / 100, pace: Math.round(paceOf(reader) || 0) }) }).catch(() => {});
   }
 
+  // Who's said to speak, for an item read next: the narrator names them when the Mood or the speaker changes.
+  function introFor(item) {
+    const newMood = !readLast || readLast.mood !== item.mood;
+    return newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
+  }
+  // A message's clip (speak/), its audio brought into this browser too, so it plays without the network.
+  function speakFetch(item, ask, keep) {
+    const url = `/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${new URLSearchParams(ask)}`;
+    const asked = fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+    if (!keep) return asked;
+    return asked.then(async r => {
+      if (!r.ok) return r;
+      const body = await r.json();
+      for (const k of ['url', 'intro']) {
+        if (body[k] && body[k].startsWith('/')) {
+          try { body[k] = URL.createObjectURL(await (await fetch(body[k])).blob()); } catch (e) {}
+        }
+      }
+      return new Response(JSON.stringify(body), { status: r.status, headers: { 'Content-Type': 'application/json' } });
+    });
+  }
+  // While a memo is recorded, what's next is fetched -- its words and its narrator line, audio and all -- so it's
+  // heard the moment the recording stops, not after the upload has had the connection (Justin, 28 Oct, in the woods).
+  const prefetched = new Map();  // item id -> {intro, said, words}
+  function prefetchNext() {
+    const item = readQueue[0];
+    if (!item || prefetched.has(item.id) || item.kind === 'thinking' || item.kind === 'deploy'
+        || (item.text || '').match(MEMO_AUDIO)) return;
+    const intro = introFor(item);
+    prefetched.set(item.id, { intro, words: speakFetch(item, {}, true),
+                              said: intro ? speakFetch(item, { intro, only: 'intro' }, true) : null });
+    while (prefetched.size > 4) prefetched.delete(prefetched.keys().next().value);
+  }
+
   async function readNext() {
     if (readNow || readHeld || readRecording || readBlocked || readMode === 'off' || !readQueue.length) { renderReadBar(); return; }
     const item = readQueue.shift();
@@ -7028,9 +7065,29 @@
     // A message about to be read says so at once, while its words are fetched (a memo's may still be heard).
     const chimed = item.kind !== 'thinking' && item.kind !== 'deploy' ? playClip(chimeUrl('in')) : null;
     const memo = (item.text || '').match(MEMO_AUDIO);  // heard as recorded: only who's speaking needs saying
-    const newMood = !readLast || readLast.mood !== item.mood;
-    const intro = newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
+    const intro = introFor(item);
+    const early = prefetched.get(item.id);  // fetched while a memo was recorded
+    prefetched.delete(item.id);
     const clips = [];
+    // Who and where, said at once after the chime, while the message's own words are still being made (Justin,
+    // 28 Oct: "chime, then narrator, immediately"); a tick every 3 s after it until they're ready.
+    let words = null;
+    if (!memo && item.kind !== 'thinking' && item.kind !== 'deploy') {
+      words = early ? early.words : speakFetch(item, {});
+      if (intro) try {
+        const said = await (early && early.intro === intro ? early.said : speakFetch(item, { intro, only: 'intro' }))
+          .then(r => r.ok ? r.json() : {});
+        if (said.intro && readNow === now && !now.skipped) {
+          if (chimed) await chimed;
+          await playClip(said.intro);
+        }
+      } catch (e) {}
+      else if (chimed) await chimed;
+      let ticks = null;
+      const settled = words.finally(() => clearInterval(ticks));
+      ticks = setInterval(() => { if (readNow === now && !readHeld) atSpeed(new Audio(chimeUrl('tick'))).play().catch(() => {}); }, 3000);
+      words = settled;
+    }
     try {
       if (item.kind === 'thinking' || item.kind === 'deploy') {
         const r = await fetch('/api/voice/narrate/', { method: 'POST',
@@ -7042,10 +7099,10 @@
         if (!r.ok) throw new Error(body.error || r.status);
         clips.push([item.kind, body.url]);
       } else if (intro || !memo) {
-        const ask = new URLSearchParams(intro ? { intro } : {});
+        const ask = new URLSearchParams(intro && !words ? { intro } : {});
         if (memo) ask.set('only', 'intro');
-        const r = await fetch(`/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${ask}`,
-                              { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+        const r = words ? await words : await fetch(`/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${ask}`,
+                                                    { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
         const body = await r.json().catch(() => ({}));
         if (r.status === 429 && !/spent/.test(body.error || '')) {  // asked too fast: this one again in a moment
           readQueue.unshift(item); readNow = null;
@@ -8155,7 +8212,9 @@
       + `<button type="button" data-v="skip">⏭<small>skip</small></button>`
       + `<button type="button" data-v="go"${goBtn.classList.contains('listening') ? ' class="hot"' : ''}>🧭<small>go to…</small></button>`
       + `<button type="button" data-v="memo"${recording ? ' class="hot"' : ''}${saving ? ' disabled' : ''}>🎙<small>${recording ? 'stop' : saving ? 'saving' : 'record'}</small></button>`
-      + `<button type="button" data-v="send"${sayBox.value.trim() && !saving ? '' : ' disabled'}>➤<small>send</small></button>`
+      // Send while recording or saving sends the memo once it's in (say: memoThenSend), as the composer's does
+      // (Justin, 28 Oct: greyed out while recording, so a memo could only be sent from outside voice mode).
+      + `<button type="button" data-v="send"${sayBox.value.trim() || recording || saving ? '' : ' disabled'}>➤<small>${recording || saving ? 'send it' : 'send'}</small></button>`
       + `<button type="button" data-v="where">${readMode === 'everywhere' ? '🌐' : '📍'}<small>${readMode === 'everywhere' ? 'every Mood' : 'this Mood'}</small></button>`
       + '</div><button type="button" class="leave" data-v="leave">leave voice mode</button>';
     if (voiceMode.innerHTML !== html) voiceMode.innerHTML = html;
