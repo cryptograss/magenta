@@ -1055,6 +1055,7 @@ def model_label(model):
     model = model.rsplit('/', 1)[-1]
     if not model.startswith('claude-'):
         return model
+    model = model.replace('.', '-')  # OpenRouter spells it 'claude-fable-5.1'
     parts = re.sub(r'-\d{8}$', '', model[len('claude-'):]).split('-')
     family = next((p for p in parts if not p.isdigit()), '')
     version = '.'.join(p for p in parts if p.isdigit())
@@ -1085,7 +1086,9 @@ PRICES = (
 
 def call_usd(model, fresh, out, read, written):
     """Dollars a call cost at list prices, or None for a model with no price here."""
-    rates = next((r for prefix, r in PRICES if (model or '').startswith(prefix)), None)
+    # Anthropic's own models through OpenRouter: 'anthropic/claude-fable-5.1' is claude-fable-5-1.
+    model = (model or '').removeprefix('anthropic/').replace('.', '-')
+    rates = next((r for prefix, r in PRICES if model.startswith(prefix)), None)
     if rates is None:
         return None
     return ((fresh or 0) * rates[0] + (out or 0) * rates[1] + (read or 0) * rates[2] + (written or 0) * rates[3]) / 1e6
