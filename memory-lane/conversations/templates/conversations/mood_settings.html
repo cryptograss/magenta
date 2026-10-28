@@ -264,9 +264,11 @@
   }
 
 
-  // Emergent defaults: one emergent everywhere (agent, no Mood). Model is the row above; the Mood's bar has the rest.
+  // Emergent defaults: one emergent everywhere (agent, no Mood). The Mood's bar has listening, discretion and
+  // verbosity; the model is here too (Justin, 28 Oct: the defaults had no way to pick it -- the row above writes
+  // a model into every Mood, which is a different thing from the default a new Mood starts from).
   function defaultsTable() {
-    const keys = Object.keys(state.knobs).filter(k => !IN_THE_MOOD.includes(k));
+    const keys = Object.keys(state.knobs).filter(k => k === 'model' || !IN_THE_MOOD.includes(k));
     const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
     return head + state.agents.map(a => {
       const v = everywhere(a);
