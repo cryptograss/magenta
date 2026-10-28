@@ -2211,7 +2211,9 @@
   // be read -- by ▶, ⏩, or reading as they come -- and a falling one when reading aloud has read all
   // there is and is still listening for more. Made here as WAV, and played through the reader itself,
   // so they sound wherever reading does, a locked phone too.
-  const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]] };
+  const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]],
+                        tick: [[1760, .035]] };  // "still coming": the tiniest sound (Justin, 28 Oct)
+  const CHIME_GAIN = { tick: .07 };
   const chimeUrls = {};
   function chimeUrl(kind) {
     if (chimeUrls[kind]) return chimeUrls[kind];
@@ -2222,7 +2224,7 @@
       const n = Math.floor(rate * len);
       for (let i = 0; i < n && at + i < pcm.length; i++) {
         const swell = Math.min(1, i / (rate * .005)) * Math.exp(-4 * i / n);  // a soft start, a bell's fall
-        pcm[at + i] = Math.round(Math.sin(2 * Math.PI * freq * i / rate) * swell * .35 * 32767);
+        pcm[at + i] = Math.round(Math.sin(2 * Math.PI * freq * i / rate) * swell * (CHIME_GAIN[kind] || .35) * 32767);
       }
       at += n;
     }
@@ -7029,6 +7031,26 @@
     const newMood = !readLast || readLast.mood !== item.mood;
     const intro = newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
     const clips = [];
+    // Who and where, said at once after the chime, while the message's own words are still being made (Justin,
+    // 28 Oct: "chime, then narrator, immediately"); a tick every 3 s after it until they're ready.
+    const speakUrl = ask => `/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${new URLSearchParams(ask)}`;
+    let words = null;
+    if (!memo && item.kind !== 'thinking' && item.kind !== 'deploy') {
+      words = fetch(speakUrl({}), { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+      if (intro) try {
+        const said = await fetch(speakUrl({ intro, only: 'intro' }), { method: 'POST', headers: { 'X-CSRFToken': csrf() } })
+          .then(r => r.ok ? r.json() : {});
+        if (said.intro && readNow === now && !now.skipped) {
+          if (chimed) await chimed;
+          await playClip(said.intro);
+        }
+      } catch (e) {}
+      else if (chimed) await chimed;
+      let ticks = null;
+      const settled = words.finally(() => clearInterval(ticks));
+      ticks = setInterval(() => { if (readNow === now && !readHeld) atSpeed(new Audio(chimeUrl('tick'))).play().catch(() => {}); }, 3000);
+      words = settled;
+    }
     try {
       if (item.kind === 'thinking' || item.kind === 'deploy') {
         const r = await fetch('/api/voice/narrate/', { method: 'POST',
@@ -7040,10 +7062,10 @@
         if (!r.ok) throw new Error(body.error || r.status);
         clips.push([item.kind, body.url]);
       } else if (intro || !memo) {
-        const ask = new URLSearchParams(intro ? { intro } : {});
+        const ask = new URLSearchParams(intro && !words ? { intro } : {});
         if (memo) ask.set('only', 'intro');
-        const r = await fetch(`/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${ask}`,
-                              { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+        const r = words ? await words : await fetch(`/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${ask}`,
+                                                    { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
         const body = await r.json().catch(() => ({}));
         if (r.status === 429 && !/spent/.test(body.error || '')) {  // asked too fast: this one again in a moment
           readQueue.unshift(item); readNow = null;
@@ -8153,7 +8175,9 @@
       + `<button type="button" data-v="skip">⏭<small>skip</small></button>`
       + `<button type="button" data-v="go"${goBtn.classList.contains('listening') ? ' class="hot"' : ''}>🧭<small>go to…</small></button>`
       + `<button type="button" data-v="memo"${recording ? ' class="hot"' : ''}${saving ? ' disabled' : ''}>🎙<small>${recording ? 'stop' : saving ? 'saving' : 'record'}</small></button>`
-      + `<button type="button" data-v="send"${sayBox.value.trim() && !saving ? '' : ' disabled'}>➤<small>send</small></button>`
+      // Send while recording or saving sends the memo once it's in (say: memoThenSend), as the composer's does
+      // (Justin, 28 Oct: greyed out while recording, so a memo could only be sent from outside voice mode).
+      + `<button type="button" data-v="send"${sayBox.value.trim() || recording || saving ? '' : ' disabled'}>➤<small>${recording || saving ? 'send it' : 'send'}</small></button>`
       + `<button type="button" data-v="where">${readMode === 'everywhere' ? '🌐' : '📍'}<small>${readMode === 'everywhere' ? 'every Mood' : 'this Mood'}</small></button>`
       + '</div><button type="button" class="leave" data-v="leave">leave voice mode</button>';
     if (voiceMode.innerHTML !== html) voiceMode.innerHTML = html;
