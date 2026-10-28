@@ -392,6 +392,14 @@
   /* Drag the pane's edge to size it; the width is remembered in this browser. */
   #grip { width: 5px; margin-left: -3px; flex: none; cursor: col-resize; position: relative; z-index: 1; }
   #grip:hover, body.sizing #grip { background: var(--accent-soft); }
+  /* A handle at the grip's middle folds the Moods pane away, or brings it back; dragging still resizes it
+     (Justin, 28 Oct: "sometimes I want to collapse it entirely"). */
+  #grip .navfold { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 14px; height: 38px;
+                   padding: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted);
+                   font-size: 9px; line-height: 1; cursor: pointer; z-index: 2; }
+  #grip .navfold:hover { color: var(--accent); border-color: var(--accent); }
+  body.nav-folded nav { display: none; }
+  body.nav-folded #grip { cursor: default; margin-left: 0; width: 8px; }
   body.sizing { cursor: col-resize; user-select: none; }
   .badge {
     display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 9px;
@@ -812,8 +820,10 @@
   #composer textarea { flex: 1; font-family: inherit; line-height: inherit; min-height: 44px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
   #composer button { font: inherit; padding: 8px 14px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
   #composer button:disabled { opacity: .5; cursor: default; }
-  /* A tiny chevron at the top centre: pull the box up to write at length, and back down (Justin, 27 Oct). */
-  #composer .expand { position: absolute; top: -7px; left: 50%; transform: translateX(-50%);
+  /* A tiny chevron at the top centre: pull the box up to write at length, and back down (Justin, 27 Oct).
+     Just inside the composer's top edge, not astride it, so a click aimed at the settings row above
+     doesn't land on it (Justin, 28 Oct). */
+  #composer .expand { position: absolute; top: 1px; left: 50%; transform: translateX(-50%);
     width: 42px; height: 13px; padding: 0; border: 1px solid var(--line); border-radius: 7px;
     background: var(--panel); color: var(--muted); font-size: 9px; line-height: 11px; text-align: center;
     cursor: pointer; z-index: 2; }
@@ -872,8 +882,9 @@
   #activity #stopBtn { margin-left: auto; font: inherit; font-size: 12px; padding: 2px 9px; border: 1px solid var(--line);
                        border-radius: 10px; background: var(--panel); color: var(--muted); cursor: pointer; white-space: nowrap; }
   #activity #stopBtn:hover { color: var(--err); border-color: var(--err); }
-  #activity .stopone { font-size: 11px; line-height: 1; padding: 1px 2px; margin-left: -4px; border: 0; background: none; cursor: pointer;
-                       opacity: .7; }
+  /* Between the verb and the timer (Justin, 28 Oct: beside the name it read as another pie). */
+  #activity .stopone { font-size: 11px; line-height: 1; padding: 1px 2px; margin-right: 3px; border: 0; background: none; cursor: pointer;
+                       opacity: .7; vertical-align: -1px; }
   #activity .stopone:hover { opacity: 1; transform: scale(1.15); }
   @keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
   .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -1160,7 +1171,7 @@
   .hush .agent select, .hush .agent label { flex: none; }
   /* Open: a table, a column per setting, so every agent's row lines up whatever its name's length
      (Justin, 18 Oct). Each row is the grid's own (subgrid), so it still glows and greys as one. */
-  .hush .agentgrid { flex: 1 1 0; min-width: 0; display: grid; grid-template-columns: repeat(9, auto) 1fr; gap: 4px 6px; align-items: center; }
+  .hush .agentgrid { flex: 1 1 0; min-width: 0; display: grid; grid-template-columns: repeat(8, auto) 1fr; gap: 4px 6px; align-items: center; }
   .hush .agentgrid .agent { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
   .hush .agentgrid .agent > * { justify-self: start; }
   /* Mode: just its sign, closed; the menu open says the rest (1hr and such) (Justin, 27 Oct). */
@@ -1437,7 +1448,7 @@
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
-  <div id="grip" title="Drag to resize; double-click to reset"></div>
+  <div id="grip" title="Drag to resize; double-click to reset"><button type="button" class="navfold" id="navFold" title="Fold the Moods away" aria-label="Fold the Moods list away" aria-expanded="true">‹</button></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
   <main id="main"><div id="topbar"><div id="moodbar"></div><div id="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
@@ -1988,7 +1999,20 @@
     else document.documentElement.style.removeProperty('--nav-width');
   }
   navWidth(store.get('navWidth', 0));
+  // Folded away (the handle on the grip), remembered on this computer; a drag still resizes it when open.
+  const navFold = document.getElementById('navFold');
+  function foldNav(on) {
+    document.body.classList.toggle('nav-folded', on);
+    navFold.textContent = on ? '›' : '‹';
+    navFold.title = on ? 'Show the Moods' : 'Fold the Moods away';
+    navFold.setAttribute('aria-expanded', on ? 'false' : 'true');
+    store.set('navFolded', on);
+  }
+  if (store.get('navFolded', false)) foldNav(true);
+  navFold.addEventListener('click', e => { e.stopPropagation(); foldNav(!document.body.classList.contains('nav-folded')); });
+  navFold.addEventListener('pointerdown', e => e.stopPropagation());  // a click on the handle is no drag
   grip.addEventListener('pointerdown', e => {
+    if (document.body.classList.contains('nav-folded')) return;
     e.preventDefault();
     grip.setPointerCapture(e.pointerId);
     document.body.classList.add('sizing');
@@ -5268,8 +5292,7 @@
     ['', ''],
     ['mode', '👂 listening: answers @mentions and may speak up unasked · @: answers @mentions only · 🤫 hushed: wakes for nothing (mentions wait)'],
     ['model', 'the model its wakes here run on'],
-    ['effort @', 'effort when @mentioned here: lo, med, hi, x (extra), max'],
-    ['effort unasked', 'effort when it looks in unasked, deciding whether to speak up here: lo, med, hi, x (extra), max'],
+    ['effort', 'how hard it thinks here, whether @mentioned or looking in unasked: lo, med, hi, x (extra), max'],
     ['speaks up', 'how readily it speaks up unasked here'],
     ['replies', 'how long its replies run here'],
     ['reads back', "how much of what was said here since it last spoke a wake reads word for word, in tokens (10k ≈ 40,000 characters, about 7,500 words); anything older is summarized"],
@@ -5392,7 +5415,7 @@
     });
   }
   // The payload's names for an agent's settings, and the keys its menus carry (data-knob).
-  const SHOWN_KNOBS = { listening: 'listening', model: 'model', effort: 'mention_effort', consider_effort: 'consider_effort', ultracode: 'ultracode',
+  const SHOWN_KNOBS = { listening: 'listening', model: 'model', effort: 'mention_effort', ultracode: 'ultracode',
                         reads: 'catch_up_tokens', discretion: 'discretion', verbosity: 'verbosity' };
   function renderAgents(agents) {
     // What someone else changed since the last look (not on first drawing a Mood: nothing to compare).
@@ -5408,7 +5431,7 @@
     agentsNow = agents;
     const box = document.getElementById('hush');
     // Redraw the menus only when a setting changed: never under someone's open menu.
-    const key = JSON.stringify(Object.entries(agents).map(([n, a]) => [n, a.listening, a.model, a.effort, a.consider_effort, a.ultracode, a.reads,
+    const key = JSON.stringify(Object.entries(agents).map(([n, a]) => [n, a.listening, a.model, a.effort, a.ultracode, a.reads,
                                                                        a.discretion, a.verbosity, viewer]).concat(agentsWhole()));
     if (box && (key !== agentsShown || !box.childElementCount)) {
       agentsShown = key;
@@ -5481,7 +5504,7 @@
         + `<span class="cell">${icon(agent, false)}<span class="name">${esc(agent)}</span></span>`;
       if (!keyHolder) {
         const runs = shortModel(ctx_runs(a).split('/').pop()) || '?';
-        return [describeListening(l), runs, EFFORT_SHORT[a.effort] || a.effort, EFFORT_SHORT[a.consider_effort] || a.consider_effort,
+        return [describeListening(l), runs, EFFORT_SHORT[a.effort] || a.effort,
                 SPEAKING_UP[a.discretion || 'normal'] || a.discretion, REPLY_LENGTHS[a.verbosity || 'normal'],
                 kTokens(a.reads || 10000), a.ultracode ? 'ultracode' : '']
           .reduce((out, cell) => out + `<span class="cell">${esc(cell)}</span>`, row) + '</span>';
@@ -5498,8 +5521,7 @@
             + `${esc(v ? label : inUse)}</option>`).join('') + '</select>';
       const efforts = (knob, now, what) => `<select data-agent="${esc(agent)}" data-knob="${knob}" title="${what}">`
         + EFFORTS.map(v => `<option value="${v}"${v === now ? ' selected' : ''}>${EFFORT_SHORT[v] || v}</option>`).join('') + '</select>';
-      const effort = efforts('mention_effort', a.effort, 'how hard it thinks when @mentioned here');
-      const considerEffort = efforts('consider_effort', a.consider_effort, 'how hard it thinks when it looks in unasked, deciding whether to speak up');
+      const effort = efforts('mention_effort', a.effort, 'how hard it thinks here, whether @mentioned or looking in unasked');
       // How much of what was said since its last word a wake reads word for word.
       const reads = `<select data-agent="${esc(agent)}" data-knob="catch_up_tokens" title="How much of what was said here since it last spoke a wake reads word for word; older is summarized">`
         + READS.map(n => `<option value="${n}"${n === a.reads ? ' selected' : ''}>${kTokens(n)}</option>`).join('')
@@ -5513,7 +5535,7 @@
       const ultra = a.catalog != null ? '' : `<label class="ultra" title="Claude Code's standing multi-agent workflows, on wakes with full tools: thorough, and costly">`
         + `<input type="checkbox" data-agent="${esc(agent)}" data-knob="ultracode"${a.ultracode ? ' checked' : ''}> ultra</label>`;
       // A cell each, in the grid every agent's row shares: listening, then model and effort, then the rest.
-      return [listen, `<span class="cell">${model}</span>`, effort, considerEffort, discretion, verbosity, reads, ultra || '<span></span>']
+      return [listen, `<span class="cell">${model}</span>`, effort, discretion, verbosity, reads, ultra || '<span></span>']
         .reduce((out, cell) => out + cell, row) + '</span>';
     }).join('') + '</div>';
   }
@@ -5668,13 +5690,13 @@
     // A line for each, in its colour: two woken by one post, or one asked and one looking in.
     activityText.innerHTML = acts.map(a => `<span class="one${a.doing === 'held' ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
       + (a.doing === 'waking'
-        ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b>${stopOne(a)} · ${elapsed(a.since)}`
+        ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${stopOne(a)}${elapsed(a.since)}`
         : a.doing === 'held' && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${waitedFor(a.why)}` + (a.until ? ` · checks in by ${esc(hhmm(a.until))}` : '')
         : a.doing === 'held'
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
           + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
-        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b>${stopOne(a)} · ${esc(a.doing)} · ${elapsed(a.since)}`
+        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${esc(a.doing)} · ${stopOne(a)}${elapsed(a.since)}`
           + ([a.model, a.effort].filter(Boolean).length ? ` · ${esc([a.model, a.effort].filter(Boolean).join(' · '))}` : ''))
       + '</span>').join('');
   }

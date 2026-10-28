@@ -369,7 +369,7 @@ def agents_in(mood):
     from .services.mood_view import context_in
     from .models import Setting
     agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
-    shown = ('listening', 'model', 'mention_effort', 'consider_effort', 'ultracode', 'catch_up_tokens', 'discretion', 'verbosity')
+    shown = ('listening', 'model', 'mention_effort', 'ultracode', 'catch_up_tokens', 'discretion', 'verbosity')
     rows = list(Setting.objects.filter(key__in=shown))
     from .services import agent_settings
     every = agent_settings._rows()
@@ -388,7 +388,7 @@ def agents_in(mood):
             .exclude(model_backend__in=('', '<synthetic>')).order_by('-created_at')
             .values_list('model_backend', flat=True).first() or '')
         out[name] = {'listening': resolved['listening'], 'model': resolved['model'],
-                     'effort': resolved['mention_effort'], 'consider_effort': resolved['consider_effort'],
+                     'effort': resolved['mention_effort'],
                      'ultracode': bool(resolved['ultracode']),
                      'reads': resolved['catch_up_tokens'],
                      'discretion': resolved['discretion'], 'verbosity': resolved['verbosity'],

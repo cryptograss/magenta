@@ -59,6 +59,13 @@ def played_by(text):
     else, or a name not saved."""
     first, _, rest = text.strip().partition('\n') if isinstance(text, str) else ('', '', '')
     played = AGENT_PLAY.match(first.strip())
+    if not played and isinstance(text, str):
+        # On its own last line, after its words (blu, 28 Oct: "...then write the claim.\n\n/clip interesting"):
+        # the same clip, moved to the top, its words under it, as the page shows a clip with words.
+        lines = text.strip().split('\n')
+        last = AGENT_PLAY.match(lines[-1].strip()) if len(lines) > 1 else None
+        if last:
+            played, first, rest = last, lines[-1], '\n'.join(lines[:-1])
     found = library().get(played[1].lower()) if played else None
     return f'/clips {played[1].lower()} {link_of(found)}' + (f'\n{rest.strip()}' if rest.strip() else '') if found else None
 

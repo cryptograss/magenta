@@ -82,6 +82,8 @@
   table.history th { color: var(--muted); font-weight: 600; }
   table.history td.value { font-family: ui-monospace, monospace; word-break: break-word; max-width: 420px; }
   @media (max-width: 720px) { .row { grid-template-columns: 1fr; } .help { margin-left: 0; } }
+  .offered .makers { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .offered .makers label { font-size: 13px; white-space: nowrap; }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -130,8 +132,8 @@
   const viewer = "{{ viewer|escapejs }}" || null;
   const LABELS = {
     listening: 'listening', consider_after: 'consider after (s)', idle_after: 'first unprompted look (min)',
-    considers_per_hour: 'considerations / hour', mention_effort: 'effort when mentioned',
-    consider_effort: 'effort when considering', model: 'model', ultracode: 'ultracode', catch_up_tokens: 'reads (tokens)', discretion: 'discretion', verbosity: 'verbosity',
+    considers_per_hour: 'considerations / hour', mention_effort: 'effort',
+    model: 'model', ultracode: 'ultracode', catch_up_tokens: 'reads (tokens)', discretion: 'discretion', verbosity: 'verbosity',
     handoff_effort: 'handoff effort',
   };
   // /incorporate and /handoff are magent's alone (services/agent_commands.HANDOFF_AGENT): their settings show only there.
@@ -167,7 +169,7 @@
       input = `<select ${attrs} data-kind="listening">${['on', 'mentions', 'off'].map(m =>
         `<option value="${m}" ${v.mode === m ? 'selected' : ''}>${m === 'mentions' ? 'mentions only' : m}</option>`).join('')}</select>`
         + (v.until ? ` <span class="note">until ${esc(when(v.until))}</span>` : '');
-    } else if (key === 'mention_effort' || key === 'consider_effort' || key === 'handoff_effort') {
+    } else if (key === 'mention_effort' || key === 'handoff_effort') {
       input = `<select ${attrs}>${state.efforts.map(e => `<option value="${e}" ${e === value ? 'selected' : ''}>${EFFORT_LABELS[e] || e}</option>`).join('')}</select>`;
     } else if (key === 'discretion' || key === 'verbosity') {
       input = `<select ${attrs}>${state.choices[key].map(c => `<option value="${c}" ${c === value ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
@@ -225,7 +227,7 @@
   // The one thing asked for at the top: one model per emergent, set everywhere (agent, no Mood).
   // Set magenta-wide (Justin, 27 Oct): what's picked here waits for Set, then is written for that
   // emergent in every Mood (and everywhere, for new ones). Anything left blank stays as it is.
-  const WIDE_KEYS = ['model', 'mention_effort', 'consider_effort'];
+  const WIDE_KEYS = ['model', 'mention_effort'];
   const wide = {};  // agent -> {key: value}, picked and not yet set
   function modelRows() {
     const leave = '(leave as is)';
@@ -238,7 +240,7 @@
     return `<div class="card">`
       + state.agents.map(a => `<div class="mrow"><span class="who">${esc(a)}</span><span>`
         + modelField(`data-wide="model" data-agent="${esc(a)}" ${dis}`, (wide[a] || {}).model || '', a, leave)
-        + `</span><span>${effort(a, 'mention_effort')} ${effort(a, 'consider_effort')}</span></div>`).join('')
+        + `</span><span>${effort(a, 'mention_effort')}</span></div>`).join('')
       + `<div class="setline"><button type="button" id="setWide" ${viewer && any ? '' : 'disabled'}>Set</button>`
       + ` <span class="status" id="wideStatus"></span></div></div>`;
   }
@@ -264,9 +266,11 @@
   }
 
 
-  // Emergent defaults: one emergent everywhere (agent, no Mood). Model is the row above; the Mood's bar has the rest.
+  // Emergent defaults: one emergent everywhere (agent, no Mood). The Mood's bar has listening, discretion and
+  // verbosity; the model is here too (Justin, 28 Oct: the defaults had no way to pick it -- the row above writes
+  // a model into every Mood, which is a different thing from the default a new Mood starts from).
   function defaultsTable() {
-    const keys = Object.keys(state.knobs).filter(k => !IN_THE_MOOD.includes(k));
+    const keys = Object.keys(state.knobs).filter(k => k === 'model' || !IN_THE_MOOD.includes(k));
     const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
     return head + state.agents.map(a => {
       const v = everywhere(a);
@@ -297,7 +301,8 @@
     document.getElementById('cards').innerHTML = picked ? agentView(picked) : 'No emergents yet.';
     document.getElementById('global').innerHTML = [`<div class="card"><h2>Budget</h2><div class="sub">for all emergents together</div>`
       + `<div class="row"><label title="${esc(state.global_knobs.consider_usd_per_day.help)}">$ a day</label>`
-      + `<span><input type="number" min="0" step="0.5" data-key="consider_usd_per_day" data-mood="" data-agent="" value="${esc(state.global.consider_usd_per_day)}" ${viewer ? '' : 'disabled'}><span class="status"></span></span></div></div>`].join('');
+      + `<span><input type="number" min="0" step="0.5" data-key="consider_usd_per_day" data-mood="" data-agent="" value="${esc(state.global.consider_usd_per_day)}" ${viewer ? '' : 'disabled'}><span class="status"></span></span></div></div>`,
+      offeredCard()].join('');
     document.getElementById('history').innerHTML = state.history.map(h =>
       `<tr><td>${esc(when(h.at))}</td><td>${esc(h.set_by || '')}</td><td>${esc(h.mood ? '#' + h.mood : 'everywhere')}${h.agent ? ' · ' + esc(h.agent) : ''}</td>`
       + `<td>${esc(h.key)}</td><td class="value">${esc(JSON.stringify(h.value))}</td><td>${esc(h.note)}</td></tr>`).join('')
@@ -405,6 +410,34 @@
     loadVoices();
   }
 
+  // Models offered (models_off): per vendor, each maker's models ticked on or off (Justin, 28 Oct: "disable
+  // anthropic models through openrouter"). Off: not in any model menu, and refused as a setting.
+  function offeredCard() {
+    const off = state.global.models_off || {}, vendors = Object.entries(state.makers || {});
+    if (!vendors.length) return '';
+    return `<div class="card offered"><h2>Models offered</h2><div class="sub">per vendor: untick a maker to take its models out of every menu</div>`
+      + vendors.map(([vendor, makers]) => `<div class="row"><label>${esc(vendor)}</label><span class="makers">`
+        + makers.map(m => `<label title="${m.models} model${m.models === 1 ? '' : 's'}"><input type="checkbox" data-offer="${esc(vendor)}" data-maker="${esc(m.name)}"`
+          + `${(off[vendor] || []).includes(m.name || '*') ? '' : ' checked'}${viewer ? '' : ' disabled'}> ${esc(m.name || 'its own')}</label>`).join(' ')
+        + `<span class="status"></span></span></div>`).join('') + '</div>';
+  }
+  async function saveOffered(el) {
+    const off = {};
+    document.querySelectorAll('input[data-offer]').forEach(b => {
+      if (!b.checked) (off[b.dataset.offer] ||= []).push(b.dataset.maker || '*');
+    });
+    const status = el.closest('.makers').querySelector('.status');
+    const r = await fetch('/api/settings/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ key: 'models_off', value: off, mood: null, agent: null }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) { status.className = 'status err'; status.textContent = body.error || r.status; return; }
+    status.className = 'status saved'; status.textContent = 'saved';
+    for (const k of Object.keys(catalogs)) delete catalogs[k];  // the menus, asked again without them
+    setTimeout(load, 600);
+  }
+
   async function save(el) {
     const key = el.dataset.key;
     let value = el.value;
@@ -430,6 +463,7 @@
       document.getElementById('models').innerHTML = modelRows();
       return;
     }
+    if (e.target.dataset && e.target.dataset.offer !== undefined) { saveOffered(e.target); return; }
     if (e.target.dataset && e.target.dataset.key) save(e.target);
   });
   document.addEventListener('click', e => { if (e.target.id === 'setWide') setWide(); });

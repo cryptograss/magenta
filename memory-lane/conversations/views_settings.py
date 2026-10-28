@@ -41,10 +41,28 @@ def settings_state():
         'global': {k: knobs.global_value(k) for k in knobs.GLOBAL_KNOBS},
         'history': [knobs.describe(row) for row in Setting.objects.order_by('-created_at')[:100]],
         'scram': knobs.scram(),
+        # Every vendor any harness reported, and its makers (OpenRouter's anthropic, moonshotai...): what
+        # models_off can switch off, a maker's group at a time (Justin, 28 Oct).
+        'makers': makers_offered(),
         # Everyone who's read aloud: the Voices section's rows (as the Moods page names them).
         'people': [{'name': n, 'human': h, 'shown': wiki_names.get(n, n)}
                    for n, h in ThinkingEntity.objects.order_by('name').values_list('name', 'is_biological_human')],
     }
+
+
+def makers_offered():
+    """{vendor: [{'name': maker, 'models': how many}]}, over every harness's catalog; a vendor whose ids carry no
+    maker (anthropic's own) is one group, ''."""
+    from .models import HarnessModels
+    found = {}
+    for vendors in HarnessModels.objects.values_list('vendors', flat=True):
+        for v in vendors or ():
+            makers = found.setdefault(v.get('name'), {})
+            for m in v.get('models') or ():
+                maker = str(m[0]).lstrip('~').split('/', 1)[0] if '/' in str(m[0]) else ''
+                makers.setdefault(maker, set()).add(str(m[0]))
+    return {vendor: [{'name': k, 'models': len(ids)} for k, ids in sorted(makers.items())]
+            for vendor, makers in sorted(found.items()) if vendor}
 
 
 SECTIONS = ('tidings', 'prompts', 'status', 'settings')
