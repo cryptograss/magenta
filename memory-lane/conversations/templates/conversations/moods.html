@@ -342,6 +342,8 @@
   nav a.mood.sub { padding-left: calc(14px + 14px * var(--depth, 1)); padding-top: 3px; padding-bottom: 3px; }
   nav a.mood.sub .title { font-size: 13px; font-weight: 500; }
   nav a.mood.sub .title::before { content: '⑂'; color: var(--muted); font-weight: 400; margin-right: -3px; }
+  /* A fresh thread isn't a fork of anything (Justin, 27 Oct): its own mark. */
+  nav a.mood.sub.fresh .title::before { content: '🌱'; font-size: .8em; }
   nav a.mood.active { background: var(--accent-soft); border-left-color: var(--accent); }
   nav a.mood .title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
   nav a.mood .meta { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
@@ -1697,7 +1699,7 @@
   let archivedOpen = false;
   function renderNav() {
     const item = ([m, depth]) => `
-      <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
+      <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && !m.forked_at ? ' fresh' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
         <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
@@ -2026,7 +2028,7 @@
     const parts = [];
     if (m.thread_of) {
       const shut = isArchived(m.slug);
-      parts.push(`⑂ a thread of ${link(m.thread_of)}, ` + (m.forked_at
+      parts.push(`${m.forked_at ? '⑂' : '🌱'} a thread of ${link(m.thread_of)}, ` + (m.forked_at
         ? `forked ${esc(stamp(m.forked_at))}: its emergents went on from where they were there`
         : 'started fresh') + (shut ? ' · closed' : '')
         + (keyHolder ? `<button type="button" class="closethread" title="${shut ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${shut ? 'reopen' : 'close thread'}</button>` : ''));
@@ -2049,7 +2051,7 @@
       <div class="mbar" title="${headOpen ? 'Fold it away' : 'Its description, threads and people'}">
         <button type="button" class="mtoggle" aria-expanded="${headOpen}" aria-label="The Mood's description, threads and people">${headOpen ? '▾' : '▸'}</button>
         <h1>${esc(m.title)}</h1>
-        <span class="mdesc">${m.thread_of ? `⑂ of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
+        <span class="mdesc">${m.thread_of ? `${m.forked_at ? '⑂' : '🌱'} of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
         <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}${m.thread_of && keyHolder ? `<button type="button" class="closethread" title="${isArchived(m.slug) ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${isArchived(m.slug) ? 'reopen' : 'close'}</button>` : ''}</span>
       </div>
       <div class="mbody"${headOpen ? '' : ' hidden'}>
@@ -3410,7 +3412,7 @@
       el.className = 'event';
       const there = e.type === 'thread' ? e.to_mood : e.from_mood;
       const how = e.kind === 'fresh' ? 'fresh' : 'forked';
-      el.innerHTML = `⑂ <b>${esc(e.by || 'someone')}</b> ${e.type === 'thread' ? 'opened a thread,' : 'opened this thread from'} `
+      el.innerHTML = `${how === 'fresh' ? '🌱' : '⑂'} <b>${esc(e.by || 'someone')}</b> ${e.type === 'thread' ? 'opened a thread,' : 'opened this thread from'} `
         + `<a href="/moods/${encodeURIComponent(there)}/">#${esc(there)}</a> (${how}) · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
