@@ -58,6 +58,11 @@ def react_on(message, by, emoji):
         toggle(message, by, emoji)
 
 
+# The same tag at the very end of a reply with words before it (re, 28 Oct: a post, then "<react emoji="🤝"
+# to="blu"/>"): the words are said, and the nod is given as well; only the tag is taken out of them.
+AGENT_REACT_TAIL = re.compile(r'^(.*\S)\s*<react\s+((?:\w+="[^"]{0,80}"\s*){2})/>\s*$', re.S)
+
+
 def agent_reaction(text):
     """(emoji, to) for a reply that is only <react emoji="..." to="..."/>, else None."""
     match = AGENT_REACT.match(text) if isinstance(text, str) else None
@@ -100,7 +105,20 @@ def agent_reacted(session_id, agent):
         content = message.content
         block = isinstance(content, list) and len(content) == 1 and isinstance(content[0], dict) \
             and content[0].get('type') == 'text'
-        found = agent_reaction(content[0].get('text') if block else prose(content))
+        text = content[0].get('text') if block else prose(content)
+        found = agent_reaction(text)
+        tail = None if found else AGENT_REACT_TAIL.match(text or '')
+        if tail:
+            attrs = dict(re.findall(r'(\w+)="([^"]*)"', tail.group(2)))
+            emoji, to = attrs.get('emoji', '').strip(), attrs.get('to', '').strip().lower()
+            if valid(emoji) and to:
+                hit = target(message.mood, to, message.created_at, agent)
+                if hit:
+                    react_on(hit, agent, emoji)
+                words = tail.group(1).rstrip()
+                message.content = [{**content[0], 'text': words}] if block else words
+                message.save(update_fields=['content'])
+            continue
         if not found:
             continue
         emoji, to = found
