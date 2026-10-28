@@ -460,6 +460,19 @@ def change(key, value, mood=None, agent=None, by=None, note=''):
                                   note=str(note or '')[:200])
 
 
+def change_every_mood(key, value, agent, by=None, note=''):
+    """Set `key` for `agent` in every Mood at once: everywhere (so new Moods have it), and in each
+    Mood where something more specific says otherwise. Rows only where they change something."""
+    from conversations.models import Mood, Setting
+    rows = [change(key, value, agent=agent, by=by, note=note)]
+    want = rows[0].value
+    current = list(Setting.objects.filter(key=key))
+    for mood in Mood.objects.all():
+        if resolve(mood.slug, agent, rows=current)[key] != want:
+            rows.append(change(key, value, mood=mood, agent=agent, by=by, note=note))
+    return rows
+
+
 def describe(row):
     return {
         'mood': row.mood.slug if row.mood_id else None, 'agent': row.agent_id, 'key': row.key, 'value': row.value,
