@@ -67,6 +67,7 @@
   .pill.nokey { color: var(--muted); opacity: .75; }
   details.archived-moods { margin-top: 10px; }
   details.archived-moods > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  table.heaps td { padding: 2px 8px 2px 0; vertical-align: middle; }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -98,6 +99,8 @@
   <h1>Status</h1>
   <p class="lede">How magenta and its four servers stand right now: every emergent's settings bar in every Mood, server uptime and redeploys, database backups, recent humans, and running versions.</p>
   <div id="scram"></div>
+  <h2>Context heaps over half full</h2>
+  <div id="fullHeaps">Loading…</div>
 
   <h2>Servers</h2>
   <div id="servers">Loading…</div>
@@ -383,12 +386,30 @@
     }).join('');
   }
 
+  // Every emergent's context over 50% in any open Mood, fullest first (Justin, 26 Oct): where a /compact is due.
+  function renderFullHeaps(moods) {
+    const rows = [];
+    for (const m of moods) {
+      if (m.archived) continue;
+      for (const [agent, a] of Object.entries(m.agents || {})) {
+        const c = a.context;
+        if (c && c.window && c.tokens / c.window > 0.5) rows.push({ agent, mood: m.slug, c, pct: Math.round(100 * c.tokens / c.window) });
+      }
+    }
+    if (!rows.length) return '<div class="card meta">None: every context is under half full.</div>';
+    rows.sort((x, y) => y.pct - x.pct);
+    return '<div class="card"><table class="heaps">' + rows.map(r => `<tr><td>${pieHtml(r.c)}</td><td><b>${esc(r.pct)}%</b></td>`
+      + `<td>${esc(r.agent)}</td><td><a href="/moods/${encodeURIComponent(r.mood)}/">#${esc(r.mood)}</a></td>`
+      + `<td class="meta">${esc((r.c.tokens || 0).toLocaleString())} of ${esc(r.c.window.toLocaleString())}${r.c.model ? ' · ' + esc(shortModel(r.c.model)) : ''}${r.c.at ? ' · ' + esc(ago(r.c.at)) : ''}</td></tr>`).join('')
+      + '</table></div>';
+  }
   function render() {
     document.getElementById('who').innerHTML = keyHolder ? `signed in as <b>${esc(viewer)}</b>`
       : 'read-only · <a href="/moods/">sign in</a> with SSH key to change settings';
     const scram = state.scram;
     document.getElementById('scram').innerHTML = scram
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
+    document.getElementById('fullHeaps').innerHTML = renderFullHeaps(state.moods || []);
     document.getElementById('servers').innerHTML = renderServers(state.servers || []);
     document.getElementById('magentaVersion').innerHTML = renderMagenta(state.magenta);
     document.getElementById('pickipediaMcp').innerHTML = renderPickipediaMcp(state.pickipedia_mcp);
