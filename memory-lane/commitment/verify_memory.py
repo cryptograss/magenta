@@ -28,7 +28,7 @@ SPEC_ID = 'cryptograss-memory-commitment/1'
 KEY_COLUMNS = {
     'message': 'id', 'raw': 'id', 'heap': 'id', 'era': 'id', 'compacting_action': 'id', 'summary': 'id',
     'note': 'id', 'mood': 'id', 'mood_alias': 'id', 'mood_session': 'session_id', 'message_change': 'message_id',
-    'tiding': 'id', 'tiding_comment': 'id', 'tiding_vote': 'id', 'face_name': 'id', 'yarn_clip': 'clip',
+    'tiding': 'id', 'tiding_comment': 'id', 'tiding_vote': 'id', 'face_name': 'id', 'yarn_clip': 'clip', 'bundle_record': 'id',
     'participant': 'name', 'topic': 'id', 'message_topic': 'id', 'conversation_file': 'id',
     'block_anchor': 'number', 'setting': 'id', 'content_type': 'id', 'media': 'sha256',
 }

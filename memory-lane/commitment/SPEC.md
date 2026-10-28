@@ -36,6 +36,7 @@ The tables, and the name each is given in a key:
 | `tiding`, `tiding_comment`, `tiding_vote` | a link from a message put on Tidings, what was said about it there, and who upvoted what |
 | `face_name` | whose face is in a picture, as someone said |
 | `yarn_clip` | a film clip from Yarn, kept as media |
+| `bundle_record` | the instructions an agent's turn was given: their parts (pages and revisions), their SHA-256, and when they were asked for, made and delivered |
 | `participant` | everyone and everything that sends or receives messages |
 | `topic`, `message_topic`, `conversation_file` | tagging and import bookkeeping |
 | `block_anchor` | real Ethereum blocks and their timestamps, from which block heights in the record are interpolated |
@@ -117,7 +118,7 @@ not prevent checking the rest.
 - Every other table is one chunk, named for the table in the plural:
   `heaps`, `eras`, `compacting_actions`, `summaries`, `notes`, `moods`,
   `mood_aliases`, `mood_sessions`, `message_changes`, `tidings`,
-  `tiding_comments`, `tiding_votes`, `face_names`, `yarn_clips`,
+  `tiding_comments`, `tiding_votes`, `face_names`, `yarn_clips`, `bundle_records`,
   `participants`, `topics`, `message_topics`,
   `conversation_files`, `block_anchors`, `settings`, `content_types`,
   `media`.

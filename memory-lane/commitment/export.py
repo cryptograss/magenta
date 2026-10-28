@@ -92,6 +92,7 @@ TABLES = (
     whole('tiding_vote', 'tiding_votes', 'tiding_votes'),
     whole('face_name', 'face_names', 'face_names'),
     whole('yarn_clip', 'yarn_clips', 'yarn_clips', key='clip'),
+    whole('bundle_record', 'bundle_records', 'bundle_records'),
     Table('participant', PARTICIPANT_SQL, 'name', 'participants',
           ('conversation_participants', 'thinking_entities')),
     whole('topic', 'topics', 'topics'),
