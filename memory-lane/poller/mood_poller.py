@@ -1418,7 +1418,7 @@ class MoodPoller:
     def __init__(self, api, waker, agent='magent', state_path=None, grace=600,
                  max_wakes_per_hour=30, dry_run=False, now=None, streamer=None, mention_effort='high',
                  screen=None, consider=True, considers_per_hour=6, consider_usd_per_day=10.0,
-                 consider_budget=3.0, consider_effort='medium', debounce=10, idle_first=3000,
+                 consider_budget=3.0, debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
                  agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
                  end_orphans=end_orphans, texts=None, instructions=False):
@@ -1472,7 +1472,6 @@ class MoodPoller:
         self.considers_per_hour = considers_per_hour
         self.consider_usd_per_day = consider_usd_per_day
         self.consider_budget = consider_budget
-        self.consider_effort = consider_effort
         self.debounce = timedelta(seconds=debounce)
         self.idle_first = idle_first
         # A look nobody asked for (a long quiet, a greeting) that would read
@@ -2868,7 +2867,8 @@ class MoodPoller:
         # session: a cold read of a long one alone can pass $4, and a cap below
         # it ends the turn after its first response, before it can look anything up.
         cold = getattr(self.waker, 'cold_read_usd', lambda s: 0.0)(session)
-        options = dict(effort=self.knob(slug, 'consider_effort', self.consider_effort), budget=self.consider_budget + cold,
+        # One effort, asked or unasked (Justin, 28 Oct): a look in uses the same as a mention does.
+        options = dict(effort=self.knob(slug, 'mention_effort', self.mention_effort), budget=self.consider_budget + cold,
                        model=self.knob(slug, 'model'), crosstalk=crosstalk)
 
         def turn():
@@ -3038,7 +3038,6 @@ def build_parser():
                         help='Dollars a day for screens and considerations (mentions are not counted)')
     parser.add_argument('--consider-budget', type=float, default=3.0,
                         help='Dollar cap on one consideration: enough to read a big session cold (~$1.25)')
-    parser.add_argument('--consider-effort', default='medium')
     parser.add_argument('--quiet-look-max-usd', type=float, default=0.75,
                         help='Skip a look nobody asked for (a long quiet, a greeting) that would cost more than '
                              'this just to read the session cold; mentions are never skipped')
@@ -3124,7 +3123,7 @@ def main(argv=None):
                           mention_effort=args.mention_effort, screen=screen, consider=not args.no_consider,
                           considers_per_hour=args.considers_per_hour,
                           consider_usd_per_day=args.consider_usd_per_day, consider_budget=args.consider_budget,
-                          consider_effort=args.consider_effort, debounce=args.debounce, idle_first=args.idle_first,
+                          debounce=args.debounce, idle_first=args.idle_first,
                           full_tools_for=[n.strip() for n in args.full_tools_for.split(',') if n.strip()],
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
                           agent_wakes_per_hour=args.agent_wakes_per_hour,

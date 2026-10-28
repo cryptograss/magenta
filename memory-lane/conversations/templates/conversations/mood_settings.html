@@ -130,8 +130,8 @@
   const viewer = "{{ viewer|escapejs }}" || null;
   const LABELS = {
     listening: 'listening', consider_after: 'consider after (s)', idle_after: 'first unprompted look (min)',
-    considers_per_hour: 'considerations / hour', mention_effort: 'effort when mentioned',
-    consider_effort: 'effort when considering', model: 'model', ultracode: 'ultracode', catch_up_tokens: 'reads (tokens)', discretion: 'discretion', verbosity: 'verbosity',
+    considers_per_hour: 'considerations / hour', mention_effort: 'effort',
+    model: 'model', ultracode: 'ultracode', catch_up_tokens: 'reads (tokens)', discretion: 'discretion', verbosity: 'verbosity',
     handoff_effort: 'handoff effort',
   };
   // /incorporate and /handoff are magent's alone (services/agent_commands.HANDOFF_AGENT): their settings show only there.
@@ -167,7 +167,7 @@
       input = `<select ${attrs} data-kind="listening">${['on', 'mentions', 'off'].map(m =>
         `<option value="${m}" ${v.mode === m ? 'selected' : ''}>${m === 'mentions' ? 'mentions only' : m}</option>`).join('')}</select>`
         + (v.until ? ` <span class="note">until ${esc(when(v.until))}</span>` : '');
-    } else if (key === 'mention_effort' || key === 'consider_effort' || key === 'handoff_effort') {
+    } else if (key === 'mention_effort' || key === 'handoff_effort') {
       input = `<select ${attrs}>${state.efforts.map(e => `<option value="${e}" ${e === value ? 'selected' : ''}>${EFFORT_LABELS[e] || e}</option>`).join('')}</select>`;
     } else if (key === 'discretion' || key === 'verbosity') {
       input = `<select ${attrs}>${state.choices[key].map(c => `<option value="${c}" ${c === value ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
@@ -225,7 +225,7 @@
   // The one thing asked for at the top: one model per emergent, set everywhere (agent, no Mood).
   // Set magenta-wide (Justin, 27 Oct): what's picked here waits for Set, then is written for that
   // emergent in every Mood (and everywhere, for new ones). Anything left blank stays as it is.
-  const WIDE_KEYS = ['model', 'mention_effort', 'consider_effort'];
+  const WIDE_KEYS = ['model', 'mention_effort'];
   const wide = {};  // agent -> {key: value}, picked and not yet set
   function modelRows() {
     const leave = '(leave as is)';
@@ -238,7 +238,7 @@
     return `<div class="card">`
       + state.agents.map(a => `<div class="mrow"><span class="who">${esc(a)}</span><span>`
         + modelField(`data-wide="model" data-agent="${esc(a)}" ${dis}`, (wide[a] || {}).model || '', a, leave)
-        + `</span><span>${effort(a, 'mention_effort')} ${effort(a, 'consider_effort')}</span></div>`).join('')
+        + `</span><span>${effort(a, 'mention_effort')}</span></div>`).join('')
       + `<div class="setline"><button type="button" id="setWide" ${viewer && any ? '' : 'disabled'}>Set</button>`
       + ` <span class="status" id="wideStatus"></span></div></div>`;
   }

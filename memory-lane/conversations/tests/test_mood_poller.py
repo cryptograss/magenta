@@ -1115,7 +1115,7 @@ class ConsiderLoopTest(TestCase):
         self.assertIn('reason="consider"', prompt)
         self.assertIn('Nobody asked you anything', prompt)
         self.assertIn('► [skyler', prompt)
-        self.assertEqual(self.waker.options, {'effort': 'medium', 'budget': 3.0, 'model': None})
+        self.assertEqual(self.waker.options, {'effort': 'high', 'budget': 3.0, 'model': None})  # one effort, the mention default
 
     def test_another_emergents_words_are_considered_too(self):
         # Justin, 26 Oct: "I _want_ emergent messages to trigger consideration" -- no guard, people there or not.
@@ -1439,7 +1439,8 @@ class SettingsInTheRunnerTest(TestCase):
         self.assertNotIn('chatter 3 ', prompt)
 
     def test_knobs_reach_the_wake(self):
-        api = MentionsAndPulse(settings={'consider_effort': 'low', 'model': 'sonnet', 'consider_after': 60,
+        # One effort, asked or unasked: the mention effort is what an unasked look runs at too.
+        api = MentionsAndPulse(settings={'mention_effort': 'low', 'model': 'sonnet', 'consider_after': 60,
                                          'verbosity': 'brief'})
         poller = self.make(api, FakeScreen('pass'))
         api.add(post('a', 1))
