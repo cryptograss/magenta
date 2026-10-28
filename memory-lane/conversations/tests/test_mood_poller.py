@@ -479,7 +479,10 @@ class StreamingPollerTest(TestCase):
         poller = self.make(FakeWaker(reply='here'), http)
         self.assertEqual(poller.poll_once(), ['m26'])
         events = [e for p in http.posts for e in p[1]['events']]
-        self.assertEqual([e['type'] for e in events], ['assistant', 'result'])
+        # The wake first: Claude Code's -p never echoes it, so the runner says it (spend by kind, #usage).
+        self.assertEqual([e['type'] for e in events], ['user', 'assistant', 'result'])
+        self.assertTrue(events[0]['message']['content'].startswith('<mood-wake'))
+        self.assertEqual(events[0]['session_id'], self.posters[0].session_id)
         self.assertEqual({p[1]['session_id'] for p in http.posts}, {self.posters[0].session_id})
 
     def test_the_stream_says_what_the_turn_answers(self):
@@ -502,7 +505,7 @@ class StreamingPollerTest(TestCase):
         poller = self.make(FakeWaker(fail=('s-local',)), http)
         poller.poll_once()
         events = [e for p in http.posts for e in p[1]['events']]
-        self.assertEqual([(e['type'], e.get('is_error')) for e in events], [('result', True)])
+        self.assertEqual([(e['type'], e.get('is_error')) for e in events], [('user', None), ('result', True)])
 
 
 class RealProcessTest(TestCase):
@@ -1032,7 +1035,7 @@ class ConsiderAPI:
     def recent(self, slug, limit=40):
         return {'mood': {'title': 'M26', 'description': 'testing'}, 'turns': self.turns[-limit:]}
 
-    def quiet(self, slug, reason, by='screen'):
+    def quiet(self, slug, reason, by='screen', cost=None):
         self.quiets.append((slug, reason, by))
         return True
 

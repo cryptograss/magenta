@@ -231,6 +231,17 @@ def api_usage(request):
 
 
 @require_GET
+def api_usage_kinds(request):
+    """Spend by kind of turn (services/spend_kinds.py): ?hours= (24 unless 1 to 168), ?mood= a slug or nothing."""
+    from .services import spend_kinds
+    try:
+        hours = min(168, max(1, int(request.GET.get('hours', 24))))
+    except ValueError:
+        hours = 24
+    return JsonResponse(spend_kinds.spend_by_kind(hours, request.GET.get('mood') or None))
+
+
+@require_GET
 def api_prompts(request):
     from .services import tidings
     return JsonResponse(tidings.prompts_state())
