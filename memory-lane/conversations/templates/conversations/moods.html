@@ -535,7 +535,9 @@
   header .auth { font-size: 13px; color: var(--muted); }
   header .preview { font-size: 12px; font-weight: 600; color: var(--warn-ink); background: var(--warn-bg); border-radius: 4px; padding: 1px 8px; }
   header .auth a { color: var(--muted); }
-  #footer { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); }
+  /* Above the sticky ▶ and ⏩ (z-index 3 on a touch screen), which otherwise
+     scroll over the message box. Skyler, 2026-10-28. */
+  #footer { position: sticky; bottom: 0; z-index: 4; background: var(--bg); border-top: 1px solid var(--line); }
   /* Up and down a message at a time, at the right of the thread. */
   /* Two pairs: every message (right), people's messages only (left, with a person on them). */
   /* Tight little tabs in the right margin; the thread keeps a gutter clear of them (main, below). */
