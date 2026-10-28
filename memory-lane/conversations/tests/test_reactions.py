@@ -83,3 +83,20 @@ class EveryEmojiTest(TestCase):
         self.assertEqual(reactions.target(mood, f'#m-{own.id}', own.created_at, 'magent'), own)
         self.assertIsNone(reactions.target(mood, 'magent', own.created_at, 'magent'))
 
+
+
+class TrailingReactTest(TestCase):
+    """re, 28 Oct in #emergence: words, then <react emoji="🤝" to="blu"/>, posted the tag as text."""
+
+    def test_words_are_said_and_the_nod_given(self):
+        mood = Mood.objects.create(slug='em', title='em')
+        for n in ('re', 'blu'):
+            ThinkingEntity.objects.get_or_create(name=n, defaults={'is_biological_human': False})
+        hers = Message.objects.create(id=uuid.uuid4(), sender_id='blu', mood=mood, content='Two of us, same afternoon.', timestamp=1)
+        sid = uuid.uuid4()
+        mine = Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=mood, session_id=sid, timestamp=2,
+                                      content=[{'type': 'text', 'text': 'Fair. Cite the row.\n\n<react emoji="🤝" to="blu"/>'}])
+        reactions.agent_reacted(sid, 're')
+        mine.refresh_from_db()
+        self.assertEqual(mine.content[0]['text'], 'Fair. Cite the row.')
+        self.assertEqual(reactions.in_mood(mood), {str(hers.id): {'🤝': ['re']}})
