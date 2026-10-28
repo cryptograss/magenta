@@ -6864,6 +6864,7 @@
     const fresh = events.filter(e => (said(e) || redeployed(e)) && e.id && !readHeard.has(e.id))
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     for (const e of fresh) { readHeard.add(e.id); readQueue.push(e); }
+    if (readRecording) prefetchNext();  // came while recording: ready for when it stops
     if (fresh.length) saveReadPlace();
     // Next time from a minute before the newest: a clock a little off misses nothing, and ids keep it once.
     // A full page (reading a stretch through from a message): on from its last, or it would ask the same again.
@@ -6978,7 +6979,7 @@
   // recording's done; a message's own ▶ stops. Messages that come meanwhile are queued.
   function recordingHold(on) {
     readRecording = on;
-    if (on) { reader.pause(); if (speaking) stopSpeaking(); }
+    if (on) { reader.pause(); if (speaking) stopSpeaking(); prefetchNext(); }
     else if (clipDone && reader.paused && !readHeld) atSpeed(reader).play().catch(() => {});
     if (!on) readNext();
     renderReadBar();
@@ -7015,6 +7016,40 @@
                              rate: Math.round(reader.playbackRate * 100) / 100, pace: Math.round(paceOf(reader) || 0) }) }).catch(() => {});
   }
 
+  // Who's said to speak, for an item read next: the narrator names them when the Mood or the speaker changes.
+  function introFor(item) {
+    const newMood = !readLast || readLast.mood !== item.mood;
+    return newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
+  }
+  // A message's clip (speak/), its audio brought into this browser too, so it plays without the network.
+  function speakFetch(item, ask, keep) {
+    const url = `/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${new URLSearchParams(ask)}`;
+    const asked = fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+    if (!keep) return asked;
+    return asked.then(async r => {
+      if (!r.ok) return r;
+      const body = await r.json();
+      for (const k of ['url', 'intro']) {
+        if (body[k] && body[k].startsWith('/')) {
+          try { body[k] = URL.createObjectURL(await (await fetch(body[k])).blob()); } catch (e) {}
+        }
+      }
+      return new Response(JSON.stringify(body), { status: r.status, headers: { 'Content-Type': 'application/json' } });
+    });
+  }
+  // While a memo is recorded, what's next is fetched -- its words and its narrator line, audio and all -- so it's
+  // heard the moment the recording stops, not after the upload has had the connection (Justin, 28 Oct, in the woods).
+  const prefetched = new Map();  // item id -> {intro, said, words}
+  function prefetchNext() {
+    const item = readQueue[0];
+    if (!item || prefetched.has(item.id) || item.kind === 'thinking' || item.kind === 'deploy'
+        || (item.text || '').match(MEMO_AUDIO)) return;
+    const intro = introFor(item);
+    prefetched.set(item.id, { intro, words: speakFetch(item, {}, true),
+                              said: intro ? speakFetch(item, { intro, only: 'intro' }, true) : null });
+    while (prefetched.size > 4) prefetched.delete(prefetched.keys().next().value);
+  }
+
   async function readNext() {
     if (readNow || readHeld || readRecording || readBlocked || readMode === 'off' || !readQueue.length) { renderReadBar(); return; }
     const item = readQueue.shift();
@@ -7028,17 +7063,17 @@
     // A message about to be read says so at once, while its words are fetched (a memo's may still be heard).
     const chimed = item.kind !== 'thinking' && item.kind !== 'deploy' ? playClip(chimeUrl('in')) : null;
     const memo = (item.text || '').match(MEMO_AUDIO);  // heard as recorded: only who's speaking needs saying
-    const newMood = !readLast || readLast.mood !== item.mood;
-    const intro = newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
+    const intro = introFor(item);
+    const early = prefetched.get(item.id);  // fetched while a memo was recorded
+    prefetched.delete(item.id);
     const clips = [];
     // Who and where, said at once after the chime, while the message's own words are still being made (Justin,
     // 28 Oct: "chime, then narrator, immediately"); a tick every 3 s after it until they're ready.
-    const speakUrl = ask => `/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${new URLSearchParams(ask)}`;
     let words = null;
     if (!memo && item.kind !== 'thinking' && item.kind !== 'deploy') {
-      words = fetch(speakUrl({}), { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+      words = early ? early.words : speakFetch(item, {});
       if (intro) try {
-        const said = await fetch(speakUrl({ intro, only: 'intro' }), { method: 'POST', headers: { 'X-CSRFToken': csrf() } })
+        const said = await (early && early.intro === intro ? early.said : speakFetch(item, { intro, only: 'intro' }))
           .then(r => r.ok ? r.json() : {});
         if (said.intro && readNow === now && !now.skipped) {
           if (chimed) await chimed;
