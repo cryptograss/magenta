@@ -352,6 +352,7 @@ def api_mood_turns(request, slug):
         'agents': agents,
         'scram': clock('scram', settings_scram),
         'typing': clock('typing', typing_in, mood.slug),
+        'recording': recording_in(mood.slug),  # of those typing, who's speaking a memo
     }), f'look at #{mood.slug}' + (' (what is new)' if after is not None else ''))
 
 
@@ -651,6 +652,14 @@ def typing_in(slug):
     return sorted(name for name, at in (cache.get(_typing_key(slug)) or {}).items() if now - at < TYPING_FOR)
 
 
+def recording_in(slug):
+    """Who of those typing is recording a voice memo, not typing (Justin, 28 Oct: nobody could see it)."""
+    from django.core.cache import cache
+    import time
+    now = time.time()
+    return sorted(name for name, at in (cache.get(_typing_key(slug) + ':rec') or {}).items() if now - at < TYPING_FOR)
+
+
 @require_POST
 def api_typing(request, slug):
     """Say this device's person is (or stopped) typing in a Mood."""
@@ -665,9 +674,11 @@ def api_typing(request, slug):
         return JsonResponse({'error': 'sign in to write'}, status=401)
     Mood.by_slug_or_404(slug)
     try:
-        typing = bool(json.loads(request.body or b'{}').get('typing', True))
+        body = json.loads(request.body or b'{}')
+        typing = bool(body.get('typing', True))
+        recording = body.get('how') == 'recording'  # a voice memo, as its 🎙 says: typing, out loud
     except (ValueError, AttributeError):
-        return JsonResponse({'error': 'expected {"typing": true|false}'}, status=400)
+        return JsonResponse({'error': 'expected {"typing": true|false, "how"?: "recording"}'}, status=400)
     now = time.time()
     state = {n: at for n, at in (cache.get(_typing_key(slug)) or {}).items() if now - at < TYPING_FOR}
     if typing:
@@ -675,6 +686,12 @@ def api_typing(request, slug):
     else:
         state.pop(device.entity_id, None)
     cache.set(_typing_key(slug), state, TYPING_FOR * 2)
+    rec = {n: at for n, at in (cache.get(_typing_key(slug) + ':rec') or {}).items() if now - at < TYPING_FOR}
+    if typing and recording:
+        rec[device.entity_id] = now
+    else:
+        rec.pop(device.entity_id, None)
+    cache.set(_typing_key(slug) + ':rec', rec, TYPING_FOR * 2)
     from .services import presence
     presence.note(device.entity_id, slug, now)  # typing, or stopped: shown here, three minutes from now
     return JsonResponse({'typing': sorted(state)})
