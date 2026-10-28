@@ -51,3 +51,15 @@ class UsageTest(TidingsTests):
         answered = self.client.get('/api/usage/?hours=5').json()
         self.assertEqual(answered['hours'], 24)
         self.assertEqual(self.client.get('/api/usage/?hours=168').json()['unit'], 'day')
+
+    def test_each_call_is_tabbed_by_who_was_paid(self):
+        """Pi reaches OpenRouter and vendors directly alike (re's review of #237)."""
+        self.assertEqual(usage.harness_of('2.1.311'), 'anthropic')
+        self.assertEqual(usage.harness_of(None), 'anthropic')
+        self.assertEqual(usage.harness_of('pi 1.1.0'), 'openrouter')  # every Pi call before it said
+        self.assertEqual(usage.harness_of('pi 1.1.0 · openrouter'), 'openrouter')
+        self.assertEqual(usage.harness_of('pi 1.1.0 · anthropic'), 'anthropic')
+        self.assertEqual(usage.harness_of('pi 1.1.0 · google'), 'other')
+        self.call(self.re, self.mood_b, uuid.uuid4(), model='gemini-4-argon', client='pi 1.1.0 · google', cost=0.5)
+        state = usage.usage_state(24)
+        self.assertEqual((state['totals']['other']['usd'], len(state['top']['other'])), (0.5, 1))

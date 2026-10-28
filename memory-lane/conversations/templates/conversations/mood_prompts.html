@@ -126,14 +126,14 @@
         <option value="out">tokens written</option></select></label>
       <label>Each emergent, coloured by <select id="u-by">
         <option value="model">model</option><option value="mood">Mood</option>
-        <option value="harness">harness</option></select></label>
+        <option value="harness">who was paid</option></select></label>
       <span class="muted" id="u-status">loading…</span>
     </div>
     <div class="tiles" id="u-tiles"></div>
-    <p class="muted">OpenRouter (Pi) costs are what OpenRouter billed, from magenta#235 on; before it, a
-      router model (<code>auto</code>, <code>pareto-code</code>) was recorded at $0. Anthropic (Claude Code)
-      costs are list-price: what the same work would cost through the API, not what the plan charged.</p>
-    <h3>Overall, by harness</h3>
+    <p class="muted">Grouped by who was paid. OpenRouter costs are what OpenRouter billed, from magenta#235 on;
+      before it, a router model (<code>auto</code>, <code>pareto-code</code>) was recorded at $0. Claude Code's
+      costs are at list price: what the same work would cost through the API, not what the plan charged.</p>
+    <h3>Overall, by who was paid</h3>
     <div class="chart" id="u-overall"></div>
     <h3>Each emergent</h3>
     <div class="multiples" id="u-agents"></div>
@@ -143,6 +143,7 @@
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="anthropic" aria-selected="true">Anthropic</button>
       <button role="tab" data-tab="openrouter" aria-selected="false">OpenRouter</button>
+      <button role="tab" data-tab="other" aria-selected="false" hidden>other vendors</button>
     </div>
     <div id="u-top"></div>
     <div class="tip" id="u-tip" role="tooltip" hidden></div>
@@ -187,7 +188,8 @@
 <script>
 (() => {
   const AGENT_COLORS = { magent: '#ff67fd', re: '#ff3c00', blu: '#1976d2' };  // as the Moods draw them
-  const HARNESS = { anthropic: 'Anthropic (Claude Code)', openrouter: 'OpenRouter (Pi)' };
+  const HARNESS = { anthropic: 'Anthropic', openrouter: 'OpenRouter', other: 'other vendors' };  // who was paid
+  const HARNESSES = Object.keys(HARNESS);
   const SLOTS = 7;  // categorical slots before the rest fold into "other"
   const $ = id => document.getElementById(id);
   const tip = $('u-tip');
@@ -206,7 +208,7 @@
     // so a chart showing fewer of them doesn't repaint the ones it keeps.
     const out = {};
     if (dim === 'agent') { names.forEach(n => out[n] = AGENT_COLORS[n] || 'var(--other)'); return out; }
-    if (dim === 'harness') { out.anthropic = 'var(--series-1)'; out.openrouter = 'var(--series-2)'; return out; }
+    if (dim === 'harness') { HARNESSES.forEach((h, i) => out[h] = `var(--series-${i + 1})`); return out; }
     const order = state[dim + 's'] || names;
     names.forEach(n => { const i = order.indexOf(n); out[n] = i >= 0 && i < SLOTS ? `var(--series-${i + 1})` : 'var(--other)'; });
     return out;
@@ -215,7 +217,7 @@
 
   function series(slices, dim, measure) {
     // [{name, values[bucket]}], the first SLOTS by the range's own order, the rest as one "other".
-    const order = dim === 'agent' ? state.agents : dim === 'harness' ? ['anthropic', 'openrouter'] : state[dim + 's'];
+    const order = dim === 'agent' ? state.agents : dim === 'harness' ? HARNESSES : state[dim + 's'];
     const keep = new Set(dim === 'agent' || dim === 'harness' ? order : order.slice(0, SLOTS));
     const by = new Map();
     for (const s of slices) {
@@ -281,15 +283,16 @@
   function draw() {
     if (!state) return;
     const measure = $('u-measure').value, by = $('u-by').value;
-    const t = state.totals, all = t.anthropic.ctx + t.openrouter.ctx;
+    const t = state.totals, add = k => HARNESSES.reduce((a, h) => a + t[h][k], 0), all = add('ctx');
     const tiles = [
       [usd(t.openrouter.paid_usd), 'OpenRouter, billed'],
       [usd(t.anthropic.usd), 'Anthropic, at list price'],
       [tok(all), 'context read'],
-      [all ? Math.round(100 * (t.anthropic.cached + t.openrouter.cached) / all) + '%' : '–', 'of it from the cache'],
-      [String(t.anthropic.calls + t.openrouter.calls), 'model calls'],
+      [all ? Math.round(100 * add('cached') / all) + '%' : '–', 'of it from the cache'],
+      [String(add('calls')), 'model calls'],
     ];
-    const unpriced = t.anthropic.unpriced + t.openrouter.unpriced;
+    if (t.other.calls) tiles.splice(2, 0, [usd(t.other.usd), 'other vendors']);
+    const unpriced = add('unpriced');
     if (unpriced) tiles.push([String(unpriced), 'calls with no price']);
     $('u-tiles').innerHTML = tiles.map(([v, k]) => `<div class="tile"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
 
@@ -314,7 +317,10 @@
 
   function drawTop() {
     const rows = (state.top[tab] || []);
-    document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+    document.querySelectorAll('.tabs button').forEach(b => {
+      b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+      b.hidden = b.dataset.tab === 'other' && !(state.top.other || []).length;  // only when some vendor else was paid
+    });
     if (!rows.length) { $('u-top').innerHTML = '<p class="none">No turns here in the past 24 hours.</p>'; return; }
     $('u-top').innerHTML = `<table class="top"><thead><tr><th>when</th><th>who</th><th>Mood</th><th>model</th>
       <th class="n">calls</th><th class="n">context read</th><th class="n">largest</th><th class="n">cached</th>

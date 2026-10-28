@@ -26,6 +26,7 @@ from django.utils import timezone
 from conversations.models import Message
 from conversations.services.mood_view import call_usd, model_label
 
+HARNESSES = ('anthropic', 'openrouter', 'other')  # who was paid: one tab each
 RANGES = {24: 'hour', 72: 'hour', 168: 'day', 720: 'day'}  # hours looked back: what one bar is
 TOP_TURNS = 15
 FIELDS = ('id', 'session_id', 'sender_id', 'mood__slug', 'created_at', 'model_backend', 'client_version',
@@ -33,9 +34,15 @@ FIELDS = ('id', 'session_id', 'sender_id', 'mood__slug', 'created_at', 'model_ba
 
 
 def harness_of(client_version):
-    """Where a call was paid for: Pi runs on OpenRouter; Claude Code ('2.1.311', or no version, as the
-    transcript watcher writes it) on Anthropic."""
-    return 'openrouter' if (client_version or '').startswith('pi') else 'anthropic'
+    """Who was paid for a call. Claude Code ('2.1.311', or no version, as the transcript watcher writes
+    it): Anthropic. Pi says which vendor it called ('pi 1.1.0 · openrouter', pi_harness.EventsPoster);
+    a Pi row from before it said is OpenRouter's, as every Pi call to 28 Oct was."""
+    client = client_version or ''
+    if not client.startswith('pi'):
+        return 'anthropic'
+    vendor = client.split(' · ', 1)[1] if ' · ' in client else 'openrouter'
+    return vendor if vendor in HARNESSES else 'other'
+
 
 
 def calls(since, until=None):
@@ -86,7 +93,7 @@ def usage_state(hours=24, now=None):
     turns = {}
     day_ago = now - timedelta(hours=24)
     totals = {h: {'calls': 0, 'ctx': 0, 'cached': 0, 'out': 0, 'usd': 0.0, 'paid_usd': 0.0, 'unpriced': 0}
-              for h in ('anthropic', 'openrouter')}
+              for h in HARNESSES}
     for call in calls(since):
         s = slices[(index.get(bucket_of(call['at'], unit), 0), call['agent'], call['mood'], call['model'],
                     call['harness'])]
@@ -126,7 +133,7 @@ def usage_state(hours=24, now=None):
                 turn['paid'] = turn['paid'] or call['paid']
 
     top = {h: sorted((t for t in turns.values() if t['harness'] == h), key=lambda t: -t['usd'])[:TOP_TURNS]
-           for h in ('anthropic', 'openrouter')}
+           for h in HARNESSES}
     for listed in top.values():
         for t in listed:
             t['usd'] = round(t['usd'], 4)
