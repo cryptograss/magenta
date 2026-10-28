@@ -168,11 +168,12 @@ class MoodAPI:
         """That message's turn and every turn since (a post linked it, to be read from)."""
         return self._get(f'/api/moods/{slug}/turns/', **{'from': message_id})['turns']
 
-    def quiet(self, slug, reason, by='screen'):
-        """Record a moment let pass for the agent, as a dot marked whose it was."""
+    def quiet(self, slug, reason, by='screen', cost=None):
+        """Record a moment let pass for the agent, as a dot marked whose it was, and what deciding cost."""
         if not self.key:
             return False
-        response = self.http.post(f'{self.base}/api/moods/{slug}/quiet/', json={'reason': reason, 'by': by},
+        body = {'reason': reason, 'by': by, **({'cost_usd': cost} if cost is not None else {})}
+        response = self.http.post(f'{self.base}/api/moods/{slug}/quiet/', json=body,
                                   headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
         return response.status_code == 201
 
@@ -2256,6 +2257,14 @@ class MoodPoller:
             # history's ids, and the watcher, seeing them first, would file it where they were (a thread's
             # parent Mood; MoodSession.claim_by_history).
             poster.claim()
+        if isinstance(poster, StreamPoster) and prompt.lstrip().startswith('<mood-wake'):
+            # The wake itself, into the record: Claude Code's -p never echoes its prompt (Pi does), so re's and
+            # blu's turns there said nothing of what woke them, and the status page's spend by kind couldn't
+            # tell a mention from an unasked look (#usage, 28 Oct). As the transcript would have it, from -p:
+            # filed as the poller's (claude_code_v2.poller_or).
+            poster.put({'type': 'user', 'uuid': str(uuid.uuid5(uuid.NAMESPACE_URL, f'wake:{new_session}')),
+                        'session_id': new_session, 'timestamp': datetime.now(timezone.utc).isoformat(),
+                        'message': {'role': 'user', 'content': prompt}})
         stop = self.stop_check(slug, options.pop('since', None))
         heard = {}  # when the harness first spoke: it had started, with its instructions in hand
         on_event = poster.put if poster else None
@@ -2758,7 +2767,7 @@ class MoodPoller:
             verdict, reason, screen_cost = self.screen(prompt)
             self.spend(screen_cost)
             if verdict == 'dismiss':
-                if not self.dry_run and not self.api.quiet(slug, reason or 'not for me', by='screen'):
+                if not self.dry_run and not self.api.quiet(slug, reason or 'not for me', by='screen', cost=screen_cost):
                     logger.info(f'{slug}: screened (no runner key, so no dot): {reason}')
                 logger.info(f'{slug}: screened: {reason}')
                 return 'screened'
@@ -2784,7 +2793,7 @@ class MoodPoller:
                  *transcript_of(recent['turns']), '', f'Should {self.agent} look in now?']))
             self.spend(screen_cost)
             if verdict == 'dismiss':
-                if not self.dry_run and not self.api.quiet(slug, reason or 'nothing waiting on me', by='screen'):
+                if not self.dry_run and not self.api.quiet(slug, reason or 'nothing waiting on me', by='screen', cost=screen_cost):
                     logger.info(f'{slug}: quiet screened (no runner key, so no dot): {reason}')
                 logger.info(f'{slug}: quiet screened: {reason}')
                 return 'screened'
