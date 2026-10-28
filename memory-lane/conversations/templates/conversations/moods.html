@@ -4196,7 +4196,7 @@
   // --- the agents between two people's words, under one heading ------------------
   // With agents answering each other, a person's words can be followed by many turns (Justin, 24 Oct):
   // a heading over them says who spoke, and folds them all away; opened, each turn shows as before, under
-  // its own heading; "open all" opens every turn at once, their steps and thinking still each a folded
+  // its own heading; "open entire round" opens every turn at once, their steps and thinking still each a folded
   // line. Only where two turns or more stand together: one turn is already a heading of its own.
   // Older ones start folded; the newest, open.
   function drawRuns(container, keepNewest = true) {
@@ -4251,7 +4251,7 @@
       + (turns.some(b => !b._ended && isWorking(b)) ? ' · working…' : '') + '</span>'
       + (shut && last ? `<span class="preview">${esc(last._final)}</span>` : '') + '</button>'
       + `<button type="button" class="runall" title="${allOpen ? 'Each turn back to its heading' : 'Every turn opened, its steps and thinking still folded'}">`
-      + `${allOpen ? 'fold each' : 'open all'}</button>`;
+      + `${allOpen ? 'fold all turns' : 'open entire round'}</button>`;
     head._members.forEach(el => el.classList.toggle('runhid', shut));
   }
   // A message inside a folded run, taken to: its run opens.
