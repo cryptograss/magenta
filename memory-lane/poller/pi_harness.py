@@ -47,6 +47,16 @@ EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # Pi 1.1.0 picked Amazon Bedrock's.
 ALIASES = {'opus': 'anthropic/claude-opus-5-5', 'sonnet': 'anthropic/claude-sonnet-5-5',
            'fable': 'anthropic/claude-fable-5-1', 'haiku': 'anthropic/claude-haiku-5-5'}
+# OpenRouter's routers ('auto', 'openrouter/pareto-code', ...) pick a model per call, at that model's
+# price, and no setting here caps which: on 28 Oct pareto-code picked Fable 5.1 for 46 uncached calls,
+# $265 (magent, #usage). Neither offered nor run (Justin: "it was just wrong").
+def is_router(model):
+    """Whether a model setting ('openrouter/auto', 'openrouter/openrouter/pareto-code', 'auto') names one."""
+    model = (model or '').strip()
+    rest = model.split('/', 1)[1] if model.startswith('openrouter/') else model
+    return rest in ('auto', 'auto-beta') or rest.startswith('openrouter/')
+
+
 # Every model Pi's own library knows, by vendor (its public `compat` entry).
 CATALOG_JS = """
 import { getProviders, getModels } from '@earendil-works/pi-ai/compat';
@@ -352,6 +362,7 @@ class PiWaker:
             models = [list(m)[:2] for m in known.get(name, [])]
             ids = {m[0] for m in models}
             models += [[m, None] for m in usable.get(name, []) if m not in ids]  # a vendor of its own (models.json)
+            models = [m for m in models if not is_router(f'{name}/{m[0]}')]
             vendors.append({'name': name, 'usable': name in usable, 'models': models})
         return {'harness': self.harness(), 'vendors': vendors}
 
@@ -399,6 +410,8 @@ class PiWaker:
 
         cmd = [self.pi, '--mode', 'rpc', '--session-dir', str(self.session_dir), '--session-id', new_session_id,
                '--fork', session_id]
+        if is_router(model or self.model):
+            raise RuntimeError(f'{model or self.model} is a router, which may pick any model at any price: not run')
         if model or self.model:
             cmd += ['--model', ALIASES.get(model or self.model, model or self.model)]
         say([translator.event('turn_started', iso(time.time() * 1000), cwd=cwd)])
@@ -471,6 +484,8 @@ class PiWaker:
         if session_id:
             cmd += ['--fork', session_id]
         model = model or self.model
+        if is_router(model):
+            raise RuntimeError(f'{model} is a router, which may pick any model at any price: not run')
         if model:
             cmd += ['--model', ALIASES.get(model, model)]
         if effort:
