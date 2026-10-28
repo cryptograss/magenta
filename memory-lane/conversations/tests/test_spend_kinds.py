@@ -22,7 +22,7 @@ class SpendKindsTest(TidingsTests):
         message = self.post(sender or self.poller, mood, f'{opening}\nsomething said\n{ending}\n</mood-wake>')
         Message.objects.filter(id=message.id).update(session_id=session)
 
-    def response(self, session, mood, *rows, fresh=1_000_000, out=1000, cost=None, agent=None):
+    def response(self, session, mood, *rows, fresh=1_000_000, out=1000, cost=None, agent=None, helper=False):
         """One model response: `rows` of (kind, characters), each repeating the response's usage."""
         for kind, chars in rows:
             content = {'thinking': [{'type': 'thinking', 'thinking': 'x' * chars}],
@@ -33,7 +33,8 @@ class SpendKindsTest(TidingsTests):
             row = model.objects.create(id=uuid.uuid4(), sender=agent or self.magent, mood=mood, content=content,
                                        session_id=session, model_backend='claude-opus-5-5', input_tokens=fresh,
                                        output_tokens=out, cache_read_input_tokens=0, cache_creation_input_tokens=0,
-                                       cost_usd=cost, timestamp=int(self.clock.timestamp() * 1000), **extra)
+                                       cost_usd=cost, timestamp=int(self.clock.timestamp() * 1000),
+                                       is_sidechain=helper, **extra)
             Message.objects.filter(id=row.id).update(created_at=self.clock)
 
     def kinds(self, **kw):
@@ -91,3 +92,25 @@ class SpendKindsTest(TidingsTests):
         answered = self.client.get('/api/usage/kinds/?hours=999&mood=docs-tests-qa').json()
         self.assertEqual((answered['hours'], answered['mood']), (168, 'docs-tests-qa'))
         self.assertEqual(json.loads(json.dumps(answered))['total']['calls'], 0)
+
+    def test_it_counts_as_the_prompts_page_does_a_helpers_calls_too(self):
+        """re's review of #243: a helper's (sidechain) calls were on the prompts page and not here."""
+        from conversations.services import usage
+        s = uuid.uuid4()
+        self.wake(s, self.mood_a, '<mood-wake mood="magenta-interface">', FULL)
+        self.response(s, self.mood_a, ('words', 40))
+        self.response(s, self.mood_a, ('words', 40), fresh=2_000_000, helper=True)
+        here = spend_kinds.spend_by_kind()['total']
+        there = usage.usage_state(24)['totals']
+        self.assertEqual((here['calls'], here['usd']), (2, 12.04))
+        self.assertEqual(here['usd'], round(sum(t['usd'] for t in there.values()), 2))
+
+    def test_a_pi_response_is_its_blocks_together(self):
+        """Pi puts a response's usage on its last block: the thinking before it is the same response's."""
+        s = uuid.uuid4()
+        self.wake(s, self.mood_a, '<mood-wake mood="magenta-interface">', FULL)
+        Thought.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.mood_a, session_id=s,
+                               content=[{'type': 'thinking', 'thinking': 'x' * 300}], model_backend='claude-opus-5-5')
+        self.response(s, self.mood_a, ('words', 100), out=100)
+        full = self.kinds()['mention-full']
+        self.assertEqual((full['calls'], full['thinking'], full['words']), (1, 75, 25))

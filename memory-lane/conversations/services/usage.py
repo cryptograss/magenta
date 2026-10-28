@@ -21,6 +21,9 @@ page groups those slices any way it's asked, so changing a chart's colouring ask
 from collections import defaultdict
 from datetime import timedelta, timezone as tz
 
+from django.db.models import TextField
+from django.db.models.fields.json import KT
+from django.db.models.functions import Cast, Length
 from django.utils import timezone
 
 from conversations.models import Message
@@ -45,26 +48,60 @@ def harness_of(client_version):
 
 
 
-def calls(since, until=None):
-    """Each model response from `since`, once: dicts with its turn, agent, Mood, model, harness, tokens
-    and cost."""
-    rows = (Message.objects.filter(created_at__gte=since, input_tokens__isnull=False,
-                                   sender__thinkingentity__is_biological_human=False)
+def _row_chars(row):
+    """(kind, characters) a row of a response wrote: a thinking block's text (Claude Code keeps only its
+    signature, and that isn't thinking), a text block's, or a tool call's whole input."""
+    if row['thought']:
+        return 'thinking', row['thinking_chars'] or 0
+    if row['tooluse']:
+        return 'tools', row['all_chars'] or 0
+    return 'words', (row['text_chars'] if row['text_chars'] is not None else row['all_chars']) or 0
+
+
+def calls(since, until=None, mood=None, chars=False):
+    """Each model response from `since` (in `mood`, if named), once: dicts with its turn, agent, Mood, model,
+    harness, tokens and cost -- and with `chars`, the characters it wrote as thinking, words and tool calls
+    (spend_kinds.py). One rule for every page that counts: a usage repeated in a session is one response.
+    A helper's calls (sidechains) are its turn's. A row with no usage of its own (Pi puts a response's usage
+    on its last block) is the next response's in its session."""
+    rows = (Message.objects.filter(created_at__gte=since, sender__thinkingentity__is_biological_human=False)
             .exclude(model_backend__startswith='<'))
+    if not chars:
+        rows = rows.filter(input_tokens__isnull=False)
     if until:
         rows = rows.filter(created_at__lt=until)
-    seen = set()
-    for row in rows.order_by('created_at').values_list(*FIELDS).iterator(chunk_size=2000):
-        (mid, session, agent, mood, at, model, client, fresh, out, read, written, paid) = row
-        key = (session, fresh, out, read, written)
-        if key in seen:
+    if mood:
+        rows = rows.filter(mood__slug=mood)
+    fields = dict(zip(('id', 'session', 'agent', 'mood', 'at', 'model', 'client', 'fresh', 'out', 'read',
+                       'written', 'paid'), FIELDS))
+    if chars:
+        rows = rows.annotate(thinking_chars=Length(KT('content__0__thinking')),
+                             text_chars=Length(KT('content__0__text')), all_chars=Length(Cast('content', TextField())))
+    values = [*FIELDS, *(('thinking_chars', 'text_chars', 'all_chars', 'thought', 'tooluse') if chars else ())]
+    found, pending = {}, defaultdict(list)
+    for row in rows.order_by('created_at').values(*values).iterator(chunk_size=2000):
+        r = {k: row[v] for k, v in fields.items()}
+        session = r['session']
+        if r['fresh'] is None and r['out'] is None:
+            pending[session].append(row)
             continue
-        seen.add(key)
-        usd = paid if paid is not None else call_usd(model, fresh, out, read, written)
-        yield {'id': str(mid), 'turn': str(session or mid), 'agent': agent, 'mood': mood or '', 'at': at,
-               'model': model_label(model) or (model or ''), 'harness': harness_of(client),
-               'ctx': (fresh or 0) + (read or 0) + (written or 0), 'cached': read or 0, 'out': out or 0,
-               'usd': usd, 'paid': paid is not None}
+        key = (session, r['fresh'], r['out'], r['read'], r['written'])
+        call = found.get(key)
+        if call is None:
+            usd = r['paid'] if r['paid'] is not None else call_usd(r['model'], r['fresh'], r['out'], r['read'],
+                                                                    r['written'])
+            call = found[key] = {
+                'id': str(r['id']), 'turn': str(session or r['id']), 'agent': r['agent'], 'mood': r['mood'] or '',
+                'at': r['at'], 'model': model_label(r['model']) or (r['model'] or ''), 'harness': harness_of(r['client']),
+                'ctx': (r['fresh'] or 0) + (r['read'] or 0) + (r['written'] or 0), 'cached': r['read'] or 0,
+                'out': r['out'] or 0, 'usd': usd, 'paid': r['paid'] is not None}
+            if chars:
+                call['chars'] = defaultdict(int)
+        if chars:
+            for held in (*pending.pop(session, ()), row):
+                kind, n = _row_chars(held)
+                call['chars'][kind] += n
+    return list(found.values())
 
 
 def bucket_of(at, unit):
