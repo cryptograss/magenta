@@ -406,12 +406,18 @@ def _speech(msg, shortest, longest):
     return text
 
 
+STATS_SPAN = timedelta(days=30)  # the most a stats line reads: every row is read in Python
+
+
 def voice_stats(agent, start, end):
-    """How the agent spoke in a stretch, counting what the samples leave out: silences, reacts, one-liners."""
+    """How the agent spoke in a stretch, counting what the samples leave out: silences, reacts, one-liners.
+    Over at most the last STATS_SPAN of the stretch: a long life's whole tail is too many rows to read for
+    one line."""
     from .mood_view import quiet_reason
     from .reactions import agent_reaction
     counts = {'replies': 0, 'silences': 0, 'reacts': 0, 'lengths': []}
-    for msg in _sayable(agent, start, end):
+    start = max(start, end - STATS_SPAN)
+    for msg in _sayable(agent, start, end).iterator():
         if kind_of(msg) != 'message':
             continue
         text = prose(msg.content)
@@ -461,7 +467,10 @@ def correction_of(message):
     """(message, text) of a later post in the Mood that says corrects="#m-<its id>", or None."""
     if not message.mood_id:
         return None
-    later = (Message.objects.filter(mood_id=message.mood_id, created_at__gt=message.created_at, is_sidechain=False)
+    # Within three days after it, by the time index first: the text match casts every row it reaches, and
+    # a scan of a busy Mood's whole tail per sample is what made the tool time out (blu, 27 Oct).
+    later = (Message.objects.filter(mood_id=message.mood_id, created_at__gt=message.created_at,
+                                    created_at__lt=message.created_at + timedelta(days=3), is_sidechain=False)
              .annotate(text=Cast('content', TextField())).filter(text__contains=str(message.id)[:8]))
     for msg in later.order_by('created_at')[:50]:
         text = prose(msg.content)
@@ -628,7 +637,8 @@ def how_i_speak_text(agent, count=12, fresh=False, others=False, now=None, short
     def said(c):
         return (f"{c['replies']} replies (median {c['median_length']} chars), {c['silences']} silences, "
                 f"{c['reacts']} reacts")
-    lines.append("What the samples leave out: " + (f"before {when(recent_from)}, {said(old)}; " if old else '')
+    lines.append("What the samples leave out: "
+                 + (f"in the {STATS_SPAN.days} days before {when(recent_from)}, {said(old)}; " if old else '')
                  + f"since, {said(new)}.")
     if others:
         names = sorted(n for n in ThinkingEntity.objects.filter(is_biological_human=False)
