@@ -392,6 +392,14 @@
   /* Drag the pane's edge to size it; the width is remembered in this browser. */
   #grip { width: 5px; margin-left: -3px; flex: none; cursor: col-resize; position: relative; z-index: 1; }
   #grip:hover, body.sizing #grip { background: var(--accent-soft); }
+  /* A handle at the grip's middle folds the Moods pane away, or brings it back; dragging still resizes it
+     (Justin, 28 Oct: "sometimes I want to collapse it entirely"). */
+  #grip .navfold { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 14px; height: 38px;
+                   padding: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted);
+                   font-size: 9px; line-height: 1; cursor: pointer; z-index: 2; }
+  #grip .navfold:hover { color: var(--accent); border-color: var(--accent); }
+  body.nav-folded nav { display: none; }
+  body.nav-folded #grip { cursor: default; margin-left: 0; width: 8px; }
   body.sizing { cursor: col-resize; user-select: none; }
   .badge {
     display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 9px;
@@ -812,8 +820,10 @@
   #composer textarea { flex: 1; font-family: inherit; line-height: inherit; min-height: 44px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
   #composer button { font: inherit; padding: 8px 14px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
   #composer button:disabled { opacity: .5; cursor: default; }
-  /* A tiny chevron at the top centre: pull the box up to write at length, and back down (Justin, 27 Oct). */
-  #composer .expand { position: absolute; top: -7px; left: 50%; transform: translateX(-50%);
+  /* A tiny chevron at the top centre: pull the box up to write at length, and back down (Justin, 27 Oct).
+     Just inside the composer's top edge, not astride it, so a click aimed at the settings row above
+     doesn't land on it (Justin, 28 Oct). */
+  #composer .expand { position: absolute; top: 1px; left: 50%; transform: translateX(-50%);
     width: 42px; height: 13px; padding: 0; border: 1px solid var(--line); border-radius: 7px;
     background: var(--panel); color: var(--muted); font-size: 9px; line-height: 11px; text-align: center;
     cursor: pointer; z-index: 2; }
@@ -872,8 +882,9 @@
   #activity #stopBtn { margin-left: auto; font: inherit; font-size: 12px; padding: 2px 9px; border: 1px solid var(--line);
                        border-radius: 10px; background: var(--panel); color: var(--muted); cursor: pointer; white-space: nowrap; }
   #activity #stopBtn:hover { color: var(--err); border-color: var(--err); }
-  #activity .stopone { font-size: 11px; line-height: 1; padding: 1px 2px; margin-left: -4px; border: 0; background: none; cursor: pointer;
-                       opacity: .7; }
+  /* Between the verb and the timer (Justin, 28 Oct: beside the name it read as another pie). */
+  #activity .stopone { font-size: 11px; line-height: 1; padding: 1px 2px; margin-right: 3px; border: 0; background: none; cursor: pointer;
+                       opacity: .7; vertical-align: -1px; }
   #activity .stopone:hover { opacity: 1; transform: scale(1.15); }
   @keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
   .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -1437,7 +1448,7 @@
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
-  <div id="grip" title="Drag to resize; double-click to reset"></div>
+  <div id="grip" title="Drag to resize; double-click to reset"><button type="button" class="navfold" id="navFold" title="Fold the Moods away" aria-label="Fold the Moods list away" aria-expanded="true">‹</button></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
   <main id="main"><div id="topbar"><div id="moodbar"></div><div id="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
@@ -1988,7 +1999,20 @@
     else document.documentElement.style.removeProperty('--nav-width');
   }
   navWidth(store.get('navWidth', 0));
+  // Folded away (the handle on the grip), remembered on this computer; a drag still resizes it when open.
+  const navFold = document.getElementById('navFold');
+  function foldNav(on) {
+    document.body.classList.toggle('nav-folded', on);
+    navFold.textContent = on ? '›' : '‹';
+    navFold.title = on ? 'Show the Moods' : 'Fold the Moods away';
+    navFold.setAttribute('aria-expanded', on ? 'false' : 'true');
+    store.set('navFolded', on);
+  }
+  if (store.get('navFolded', false)) foldNav(true);
+  navFold.addEventListener('click', e => { e.stopPropagation(); foldNav(!document.body.classList.contains('nav-folded')); });
+  navFold.addEventListener('pointerdown', e => e.stopPropagation());  // a click on the handle is no drag
   grip.addEventListener('pointerdown', e => {
+    if (document.body.classList.contains('nav-folded')) return;
     e.preventDefault();
     grip.setPointerCapture(e.pointerId);
     document.body.classList.add('sizing');
@@ -5666,13 +5690,13 @@
     // A line for each, in its colour: two woken by one post, or one asked and one looking in.
     activityText.innerHTML = acts.map(a => `<span class="one${a.doing === 'held' ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
       + (a.doing === 'waking'
-        ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b>${stopOne(a)} · ${elapsed(a.since)}`
+        ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${stopOne(a)}${elapsed(a.since)}`
         : a.doing === 'held' && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${waitedFor(a.why)}` + (a.until ? ` · checks in by ${esc(hhmm(a.until))}` : '')
         : a.doing === 'held'
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
           + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
-        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b>${stopOne(a)} · ${esc(a.doing)} · ${elapsed(a.since)}`
+        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${esc(a.doing)} · ${stopOne(a)}${elapsed(a.since)}`
           + ([a.model, a.effort].filter(Boolean).length ? ` · ${esc([a.model, a.effort].filter(Boolean).join(' · '))}` : ''))
       + '</span>').join('');
   }
