@@ -1160,7 +1160,7 @@
   .hush .agent select, .hush .agent label { flex: none; }
   /* Open: a table, a column per setting, so every agent's row lines up whatever its name's length
      (Justin, 18 Oct). Each row is the grid's own (subgrid), so it still glows and greys as one. */
-  .hush .agentgrid { flex: 1 1 0; min-width: 0; display: grid; grid-template-columns: repeat(9, auto) 1fr; gap: 4px 6px; align-items: center; }
+  .hush .agentgrid { flex: 1 1 0; min-width: 0; display: grid; grid-template-columns: repeat(8, auto) 1fr; gap: 4px 6px; align-items: center; }
   .hush .agentgrid .agent { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
   .hush .agentgrid .agent > * { justify-self: start; }
   /* Mode: just its sign, closed; the menu open says the rest (1hr and such) (Justin, 27 Oct). */
@@ -5268,8 +5268,7 @@
     ['', ''],
     ['mode', '👂 listening: answers @mentions and may speak up unasked · @: answers @mentions only · 🤫 hushed: wakes for nothing (mentions wait)'],
     ['model', 'the model its wakes here run on'],
-    ['effort @', 'effort when @mentioned here: lo, med, hi, x (extra), max'],
-    ['effort unasked', 'effort when it looks in unasked, deciding whether to speak up here: lo, med, hi, x (extra), max'],
+    ['effort', 'how hard it thinks here, whether @mentioned or looking in unasked: lo, med, hi, x (extra), max'],
     ['speaks up', 'how readily it speaks up unasked here'],
     ['replies', 'how long its replies run here'],
     ['reads back', "how much of what was said here since it last spoke a wake reads word for word, in tokens (10k ≈ 40,000 characters, about 7,500 words); anything older is summarized"],
@@ -5392,7 +5391,7 @@
     });
   }
   // The payload's names for an agent's settings, and the keys its menus carry (data-knob).
-  const SHOWN_KNOBS = { listening: 'listening', model: 'model', effort: 'mention_effort', consider_effort: 'consider_effort', ultracode: 'ultracode',
+  const SHOWN_KNOBS = { listening: 'listening', model: 'model', effort: 'mention_effort', ultracode: 'ultracode',
                         reads: 'catch_up_tokens', discretion: 'discretion', verbosity: 'verbosity' };
   function renderAgents(agents) {
     // What someone else changed since the last look (not on first drawing a Mood: nothing to compare).
@@ -5408,7 +5407,7 @@
     agentsNow = agents;
     const box = document.getElementById('hush');
     // Redraw the menus only when a setting changed: never under someone's open menu.
-    const key = JSON.stringify(Object.entries(agents).map(([n, a]) => [n, a.listening, a.model, a.effort, a.consider_effort, a.ultracode, a.reads,
+    const key = JSON.stringify(Object.entries(agents).map(([n, a]) => [n, a.listening, a.model, a.effort, a.ultracode, a.reads,
                                                                        a.discretion, a.verbosity, viewer]).concat(agentsWhole()));
     if (box && (key !== agentsShown || !box.childElementCount)) {
       agentsShown = key;
@@ -5481,7 +5480,7 @@
         + `<span class="cell">${icon(agent, false)}<span class="name">${esc(agent)}</span></span>`;
       if (!keyHolder) {
         const runs = shortModel(ctx_runs(a).split('/').pop()) || '?';
-        return [describeListening(l), runs, EFFORT_SHORT[a.effort] || a.effort, EFFORT_SHORT[a.consider_effort] || a.consider_effort,
+        return [describeListening(l), runs, EFFORT_SHORT[a.effort] || a.effort,
                 SPEAKING_UP[a.discretion || 'normal'] || a.discretion, REPLY_LENGTHS[a.verbosity || 'normal'],
                 kTokens(a.reads || 10000), a.ultracode ? 'ultracode' : '']
           .reduce((out, cell) => out + `<span class="cell">${esc(cell)}</span>`, row) + '</span>';
@@ -5498,8 +5497,7 @@
             + `${esc(v ? label : inUse)}</option>`).join('') + '</select>';
       const efforts = (knob, now, what) => `<select data-agent="${esc(agent)}" data-knob="${knob}" title="${what}">`
         + EFFORTS.map(v => `<option value="${v}"${v === now ? ' selected' : ''}>${EFFORT_SHORT[v] || v}</option>`).join('') + '</select>';
-      const effort = efforts('mention_effort', a.effort, 'how hard it thinks when @mentioned here');
-      const considerEffort = efforts('consider_effort', a.consider_effort, 'how hard it thinks when it looks in unasked, deciding whether to speak up');
+      const effort = efforts('mention_effort', a.effort, 'how hard it thinks here, whether @mentioned or looking in unasked');
       // How much of what was said since its last word a wake reads word for word.
       const reads = `<select data-agent="${esc(agent)}" data-knob="catch_up_tokens" title="How much of what was said here since it last spoke a wake reads word for word; older is summarized">`
         + READS.map(n => `<option value="${n}"${n === a.reads ? ' selected' : ''}>${kTokens(n)}</option>`).join('')
@@ -5513,7 +5511,7 @@
       const ultra = a.catalog != null ? '' : `<label class="ultra" title="Claude Code's standing multi-agent workflows, on wakes with full tools: thorough, and costly">`
         + `<input type="checkbox" data-agent="${esc(agent)}" data-knob="ultracode"${a.ultracode ? ' checked' : ''}> ultra</label>`;
       // A cell each, in the grid every agent's row shares: listening, then model and effort, then the rest.
-      return [listen, `<span class="cell">${model}</span>`, effort, considerEffort, discretion, verbosity, reads, ultra || '<span></span>']
+      return [listen, `<span class="cell">${model}</span>`, effort, discretion, verbosity, reads, ultra || '<span></span>']
         .reduce((out, cell) => out + cell, row) + '</span>';
     }).join('') + '</div>';
   }

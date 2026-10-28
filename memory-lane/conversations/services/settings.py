@@ -34,8 +34,8 @@ KNOBS = {
     'idle_after': (3000, 'Seconds of silence before its first unprompted look; doubles after each silent '
                          'one. 0: never.'),
     'considers_per_hour': (6, 'At most this many full considerations an hour, here.'),
-    'mention_effort': ('high', 'How hard it thinks when someone @mentions it.'),
-    'consider_effort': ('medium', 'How hard it thinks when it decides whether to speak up.'),
+    # One effort, asked or unasked (Justin, 28 Oct: two was more cognitive load than it was worth).
+    'mention_effort': ('high', 'How hard it thinks here, whether someone @mentioned it or it looked in unasked.'),
     'model': ('', "Which model it runs on here: 'opus', 'sonnet', 'fable', 'haiku', or a full name; on Pi, "
                   "vendor/model (anthropic/claude-sonnet-5-5, openrouter/moonshotai/kimi-k3). "
                   "Empty: its harness's default."),
@@ -241,7 +241,7 @@ def clean(key, value):
         if value not in allowed:
             raise Invalid(f"{key}: one of {', '.join(allowed)}")
         return value
-    if key in ('mention_effort', 'consider_effort', 'handoff_effort'):
+    if key in ('mention_effort', 'handoff_effort'):
         if value not in EFFORTS:
             raise Invalid(f"{key}: one of {', '.join(EFFORTS)}")
         return value
