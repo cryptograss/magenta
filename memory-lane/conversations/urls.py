@@ -72,6 +72,7 @@ urlpatterns = [
     path('api/tidings/', views_settings.api_tidings, name='api_tidings'),
     path('api/emoji/', views_settings.api_emoji, name='api_emoji'),
     path('api/prompts/', views_settings.api_prompts, name='api_prompts'),
+    path('api/usage/', views_settings.api_usage, name='api_usage'),
     path('api/auth/admin/', views_admin.api_admin, name='api_auth_admin'),
     path('api/moods/<slug:slug>/turns/', views_moods.api_mood_turns, name='api_mood_turns'),
     path('api/moods/<slug:slug>/unfurl/<str:message_id>/', views_moods.api_unfurl, name='api_mood_unfurl'),

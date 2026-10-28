@@ -202,6 +202,17 @@ def api_tidings_find(request):
 
 
 @require_GET
+def api_usage(request):
+    """What the agents spent (services/usage.py): ?hours= 24, 72, 168 or 720."""
+    from .services import usage
+    try:
+        hours = int(request.GET.get('hours', 24))
+    except ValueError:
+        hours = 24
+    return JsonResponse(usage.usage_state(hours))
+
+
+@require_GET
 def api_prompts(request):
     from .services import tidings
     return JsonResponse(tidings.prompts_state())
