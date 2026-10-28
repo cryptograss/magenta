@@ -68,6 +68,8 @@ def calls(since, until=None, mood=None, chars=False):
             .exclude(model_backend__startswith='<'))
     if not chars:
         rows = rows.filter(input_tokens__isnull=False)
+    else:  # what came back to the agent isn't what it wrote, though a runner's session files it under its name
+        rows = rows.filter(toolresult__isnull=True)
     if until:
         rows = rows.filter(created_at__lt=until)
     if mood:

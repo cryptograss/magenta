@@ -114,3 +114,16 @@ class SpendKindsTest(TidingsTests):
         self.response(s, self.mood_a, ('words', 100), out=100)
         full = self.kinds()['mention-full']
         self.assertEqual((full['calls'], full['thinking'], full['words']), (1, 75, 25))
+
+    def test_what_came_back_from_a_tool_is_not_what_the_agent_wrote(self):
+        """re's review of fa733e2: 40,000 characters of tool output were counted as the next call's words."""
+        from conversations.models import ToolResult
+        s = uuid.uuid4()
+        self.wake(s, self.mood_a, '<mood-wake mood="magenta-interface">', FULL)
+        self.response(s, self.mood_a, ('tools', 400))
+        ToolResult.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.mood_a, session_id=s,
+                                  content='y' * 40_000, tool_use_id='t1')
+        self.response(s, self.mood_a, ('words', 400), fresh=1_100_000)
+        full = self.kinds()['mention-full']
+        self.assertEqual(full['words'], 100)
+        self.assertAlmostEqual(full['tools'], 103, delta=2)
