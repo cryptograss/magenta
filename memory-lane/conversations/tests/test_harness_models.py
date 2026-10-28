@@ -129,3 +129,37 @@ class PiCatalogTest(TestCase):
             self.assertFalse(MoodAPI('http://ml', http=Refused, key=KEY).report_models('re', REPORT))
         self.assertIn('401', logged.output[0])
         self.assertNotIn(KEY, logged.output[0])
+
+
+class ModelsOffTest(TestCase):
+    """Justin, 28 Oct: "disable anthropic models through openrouter" -- per vendor, makers or models switched off."""
+
+    def setUp(self):
+        from conversations.models import HarnessModels
+        re_ = ThinkingEntity.objects.update_or_create(name='re', defaults={'is_biological_human': False})[0]
+        self.justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
+        HarnessModels.objects.update_or_create(agent=re_, defaults=dict(harness='pi 1.1.0', vendors=[
+            {'name': 'openrouter', 'usable': True, 'models': [['anthropic/claude-opus-5-5', 1000000],
+                                                              ['~anthropic/claude-fable-latest', 1000000],
+                                                              ['moonshotai/kimi-k3', 256000]]},
+            {'name': 'anthropic', 'usable': True, 'models': [['claude-opus-5-5', 1000000]]}]))
+
+    def test_off_through_openrouter_only(self):
+        from conversations.services import settings as knobs
+        knobs.change('models_off', knobs.clean('models_off', {'openrouter': ['anthropic']}), by=self.justin)
+        got = self.client.get('/api/agents/re/models/').json()['vendors']
+        self.assertEqual([[m[0] for m in v['models']] for v in got], [['moonshotai/kimi-k3'], ['claude-opus-5-5']])
+        self.assertEqual(len(self.client.get('/api/agents/re/models/?all=1').json()['vendors'][0]['models']), 3)
+        with self.assertRaises(knobs.Invalid):
+            knobs.clean('model', 'openrouter/anthropic/claude-opus-5-5')
+        self.assertEqual(knobs.clean('model', 'anthropic/claude-opus-5-5'), 'anthropic/claude-opus-5-5')
+        self.assertEqual(knobs.clean('model', 'openrouter/moonshotai/kimi-k3'), 'openrouter/moonshotai/kimi-k3')
+        from conversations.views_settings import makers_offered
+        self.assertEqual(makers_offered()['openrouter'], [{'name': 'anthropic', 'models': 2}, {'name': 'moonshotai', 'models': 1}])
+
+    def test_a_vendors_own_and_what_isnt_a_list(self):
+        from conversations.services import settings as knobs
+        self.assertTrue(knobs.model_off('anthropic', 'claude-opus-5-5', {'anthropic': ['*']}))
+        for bad in ([], {'openrouter': 'anthropic'}, {'x y': ['a']}):
+            with self.assertRaises(knobs.Invalid):
+                knobs.clean('models_off', bad)

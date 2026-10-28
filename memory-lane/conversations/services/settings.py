@@ -65,6 +65,9 @@ GLOBAL_KNOBS = {
     'tidings_comment_weight': (0.5, 'Tidings ranking: what one comment counts for, beside one upvote (1).'),
     # Who may set agents' per-Mood settings from a reply (services/agent_settings.py), when a person asks: a
     # grant, so adding an agent is a value a person changes, not code (Justin and re, 24 Oct). magent at first.
+    # Which models each vendor offers in the model menus (Justin, 28 Oct: "disable anthropic models through
+    # openrouter"): {vendor: [a maker (its group, as 'anthropic') or a model's own id]}, each one switched off.
+    'models_off': ({}, "Per vendor, the makers or models not offered (and not settable): {\"openrouter\": [\"anthropic\"]}."),
     'settings_may_set': (['magent'], "The agents that may set other agents' settings in a Mood (and their own), "
                                      "with a ```settings block, when someone signed in with an SSH key asks."),
 }
@@ -251,6 +254,9 @@ def clean(key, value):
         # colons or a leading ~ of their own (openrouter/~anthropic/claude-fable-latest).
         if not re.fullmatch(r'[A-Za-z0-9._:~/\-]{0,160}', value) or value.startswith('-'):
             raise Invalid('model: letters, digits, and . _ : ~ / -')
+        vendor, _, rest = value.partition('/')
+        if rest and model_off(vendor, rest):
+            raise Invalid(f'model: {value} is switched off for {vendor} (settings: models offered)')
         return value
     if key == 'ultracode':
         if value in (True, False):
@@ -302,6 +308,17 @@ def clean(key, value):
         if not low <= value <= high:
             raise Invalid(f'{key}: from {low} to {high}')
         return value
+    if key == 'models_off':
+        if not isinstance(value, dict):
+            raise Invalid('models_off: {vendor: [maker or model, ...]}')
+        out = {}
+        for vendor, off in list(value.items())[:40]:
+            if not re.fullmatch(r'[\w.-]{1,60}', str(vendor)) or not isinstance(off, list) or \
+                    not all(isinstance(o, str) and re.fullmatch(r'\*|[A-Za-z0-9._:~/\-]{1,160}', o) for o in off):
+                raise Invalid('models_off: {vendor: [maker or model, ...]}')
+            if off:
+                out[str(vendor)] = sorted(set(o.lstrip('~') for o in off))[:200]
+        return out
     if key == 'settings_may_set':
         if isinstance(value, str):
             value = [v for v in re.split(r'[\s,]+', value) if v]
@@ -422,6 +439,22 @@ def global_values(keys):
     for row in Setting.objects.filter(key__in=keys, mood=None, agent=None).order_by('-created_at'):
         found.setdefault(row.key, row.value)
     return {key: found[key] if key in found else default(key) for key in keys}
+
+
+def model_off(vendor, model, off=None):
+    """Whether `vendor`'s `model` (its id there: 'anthropic/claude-opus-5-5', '~anthropic/claude-fable-latest') is
+    switched off: its own id, or its maker's group, is in models_off."""
+    off = (global_value('models_off') if off is None else off).get(vendor) or ()
+    model = model.lstrip('~')
+    # '*': the vendor's own models, those whose ids name no maker (anthropic's claude-opus-5-5).
+    return any(model == o or model.startswith(o + '/') or (o == '*' and '/' not in model) for o in off)
+
+
+def offered(vendors, off=None):
+    """A harness's catalog (api_agent_models: [{name, usable, models: [[id, context], ...]}]) less what's off."""
+    off = global_value('models_off') if off is None else off
+    return [{**v, 'models': [m for m in v.get('models') or () if not model_off(v.get('name'), str(m[0]), off)]}
+            for v in vendors]
 
 
 def global_value(key):

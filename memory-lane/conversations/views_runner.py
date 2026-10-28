@@ -454,7 +454,10 @@ def api_agent_models(request, name):
         found = HarnessModels.objects.filter(agent_id=name).first()
         if found is None:
             return JsonResponse({'error': f'{name} has reported no models'}, status=404)
-        return JsonResponse({'agent': name, 'harness': found.harness, 'vendors': found.vendors,
+        from .services import settings as knobs
+        # Less what's switched off (settings: models offered); ?all=1, everything, for that very list.
+        vendors = found.vendors if request.GET.get('all') == '1' else knobs.offered(found.vendors)
+        return JsonResponse({'agent': name, 'harness': found.harness, 'vendors': vendors,
                              'reported_at': found.reported_at.isoformat()})
     if request.method != 'POST':
         return JsonResponse({'error': 'GET or POST'}, status=405)
