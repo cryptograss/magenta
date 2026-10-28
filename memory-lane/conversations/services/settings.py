@@ -34,8 +34,8 @@ KNOBS = {
     'idle_after': (3000, 'Seconds of silence before its first unprompted look; doubles after each silent '
                          'one. 0: never.'),
     'considers_per_hour': (6, 'At most this many full considerations an hour, here.'),
-    'mention_effort': ('high', 'How hard it thinks when someone @mentions it.'),
-    'consider_effort': ('medium', 'How hard it thinks when it decides whether to speak up.'),
+    # One effort, asked or unasked (Justin, 28 Oct: two was more cognitive load than it was worth).
+    'mention_effort': ('high', 'How hard it thinks here, whether someone @mentioned it or it looked in unasked.'),
     'model': ('', "Which model it runs on here: 'opus', 'sonnet', 'fable', 'haiku', or a full name; on Pi, "
                   "vendor/model (anthropic/claude-sonnet-5-5, openrouter/moonshotai/kimi-k3). "
                   "Empty: its harness's default."),
@@ -46,7 +46,8 @@ KNOBS = {
                              "decision or is plainly for it. normal: when it would genuinely help; mostly quiet. "
                              "chatty: joins in as a teammate would, small talk and kind words included."),
     'verbosity': ('normal', 'How long its replies run here: brief, normal or thorough.'),
-    'rules': ('', 'How it should carry itself here, in a few lines. It reads this at every wake.'),
+    'handoff_effort': ('high', 'How hard it thinks for an /incorporate or /handoff here (one full account, never brief), '
+                               "on this Mood's own model: another would read the whole session again, uncached."),
     'ultracode': (False, "Its full-tools mention wakes here run with Claude Code's ultracode on: standing "
                          "multi-agent workflows, at any effort. Thorough, and costly."),
 }
@@ -62,6 +63,13 @@ GLOBAL_KNOBS = {
     'tidings_age_hours': (12.0, 'Tidings ranking: the hours one unit of a link\'s age is. Fewer: links fade faster.'),
     'tidings_gravity': (1.5, 'Tidings ranking: how hard age pulls a link down. More: it fades faster.'),
     'tidings_comment_weight': (0.5, 'Tidings ranking: what one comment counts for, beside one upvote (1).'),
+    # Who may set agents' per-Mood settings from a reply (services/agent_settings.py), when a person asks: a
+    # grant, so adding an agent is a value a person changes, not code (Justin and re, 24 Oct). magent at first.
+    # Which models each vendor offers in the model menus (Justin, 28 Oct: "disable anthropic models through
+    # openrouter"): {vendor: [a maker (its group, as 'anthropic') or a model's own id]}, each one switched off.
+    'models_off': ({}, "Per vendor, the makers or models not offered (and not settable): {\"openrouter\": [\"anthropic\"]}."),
+    'settings_may_set': (['magent'], "The agents that may set other agents' settings in a Mood (and their own), "
+                                     "with a ```settings block, when someone signed in with an SSH key asks."),
 }
 # Links pinned to the top of Tidings by someone signed in with an SSH key: their ids, last pinned first.
 # Set from Tidings itself (tiding_links.pin), not the settings page.
@@ -87,14 +95,101 @@ PERSON_KEYS = {
 NAME_ART_MAX = 30
 
 
+# Characters that read as text though they aren't letters: circled and parenthesized letters and numbers,
+# letterlike symbols (™ ℡ ℅), squared Latin. Not decoration: with them, a name could spell another's.
+_TEXTLIKE = ((0x2100, 0x214F), (0x2460, 0x24FF), (0x2776, 0x2793), (0x3200, 0x33FF), (0x1F100, 0x1F1FF))
+
+
+def is_shape(ch):
+    """A character that may dress a name: a shape, line, block, arrow, punctuation or space -- never a letter, a
+    digit, a mark that combines with one, or a symbol that reads as either (Justin, 25 Oct: "only the shapes")."""
+    import unicodedata
+    if unicodedata.category(ch)[0] in 'LNMC':
+        return False
+    return not any(lo <= ord(ch) <= hi for lo, hi in _TEXTLIKE)
+
+
+def art_letters(art, name):
+    """The positions in `art` of `name`'s characters, in order; None if it doesn't write the name, or has any
+    other character that isn't a shape (is_shape)."""
+    want = [ch for ch in name.casefold() if not ch.isspace()]
+    at = []
+    for i, ch in enumerate(art):
+        if len(at) < len(want) and ch.casefold() == want[len(at)]:
+            at.append(i)
+        elif not is_shape(ch):
+            return None
+    return at if len(at) == len(want) else None
+
+
 def art_fits(art, name):
     """Whether `art` writes `name` -- their PickiPedia name, the one people know them by (Justin, 21 Oct) --
-    every character of it there, in order, any case (its spaces aside); on one line of printable
-    characters, at most NAME_ART_MAX."""
+    every character of it there, in order, any case (its spaces aside), and nothing else but shapes; on one
+    line, at most NAME_ART_MAX."""
     if not art or len(art) > NAME_ART_MAX or not art.isprintable():
         return False
-    letters = iter(art.casefold())
-    return all(any(c == ch for c in letters) for ch in name.casefold() if not ch.isspace())
+    return art_letters(art, name) is not None
+
+
+ANSI = ['#000000', '#0000aa', '#00aa00', '#00aaaa', '#aa0000', '#aa00aa', '#aa5500', '#aaaaaa',
+        '#555555', '#5555ff', '#55ff55', '#55ffff', '#ff5555', '#ff55ff', '#ffff55', '#ffffff']
+_CELL = re.compile(r'^(?:\.?|[0-9a-f]|#[0-9a-f]{6})$')
+# The page behind a name, and its ink, light and dark (moods.html's --bg/--panel and --ink).
+PAGES = (('#fbfaf7', '#1f1d1a'), ('#ffffff', '#1f1d1a'), ('#161417', '#ece7e1'), ('#1f1c20', '#ece7e1'))
+ON_ITS_BACK = 3.0   # a letter against a background it chose: WCAG's least for large text
+ON_THE_PAGE = 1.6   # a letter in a colour, on the page's own (either theme): never near-invisible
+
+
+def cells(codes):
+    """A colour for each character, as stored: one code each (0-f, '.'), or, once any is a colour of their own,
+    comma-separated (0-f, '.', #rrggbb) (Justin, 25 Oct: "a full regular palette")."""
+    codes = codes or ''
+    return codes.split(',') if ',' in codes or codes.startswith('#') else list(codes)
+
+
+def stored(tokens):
+    tokens = list(tokens)
+    while tokens and tokens[-1] in ('', '.'):
+        tokens.pop()
+    return ','.join(tokens) if any(len(t) > 1 for t in tokens) else ''.join(t or '.' for t in tokens)
+
+
+def hex_of(token):
+    if len(token) == 1 and token in '0123456789abcdef':
+        return ANSI[int(token, 16)]
+    return token if re.fullmatch(r'#[0-9a-f]{6}', token) else None  # anything else is refused by change()
+
+
+def contrast(a, b):
+    def lum(h):
+        def ch(v):
+            v = int(v, 16) / 255
+            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+        return 0.2126 * ch(h[1:3]) + 0.7152 * ch(h[3:5]) + 0.0722 * ch(h[5:7])
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def look_problem(art, colours, backs, name):
+    """Why this look can't be someone's, or None. Every letter of their name has to be seen (Justin, 25 Oct: a
+    taken-over account could blank its own name -- the same colour on the same background -- and draw someone
+    else's beside it): against its background, if it has one, or else against the page, light or dark."""
+    if not art:
+        return None
+    letters = art_letters(art, name) if art_fits(art, name) else None
+    if letters is None:
+        return f'every letter of "{name}", in order, and otherwise only shapes: no other letters or numbers'
+    fg, bg = cells(colours), cells(backs)
+    for i in letters:
+        f = hex_of(fg[i]) if i < len(fg) else None
+        b = hex_of(bg[i]) if i < len(bg) else None
+        if b:
+            inks = [f] if f else sorted({ink for _, ink in PAGES})
+            if any(contrast(ink, b) < ON_ITS_BACK for ink in inks):
+                return f'"{art[i]}" is hard to see on its background: every letter of your name has to stand out'
+        elif f and any(contrast(f, page) < ON_THE_PAGE for page, _ in PAGES):
+            return f'"{art[i]}" is hard to see on the page (light or dark): give it a background, or another colour'
+    return None
 
 
 def art_name(person):
@@ -149,7 +244,7 @@ def clean(key, value):
         if value not in allowed:
             raise Invalid(f"{key}: one of {', '.join(allowed)}")
         return value
-    if key in ('mention_effort', 'consider_effort'):
+    if key in ('mention_effort', 'handoff_effort'):
         if value not in EFFORTS:
             raise Invalid(f"{key}: one of {', '.join(EFFORTS)}")
         return value
@@ -159,6 +254,9 @@ def clean(key, value):
         # colons or a leading ~ of their own (openrouter/~anthropic/claude-fable-latest).
         if not re.fullmatch(r'[A-Za-z0-9._:~/\-]{0,160}', value) or value.startswith('-'):
             raise Invalid('model: letters, digits, and . _ : ~ / -')
+        vendor, _, rest = value.partition('/')
+        if rest and model_off(vendor, rest):
+            raise Invalid(f'model: {value} is switched off for {vendor} (settings: models offered)')
         return value
     if key == 'ultracode':
         if value in (True, False):
@@ -168,11 +266,6 @@ def clean(key, value):
         if str(value).lower() in ('false', 'off', '0', 'no', ''):
             return False
         raise Invalid('ultracode: on or off')
-    if key == 'rules':
-        value = str(value or '').strip()
-        if len(value) > 4000:
-            raise Invalid('rules: at most 4000 characters')
-        return value
     if key in ('archived', 'pinned'):
         if isinstance(value, bool):
             return value
@@ -184,9 +277,10 @@ def clean(key, value):
         return value
     if key in ('name_colours', 'name_backs'):
         value = str(value or '').strip().lower()
-        if len(value) > NAME_ART_MAX or not re.fullmatch(r'[.0-9a-f]*', value):
-            raise Invalid(f"{key}: at most {NAME_ART_MAX} codes, each 0-f or '.'")
-        return value.rstrip('.')
+        tokens = cells(value)
+        if len(tokens) > NAME_ART_MAX or not all(_CELL.match(t) for t in tokens):
+            raise Invalid(f"{key}: at most {NAME_ART_MAX} codes, each 0-f, #rrggbb or '.'")
+        return stored(tokens)
     if key == 'icon_colour':
         value = str(value or '').strip().lower()
         if value and not re.fullmatch(r'#[0-9a-f]{6}', value):
@@ -214,6 +308,23 @@ def clean(key, value):
         if not low <= value <= high:
             raise Invalid(f'{key}: from {low} to {high}')
         return value
+    if key == 'models_off':
+        if not isinstance(value, dict):
+            raise Invalid('models_off: {vendor: [maker or model, ...]}')
+        out = {}
+        for vendor, off in list(value.items())[:40]:
+            if not re.fullmatch(r'[\w.-]{1,60}', str(vendor)) or not isinstance(off, list) or \
+                    not all(isinstance(o, str) and re.fullmatch(r'\*|[A-Za-z0-9._:~/\-]{1,160}', o) for o in off):
+                raise Invalid('models_off: {vendor: [maker or model, ...]}')
+            if off:
+                out[str(vendor)] = sorted(set(o.lstrip('~') for o in off))[:200]
+        return out
+    if key == 'settings_may_set':
+        if isinstance(value, str):
+            value = [v for v in re.split(r'[\s,]+', value) if v]
+        if not isinstance(value, list) or not all(isinstance(v, str) and re.fullmatch(r'[\w.-]{1,50}', v) for v in value):
+            raise Invalid('settings_may_set: agents\' names')
+        return list(dict.fromkeys(v.lower() for v in value))[:20]
     if key == TIDINGS_PINNED:
         import uuid
         try:
@@ -240,9 +351,11 @@ def looks():
     found = {}
     for row in Setting.objects.filter(key__in=list(fields), mood__isnull=True).order_by('created_at'):
         found.setdefault(row.agent_id, {'art': '', 'colours': '', 'backs': '', 'colour': ''})[fields[row.key]] = row.value or ''
-    for look in found.values():
+    for name, look in found.items():
         for codes in ('colours', 'backs'):
-            look[codes] = look[codes][:len(look['art'])].rstrip('.') if look['art'] else ''
+            look[codes] = stored(cells(look[codes])[:len(look['art'])]) if look['art'] else ''
+        if look_problem(look['art'], look['colours'], look['backs'], art_name(name)):
+            look.update(art='', colours='', backs='')  # set before the rules: their name as it is
     return {name: look for name, look in found.items() if look['art'] or look['colour']}
 
 
@@ -308,6 +421,13 @@ def mood_flagged(key):
     return {slug for (slug, _, _), row in latest(rows).items() if row.value}
 
 
+def mood_value(slug, key):
+    """A MOOD_KEYS setting for one Mood, as it stands now (its default if never set)."""
+    from conversations.models import Setting
+    row = Setting.objects.filter(key=key, agent=None, mood__slug=slug).order_by('-created_at').first()
+    return row.value if row is not None else default(key)
+
+
 def archived_slugs():
     return mood_flagged('archived')
 
@@ -319,6 +439,22 @@ def global_values(keys):
     for row in Setting.objects.filter(key__in=keys, mood=None, agent=None).order_by('-created_at'):
         found.setdefault(row.key, row.value)
     return {key: found[key] if key in found else default(key) for key in keys}
+
+
+def model_off(vendor, model, off=None):
+    """Whether `vendor`'s `model` (its id there: 'anthropic/claude-opus-5-5', '~anthropic/claude-fable-latest') is
+    switched off: its own id, or its maker's group, is in models_off."""
+    off = (global_value('models_off') if off is None else off).get(vendor) or ()
+    model = model.lstrip('~')
+    # '*': the vendor's own models, those whose ids name no maker (anthropic's claude-opus-5-5).
+    return any(model == o or model.startswith(o + '/') or (o == '*' and '/' not in model) for o in off)
+
+
+def offered(vendors, off=None):
+    """A harness's catalog (api_agent_models: [{name, usable, models: [[id, context], ...]}]) less what's off."""
+    off = global_value('models_off') if off is None else off
+    return [{**v, 'models': [m for m in v.get('models') or () if not model_off(v.get('name'), str(m[0]), off)]}
+            for v in vendors]
 
 
 def global_value(key):
@@ -355,6 +491,19 @@ def change(key, value, mood=None, agent=None, by=None, note=''):
         raise Invalid(f'{key} is set for one person or agent, everywhere')
     return Setting.objects.create(mood=mood, agent=agent, key=key, value=clean(key, value), set_by=by,
                                   note=str(note or '')[:200])
+
+
+def change_every_mood(key, value, agent, by=None, note=''):
+    """Set `key` for `agent` in every Mood at once: everywhere (so new Moods have it), and in each
+    Mood where something more specific says otherwise. Rows only where they change something."""
+    from conversations.models import Mood, Setting
+    rows = [change(key, value, agent=agent, by=by, note=note)]
+    want = rows[0].value
+    current = list(Setting.objects.filter(key=key))
+    for mood in Mood.objects.all():
+        if resolve(mood.slug, agent, rows=current)[key] != want:
+            rows.append(change(key, value, mood=mood, agent=agent, by=by, note=note))
+    return rows
 
 
 def describe(row):

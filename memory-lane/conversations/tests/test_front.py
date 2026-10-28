@@ -45,7 +45,30 @@ class FrontPageTest(FrontBase):
         self.assertIn('/moods/mark-192.png', html)
         self.assertIn('href="/moods/"', html)
 
-    def test_the_top_three_links_most_upvoted_first(self):
+    def test_its_own_address_as_a_qr_code_at_the_foot(self):
+        # Justin, 23 Oct: held up for a phone across the table. The address is whatever served it.
+        html = self.client.get('/', secure=True).content.decode()
+        self.assertIn('<svg viewBox=', html)
+        self.assertIn('class="qr"', html)
+        self.assertIn('https://testserver/', html)
+        self.assertNotIn('<svg viewBox=', html.split('<footer')[0])  # at the foot, not before
+
+    def test_a_qr_code_says_its_address(self):
+        svg = front.qr_svg('https://example.test/')
+        self.assertTrue(svg.startswith('<svg viewBox="0 0 '))
+        self.assertIn('fill="#ece7e1"', svg)  # light behind dark: every camera reads that way round
+        self.assertIs(front.qr_svg('https://example.test/'), svg)  # drawn once
+
+    def test_a_phone_is_offered_the_app_on_the_front_page(self):
+        # Justin, 23 Oct: on the front only. The Moods carry it only to put the browser's own question,
+        # when the front page's button asks (?install=1).
+        front_page = self.client.get('/').content.decode()
+        self.assertIn('id="installNudge" role="dialog" aria-label="Install magenta" hidden', front_page)
+        moods = self.client.get('/moods/').content.decode()
+        self.assertIn('data-only-asked="1"', moods)
+        self.assertIn('beforeinstallprompt', moods)
+
+    def test_the_top_links_most_upvoted_first(self):
         made = []
         for i in range(4):
             said = self.say(self.skyler, self.jams, f'https://example.org/{i}')
@@ -53,12 +76,12 @@ class FrontPageTest(FrontBase):
         TidingVote.objects.create(tiding=made[1], by=self.skyler)
         TidingVote.objects.create(tiding=made[1], by=self.justin)
         TidingVote.objects.create(tiding=made[0], by=self.justin)
-        self.assertEqual([t['title'] for t in front.top_tidings()], ['Link 1', 'Link 0', 'Link 3'])
+        self.assertEqual([t['title'] for t in front.top_tidings()], ['Link 1', 'Link 0', 'Link 3', 'Link 2'])  # five at most
         html = self.client.get('/').content.decode()
         self.assertIn(f'/moods/tidings/{made[1].id}/', html)
-        self.assertNotIn('Link 2', html)
+        self.assertIn('Link 2', html)
 
-    def test_who_spoke_lately_and_where_not_what(self):
+    def test_who_spoke_lately_where_and_its_first_words(self):
         self.say(self.justin, self.jams, 'a secret-ish thing said in jams')
         self.say(self.poller, self.dev, '<mood-wake mood="magenta-interface">...</mood-wake>')  # the poller's wake
         self.say(self.magent, self.dev, [{'type': 'thinking', 'thinking': 'hmm'}], model=Thought)  # thinking
@@ -71,8 +94,24 @@ class FrontPageTest(FrontBase):
         html = self.client.get('/').content.decode()
         self.assertIn('#magenta interface', html)
         self.assertIn('--agent: #ff67fd', html)  # magent in its own colour
-        self.assertNotIn('secret-ish', html)
-        self.assertNotIn('Built it', html)
+        self.assertIn('a secret-ish thing said in jams', html)  # its first 80 characters (Justin, 23 Oct)
+        self.assertIn('>latest</h2>', html)
+        self.assertNotIn('what is this?', html)  # no links at the foot, for now
+        self.say(self.justin, self.jams, 'x' * 100)
+        cache.delete('front:state')
+        self.assertEqual(front.lately()[0]['said'], 'x' * 80 + '…')
+
+    def test_a_name_as_pickipedia_has_it_in_its_own_art(self):
+        from conversations.services import settings as knobs
+        knobs.change('name_art', '░ SkymanJenkins ░', agent=self.skyler, by=self.skyler)
+        knobs.change('name_colours', '.dddddd', agent=self.skyler, by=self.skyler)
+        with mock.patch('conversations.services.wiki_auth.names', return_value={'justin': 'JMyles', 'skyler': 'SkymanJenkins'}):
+            self.say(self.justin, self.jams, 'hello')
+            self.say(self.skyler, self.dev, 'hi')
+            names = {s['who']: s['name'] for s in front.lately()}
+        self.assertEqual(names['justin'], 'JMyles')  # his PickiPedia name, not the one here
+        self.assertIn('class="art" title="SkymanJenkins"', names['skyler'])
+        self.assertIn('<span class="ad">S</span>', names['skyler'])  # each letter in its colour
 
     def test_an_archived_mood_is_not_shown(self):
         from conversations.services import settings as knobs
@@ -147,7 +186,8 @@ class RankingAndPinsTest(FrontBase):
                          [('justin', 'jams'), ('skyler', 'magenta-interface'), ('skyler', 'jams')])
         html = self.client.get('/').content.decode()
         self.assertIn('class="enter" href="/moods/tidings/"', html)                      # come in: Tidings
-        self.assertIn(f'class="it" href="/moods/tidings/{tiding.id}/"', html)            # a link: its discussion
+        self.assertIn('class="title" href="https://example.org/x"', html)              # a link's title: out to it
+        self.assertIn(f'<a href="/moods/tidings/{tiding.id}/">0 comments</a>', html)     # its comments: its discussion
         self.assertIn('<li><a href="/moods/magenta-interface/">', html)                 # who spoke: that Mood
 
 
@@ -194,6 +234,17 @@ class SlogansTest(TestCase):
 
     def test_the_page_shows_one_and_carries_them_all(self):
         cache.set('front:slogans', ['one line', 'another line'], 600)
-        html = self.client.get('/').content.decode()
-        self.assertTrue('>one line</p>' in html or '>another line</p>' in html)
+        for _ in range(5):  # always the first first (Justin, 27 Oct), the rest in turns after it
+            html = self.client.get('/').content.decode()
+            self.assertIn('>one line</p>', html)
         self.assertIn('"another line"', html)  # for the turns
+
+    def test_an_agents_line_waits_for_a_person_and_templates_are_not_words(self):
+        # PickiPedia wraps what a bot writes in {{Bot_proposes}} until a person verifies it (22 Oct: magent's
+        # first copy of Justin's line came back so, and would have been shown as markup).
+        page = ("{{Bot_proposes|Add yours: each * line.|by=Magent}}\n"
+                "* {{Bot_proposes|a line magent wrote|by=Magent}}\n"
+                "* a line a person wrote{{citation needed}}\n"
+                "* {{bot proposes|another of magent's|by=Magent}}\n")
+        self.assertEqual(front.slogans_in(page), ['a line a person wrote'])
+        self.assertEqual(front.slogans(self.answer(200, page[:page.index('* a line a person')])), [front.SLOGAN])

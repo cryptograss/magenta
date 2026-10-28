@@ -69,6 +69,21 @@ class TranslatorTest(TestCase):
         self.assertEqual(ended['outcome'], 'failed')
         self.assertIn('Third-party apps', ended['error'])
 
+    def test_a_text_on_the_way_to_a_tool_call_is_not_the_turns_end(self):
+        # re, 27 Oct: Pi turns carried no stop, so every progress line read as an ended turn to the poller.
+        t = PiTranslator(SESSION)
+        t.feed({'type': 'session', 'timestamp': '2026-10-27T10:54:00.000Z'})
+        on_the_way = t.feed({'type': 'message_end', 'message': {
+            'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
+            'content': [{'type': 'text', 'text': 'Checking the deploy.'},
+                        {'type': 'toolCall', 'id': 'c1', 'name': 'read', 'arguments': {'path': 'x'}}]}})
+        self.assertEqual([e['type'] for e in on_the_way], ['assistant_message', 'tool_call'])
+        self.assertEqual(on_the_way[0]['stop_reason'], 'tool_use')
+        answer = t.feed({'type': 'message_end', 'message': {
+            'role': 'assistant', 'stopReason': 'stop', 'usage': {},
+            'content': [{'type': 'text', 'text': 'Yes, redeploy.'}]}})
+        self.assertEqual(answer[0]['stop_reason'], 'end_turn')
+
     def test_a_compaction_and_an_aborted_run(self):
         t = PiTranslator(SESSION)
         compacted = t.feed({'type': 'compaction_end', 'reason': 'threshold',
@@ -222,6 +237,55 @@ class EndToEndTest(TestCase):
         shown = self.client.get('/api/moods/docs-tests-qa/turns/').json()['steps'][0]
         self.assertEqual((shown['out'], shown['ctx'], shown['usd'], shown['paid']), (120, 40900, 0.0123, True))
 
+    def test_a_routed_call_is_recorded_as_what_ran_at_what_openrouter_billed(self):
+        """A router ('openrouter/pareto-code') is priced at $0 in Pi's list; OpenRouter ran Fable 5.1 and
+        billed $6.11 (magent, 28 Oct). The record keeps the model that ran and the bill, and the turn's end
+        says the bill's sum."""
+        t = PiTranslator(SESSION, turn='t3')
+        usage = {'input': 610065, 'output': 156, 'cacheRead': 0, 'cacheWrite': 0, 'cost': {'total': 0}}
+        said = t.feed({'type': 'message_end', 'message': {
+            'role': 'assistant', 'timestamp': 1793193797026, 'provider': 'openrouter',
+            'model': 'openrouter/pareto-code', 'responseModel': 'anthropic/claude-fable-5.1',
+            'responseId': 'gen-1793193797-x', 'usage': usage, 'stopReason': 'stop',
+            'content': [{'type': 'text', 'text': 'Yes.'}]}})
+        self.assertEqual(said[0]['model'], 'anthropic/claude-fable-5.1')
+        self.assertEqual((said[0]['usage']['generation'], said[0]['usage']['cost']), ('gen-1793193797-x', None))
+        ended = t.feed({'type': 'agent_settled'})
+
+        asked = []
+
+        class OpenRouter:
+            @staticmethod
+            def get(url, params=None, headers=None, timeout=None):
+                asked.append(params['id'])
+                return type('R', (), {'status_code': 404 if len(asked) == 1 else 200,
+                                      'json': lambda self: {'data': {'total_cost': 6.10845}}})()
+
+        poster = EventsPoster('http://ml', KEY, 'docs-tests-qa', COST_SESSION, http=OpenRouter, pause=0,
+                              openrouter_key='or-key')
+        events = said + ended
+        poster.bill(events)
+        poster.close()
+        self.assertEqual(asked, ['gen-1793193797-x'] * 2)  # not ready at first, then priced
+        self.assertEqual((events[0]['usage']['cost'], events[0]['usage']['billed']), (6.10845, True))
+        self.assertEqual(events[-1]['cost_usd'], 6.10845)
+
+        from conversations.services.mood_view import call_usd, model_label
+        self.assertEqual(model_label('anthropic/claude-fable-5.1'), 'Fable 5.1')
+        self.assertEqual(call_usd('anthropic/claude-fable-5.1', 610065, 156, 0, 0),
+                         call_usd('claude-fable-5-1', 610065, 156, 0, 0))
+
+    def test_without_an_openrouter_key_pis_figure_stands(self):
+        t = PiTranslator(SESSION, turn='t4')
+        said = t.feed({'type': 'message_end', 'message': {
+            'role': 'assistant', 'timestamp': 1793193797027, 'provider': 'openrouter', 'model': 'deepseek/deepseek-v4-pro',
+            'responseModel': 'deepseek/deepseek-v4-pro', 'responseId': 'gen-y', 'stopReason': 'stop',
+            'usage': {'input': 9, 'output': 1, 'cost': {'total': 0.002}}, 'content': [{'type': 'text', 'text': 'k'}]}})
+        poster = EventsPoster('http://ml', KEY, 'docs-tests-qa', COST_SESSION, http=None, openrouter_key='')
+        poster.bill(said)
+        poster.close()
+        self.assertEqual(said[0]['usage']['cost'], 0.002)
+
     def test_a_wake_that_failed_closes_its_turn(self):
         client, posted = self.client, []
 
@@ -235,7 +299,9 @@ class EndToEndTest(TestCase):
         poster = EventsPoster('http://ml', KEY, 'docs-tests-qa', SESSION, http=Capture)
         poster.thread = None  # read the queue here instead
         poster.queue = __import__('queue').Queue()
+        poster.answers = ['5f0c1a52-0000-4000-8000-000000000001']  # what woke it: said, as Claude Code's poster says it
         poster.put({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True})
         poster.send([poster.queue.get_nowait()])
         self.assertEqual(posted[0]['events'][0]['type'], 'turn_ended')
+        self.assertEqual(posted[0]['answers'], ['5f0c1a52-0000-4000-8000-000000000001'])
         self.assertTrue(Message.objects.filter(session_id=SESSION, content__type='turn-result').exists())

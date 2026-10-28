@@ -1,5 +1,5 @@
 Django==5.2.7
-psycopg2-binary==2.9.10
+psycopg2-binary==2.9.11
 watchdog==6.0.0
 constant-sorrow==0.1.0a9
 gunicorn==23.0.0
@@ -22,3 +22,7 @@ PyYAML>=6.0,<7
 # Both ship manylinux wheels with their libraries inside: nothing to apt-get.
 Pillow>=11,<13
 pillow-heif>=1.0,<2
+# The front page's QR code of its own address (conversations/services/front.py). Pure Python, no dependencies.
+segno>=1.6,<2
+# Where a reader's address is, for SSH-key sign-ins (conversations/services/geoip.py): DB-IP's database, read here.
+maxminddb>=2.6,<4

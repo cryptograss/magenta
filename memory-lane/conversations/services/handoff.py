@@ -44,7 +44,10 @@ _BLOCK = re.compile(r'^```handoff[ \t]*\n(.*?)\n```[ \t]*$\n?', re.S | re.M)
 
 
 def split(text):
-    """(the text without its handoff blocks, [{'to', 'about', 'for', 'context'}, ...])."""
+    """(the text without its handoff blocks, [{'to', 'about', 'for', 'context'}, ...]). A ```settings block goes
+    too (services/agent_settings.py): machinery, never words to show or read aloud."""
+    from .agent_settings import strip as strip_settings
+    text = strip_settings(text)
     blocks = [_parse(m.group(1)) for m in _BLOCK.finditer(text or '')]
     if not blocks:
         return text, []

@@ -12,7 +12,7 @@ import datetime
 import mcp.types as types
 from asgiref.sync import sync_to_async
 from django.db import close_old_connections
-from conversations.services import MemoryService, BootstrapService
+from conversations.services import MemoryService
 
 
 def with_fresh_connection(func):
@@ -26,15 +26,55 @@ def with_fresh_connection(func):
     return wrapper
 
 
-async def handle_bootstrap_memory():
-    """Complete memory bootstrap for cold starts"""
-    # Call service with fresh connection
-    bootstrap_data = await sync_to_async(with_fresh_connection(BootstrapService.bootstrap_memory))()
+def bootstrap_text(caller=None):
+    """Memory bootstrap for a cold start: the caller's own (services/recall). With no key there is nobody's to
+    give, and it says so: every agent's MCP config sends its key, so an unkeyed call is a misconfiguration
+    (Justin, magent-self, 2026-10-25: "Let's call out that misconfig")."""
+    if caller:
+        from conversations.services import recall
+        return recall.bootstrap_text(caller)
+    return NO_KEY_BOOTSTRAP
 
-    # Format as text
-    result_text = BootstrapService.format_bootstrap_text(bootstrap_data)
 
-    return [types.TextContent(type="text", text=result_text)]
+async def handle_bootstrap_memory(arguments=None, caller=None):
+    text = await sync_to_async(with_fresh_connection(lambda: bootstrap_text(caller)))()
+    return [types.TextContent(type="text", text=text)]
+
+
+# --- An agent's own memory, keyed to the caller (services/recall) ------------
+
+NO_KEY = ("This server doesn't know who you are: your MCP client sent no key, or one that is no agent's. "
+          "An agent's memory tools need its runner key, sent as 'Authorization: Bearer <key>' in the "
+          "magenta-memory-v2 server's headers (the deploy writes them). search_messages and read_mood "
+          "work without one.")
+NO_KEY_BOOTSTRAP = ("MISCONFIGURED: no memory bootstrap, because no key was sent. " + NO_KEY + " Every agent's "
+                    "MCP config should send its key; tell the people in your Mood which machine this is.")
+
+
+def keyed(fn):
+    """A tool that needs to know its caller: refuse plainly without one."""
+    async def handler(arguments=None, caller=None):
+        if not caller:
+            return [types.TextContent(type="text", text=NO_KEY)]
+        text = await sync_to_async(with_fresh_connection(lambda: fn(caller, arguments or {})))()
+        return [types.TextContent(type="text", text=text)]
+    return handler
+
+
+def _recall():
+    from conversations.services import recall
+    return recall
+
+
+handle_remember = keyed(lambda me, a: _recall().remember_text(
+    me, a.get('query', ''), limit=a.get('limit', 20), exact=bool(a.get('exact', False))))
+handle_mentions_of_me = keyed(lambda me, a: _recall().mentions_text(
+    me, limit=a.get('limit', 20), named=bool(a.get('named', False)), before=a.get('before')))
+handle_who_i_know = keyed(lambda me, a: _recall().who_i_know_text(me, limit=a.get('limit', 40)))
+handle_my_history_with = keyed(lambda me, a: _recall().history_with_text(
+    me, a.get('name', ''), limit=a.get('limit', 30), before=a.get('before')))
+handle_how_i_speak = keyed(lambda me, a: _recall().how_i_speak_text(
+    me, count=a.get('count', 12), fresh=bool(a.get('fresh', False)), others=bool(a.get('others', False))))
 
 
 async def handle_get_latest_continuation():
@@ -253,7 +293,7 @@ def list_moods_text():
 
 
 def read_mood_text(slug, start=None, limit=60):
-    """What people and agents said in a Mood, oldest first: the newest `limit`
+    """What people and emergents said in a Mood, oldest first: the newest `limit`
     turns, or from `start` (a message id, or an ISO time) on."""
     from django.utils.dateparse import parse_datetime
     from conversations.models import Message, Mood
@@ -294,7 +334,7 @@ def read_mood_text(slug, start=None, limit=60):
     if mood.description:
         head.append(mood.description)
     head.append(f"{len(lines)} turns, oldest first" + (f" ({dropped} more before them left out for length)" if dropped else '')
-                + " -- what people and agents said; tool calls aren't shown. Each line's #m-<id> is its link.\n")
+                + " -- what people and emergents said; tool calls aren't shown. Each line's #m-<id> is its link.\n")
     return '\n'.join(head + lines)
 
 
@@ -341,11 +381,20 @@ async def handle_list_threads(arguments):
     return [types.TextContent(type="text", text='\n'.join(lines))]
 
 
+# Handlers that are given the caller: handler(arguments, caller).
+CALLER_HANDLERS = {
+    "bootstrap_memory": handle_bootstrap_memory,
+    "remember": handle_remember,
+    "mentions_of_me": handle_mentions_of_me,
+    "who_i_know": handle_who_i_know,
+    "my_history_with": handle_my_history_with,
+    "how_i_speak": handle_how_i_speak,
+}
+
 TOOL_HANDLERS = {
     "list_moods": handle_list_moods,
     "read_mood": handle_read_mood,
     "list_threads": handle_list_threads,
-    "bootstrap_memory": handle_bootstrap_memory,
     "get_latest_continuation": handle_get_latest_continuation,
     "get_message_by_id": handle_get_message_by_id,
     "get_message_context": handle_get_message_context,

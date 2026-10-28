@@ -63,6 +63,14 @@ SUBCOMMANDS:
                         key. Its proof (what was signed, the signature, your
                         key) is kept beside it, checkable with ssh-keygen
                         anywhere, memory-lane or not.
+  clips save <file> <start> <end> "<subtitle>"
+                        Cut a clip from a local file (ffmpeg, here), the
+                        subtitle burned in, and save it under a name, as
+                        /clips save does for a Yarn link: /clips <name>
+                        plays it. Times: seconds, m:ss or h:mm:ss. Signed
+                        with your SSH key. --name (default: the subtitle's
+                        first words), --mood (default: general), --out FILE
+                        to cut only and look first. Runs mood_clip.py.
   kick <name> --all     Sign <name> out of Moods everywhere: every device
                         and every live login link of theirs. With --ban,
                         their key can't sign in again until `unban`. For a
@@ -172,6 +180,10 @@ case "${1:-}" in
     attest)
         shift
         exec python3 "$MOOD_TOOLS/mood_login.py" attest "$@"
+        ;;
+    clips)
+        shift
+        exec python3 "$MOOD_TOOLS/mood_clip.py" "$@"
         ;;
     kick)
         shift

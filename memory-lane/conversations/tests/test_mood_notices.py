@@ -1,6 +1,7 @@
-"""Notices (mentions, answers), recent changes, search, and the rules page."""
+"""Notices (mentions, answers), recent changes, search, and the instructions page."""
 
 import time
+from unittest import mock
 import uuid
 
 from django.test import TestCase, override_settings
@@ -62,6 +63,28 @@ class NoticesTest(TestCase):
         self.assertNotIn('Working on it:', [e.get('text') for e in events])  # progress lines are left out
         self.assertEqual(next(e for e in events if e['kind'] == 'said')['title'], 'Magenta 26 Million')
 
+    def test_reading_aloud_hears_an_agents_words_mid_turn_never_its_thinking_or_tools(self):
+        # Justin, 22 Oct: a long turn's words, read as they're said, not all at once when it ends.
+        from conversations.models import Thought, ToolUse
+        self.add(self.magent, [{'type': 'text', 'text': 'Working on it:'}], seconds=1, stop_reason='tool_use')
+        Thought.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.m26, timestamp=2, stop_reason='tool_use',
+                               content=[{'type': 'thinking', 'thinking': 'hmm, private'}])
+        ToolUse.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.m26, timestamp=3, stop_reason='tool_use',
+                               content={'command': 'ls'}, tool_name='Bash', tool_id='t1')
+        self.add(self.magent, [{'type': 'text', 'text': 'Done.'}], seconds=4, stop_reason='end_turn')
+        texts = lambda **q: [e['text'] for e in self.client.get('/api/moods/recent/', q).json()['events'] if e['kind'] == 'answered']  # noqa: E731
+        self.assertEqual(texts(), ['Done.'])                                  # as it was: what a turn came to
+        self.assertEqual(sorted(texts(progress='1')), ['Done.', 'Working on it:'])  # for the reader: as it's said
+
+    def test_an_agent_named_mid_turn_is_owed_its_wake_at_once(self):
+        # Justin, 22 Oct: "if you wake an agent in a mid-turn message, does it wake right away?" It does:
+        # the mention is there the moment the line is, not when the turn that said it ends.
+        re_agent, _ = ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        self.add(self.magent, [{'type': 'text', 'text': '@re, the branch is ready for your look.'}], seconds=1,
+                 stop_reason='tool_use', session_id=uuid.uuid4())
+        found = self.client.get(f'/api/mentions/{re_agent.name}/').json()['mentions']
+        self.assertEqual([(m['turn']['sender'], m['mood']) for m in found], [('magent', 'm26')])
+
     def test_recent_oldest_first_reads_a_stretch_from_its_start(self):
         # Reading aloud from a message on (moods.html readFrom): the first after `since`, in order,
         # a page at a time -- newest first would give the end of a long stretch, and lose its start.
@@ -88,25 +111,37 @@ class NoticesTest(TestCase):
         self.assertEqual([h['text'] for h in here], ['Who has the CAPO tonight?'])
         self.assertEqual(self.client.get('/api/search/?q=c').status_code, 400)
 
-    def test_the_rules_page_shows_what_each_wake_says_and_this_moods_rules(self):
-        knobs.change('rules', 'Keep it short after midnight.', mood=self.m26, agent=self.magent, by=self.justin)
-        page = self.client.get('/moods/m26/rules/').content.decode()
+    def test_the_instructions_page_shows_them_and_what_each_wake_says(self):
+        found = {'text': '<instructions agent="magent" mood="m26">Keep it short after midnight.</instructions>',
+                 'layers': [{'page': 'Cryptograss:Moods/m26/Instructions', 'url': 'https://pickipedia.xyz/wiki/x',
+                             'revision': None, 'by': None, 'problem': None, 'absent': True}]}
+        with mock.patch('conversations.views_settings.instructions_now', return_value=found):
+            page = self.client.get('/moods/m26/instructions/').content.decode()
         self.assertIn('Keep it short after midnight.', page)
+        self.assertIn('none yet, which is ordinary', page)
+        self.assertIn('Special:AgentBundles?agent=magent&amp;mood=m26', page)
         for title in ('full tools', 'look, not touch', 'nobody asks it', 'quiet a long while', 'The screen'):
             self.assertIn(title, page)
-        self.assertIn('&lt;silent&gt;a few words on why&lt;/silent&gt;', page)  # the wake's own words, escaped
+        self.assertIn('This turn has your full tools', page)  # the wake's own words
+
+    def test_the_old_address_goes_there_and_only_an_agent_names_the_pages(self):
+        old = self.client.get('/moods/m26/rules/?agent=magent')
+        self.assertEqual((old.status_code, old['Location']), (301, '/moods/m26/instructions/?agent=magent'))
+        with mock.patch('conversations.views_settings.instructions_now', return_value=None) as gathered:
+            self.client.get('/moods/m26/instructions/?agent=justin')
+        gathered.assert_called_once_with('magent', 'm26')  # a person isn't an agent with pages
 
 
 class WakeFramesTest(TestCase):
-    """The rules page and the poller say the same thing: one source."""
+    """The instructions page and the poller say the same thing: one source."""
 
     def test_the_frames_are_built_from_what_the_poller_sends(self):
-        from poller.mood_poller import CONSIDER_ASK, rules_block, wake_footer, wake_frames
-        frames = {f['kind']: f['text'] for f in wake_frames('m26', rules='Be brief.')}
+        from poller.mood_poller import CONSIDER_ASK, wake_extras, wake_footer, wake_frames
+        frames = {f['kind']: f['text'] for f in wake_frames('m26')}
         self.assertTrue(frames['mention-full'].endswith('\n'.join(wake_footer(full=True))))
         self.assertTrue(frames['mention-look'].endswith('\n'.join(wake_footer(full=False))))
         self.assertIn(CONSIDER_ASK, frames['consider'])
-        self.assertIn('\n'.join(rules_block('Be brief.')), frames['quiet'])
+        self.assertIn('\n'.join(wake_extras(slug='m26')), frames['quiet'])
 
     def test_the_dials_show_as_they_are_sent(self):
         from poller.mood_poller import CONSIDER_ASKS, VERBOSITY_LINES, wake_frames

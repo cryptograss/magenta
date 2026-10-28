@@ -1,7 +1,7 @@
 """A Mood's to-do list: YAML on PickiPedia, shown beside the Mood, pointed to in every wake."""
 
 from django.core.cache import cache
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 
 from conversations.models import Mood, MoodAlias
 from conversations.services import todo
@@ -133,9 +133,52 @@ class ForMoodTest(TestCase):
 
 class WakeTest(TestCase):
 
-    def test_every_wake_points_to_the_moods_list(self):
-        from poller.mood_poller import rules_block, wake_frames
-        self.assertIn('Cryptograss:Moods/general/todo', '\n'.join(rules_block('', 'normal', 'general')))
-        for frame in wake_frames('general'):
-            if frame['kind'] != 'screen':
-                self.assertIn('Cryptograss:Moods/general/todo', frame['text'], frame['kind'])
+    def test_the_moods_list_is_in_the_instructions_not_each_wake(self):
+        from poller.mood_poller import wake_frames
+        for frame in wake_frames('general'):  # Cryptograss:Moods/Instructions: Cryptograss:Moods/<slug>/todo
+            self.assertNotIn('Cryptograss:Moods/general/todo', frame['text'], frame['kind'])
+
+
+class TodoTextTest(SimpleTestCase):
+    """How the Mood page shows a task's words (moods.html todoText): run under node, lifted from the
+    template, so what is tested is what is served. Skipped where there is no node."""
+
+    @staticmethod
+    def lifted():
+        import shutil
+        import subprocess
+        from pathlib import Path
+        if not shutil.which('node'):
+            return None
+        html = (Path(__file__).resolve().parents[1] / 'templates/conversations/moods.html').read_text()
+
+        def lift(name):
+            # One line, or through the first line holding only the function's own indent and a brace.
+            start = html.index(f'function {name}(')
+            indent = html[html.rindex('\n', 0, start) + 1:start]
+            line_end = html.index('\n', start)
+            if html[start:line_end].rstrip().endswith('}'):
+                return html[start:line_end]
+            end = html.index(f'\n{indent}}}', start)
+            return html[start:end + len(indent) + 2]
+        src = "const WIKI = 'https://pickipedia.xyz';\n" + '\n'.join(lift(n) for n in ('esc', 'linkOf', 'todoText'))
+        return lambda text, links=True: subprocess.run(
+            ['node', '-e', src + '\nprocess.stdout.write(todoText(process.argv[1], process.argv[2] !== "nolinks"));',
+             '--', text, 'nolinks' if not links else 'links'],
+            capture_output=True, text=True, check=True).stdout
+
+    def test_a_page_in_brackets_is_a_link_and_code_is_left_alone(self):
+        todo_text = self.lifted()
+        if todo_text is None:
+            self.skipTest('no node')
+        self.assertEqual(todo_text('Verify [[Cryptograss:Moods/Dials]] now'),
+                         'Verify <a href="https://pickipedia.xyz/wiki/Cryptograss%3AMoods%2FDials">Cryptograss:Moods/Dials</a> now')
+        self.assertEqual(todo_text('see [[Special:VerifyBotEdits|the queue]]'),
+                         'see <a href="https://pickipedia.xyz/wiki/Special%3AVerifyBotEdits">the queue</a>')
+        self.assertEqual(todo_text('run `x [[not a link]]` and <b>'), 'run <code>x [[not a link]]</code> and &lt;b&gt;')
+        self.assertEqual(todo_text("[[Justin's page]]"),
+                         '<a href="https://pickipedia.xyz/wiki/Justin&#39;s_page">Justin&#39;s page</a>')
+        self.assertEqual(todo_text('[[]] stays'), '[[]] stays')
+        # A task with a link: the page's todoItem asks for no links inside it (a link in a link).
+        self.assertEqual(todo_text('move [[Cryptograss:Emergents/GeneralOrders]]', links=False),
+                         'move [[Cryptograss:Emergents/GeneralOrders]]')

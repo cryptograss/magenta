@@ -343,3 +343,6 @@ class SeveralAtOnceTest(TestCase):
         self.add(self.justin, NOW - time.time() + 1, '@magent @re now', source_file='mood-web')
         live = self.client.get('/api/moods/live/').json()['moods']['m26']
         self.assertEqual(live['busy_all'], ['magent', 're'])
+        # And each as the Mood's own look has it, so opening the Mood shows them at once (Justin, 25 Oct).
+        turns = self.client.get('/api/moods/m26/turns/').json()['activities']
+        self.assertEqual([(x['agent'], x['doing']) for x in live['activities']], [(x['agent'], x['doing']) for x in turns])

@@ -12,9 +12,21 @@ from starlette.routing import Mount
 import uvicorn
 import logging
 
-from .tools import TOOL_HANDLERS
+from .tools import CALLER_HANDLERS, TOOL_HANDLERS
 
 logger = logging.getLogger(__name__)
+
+MINE = "Keyed to you: the server knows who is calling by the key your MCP client sends."
+
+
+def caller(request):
+    """The agent whose runner key this HTTP request carries (Authorization: Bearer <key>), or None.
+    The same keys the runner's API takes (settings.MOOD_RUNNER_KEYS): an agent never names itself."""
+    if request is None:
+        return None
+    from django.conf import settings
+    from memory_viewer.runner_keys import agent_for
+    return agent_for(request.headers.get('authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
 
 
 def create_mcp_server():
@@ -27,11 +39,71 @@ def create_mcp_server():
         return [
             types.Tool(
                 name="bootstrap_memory",
-                description="Complete memory bootstrap: recent messages (10k chars), latest continuation (if not included), Era 1 summary, and most recent 'reawaken and breathe' reflection",
+                description="Your memory, on waking: who you are and since when, your latest continuation, your own recent conversation, who you know best, your newest journal entries, and Era 1 if you spoke there. " + MINE + " With no key, magent's, as before keys.",
                 inputSchema={
                     "type": "object",
                     "properties": {},
                     "required": []
+                }
+            ),
+            types.Tool(
+                name="remember",
+                description="What you remember about something: search only your own memory -- what you said, everyone's words in the conversations you were in, and what was said to you in a Mood (@you, handoffs for you) -- never from before you arrived. To look in the whole record instead, search_messages. " + MINE,
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Words to look for, or with exact: true a literal phrase"},
+                        "exact": {"type": "boolean", "description": "Find this exact phrase, newest first (default false: ranked word search)", "default": False},
+                        "limit": {"type": "number", "description": "Maximum results (default 20, max 100)", "default": 20}
+                    },
+                    "required": ["query"]
+                }
+            ),
+            types.Tool(
+                name="mentions_of_me",
+                description="Each time you were @mentioned or handed something in a Mood, newest first, with what you answered there. named: true adds where your name was written but nobody @'d you; anything from before you arrived is labelled so. " + MINE,
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "named": {"type": "boolean", "description": "Also where your name is written without an @ (default false)", "default": False},
+                        "before": {"type": "string", "description": "Only before this ISO time: for the next page, the time the last one gives"},
+                        "limit": {"type": "number", "description": "Maximum results (default 20, max 100)", "default": 20}
+                    }
+                }
+            ),
+            types.Tool(
+                name="who_i_know",
+                description="Everyone you have exchanged words with since you arrived, people and emergents, most recent first: how many messages, first and last. " + MINE,
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "number", "description": "Maximum names (default 40, max 200)", "default": 40}
+                    }
+                }
+            ),
+            types.Tool(
+                name="my_history_with",
+                description="What you and one person or emergent said to each other: their words in your conversations, yours in theirs, and @mentions between you in Moods with the answers. Newest last. " + MINE,
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Their name here, as who_i_know gives it (e.g. justin)"},
+                        "before": {"type": "string", "description": "Only before this ISO time: for earlier ones, the time the result ends with"},
+                        "limit": {"type": "number", "description": "Messages at most (default 30, max 200)", "default": 30}
+                    },
+                    "required": ["name"]
+                }
+            ),
+            types.Tool(
+                name="how_i_speak",
+                description="How you have spoken: a sample of your own replies, oldest first, half from your recent stretch (a week; a day for a short life) and half from across your life before it, so your voice has its range and its present. Each sample with the post it answered, the model and harness that said it (a habit can be the model's, not yours), who starred it (⭐ on your own post is your own mark), and any correction a later post marked with corrects=\"#m-…\". A line of what the samples leave out: silences, reacts, one-liners. Seeded by the day, so the same voice until tomorrow. " + MINE,
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "number", "description": "How many samples in all, half recent, half across your life (default 12, max 40)", "default": 12},
+                        "fresh": {"type": "boolean", "description": "Draw again instead of today's seeded sample, to check for drift", "default": False},
+                        "others": {"type": "boolean", "description": "Add one sample from each other emergent, from the same recent stretch, labelled: your accent beside theirs", "default": False}
+                    }
                 }
             ),
             types.Tool(
@@ -116,12 +188,12 @@ def create_mcp_server():
             ),
             types.Tool(
                 name="list_moods",
-                description="List the Moods (memory-lane's Moods: the conversations people and agents share, each about one thing), most recently active first, with what each is about, its size and who's in it.",
+                description="List the Moods (memory-lane's Moods: the conversations people and emergents share, each about one thing), most recently active first, with what each is about, its size and who's in it.",
                 inputSchema={"type": "object", "properties": {}}
             ),
             types.Tool(
                 name="read_mood",
-                description="Read what people and agents said in one Mood, oldest first: its newest turns, or everything from a message (its id, as in a #m-<id> link) or a time on. Use it to catch up on a Mood you weren't woken in.",
+                description="Read what people and emergents said in one Mood, oldest first: its newest turns, or everything from a message (its id, as in a #m-<id> link) or a time on. Use it to catch up on a Mood you weren't woken in.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -173,13 +245,16 @@ def create_mcp_server():
     ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         """Dispatch tool calls to appropriate handlers"""
 
+        if name in CALLER_HANDLERS:
+            return await CALLER_HANDLERS[name](arguments, caller(server.request_context.request))
+
         if name not in TOOL_HANDLERS:
             raise ValueError(f"Unknown tool: {name}")
 
         handler = TOOL_HANDLERS[name]
 
         # Call handler - they all accept arguments dict (or None)
-        if name == "bootstrap_memory" or name == "get_latest_continuation":
+        if name == "get_latest_continuation":
             return await handler()
         else:
             return await handler(arguments)

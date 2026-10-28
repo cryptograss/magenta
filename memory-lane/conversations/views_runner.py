@@ -35,6 +35,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import ConversationParticipant, Message, Mood, MoodSession, ThinkingEntity
+from .services import reactions
 
 SOURCE = 'mood-runner'  # rows are filed as 'ingest-mood-runner'
 MAX_EVENTS = 500
@@ -43,11 +44,8 @@ TURN_ENDS = {'end_turn', 'refusal', 'stop_sequence', 'max_tokens'}
 
 def runner_agent(request):
     """The agent a valid runner key speaks for, or None."""
-    header = request.headers.get('Authorization', '').encode()
-    for agent, key in getattr(settings, 'MOOD_RUNNER_KEYS', {}).items():
-        if key and hmac.compare_digest(header, f'Bearer {key}'.encode()):
-            return agent
-    return None
+    from memory_viewer.runner_keys import agent_for
+    return agent_for(request.headers.get('Authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
 
 
 def stream_line(event, now_iso):
@@ -78,6 +76,8 @@ def stream_line(event, now_iso):
     }
     if 'tool_use_result' in event:
         line['toolUseResult'] = event['tool_use_result']
+    if event.get('isMeta'):  # the harness's own note to the agent, not the agent's words (claude_code_v2.poller_or)
+        line['isMeta'] = True
     return json.dumps(line)
 
 
@@ -101,8 +101,9 @@ def task_notice_line(event, now_iso):
                        'content': content})
 
 
-def finish_turn(mood, session_id, agent, result):
-    """The run is over: stamp the turn's last message, and keep what it cost."""
+def finish_turn(mood, session_id, agent, result, asked=()):
+    """The run is over: stamp the turn's last message, and keep what it cost; its answer to Tidings, if
+    something there asked it (`asked`: what woke it)."""
     stop = result.get('stop_reason') if result.get('stop_reason') in TURN_ENDS else 'end_turn'
     last = (Message.objects.filter(session_id=session_id, sender_id=agent, is_sidechain=False)
             .order_by('-created_at').first())
@@ -128,6 +129,9 @@ def finish_turn(mood, session_id, agent, result):
         'sender': system, 'content': summary, 'mood': mood, 'session_id': session_id,
         'source_file': f'ingest-{SOURCE}',
     })
+    if asked and not result.get('is_error'):
+        from .services import tiding_links
+        tiding_links.answer_asked(mood, session_id, agent, asked)
 
 
 @csrf_exempt  # authenticated by the runner's key, not a browser session
@@ -175,8 +179,12 @@ def api_stream(request, slug):
         MoodSession.objects.filter(session_id=session_id).exclude(full_tools=body['full_tools']).update(
             full_tools=body['full_tools'])
 
+    # What woke the turn (the runner says): when it ends, its answer goes to Tidings too, under whatever
+    # there asked it (tiding_links.answer_asked).
+    asked = body.get('answers') if isinstance(body.get('answers'), list) else []
+
     if events_v1:
-        return stream_events(mood, session_id, agent, body)
+        return stream_events(mood, session_id, agent, body, asked)
 
     from django.utils import timezone
     now_iso = timezone.now().isoformat()
@@ -186,6 +194,9 @@ def api_stream(request, slug):
     # The effort the runner launched the turn at. Stream events don't carry
     # it, and the transcript that does may never reach a watcher (the turn
     # ran in another container), so the runner says it with each post.
+    if imported:
+        clips_played(session_id, agent)
+        reactions.agent_reacted(session_id, agent)
     effort = str(body.get('effort') or '')
     if re.fullmatch(r'[a-z]{2,12}', effort):
         Message.objects.filter(session_id=session_id, sender_id=agent, model_backend__isnull=False,
@@ -194,13 +205,36 @@ def api_stream(request, slug):
     finished = False
     for event in events:
         if isinstance(event, dict) and event.get('type') == 'result':
-            finish_turn(mood, session_id, agent, event)
+            finish_turn(mood, session_id, agent, event, asked)
             finished = True
 
     return JsonResponse({'imported': imported, 'skipped': skipped, 'errors': errors[:10], 'finished': finished})
 
 
-def stream_events(mood, session_id, agent, body):
+def clips_played(session_id, agent):
+    """An agent's replies in this session that are only '/clips <name>': stored as the clip,
+    as the composer posts it for people (services/clips.played_by). A reply is a string, or
+    (events/1) a list of text blocks; one block alone is a reply too, and keeps its shape."""
+    from django.db.models import TextField
+    from django.db.models.functions import Cast
+    from .services import clips
+    said = (Message.objects.filter(session_id=session_id, sender_id=agent)
+            .annotate(as_text=Cast('content', TextField())).filter(as_text__icontains='/clip'))
+    for message in said:
+        content = message.content
+        if isinstance(content, list) and len(content) == 1 and isinstance(content[0], dict) \
+                and content[0].get('type') == 'text':
+            played = clips.played_by(content[0].get('text'))
+            new = [{**content[0], 'text': played}] if played else None
+        else:
+            played = clips.played_by(content)
+            new = played
+        if new is not None and new != content:
+            message.content = new
+            message.save(update_fields=['content'])
+
+
+def stream_events(mood, session_id, agent, body, asked=()):
     """A post in memory-lane's own format (docs/RECORD_EVENTS.md)."""
     from importers_and_parsers.events_v1 import Turn
     from .views import scrub_texts
@@ -221,8 +255,11 @@ def stream_events(mood, session_id, agent, body):
     turn = Turn(agent=agent, mood=mood, session_id=session_id, harness=str(body.get('harness') or '')[:50] or None,
                 forked_from=forked_from, source=SOURCE, keep_tool_output=scrubbed)
     imported, skipped, ignored, errors = turn.take(events)
+    if imported:
+        clips_played(session_id, agent)
+        reactions.agent_reacted(session_id, agent)
     if turn.finished:
-        finish_turn(mood, session_id, agent, turn.finished)
+        finish_turn(mood, session_id, agent, turn.finished, asked)
     return JsonResponse({'imported': imported, 'skipped': skipped, 'ignored': ignored, 'errors': errors[:10],
                          'finished': turn.finished is not None})
 
@@ -417,7 +454,10 @@ def api_agent_models(request, name):
         found = HarnessModels.objects.filter(agent_id=name).first()
         if found is None:
             return JsonResponse({'error': f'{name} has reported no models'}, status=404)
-        return JsonResponse({'agent': name, 'harness': found.harness, 'vendors': found.vendors,
+        from .services import settings as knobs
+        # Less what's switched off (settings: models offered); ?all=1, everything, for that very list.
+        vendors = found.vendors if request.GET.get('all') == '1' else knobs.offered(found.vendors)
+        return JsonResponse({'agent': name, 'harness': found.harness, 'vendors': vendors,
                              'reported_at': found.reported_at.isoformat()})
     if request.method != 'POST':
         return JsonResponse({'error': 'GET or POST'}, status=405)

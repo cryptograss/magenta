@@ -43,6 +43,18 @@
   .thelink .embed video { width: 100%; max-height: 420px; border-radius: 8px; }
   /* What's been said: a tree, HN-style, each comment's score beside it (Justin, 21 Oct). */
   .comments { margin: 14px 0 0 0; }
+  /* The post's own words, under who posted it: drawn as a comment's are. */
+  .thelink .post { margin-top: 8px; max-width: 75ch; }
+  .thelink .post .words { font-size: 15px; overflow-wrap: anywhere; }
+  .thelink .post .words > :first-child { margin-top: 0; }
+  .thelink .post .words > :last-child { margin-bottom: 0; }
+  .thelink .post .words p, .thelink .post .words ul, .thelink .post .words ol, .thelink .post .words pre { margin: 0 0 8px; }
+  .thelink .post .words ul, .thelink .post .words ol { padding-left: 22px; }
+  .thelink .post .words code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+  .thelink .post .words pre { background: var(--code); padding: 8px 10px; border-radius: 6px; overflow-x: auto; }
+  .thelink .post .words img { max-width: min(100%, 420px); max-height: 320px; border-radius: 6px; }
+  .thelink .post .replyto { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+  .thelink .post .replyto:hover { color: var(--accent); }
   .comment { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
   .comment .rank { padding-top: 1px; }
   .comment .said { flex: 1; min-width: 0; }
@@ -63,9 +75,24 @@
   .comment .words td, .comment .words th { border: 1px solid var(--line); padding: 2px 8px; }
   .comment .replyto { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
   .comment .replyto:hover { color: var(--accent); }
+  /* Yours to change, as in the Mood: edit within a day, delete within a week (Justin, 21 Oct). */
+  .comment .editsaid, .comment .deletesaid { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0;
+                                             margin-left: 6px; cursor: pointer; font-family: inherit; }
+  .comment .editsaid:hover, .comment .deletesaid:hover { color: var(--accent); }
+  .comment .changed { font-style: italic; }
+  .comment .editing textarea { width: 100%; min-height: 64px; border: 1px solid var(--accent); border-radius: 8px; padding: 6px 8px;
+                               background: var(--panel); color: var(--ink); font: inherit; resize: vertical; }
+  .comment .editing .bar { display: flex; gap: 8px; align-items: baseline; margin-top: 4px; font-size: 12.5px; }
+  .comment .editing button { font: inherit; border: 0; border-radius: 6px; padding: 3px 12px; cursor: pointer; }
+  .comment .editing .save { background: var(--accent); color: #fff; }
+  .comment .editing .err { color: var(--err, #c0392b); }
   .comments .replies { margin-left: 24px; border-left: 2px solid var(--line); padding-left: 12px; }
   /* The box: say it here, and it's said in the Mood too (one record). */
-  .say { margin-top: 18px; }
+  .say { margin: 14px 0 6px; }
+  .comment .say { margin: 8px 0; }
+  .say .cancelreply { all: unset; cursor: pointer; font-size: 12.5px; color: var(--muted); }
+  .say .cancelreply:hover { color: var(--accent); }
+  .say .cancelreply[hidden] { display: none; }
   .say textarea { width: 100%; min-height: 72px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
                   background: var(--panel); color: var(--ink); font: inherit; resize: vertical; }
   .say textarea:focus { outline: 1px solid var(--accent); }
@@ -74,6 +101,16 @@
   .say button:disabled { opacity: .45; cursor: default; }
   .say .replying { font-size: 12.5px; color: var(--muted); }
   .say .err { font-size: 12.5px; color: var(--err, #c0392b); }
+  .say.signin { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .say a.button { border-radius: 6px; padding: 6px 18px; background: var(--accent); color: #fff; }
+  .say a.button:hover { text-decoration: none; filter: brightness(1.1); }
+  /* [[ suggests PickiPedia's titles, under the box. */
+  .say .box { position: relative; }
+  .say .suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; max-width: 420px; margin-top: 2px;
+                  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+                  box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
+  .say .suggest div { padding: 5px 10px; cursor: pointer; }
+  .say .suggest div.sel { background: var(--accent-soft); }
 </style>
 {% if embed %}<!-- Inside the one page's Tidings frame: no bar of its own; a link into magenta goes there. -->
 <script>
@@ -82,6 +119,7 @@
     if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
     const to = new URL(a.href, location.href);
     if (to.origin !== location.origin) { a.target = '_top'; return; }
+    if (a.target === '_top') return;  // signing in: the whole page goes, and comes back here
     if (to.pathname.startsWith('/moods/tidings/')) return;  // the listing or another discussion: in this frame
     if (a.matches('.words a.img')) return;  // a picture: the one page's lightbox (mood_tiding_tools.html)
     e.preventDefault();
@@ -92,11 +130,27 @@
   document.addEventListener('click', e => {
     const b = e.target.closest('button.replyto');
     if (!b) return;
+    const form = document.querySelector('form.say');
     document.getElementById('replyTo').value = b.dataset.id;
-    if (b.dataset.kind) document.getElementById('replyKind').value = b.dataset.kind;
+    document.getElementById('replyKind').value = b.dataset.kind || '';
     const who = document.getElementById('replyToNote');
     who.textContent = b.dataset.who ? `replying to ${b.dataset.who}` : '';
+    form.querySelector('.cancelreply').hidden = false;
+    form.querySelector('button[type=submit]').textContent = 'reply';  // as HN's buttons say
+    b.closest('.said').querySelector('.words').after(form);  // the box goes to the comment it answers
     document.getElementById('say').focus();
+  });
+  // Cancel: a top-level comment again, the box back under the post.
+  document.addEventListener('click', e => {
+    const c = e.target.closest('button.cancelreply');
+    if (!c) return;
+    const form = c.closest('form.say');
+    document.getElementById('replyTo').value = '';
+    document.getElementById('replyKind').value = '';
+    document.getElementById('replyToNote').textContent = '';
+    c.hidden = true;
+    form.querySelector('button[type=submit]').textContent = 'add comment';
+    document.getElementById('sayHome').after(form);
   });
   document.addEventListener('click', async e => {
     const m = e.target.closest('button.mute');
@@ -119,6 +173,44 @@
     m.disabled = false;
   });
 
+  // Changing what you said: in place, saved, and the page drawn again; or deleted, after asking.
+  const saidUrl = b => `/api/tidings/{{ tiding.id }}/said/${b.dataset.kind}/${b.dataset.id}/`;
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button.editsaid');
+    if (!b) return;
+    const said = b.closest('.said'), words = said.querySelector(':scope > .words');
+    if (said.querySelector(':scope > .editing')) return;
+    const box = document.createElement('div');
+    box.className = 'editing';
+    box.innerHTML = '<textarea aria-label="What you said"></textarea><div class="bar"><button type="button" class="save">save</button>'
+      + '<button type="button" class="cancel">cancel</button><span class="err"></span></div>';
+    const area = box.querySelector('textarea');
+    area.value = said.querySelector(':scope > textarea.raw').value;
+    words.hidden = true;
+    words.after(box);
+    area.focus();
+    box.querySelector('.cancel').onclick = () => { box.remove(); words.hidden = false; };
+    box.querySelector('.save').onclick = async () => {
+      try {
+        const r = await fetch(saidUrl(b), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                            body: JSON.stringify({ text: area.value }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || r.status);
+        location.reload();
+      } catch (err) { box.querySelector('.err').textContent = err.message; }
+    };
+  });
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('button.deletesaid');
+    if (!b || !confirm('Delete this? Its words go; what answered it stays.')) return;
+    try {
+      const r = await fetch(saidUrl(b), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                          body: JSON.stringify({ delete: true }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      location.reload();
+    } catch (err) { alert(err.message); }
+  });
   async function sayIt(form) {
     const button = form.querySelector('button'), err = form.querySelector('.err');
     err.textContent = '';
@@ -138,6 +230,79 @@
   }
 </script>
 {% include "conversations/mood_tiding_tools.html" %}
+{% if viewer %}
+<script>
+  // [[ suggests PickiPedia titles as they're typed, as the Moods' composer does; ↑↓ to choose, Enter or Tab
+  // to take one, Esc to leave it. The wiki's API answers any page, so it's asked directly.
+  document.addEventListener('DOMContentLoaded', function () {
+    const WIKI = "{{ pickipedia_url|escapejs }}" || 'https://pickipedia.xyz';
+    const box = document.getElementById('say'), list = document.getElementById('wikiSuggest');
+    const found = new Map();
+    let titles = [], chosen = 0, timer = null;
+    const titleCase = s => s.replace(/(^|[\s:_(-])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+    async function titlesFor(prefix) {
+      if (found.has(prefix)) return found.get(prefix);
+      const ask = async q => {
+        const r = await fetch(`${WIKI}/api.php?action=query&list=prefixsearch&pslimit=8&format=json&origin=*&pssearch=${encodeURIComponent(q)}`);
+        return ((await r.json()).query || {}).prefixsearch || [];
+      };
+      let hits = [];
+      try {
+        hits = await ask(prefix);
+        if (!hits.length && titleCase(prefix) !== prefix) hits = await ask(titleCase(prefix));  // 'tony r': Tony Rice
+      } catch (e) { hits = []; }
+      found.set(prefix, hits.map(h => h.title));
+      return found.get(prefix);
+    }
+    function typing() {
+      const m = box.value.slice(0, box.selectionStart).match(/\[\[([^\[\]|\n]{1,100})$/);
+      return m ? m[1] : null;
+    }
+    function close() { list.hidden = true; titles = []; }
+    function draw() {
+      list.innerHTML = '';
+      titles.forEach((t, i) => {
+        const row = document.createElement('div');
+        row.textContent = '📖 ' + t;
+        row.className = i === chosen ? 'sel' : '';
+        row.setAttribute('role', 'option');
+        row.addEventListener('mousedown', e => { e.preventDefault(); take(i); });
+        list.append(row);
+      });
+      list.hidden = !titles.length;
+    }
+    function take(i) {
+      const prefix = typing();
+      if (prefix === null || !titles[i]) return close();
+      const caret = box.selectionStart, start = caret - prefix.length;
+      box.value = box.value.slice(0, start) + titles[i] + ']]' + box.value.slice(caret);
+      box.setSelectionRange(start + titles[i].length + 2, start + titles[i].length + 2);
+      close();
+      box.focus();
+    }
+    box.addEventListener('input', () => {
+      const prefix = typing();
+      clearTimeout(timer);
+      if (prefix === null) return close();
+      timer = setTimeout(async () => {
+        const got = await titlesFor(prefix);
+        if (typing() !== prefix) return;  // they've typed on
+        titles = got; chosen = 0; draw();
+      }, found.has(prefix) ? 0 : 150);
+    });
+    box.addEventListener('keydown', e => {
+      if (list.hidden) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        chosen = (chosen + (e.key === 'ArrowDown' ? 1 : titles.length - 1)) % titles.length;
+        draw();
+      } else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); take(chosen); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+    });
+    box.addEventListener('blur', () => setTimeout(close, 150));
+  });
+</script>
+{% endif %}
 </head>
 <body>
 <main>
@@ -152,11 +317,41 @@
       <div class="meta muted">{% if tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
         · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
         {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
+      {% if tiding.post %}
+      <!-- What the message said besides its link (Justin, 24 Oct): the post's own words, right under who posted
+           it -- not a comment: not counted, not voted on; answering it is a top-level comment. -->
+      <div class="post"><div class="words">{{ tiding.post|safe }}</div></div>
+      {% endif %}
       {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
       {% if tiding.embed %}<div class="embed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen></iframe>{% else %}<video src="{{ tiding.embed.src }}" controls preload="none"></video>{% endif %}</div>{% endif %}
-      <div class="snippet">{{ tiding.snippet }}</div>
     </span>
   </div>
+
+  <!-- The box right under the post, as HN has it (Justin, 24 Oct): what's said here is a top-level comment;
+       "reply" on a comment brings it under that one, and "cancel" back here. -->
+  <div id="sayHome"></div>
+  {% if viewer %}
+  <form class="say" action="/api/tidings/{{ tiding.id }}/comments/" method="post" onsubmit="sayIt(this); return false;">
+    <input type="hidden" id="replyTo" name="reply_to" value="">
+    <input type="hidden" id="replyKind" name="reply_kind" value="">
+    <div class="box">
+      <textarea id="say" name="text" placeholder="Say something about this… [[Page]] links PickiPedia."></textarea>
+      <div class="suggest" id="wikiSuggest" role="listbox" hidden></div>
+    </div>
+    <div class="bar">
+      <button type="submit">add comment</button>
+      <span class="replying" id="replyToNote"></span><button type="button" class="cancelreply" hidden>cancel</button>
+      <span class="err"></span>
+    </div>
+  </form>
+  {% else %}
+  <!-- Signed out: no box that can't be typed in (Justin, 23 Oct), but the way in -- and back here after. -->
+  <p class="say signin">
+    {% if wiki_signin %}<a class="button" href="/moods/auth/wiki/?next=/moods/tidings/{{ tiding.id }}/" target="_top">sign in with PickiPedia</a>
+    <span class="muted">to say something here, or upvote</span>
+    {% else %}<span class="muted"><a href="/moods/" target="_top">sign in</a> to say something here, or upvote</span>{% endif %}
+  </p>
+  {% endif %}
 
   <section class="comments">
     {% for comment in tiding.comments %}
@@ -166,17 +361,6 @@
     {% endfor %}
   </section>
 
-  <form class="say" action="/api/tidings/{{ tiding.id }}/comments/" method="post" onsubmit="sayIt(this); return false;">
-    <input type="hidden" id="replyTo" name="reply_to" value="">
-    <input type="hidden" id="replyKind" name="reply_kind" value="">
-    <textarea id="say" name="text" placeholder="Say something about this…"{% if not viewer %} disabled{% endif %}></textarea>
-    <div class="bar">
-      <button type="submit"{% if not viewer %} disabled{% endif %}>say it</button>
-      <span class="replying" id="replyToNote"></span>
-      <span class="err"></span>
-      {% if not viewer %}<span class="muted"><a href="/moods/auth/wiki/">sign in</a> to comment and upvote</span>{% endif %}
-    </div>
-  </form>
 </main>
 </body>
 </html>

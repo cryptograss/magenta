@@ -135,6 +135,18 @@ class RenderHtmlTest(TestCase):
         self.assertIn('<ol><li>first</li><li>second</li></ol>', out)
         self.assertIn('<p>outer</p>', out)
 
+    def test_numbered_lists_count_up(self):
+        # Justin, 26 Oct: every item showed 1 -- a list split by blank lines or sub-points began again each time.
+        self.assertIn('<ol><li>old</li><li>blue railroad</li><li>reubens</li></ol>',
+                      render_html('1. old\n\n2. blue railroad\n\n3. reubens'))
+        out = render_html('1. old\n   - steam\n   - coal\n2. blue railroad\n   the long way\n3. reubens')
+        self.assertIn('<ol><li>old<ul><li>steam</li><li>coal</li></ul></li><li>blue railroad<br>the long way</li><li>reubens</li></ol>', out)
+        out = render_html('1. old\n2. blue\n\nmeanwhile:\n\n3. reubens')
+        self.assertIn('<ol start="3"><li>reubens</li></ol>', out)
+        # The wiki's way, as Justin wrote it: '#' lines together are a list; one alone is still a heading.
+        self.assertIn('<ol><li>old train</li><li>blue railroad train</li></ol>', render_html('# old train\n# blue railroad train'))
+        self.assertIn('<h4>Setlist</h4>', render_html('# Setlist\n\nSalt Creek'))
+
     def test_fenced_code_is_left_alone(self):
         out = render_html('before\n\n```\n**not bold** [[not a link]]\n```\n\nafter')
         self.assertIn('<pre><code>**not bold** [[not a link]]</code></pre>', out)
@@ -181,9 +193,9 @@ class RenderHtmlTest(TestCase):
         self.assertIn('<a href="https://example.com/b" target="_blank" rel="noopener">https://example.com/b</a>, ok', out)
 
     def test_inline_code_is_literal(self):
-        out = render_html('write `**bold**` and `[[x]]` and `https://a.b` literally')
+        out = render_html('write `**bold**` and `x = [[x]]` and `https://a.b` literally')
         self.assertIn('<code>**bold**</code>', out)
-        self.assertIn('<code>[[x]]</code>', out)
+        self.assertIn('<code>x = [[x]]</code>', out)  # only a span that is a wiki link alone links (CodedWikiLinkTest)
         self.assertIn('<code>https://a.b</code>', out)
         self.assertNotIn('<strong>', out)
         self.assertNotIn('<a ', out)
@@ -426,3 +438,39 @@ class DeployNoticesFollowRenamesTest(TestCase):
         listed = [{**s, 'moods': ['delivery-kid']} if s['name'] == 'delivery-kid' else s for s in servers.SERVERS]
         with mock.patch.object(servers, 'SERVERS', listed):
             self.assertEqual(servers.moods_for('delivery-kid'), [mood])
+
+
+class LookTimingTest(TestCase):
+    """A look at a Mood says where its time went (Server-Timing), and a poll for what's new doesn't count
+    everything the Mood ever said (Justin, 25 Oct: switching to a Mood "takes several seconds")."""
+
+    def test_where_the_time_went_and_a_poll_is_light(self):
+        from django.test import Client
+        from conversations.models import Message, Mood, ThinkingEntity
+        import uuid as _uuid
+        justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
+        mood = Mood.objects.create(slug='timing')
+        first = Message.objects.create(id=_uuid.uuid4(), sender=justin, mood=mood, content='hello', timestamp=1,
+                                       source_file='mood-web')
+        full = Client().get('/api/moods/timing/turns/')
+        laps = [part.split(';')[0].strip() for part in full['Server-Timing'].split(',')]
+        for lap in ('timeline', 'agents', 'mood', 'activities', 'total'):
+            self.assertIn(lap, laps)
+        self.assertEqual(full.json()['mood']['message_count'], 1)
+        poll = Client().get(f'/api/moods/timing/turns/?after={first.id}').json()['mood']
+        self.assertEqual(poll['title'], 'timing')
+        self.assertNotIn('message_count', poll)
+        self.assertNotIn('participants', poll)
+
+
+class ThinkingOutLoudTest(TestCase):
+    """re, 27 Oct in #general: "...Not directed at me.<silent>Justin sharing progress.</silent>" posted as words."""
+
+    def test_words_then_silent_is_a_dot_with_its_words_as_thought(self):
+        from conversations.services.mood_view import quiet_reason
+        said = "Justin sharing a link. No @re. Stay quiet.<silent>Justin sharing progress. Not directed at me.</silent>"
+        self.assertEqual(quiet_reason(said), {'reason': 'Justin sharing progress. Not directed at me.', 'by': '',
+                                              'thought': 'Justin sharing a link. No @re. Stay quiet.'})
+        self.assertEqual(quiet_reason('Nothing for me.\n<silent/>')['thought'], 'Nothing for me.')
+        self.assertIsNone(quiet_reason('Use <silent>why</silent> to stay quiet, like that.'))  # mid-sentence: words
+        self.assertNotIn('thought', quiet_reason('<silent>plain</silent>'))

@@ -294,6 +294,12 @@ class Mood(models.Model):
         null=True, blank=True,
         help_text='Block height at which this Mood was opened'
     )
+    # A thread (Justin, 25 Oct: "make a thread, and then choose either fresh context or to fork the existing
+    # context"): a Mood like any other, opened from another. Forked, `forked_at` is when, and each agent's
+    # first wake here resumes its session there as it stood then (views_moods.api_mood_sessions); fresh, it's
+    # empty. Closing one is archiving it.
+    thread_of = models.ForeignKey('self', models.SET_NULL, null=True, blank=True, related_name='threads')
+    forked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'moods'
@@ -1542,6 +1548,10 @@ class TidingComment(models.Model):
     parent_message = models.ForeignKey(Message, models.CASCADE, null=True, blank=True, related_name='tiding_comments')
     text = models.TextField()
     at = models.DateTimeField(auto_now_add=True)
+    # Changed since: 'edited' or 'deleted' (its words then '[deleted]', its replies kept), as a Mood message's
+    # MessageChange says; what went is sealed to the recovery key (services/tiding_links.change_comment).
+    changed = models.CharField(max_length=10, blank=True, default='')
+    changed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'tiding_comments'
@@ -1593,13 +1603,19 @@ class FaceName(models.Model):
 class YarnClip(models.Model):
     """A Yarn clip kept here: its id on Yarn, and the copy of its video stored as Media.
     Fetched once, by the server (services/yarn_kept.py), so pressing ▶ doesn't send a
-    browser to Yarn, whose Cloudflare stops people with a human check."""
+    browser to Yarn, whose Cloudflare stops people with a human check.
+
+    Or a clip of our own, cut from a local file (`magenta.sh clips save`, views_auth.api_clip_make):
+    `made_by` says whose, its id is ours (linked as /clips/<id>), and `caption` is its subtitle --
+    played from here like a kept Yarn clip, with nowhere else to fall back to."""
 
     clip = models.UUIDField(primary_key=True)
     media = models.ForeignKey(Media, models.CASCADE, related_name='yarn_clips')
     # Its captioned GIF, the card's picture: kept too, as Yarn's Cloudflare stops it as it stops the video.
     still = models.ForeignKey(Media, models.SET_NULL, null=True, blank=True, related_name='yarn_stills')
     kept_at = models.DateTimeField(auto_now_add=True)
+    made_by = models.ForeignKey('ThinkingEntity', models.SET_NULL, null=True, blank=True, related_name='clips_made')
+    caption = models.TextField(blank=True, default='')
 
     class Meta:
         db_table = 'yarn_clips'
@@ -1692,6 +1708,46 @@ class HarnessModels(models.Model):
 
     def __str__(self):
         return f"{self.agent_id}: {self.harness}, {len(self.vendors)} vendors"
+
+class BundleRecord(models.Model):
+    """
+    The instructions a turn was given (poller/instructions.py), as its runner sent
+    them: not the text but its parts -- the bundle's own words, and in each
+    layer's place a PickiPedia page and revision -- and the text's sha256.
+    Joining the revisions' texts back in rebuilds it (instructions.rebuilt),
+    and the sha256 proves the rebuild. Each is one bundle action: asked for,
+    made, and handed to a harness that started with it (delivered_at; none,
+    it never did). Justin, magent-self, 2026-10-24.
+    """
+
+    id = models.UUIDField(primary_key=True)  # the runner's, in the bundle's <instructions bundle="..."> tag
+    agent = models.CharField(max_length=60, db_index=True)
+    mood = models.CharField(max_length=120, blank=True, default='', db_index=True)
+    session_id = models.CharField(max_length=80, blank=True, default='')
+    harness = models.CharField(max_length=60, blank=True, default='')
+    requested_at = models.DateTimeField(db_index=True)
+    produced_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    block = models.BigIntegerField(null=True, blank=True)
+    sha256 = models.CharField(max_length=64)
+    parts = models.JSONField(default=list)      # [str | {'page', 'revision'}]
+    transform = models.CharField(max_length=200, blank=True, default='')
+    stamps = models.JSONField(default=dict)     # Bundle.stamps(): each layer's page, revision, editor, problem
+    commit = models.CharField(max_length=40, blank=True, default='')
+    error = models.CharField(max_length=300, blank=True, default='')  # why the recovery instructions stood in
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'bundle_records'
+        ordering = ['-requested_at']
+
+    def __str__(self):
+        return f"{self.agent} in {self.mood or '(no Mood)'} at {self.requested_at:%Y-%m-%d %H:%M:%S}: {self.sha256[:12]}"
+
+    def pages(self):
+        """[{'page', 'revision'}] in the order the bundle has them."""
+        return [part for part in self.parts if not isinstance(part, str)]
+
 
 # ============================================================================
 # Import Tracking Constants

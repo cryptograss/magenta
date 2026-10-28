@@ -214,3 +214,124 @@ class RecordEventsTest(TestCase):
         notice = Message.objects.get(session_id=session, source_file='task-notification')
         self.assertIn('<status>completed</status>', notice.content)
         self.assertEqual(notice.mood, self.mood)
+
+
+CLIP = 'ffb40a1a-a936-49ee-962a-ef53e0cb7237'
+
+
+@override_settings(MOOD_RUNNER_KEYS={'magent': KEY}, TOOL_RESULT_CONTENT_CHARS=20000)
+class AgentClipsTest(TestCase):
+    """An agent's reply that is only '/clips <name>' plays the clip, as the composer does for people."""
+
+    @classmethod
+    def setUpTestData(cls):
+        ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        ThinkingEntity.objects.create(name='magent', is_biological_human=False)
+        cls.mood = Mood.objects.create(slug='m26')
+        Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=cls.mood, timestamp=1, source_file='mood-web',
+                               content=f'/clips save huh https://www.yarn.co/yarn-clip/{CLIP}')
+
+    def setUp(self):
+        from conversations.services import clips
+        clips.forget_cached()
+
+    def reply(self, text, events_v1=True):
+        session = str(uuid.uuid4())
+        if events_v1:
+            events = [ev('turn_started', 0), ev('assistant_message', 1, text=text, model='m'),
+                      ev('turn_ended', 2, outcome='completed')]
+            body = {'format': 'events/1', 'harness': 'test 1.0', 'session_id': session, 'events': events}
+        else:
+            from conversations.tests.test_mood_runner import event
+            body = {'harness': 'claude-code', 'session_id': session,
+                    'events': [event('assistant', [{'type': 'text', 'text': text}], session_id=session)]}
+        self.assertEqual(self.client.post('/api/moods/m26/stream/', json.dumps(body),
+                                          content_type='application/json', **AUTH).status_code, 200)
+        said = Message.objects.filter(session_id=session, sender_id='magent').values_list('content', flat=True)
+        return [c if isinstance(c, str) else ' '.join(b.get('text', '') for b in c) for c in said]
+
+    def test_a_reply_that_is_only_a_clip_plays_it_either_way_in(self):
+        played = f'/clips huh https://www.yarn.co/yarn-clip/{CLIP}'
+        self.assertEqual(self.reply('/clips huh'), [played])
+        self.assertEqual(self.reply('/clip HUH', events_v1=False), [played])  # as General Orders spell it
+        from conversations.services.mood_view import render_html
+        self.assertNotIn('/clips', render_html(played))  # shown as the clip, as a person's would be
+
+    def test_the_mood_shows_the_clip_not_the_command(self):
+        self.reply('/clips huh')
+        self.reply('/clip huh', events_v1=False)
+        turns = self.client.get('/api/moods/m26/turns/').json()['turns']
+        html = [t['html'] for t in turns if t.get('sender') == 'magent']
+        self.assertEqual(len(html), 2)
+        for h in html:
+            self.assertIn(f'yarn-clip/{CLIP}', h)
+            self.assertNotIn('/clips', h)
+
+    def test_anything_else_is_left_as_said(self):
+        for text in ('/clips nosuchclip', 'Here: /clips huh', '/clips huh and more'):
+            self.assertEqual(self.reply(text), [text])
+
+    def test_an_agent_cannot_change_the_library(self):
+        from conversations.services import clips
+        self.reply(f'/clips save mine https://www.yarn.co/yarn-clip/{CLIP}')
+        self.reply('/clips forget huh')
+        clips.forget_cached()
+        self.assertEqual(sorted(clips.library()), ['huh'])
+
+
+@override_settings(MOOD_RUNNER_KEYS={'magent': KEY}, TOOL_RESULT_CONTENT_CHARS=20000)
+class AgentReactsTest(TestCase):
+    """An agent's reply that is only <react emoji="..." to="..."/> is a reaction on that post, not a line:
+    where it has nothing to add, a nod (Justin, magent-self, 2026-10-25)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        for name, human in (('justin', True), ('magent', False), ('re', False)):
+            ThinkingEntity.objects.update_or_create(name=name, defaults={'is_biological_human': human})
+        cls.mood = Mood.objects.create(slug='m26')
+        cls.older = Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=cls.mood, timestamp=1,
+                                           content='An older answer.')
+        cls.answer = Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=cls.mood, timestamp=2,
+                                            content='The cache is the provider\'s, not ours.')
+        Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=cls.mood, timestamp=3,
+                               content='<silent>nothing to add</silent>')  # a dot is never what's reacted to
+        cls.asked = Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=cls.mood, timestamp=4,
+                                           content='@magent @re where is the cache?')
+
+    reply = AgentClipsTest.reply
+
+    def reactions(self):
+        from conversations.services import reactions
+        return reactions.in_mood(self.mood)
+
+    def test_any_emoji_on_that_ones_newest_post_and_the_reply_a_dot(self):
+        self.assertEqual(self.reply('<react emoji="🎻" to="re"/>'), ['<silent>reacted 🎻 to re</silent>'])
+        self.assertEqual(self.reactions(), {str(self.answer.id): {'🎻': ['magent']}})
+        self.assertEqual(self.reply('<react to="Justin" emoji="👍🏽"/>', events_v1=False),
+                         ['<silent>reacted 👍🏽 to justin</silent>'])
+        self.assertEqual(self.reactions()[str(self.asked.id)], {'👍🏽': ['magent']})
+
+    def test_by_message_id_or_its_start(self):
+        self.reply(f'<react emoji="🙏" to="#m-{self.older.id}"/>')
+        self.reply(f'<react emoji="🔥" to="{str(self.older.id)[:8]}"/>')
+        self.assertEqual(self.reactions()[str(self.older.id)], {'🙏': ['magent'], '🔥': ['magent']})
+
+    def test_said_once_reacts_once_and_the_same_again_takes_nothing_back(self):
+        self.reply('<react emoji="🎻" to="re"/>')
+        self.reply('<react emoji="🎻" to="re"/>')
+        self.assertEqual(self.reactions(), {str(self.answer.id): {'🎻': ['magent']}})
+        from conversations.services import reactions
+        self.assertEqual(Message.objects.filter(source_file=reactions.SOURCE).count(), 1)
+
+    def test_nothing_there_is_said_and_words_are_left_as_said(self):
+        self.assertEqual(self.reply('<react emoji="🎻" to="nobody"/>'),
+                         ['<silent>meant to react 🎻 to nobody, found nothing there</silent>'])
+        self.assertEqual(self.reply('<react emoji="yes" to="re"/>'), ['<react emoji="yes" to="re"/>'])  # not an emoji
+        # Words, then the tag (Justin, 28 Oct): the words said, the tag taken out, the nod given if there's a post.
+        self.assertEqual(self.reactions(), {})
+        self.assertEqual(self.reply('I agree <react emoji="🎻" to="re"/>'), ['I agree'])
+        self.assertEqual([list(r) for r in self.reactions().values()], [['🎻']])  # and re's post got its nod
+
+    def test_the_poller_counts_it_as_silent(self):
+        from poller.mood_poller import _SILENT_REPLY
+        self.assertTrue(_SILENT_REPLY.match('<react emoji="🎻" to="re"/>'))

@@ -6,6 +6,7 @@ so the page also shows who changed what, when, and why.
 """
 
 import json
+import re
 
 from django.http import JsonResponse
 from django.conf import settings
@@ -22,6 +23,8 @@ def settings_state():
     agents = list(ThinkingEntity.objects.filter(is_biological_human=False).order_by('name')
                   .values_list('name', flat=True))
     moods = [{'slug': m.slug, 'title': m.title or m.slug} for m in Mood.objects.order_by('slug')]
+    from .services import wiki_auth
+    wiki_names = wiki_auth.names()
     rows = list(Setting.objects.exclude(key__in=knobs.MODERATION_KEYS))
     current = knobs.latest(rows)
     return {
@@ -38,7 +41,28 @@ def settings_state():
         'global': {k: knobs.global_value(k) for k in knobs.GLOBAL_KNOBS},
         'history': [knobs.describe(row) for row in Setting.objects.order_by('-created_at')[:100]],
         'scram': knobs.scram(),
+        # Every vendor any harness reported, and its makers (OpenRouter's anthropic, moonshotai...): what
+        # models_off can switch off, a maker's group at a time (Justin, 28 Oct).
+        'makers': makers_offered(),
+        # Everyone who's read aloud: the Voices section's rows (as the Moods page names them).
+        'people': [{'name': n, 'human': h, 'shown': wiki_names.get(n, n)}
+                   for n, h in ThinkingEntity.objects.order_by('name').values_list('name', 'is_biological_human')],
     }
+
+
+def makers_offered():
+    """{vendor: [{'name': maker, 'models': how many}]}, over every harness's catalog; a vendor whose ids carry no
+    maker (anthropic's own) is one group, ''."""
+    from .models import HarnessModels
+    found = {}
+    for vendors in HarnessModels.objects.values_list('vendors', flat=True):
+        for v in vendors or ():
+            makers = found.setdefault(v.get('name'), {})
+            for m in v.get('models') or ():
+                maker = str(m[0]).lstrip('~').split('/', 1)[0] if '/' in str(m[0]) else ''
+                makers.setdefault(maker, set()).add(str(m[0]))
+    return {vendor: [{'name': k, 'models': len(ids)} for k, ids in sorted(makers.items())]
+            for vendor, makers in sorted(found.items()) if vendor}
 
 
 SECTIONS = ('tidings', 'prompts', 'status', 'settings')
@@ -66,7 +90,10 @@ def section(name):
 @section('settings')
 def settings_page(request):
     device = mood_auth.device_for(request)
-    return render(request, 'conversations/mood_settings.html', {'viewer': device.entity_id if device else '', 'embed': True})
+    return render(request, 'conversations/mood_settings.html', {
+        'viewer': device.entity_id if device else '', 'embed': True,
+        # Anyone's voice is chosen with an SSH key; your own from any sign-in (views_auth.api_speaker_voice).
+        'key_holder': bool(device and device.tier == 'key' and device.entity.is_biological_human)})
 
 
 @section('status')
@@ -89,11 +116,15 @@ def api_status(request):
 
 
 def _rights(link, device):
-    """What this device may do to a link on Tidings: retitle it (✎), take it off."""
+    """What this device may do to a link on Tidings: retitle it (✎), take it off; and, on its page, edit or
+    delete each thing said about it."""
     from .services import tiding_links
     link['may_retitle'] = tiding_links.may_retitle(device, link['by'])
     link['may_withdraw'] = tiding_links.may_withdraw(device, link['by'])
     link['may_pin'] = device is not None and device.tier == 'key'
+    comments = link.get('comments')
+    for node in tiding_links._walk(comments if isinstance(comments, list) else []):  # the list says how many: no tree
+        node['may_edit'], node['may_delete'] = tiding_links.may_change_said(node, device)
     return link
 
 
@@ -132,10 +163,14 @@ def tiding_page(request, tiding_id):
         from django.http import HttpResponse
         response = HttpResponse(str(e), status=e.status)
     else:
+        from .services import wiki_auth
         response = render(request, 'conversations/mood_tiding.html', {
             'tiding': _rights(state, device),
             'viewer': viewer,
             'embed': True,
+            'wiki_signin': wiki_auth.enabled(),
+            # [[ in the box suggests PickiPedia titles, asked of the wiki itself (as the Moods' composer does).
+            'pickipedia_url': getattr(settings, 'PICKIPEDIA_URL', 'https://pickipedia.xyz').rstrip('/'),
         })
     response['X-Frame-Options'] = 'SAMEORIGIN'  # drawn in the one page's Tidings frame, as section() allows
     return response
@@ -152,10 +187,36 @@ def prompts_page(request):
 
 
 @require_GET
+def api_emoji(request):
+    """Every emoji Unicode has, grouped and named (conversations/data/emoji.json, from tools/emoji_data.py): the
+    page's picker and :name completion ask for it once, and keep it."""
+    import os
+    from django.http import HttpResponse
+    with open(os.path.join(os.path.dirname(__file__), 'data', 'emoji.json'), 'rb') as f:
+        response = HttpResponse(f.read(), content_type='application/json; charset=utf-8')
+    response['Cache-Control'] = 'public, max-age=604800'
+    return response
+
+
+@require_GET
 def api_tidings(request):
     from .services import tidings
     device = mood_auth.device_for(request)
     return JsonResponse(tidings.tidings_state(viewer=device.entity_id if device else None))
+
+
+@require_GET
+def api_tidings_find(request):
+    """{"links": [{id, title, host, at}]}: the links on Tidings whose title or address has every word of ?q=,
+    newest first, eight at most -- what '#t-' offers in the composer. No ?q=: the newest eight."""
+    from django.db.models import Q
+    from urllib.parse import urlsplit
+    from .models import Tiding
+    found = Tiding.objects.only('id', 'title', 'url', 'at')
+    for word in re.findall(r'[^\s\-_]+', request.GET.get('q', ''))[:6]:
+        found = found.filter(Q(title__icontains=word) | Q(url__icontains=word))
+    return JsonResponse({'links': [{'id': str(t.id), 'title': t.title or t.url, 'host': urlsplit(t.url).hostname or '',
+                                    'at': t.at.isoformat()} for t in found.order_by('-at')[:8]]})
 
 
 @require_GET
@@ -207,6 +268,11 @@ def api_settings(request):
         if agent is None:
             return JsonResponse({'error': f"no agent {body['agent']}"}, status=400)
     try:
+        if body.get('every_mood'):  # one agent's setting, in every Mood at once (the settings page's Set)
+            if agent is None or mood is not None or key not in knobs.KNOBS:
+                return JsonResponse({'error': 'every_mood: one agent, one per-agent setting, no Mood'}, status=400)
+            rows = knobs.change_every_mood(key, body.get('value'), agent, by=device.entity, note=body.get('note', ''))
+            return JsonResponse({'set': [knobs.describe(r) for r in rows]}, status=201)
         row = knobs.change(key, body.get('value'), mood=mood, agent=agent, by=device.entity,
                            note=body.get('note', ''))
     except knobs.Invalid as e:
@@ -214,7 +280,7 @@ def api_settings(request):
     return JsonResponse(knobs.describe(row), status=201)
 
 
-# --- how an agent sees a Mood: its rules, as they reach it --------------------
+# --- how an agent sees a Mood: its instructions, as they reach it -------------
 
 STANDING_URL = 'https://raw.githubusercontent.com/cryptograss/magenta/main/agents/magent.md'
 STANDING_SOURCE = 'https://github.com/cryptograss/magenta/blob/main/agents/magent.md'
@@ -239,7 +305,7 @@ _texts = None
 
 
 def _wiki_texts():
-    """One reader for the server's life, so the rules page asks the wiki at most every few minutes."""
+    """One reader for the server's life, so the instructions page asks the wiki at most every few minutes."""
     global _texts
     if _texts is None:
         from poller.wiki_rules import EDITORS, WikiTexts
@@ -247,19 +313,44 @@ def _wiki_texts():
     return _texts
 
 
+def instructions_now(agent, slug):
+    """{'text', 'layers'}: the agent's instructions for the Mood, gathered as its runner gathers them
+    (poller/instructions.py), cached two minutes; None if PickiPedia can't be read at all."""
+    from django.core.cache import cache
+
+    from poller.instructions import bundle
+    from poller.wiki_rules import page_url
+    key = f'instructions-now:{agent}:{slug}'
+    found = cache.get(key)
+    if found is None:
+        try:
+            b = bundle(agent, slug, state_dir=None)
+        except Exception:  # noqa: BLE001 -- the page still shows its settings and wakes
+            return None
+        layers = [b.greeting, b.agent_page, *b.layers]
+        found = {'text': b.text, 'layers': [{'page': layer.title, 'url': page_url(layer.title), 'revision': layer.revision,
+                                             'by': layer.editor, 'problem': layer.problem, 'absent': layer.absent}
+                                            for layer in layers if layer is not None]}
+        cache.set(key, found, 120)
+    return found
+
+
 @require_GET
-def rules_page(request, slug):
-    """What an agent is told in this Mood, as it reaches it: the Mood's own
-    rules, the settings in force, what each kind of wake says, and its standing
-    instructions. Read from the code that sends them (poller/mood_poller.py),
-    so it cannot drift from what is sent."""
-    from django.shortcuts import get_object_or_404
+def instructions_page(request, slug):
+    """What an agent is told in this Mood, as it reaches it: its instructions (gathered now, as its
+    runner gathers them), the settings in force, what each kind of wake says, and what Claude Code
+    adds. Read from the code that sends them (poller/instructions.py, poller/mood_poller.py), so it
+    cannot drift from what is sent."""
+    import urllib.parse
+
     from poller.mood_poller import wake_frames
 
     mood = Mood.by_slug_or_404(slug)
     agent = request.GET.get('agent', 'magent').lower()
+    if not ThinkingEntity.objects.filter(name=agent, is_biological_human=False).exists():
+        agent = 'magent'  # an agent's name only: it names the pages read
     resolved = knobs.resolve(slug, agent)
-    frames = wake_frames(slug, rules=resolved.get('rules') or '', agent=agent,
+    frames = wake_frames(slug, agent=agent,
                          discretion=resolved.get('discretion') or 'normal', verbosity=resolved.get('verbosity') or 'normal',
                          trusted="anyone signed into magenta with an SSH key",
                          # As the runner sends them: PickiPedia's texts, else the code's.
@@ -272,8 +363,16 @@ def rules_page(request, slug):
         if key == 'model' and not value:
             return "(the harness's default)"
         return value
-    shown = [(knobs.KNOBS[k][1], k, plain(k, resolved[k])) for k in knobs.KNOBS if k != 'rules']
-    return render(request, 'conversations/mood_rules.html', {
-        'mood': mood, 'agent': agent, 'rules': resolved.get('rules') or '', 'settings': shown,
-        'frames': frames, 'standing': standing_instructions(), 'standing_source': STANDING_SOURCE,
+    shown = [(knobs.KNOBS[k][1], k, plain(k, resolved[k])) for k in knobs.KNOBS]
+    bundles = 'https://pickipedia.xyz/wiki/Special:AgentBundles?' + urllib.parse.urlencode({'agent': agent, 'mood': slug})
+    return render(request, 'conversations/mood_instructions.html', {
+        'mood': mood, 'agent': agent, 'instructions': instructions_now(agent, slug), 'bundles_url': bundles,
+        'settings': shown, 'frames': frames, 'standing': standing_instructions(), 'standing_source': STANDING_SOURCE,
     })
+
+
+def rules_page(request, slug):
+    """The old address of the instructions page."""
+    from django.shortcuts import redirect
+    return redirect(f'/moods/{slug}/instructions/' + (f'?{request.GET.urlencode()}' if request.GET else ''),
+                    permanent=True)

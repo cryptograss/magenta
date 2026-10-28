@@ -224,6 +224,11 @@ def renew_device(entity, label):
     return device
 
 
+def clip_message(challenge, origin, name, sha256, caption):
+    """What `magenta.sh clips save` signs: the challenge, its origin, the clip's name, its video's hash and its caption."""
+    return signed_message(challenge, origin, purpose=f'clip {name}') + f'\n{sha256}\n{caption}'
+
+
 def attest_message(challenge, origin, text):
     """What `magenta.sh attest` signs: the challenge, its origin, and the statement."""
     return signed_message(challenge, origin, purpose='attest') + '\n' + text
@@ -258,6 +263,29 @@ def verify_attestation(name, proof, text):
             'key_is_current': bool(key) and public_key_of(name) == ' '.join(key.split()[:2]),
             'statement_matches': len(lines) >= 4 and '\n'.join(lines[3:]) == text,
             'origin': lines[1] if len(lines) > 1 else ''}
+
+
+_holders = {}  # (path, mtime) -> names, read once per version of the file
+
+
+def key_holders():
+    """The names allowed_signers lists, lowercased: the people who sign in with an SSH key (hunter's inventory).
+    Who '@core' mentions (mood_view.mentions_in; Skyler, 24 Oct)."""
+    path = allowed_signers_path()
+    try:
+        stamp = (path, os.path.getmtime(path))
+    except (OSError, TypeError):
+        return set()
+    if stamp not in _holders:
+        names = set()
+        with open(path) as f:
+            for line in f:
+                parts = line.split()
+                if parts and not parts[0].startswith('#'):
+                    names.update(n.strip().lower() for n in parts[0].split(',') if n.strip())
+        _holders.clear()
+        _holders[stamp] = names
+    return set(_holders[stamp])
 
 
 def public_key_of(name):

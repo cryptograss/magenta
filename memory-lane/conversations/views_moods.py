@@ -12,7 +12,7 @@ import re
 
 from django.conf import settings
 from django.db.models import Max
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
@@ -22,7 +22,7 @@ from django.views.decorators.http import require_GET, require_POST
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, faces, push, servers, wiki_auth, wiki_feed, wiki_ledger, wiki_upload
 from .services import agent_commands, mood_auth
-from .services.mood_view import agent_names, turn_tools  # which tools an agent's turn had
+from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.mood_view import (
     from_wiki_tier,
     MACHINERY_SENDERS, how_payload, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
@@ -71,7 +71,18 @@ def moods_page(request, slug=None, section=''):
         'page_version': page_version(),
         # The slash commands, for the composer to offer as one is typed (services/agent_commands).
         'slash_commands': json.dumps(agent_commands.suggestions()),
+        # The words people read where they're settable on PickiPedia (Magenta:Interface; services/interface_words.py).
+        'interface_words': json.dumps(interface_words()),
     })
+
+
+def interface_words():
+    """services/interface_words.words(), or its defaults if anything about the page is amiss: the page loads regardless."""
+    from .services import interface_words as words
+    try:
+        return words.words()
+    except Exception:  # noqa: BLE001
+        return dict(words.DEFAULTS)
 
 
 def push_key():
@@ -93,7 +104,8 @@ def page_version():
     from django.template.loader import get_template
     from .services import embeds, mood_view
     digest = hashlib.sha256()
-    for path in (get_template('conversations/moods.html').origin.name, mood_view.__file__, embeds.__file__):
+    for path in (get_template('conversations/moods.html').origin.name,
+                 get_template('conversations/name_art_css.html').origin.name, mood_view.__file__, embeds.__file__):
         with open(path, 'rb') as f:
             digest.update(f.read())
     return digest.hexdigest()[:12]
@@ -112,10 +124,13 @@ def api_moods(request):
     payloads.sort(key=lambda p: not p['pinned'])  # pinned first, each part still newest first
     people = ThinkingEntity.objects.order_by('name')
     look = knobs.looks()
+    from .services.mood_view import GROUPS, group_members
     return JsonResponse({'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
          **(look[p.name] if p.is_biological_human and p.name in look else {})}
-        for p in people]})
+        for p in people],
+        # Tags for a group (@core): what each is, and who it mentions now.
+        'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]})
 
 
 @require_GET
@@ -131,7 +146,57 @@ def _watchers(request, mood):
     device = mood_auth.device_for(request)
     if device is None:
         watchers.seen(request, mood.slug)
+    else:
+        watchers.signed_in(request, device.entity_id)
     return {'watchers': watchers.now_watching(mood.slug, admin=device is not None and device.tier == 'key')}
+
+
+def note_agent(msg, _agents=None):
+    """The agent whose session a harness note is in: the first agent to speak in it; None if none has."""
+    if not msg.session_id:
+        return None
+    agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
+    first = (Message.objects.filter(session_id=msg.session_id, sender_id__in=list(agents))
+             .order_by('created_at').values_list('sender_id', flat=True).first())
+    return first
+
+
+class LookClock:
+    """Where a look at a Mood spends its time, as a Server-Timing header (a browser's network panel shows it;
+    so does curl -I): Justin, 25 Oct, "it takes several seconds to display" -- every /turns/ took about two
+    seconds, even one asking only for what's new. A look slower than SLOW is logged, with its laps."""
+    SLOW = 1.0  # seconds
+
+    def __init__(self):
+        import time
+        self.now = time.perf_counter
+        self.start = self.mark = self.now()
+        self.laps = []
+
+    def lap(self, name):
+        """The time since the last lap (or the start), as `name`."""
+        now = self.now()
+        self.laps.append((name, now - self.mark))
+        self.mark = now
+
+    def __call__(self, name, fn, *args, **kwargs):
+        """fn(*args, **kwargs), timed as `name`."""
+        self.lap('_')  # what came between
+        value = fn(*args, **kwargs)
+        self.lap(name)
+        return value
+
+    def header(self):
+        laps = [(n, t) for n, t in self.laps if n != '_' or t >= 0.005]
+        total = self.now() - self.start
+        return ', '.join([f'{n if n != "_" else "between"};dur={t * 1000:.0f}' for n, t in laps] + [f'total;dur={total * 1000:.0f}'])
+
+    def report(self, response, what):
+        response['Server-Timing'] = self.header()
+        if self.now() - self.start >= self.SLOW:
+            import logging
+            logging.getLogger(__name__).warning('slow %s: %s', what, response['Server-Timing'])
+        return response
 
 
 @require_GET
@@ -142,6 +207,7 @@ def api_mood_turns(request, slug):
     contract. An unknown `after` is treated as "everything", so a client
     that has fallen out of sync recovers rather than stalls.
     """
+    clock = LookClock()
     mood = Mood.by_slug_or_404(slug)
     if mood.slug in wiki_feed.feed_moods():
         wiki_feed.nudge()  # what's new on PickiPedia, as lines here (at most once a minute, in the background)
@@ -164,7 +230,7 @@ def api_mood_turns(request, slug):
     if request.GET.get('limit', '').isdigit():  # e.g. the runner wanting recent context only
         limit = max(1, min(int(request.GET['limit']), PAGE))
 
-    names = known_names()
+    names = clock('names', known_names)
     turns_out, step_msgs, quiet_out, thoughts_out, compactions_out, events_out = [], [], [], [], [], []
     agents_said = []  # agents' messages: which tools each turn had (👀 or 🔨 by its name)
     for kind, msg, text in timeline(mood, after=after, before=before, limit=limit, start=start):
@@ -175,19 +241,28 @@ def api_mood_turns(request, slug):
         elif kind == 'thought':
             thoughts_out.append({**how_payload(msg), 'id': str(msg.id), 'sender': msg.sender_id,
                                  'created_at': msg.created_at.isoformat(), 'text': text})
+        elif kind == 'note':
+            # The harness's note to an agent: in that agent's turn, beside its thinking, marked as the harness's.
+            agent = note_agent(msg)
+            if agent:
+                thoughts_out.append({'id': str(msg.id), 'sender': agent, 'harness': True,
+                                     'created_at': msg.created_at.isoformat(), 'text': text})
         elif kind == 'event':
             events_out.append({'id': str(msg.id), 'created_at': msg.created_at.isoformat(),
                                **{k: text.get(k) for k in ('type', 'server', 'state', 'commit', 'by', 'note', 'took', 'agent',
-                                                   'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at',
+                                                   'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at', 'thumb',
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
-                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'about', 'context',
-                                                   'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key')},
+                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'into', 'about', 'context',
+                                                   'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
+                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
                                   if text.get('type') == 'release' and text.get('cid') else {}),
                                # A handoff's context, as a message is shown (services/handoff.py).
-                               **({'html': render_html(text.get('context') or '')} if text.get('type') == 'handoff' else {})})
+                               **({'html': render_html(text.get('context') or '')} if text.get('type') == 'handoff' else {}),
+                               # A task's prompt, filled in, as it was sent (services/tasks.py).
+                               **({'html': render_html(text.get('text') or '')} if text.get('type') == 'task' else {})})
         elif kind == 'compaction':
             compactions_out.append({'id': str(msg.id), 'session_id': str(msg.session_id or ''),
                                     'created_at': msg.created_at.isoformat(), 'html': render_html(text)})
@@ -197,16 +272,28 @@ def api_mood_turns(request, slug):
                               'created_at': msg.created_at.isoformat(), **text})
         else:
             step_msgs.append(msg)
+    clock.lap('timeline')  # the messages, read and drawn
     images = step_images(step_msgs)
     steps_out = [{**step_payload(m), 'images': images.get(str(m.id), [])} for m in step_msgs]
+    clock.lap('steps')
     agent_set = agent_names()
-    tools = turn_tools([m for m in agents_said if m.sender_id in agent_set])
+    wakes = turn_wakes([m for m in agents_said if m.sender_id in agent_set])
+    # Which instructions each turn was given, and whether they were new: shown by its cache mark (Justin, 25 Oct).
+    marks = bundle_marks([w['bundle'] for w in wakes.values()])
+    clock.lap('wakes')
     for p in turns_out + steps_out + quiet_out + thoughts_out:
-        if p['id'] in tools:
-            p['tools'] = tools[p['id']]
+        said = wakes.get(p['id'])
+        if said and said['tools']:
+            p['tools'] = said['tools']
+        if said and said.get('reason'):
+            p['why'] = said['reason']  # what woke it, when it wasn't asked: a look at crosstalk, an unasked look
+        if said and said.get('heard'):
+            p['heard'] = said['heard']  # an /announce from another Mood this wake carried (services/announce.py)
+        if said and said['bundle'] in marks:
+            p['bundle'] = marks[said['bundle']]
     first = min([i['created_at'] for i in turns_out + steps_out + quiet_out + thoughts_out + compactions_out
                  + events_out], default=None)
-    agents = agents_in(mood)
+    agents = clock('agents', agents_in, mood)
     # Edited or deleted (services/retract.py): shown as they stand now.
     from django.utils import timezone
     from .models import MessageChange
@@ -222,16 +309,22 @@ def api_mood_turns(request, slug):
             text = prose(msg.content) if msg else ''
             changes.append({**c, 'turn': retract.mark(turn_payload(msg, text, names), retract.change_of(msg))
                             if msg and text else None})
-    from .services import reactions
-    return JsonResponse({
-        'mood': mood_payload(mood),
+    clock.lap('changes')
+    from .services import announce, pins, reactions
+    return clock.report(JsonResponse({
+        # A poll for what's new: its name only (a rename shows at once); the rest is a first look's.
+        'mood': clock('mood', mood_payload, mood, light=after is not None),
         # Every message here that has reactions, as they now stand (services/reactions.py).
-        'reactions': reactions.in_mood(mood),
+        'reactions': clock('reactions', reactions.in_mood, mood),
+        # What's pinned to this Mood's top, newest first (services/pins.py).
+        'pins': clock('pins', pins.in_mood, mood),
+        # /announce from other Moods, for the runner's next wake here; never drawn (services/announce.py).
+        'announcements': clock('announcements', announce.in_mood, mood),
         # What was edited or deleted since ?changes_since=, as it stands now; and the time to ask from next.
         'changes': changes,
         'now': timezone.now().isoformat(),
         # Changes when a to-do list may have (a merge GitHub told of, a wiki edit): ask for it again.
-        'todo_stamp': todo_stamp(),
+        'todo_stamp': clock('todo', todo_stamp),
         # Prose only: the poller reads an agent turn here as an answer, so a
         # tool call must never appear in this list.
         'turns': turns_out,
@@ -244,22 +337,22 @@ def api_mood_turns(request, slug):
         'compactions': compactions_out,
         # Things that happened around the conversation: a server redeployed.
         'events': events_out,
-        'has_earlier': bool(limit) and first is not None and mood.messages.filter(
-            is_sidechain=False, created_at__lt=first).exists(),
-        'activity': activity(mood),
+        'has_earlier': clock('earlier', lambda: bool(limit) and first is not None and mood.messages.filter(
+            is_sidechain=False, created_at__lt=first).exists()),
+        'activity': clock('activity', activity, mood),
         # Every agent at work here, each with its own line on the page.
-        'activities': activities(mood),
+        'activities': clock('activities', activities, mood),
         # Who reads without signing in: how many, to everyone; their addresses, to an SSH-key sign-in.
-        **_watchers(request, mood),
+        **clock('watchers', _watchers, request, mood),
         # What an agent started in the background here and is still running.
-        'tasks': background_tasks(mood),
+        'tasks': clock('tasks', background_tasks, mood),
         # Whether each agent is listening here (the hush menu in the head).
         'listening': {name: a['listening'] for name, a in agents.items()},
         # Each agent here: listening, model, effort, and how full its context is.
         'agents': agents,
-        'scram': settings_scram(),
-        'typing': typing_in(mood.slug),
-    })
+        'scram': clock('scram', settings_scram),
+        'typing': clock('typing', typing_in, mood.slug),
+    }), f'look at #{mood.slug}' + (' (what is new)' if after is not None else ''))
 
 
 PAGE = 400
@@ -278,20 +371,36 @@ def agents_in(mood):
     agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
     shown = ('listening', 'model', 'mention_effort', 'ultracode', 'catch_up_tokens', 'discretion', 'verbosity')
     rows = list(Setting.objects.filter(key__in=shown))
+    from .services import agent_settings
+    every = agent_settings._rows()
     # Which harness reported what it can run (the menu fetches the list itself, from api_agent_models).
     from .models import HarnessModels
     catalogs = dict(HarnessModels.objects.values_list('agent_id', 'harness'))
+    from .models import Message
     out = {}
     for name in agents:
         resolved = knobs.resolve(mood.slug, name)
+        context = context_in(mood, name)
+        # No model set and no turn here yet: the one it last ran on anywhere, so the bar
+        # names a model, never "default" (Justin, 27 Oct).
+        runs = resolved['model'] or (context or {}).get('model') or (
+            Message.objects.filter(sender_id=name, is_sidechain=False, model_backend__isnull=False)
+            .exclude(model_backend__in=('', '<synthetic>')).order_by('-created_at')
+            .values_list('model_backend', flat=True).first() or '')
         out[name] = {'listening': resolved['listening'], 'model': resolved['model'],
-                     'effort': resolved['mention_effort'], 'ultracode': bool(resolved['ultracode']),
+                     'effort': resolved['mention_effort'],
+                     'ultracode': bool(resolved['ultracode']),
                      'reads': resolved['catch_up_tokens'],
                      'discretion': resolved['discretion'], 'verbosity': resolved['verbosity'],
+                     'handoff_effort': resolved['handoff_effort'],
                      # Who set each as it stands, and when: the page says so, and flashes one that just changed.
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
-                     'context': context_in(mood, name),
+                     'context': context, 'runs': runs,
                      'catalog': catalogs.get(name)}
+        # What's changed in its settings here since its last word: told at its next wake (agent_settings).
+        changes, by, note = agent_settings.changed_since(mood.slug, name, rows=every)
+        if changes:
+            out[name]['changed'] = {'changes': changes, 'by': by, 'note': note}
     return out
 
 
@@ -308,6 +417,15 @@ def _message_or_none(raw):
 
 
 @require_GET
+def own_clip(request, clip):
+    """One of our own clips' links (/clips/<id>, made with `magenta.sh clips save`): its video."""
+    from .models import YarnClip
+    found = YarnClip.objects.select_related('media').filter(clip=clip, made_by__isnull=False).first()
+    if found is None:
+        raise Http404('no such clip')
+    return HttpResponseRedirect(found.media.url)
+
+
 def media_file(request, sha256, ext):
     """A stored picture, sound or clip. Immutable by construction: the name is its hash.
     A sound or a clip answers a byte range (Range: bytes=a-b), as Safari insists on for media."""
@@ -407,11 +525,14 @@ def _in_a_mood(message_id):
 @require_GET
 def front_page(request):
     """magenta's front page (services/front.py): anyone may read it, signed in or not."""
-    import random
     from .services import front
     slogans = front.slogans()
+    here = request.build_absolute_uri('/')
     return render(request, 'conversations/front.html', {'front': front.state(), 'slogans': slogans,
-                                                        'slogan': random.choice(slogans)})
+                                                        # The page's first line first, always; the rest after
+                                                        # it, in turns (Justin, 27 Oct).
+                                                        'slogan': slogans[0],
+                                                        'here': here, 'qr': front.qr_svg(here)})
 
 
 @require_GET
@@ -423,6 +544,21 @@ def message_page(request, message_id):
     if message is None:
         raise Http404('no such message in any Mood')
     return redirect(f'/moods/{message.mood.slug}/#m-{message.id}')
+
+
+@require_GET
+def api_message_wiki(request, message_id):
+    """{"wikitext"}: the message as a card for PickiPedia, {{Magenta message|...}} with its words in it
+    (services/wiki_embed.py). ?chars=N or all: how many characters the card shows (else the template's 280)."""
+    from .models import MessageChange
+    from .services import wiki_embed
+    message = _in_a_mood(message_id)
+    if message is None or MessageChange.objects.filter(message_id=message.id, kind='deleted').exists():
+        return JsonResponse({'error': 'no such message in any Mood'}, status=404)
+    chars = request.GET.get('chars') or None
+    if chars is not None and chars != 'all' and not (chars.isdigit() and 0 < int(chars) <= 100000):
+        return JsonResponse({'error': 'chars: a number, or all'}, status=400)
+    return JsonResponse({'wikitext': wiki_embed.template_call(message, chars=chars)})
 
 
 @require_GET
@@ -539,7 +675,23 @@ def api_typing(request, slug):
     else:
         state.pop(device.entity_id, None)
     cache.set(_typing_key(slug), state, TYPING_FOR * 2)
+    from .services import presence
+    presence.note(device.entity_id, slug, now)  # typing, or stopped: shown here, three minutes from now
     return JsonResponse({'typing': sorted(state)})
+
+
+@require_POST
+def api_here(request, slug):
+    """This device's person opened a Mood: shown there, and nowhere else, for three minutes (services/presence)."""
+    from django.core.cache import cache
+    from .services import presence
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to be shown'}, status=401)
+    mood = Mood.by_slug_or_404(slug)
+    presence.note(device.entity_id, mood.slug)
+    cache.delete('moods-live')  # seen there at the next look, not three seconds on
+    return JsonResponse({'here': mood.slug})
 
 
 @require_GET
@@ -552,15 +704,23 @@ def api_mood_sessions(request, slug):
     the one to continue. A session id is a local handle, not a credential.
     """
     mood = Mood.by_slug_or_404(slug)
-    messages = Message.objects.filter(mood=mood, session_id__isnull=False)
-    sender = request.GET.get('sender')
-    if sender:
-        messages = messages.filter(sender_id=sender.lower())
-    sessions = (messages.values('session_id')
-                .annotate(last_at=Max('created_at'))
-                .order_by('-last_at'))
+
+    def sessions_in(where, before=None):
+        messages = Message.objects.filter(mood=where, session_id__isnull=False)
+        sender = request.GET.get('sender')
+        if sender:
+            messages = messages.filter(sender_id=sender.lower())
+        found = messages.values('session_id').annotate(last_at=Max('created_at')).order_by('-last_at')
+        return [s for s in found if before is None or s['last_at'] <= before]
+
+    sessions, came_from = sessions_in(mood), None
+    # A thread forked from another Mood: until an agent has spoken here, it goes on from where it was there
+    # when the thread was forked -- its session then, never one from after.
+    if not sessions and mood.thread_of_id and mood.forked_at:
+        sessions, came_from = sessions_in(mood.thread_of, before=mood.forked_at), mood.thread_of.slug
     return JsonResponse({'mood': mood.slug, 'sessions': [
-        {'session_id': str(s['session_id']), 'last_at': s['last_at'].isoformat()} for s in sessions
+        {'session_id': str(s['session_id']), 'last_at': s['last_at'].isoformat(),
+         **({'from': came_from} if came_from else {})} for s in sessions
     ]})
 
 
@@ -680,6 +840,8 @@ def api_recent(request):
     out, or they would be all there is. ?oldest=1: the first after `since`
     instead, oldest first -- for reading a stretch through from its start,
     a page at a time (moods.html, reading aloud from a message on).
+    ?progress=1: an agent's words mid-turn too, as they're said -- read aloud as they come, not all at
+    once when its turn ends (Justin, 22 Oct) -- never its thinking or its tool calls.
     """
     from datetime import timedelta
     from django.utils import timezone
@@ -698,7 +860,15 @@ def api_recent(request):
     titles = dict(Mood.objects.values_list('slug', 'title'))
     events = []
 
-    said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since)
+    progress = request.GET.get('progress') == '1'
+    # A listening page says so as it asks (services/listening.py): its person shows with 🎧 where they listen.
+    if request.GET.get('listening') in ('here', 'everywhere'):
+        device = mood_auth.device_for(request)
+        if device is not None:
+            from .services import listening
+            listening.note(device.entity_id, request.GET['listening'], request.GET.get('mood') or None)
+    said = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gt=since,
+                                   thought__isnull=True, tooluse__isnull=True, toolresult__isnull=True)
             .exclude(sender_id__in=MACHINERY_SENDERS).order_by(order)[:RECENT_SCAN])
     for msg in said:
         if msg.sender_id not in names:
@@ -706,7 +876,7 @@ def api_recent(request):
         text = prose(msg.content)
         if not text or is_wrapper(text) or is_summary(msg) or quiet_reason(text) is not None:
             continue
-        if msg.sender_id in agents and msg.stop_reason != 'end_turn':
+        if msg.sender_id in agents and msg.stop_reason != 'end_turn' and not progress:
             continue
         events.append({'kind': 'answered' if msg.sender_id in agents else 'said', 'at': msg.created_at.isoformat(),
                        'mood': msg.mood_slug, 'who': msg.sender_id, 'id': str(msg.id), 'text': text[:140]})
@@ -899,15 +1069,18 @@ def api_mentions(request, name):
         limit = 50
 
     from django.db.models import Q
-    from .services import handoff
+    from .services import handoff, tasks, tiding_links
 
     names = known_names()
     is_agent = not ThinkingEntity.objects.get(name=name).is_biological_human
     messages = (
         Message.objects.filter(mood__isnull=False, is_sidechain=False)
         # A handoff into a Mood "for" an agent is the system's line, but it
-        # addresses that agent: it wakes it there (handoff_mention).
-        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file=handoff.SOURCE))
+        # addresses that agent: it wakes it there (handoff_mention). So does
+        # a task started for it (services/tasks.py).
+        .filter(~Q(sender_id__in=MACHINERY_SENDERS) | Q(source_file__in=(handoff.SOURCE, tasks.SOURCE))
+                # So is a comment on Tidings that asks an agent by name: its line in the link's Mood wakes it.
+                | Q(source_file=tiding_links.COMMENT_SOURCE))
         .select_related('sender')
         .order_by('-created_at')
     )
@@ -918,6 +1091,20 @@ def api_mentions(request, name):
     for msg in messages.iterator():
         if msg.source_file == handoff.SOURCE:
             turn = handoff_mention(msg, name, names) if is_agent else None
+            if turn:
+                found.append({'mood': msg.mood_slug, 'turn': turn})
+                if len(found) >= limit:
+                    break
+            continue
+        if msg.source_file == tasks.SOURCE:
+            turn = tasks.mention(msg, name) if is_agent else None
+            if turn:
+                found.append({'mood': msg.mood_slug, 'turn': turn})
+                if len(found) >= limit:
+                    break
+            continue
+        if msg.source_file == tiding_links.COMMENT_SOURCE:
+            turn = tiding_links.mention_of(msg, name) if is_agent else None
             if turn:
                 found.append({'mood': msg.mood_slug, 'turn': turn})
                 if len(found) >= limit:
@@ -1246,8 +1433,9 @@ def api_unfurl(request, slug, message_id):
 
 @require_GET
 def api_moods_live(request):
-    """Each Mood's people of the moment: who has spoken in the last 100 blocks
-    (about 20 minutes), who's typing, which agent is working; and when anything
+    """Each Mood's people of the moment: each person in the one Mood they last opened, typed or
+    spoke in, for three minutes (services/presence); each agent where it spoke in the last 100
+    blocks (about 20 minutes); who's typing, which agent is working; and when anything
     was last added there (a page brings the Moods it holds up to date by it,
     before they're opened). Cached for 3 s: every open page asks every few seconds."""
     from datetime import timedelta
@@ -1264,20 +1452,45 @@ def api_moods_live(request):
     spoke = (Message.objects.filter(mood__isnull=False, is_sidechain=False, created_at__gte=since,
                                     sender_id__in=names)
              .values('mood__slug', 'sender_id').annotate(last=Max('created_at')).order_by('-last'))
+    # A person is shown in one Mood: where they last opened, typed or spoke, for three minutes after
+    # (services/presence; Justin, 23 Oct). An agent, wherever it's spoken lately, as before.
+    from .services import presence
+    people = set(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True))
+    spoke = list(spoke)
+    where = presence.places(said=[(r['sender_id'], r['mood__slug'], r['last'].timestamp()) for r in spoke
+                                  if r['sender_id'] in people])
     live = {}
     for row in spoke:
-        live.setdefault(row['mood__slug'], {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(row['sender_id'])
+        if row['sender_id'] not in people:
+            live.setdefault(row['mood__slug'], {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(row['sender_id'])
+    for name, slug in sorted(where.items()):
+        live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(name)
     for mood in Mood.objects.all():
         entry = live.setdefault(mood.slug, {'speakers': [], 'typing': [], 'busy': None})
         entry['typing'] = typing_in(mood.slug)
         last = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at) index
         entry['last'] = last.isoformat() if last else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way
-            working = [a['agent'] for a in activities(mood) if a.get('doing') != 'held']
+            doing = activities(mood)
+            working = [a['agent'] for a in doing if a.get('doing') != 'held']
+            # An agent waiting for another asked too (poller's _WAIT_REPLY): read aloud as thinking is.
+            # 'waiting for re to settle the schema': for 're', to 'settle the schema'.
+            waiting = [{'agent': a['agent'], **dict(zip(('for', 'to'), a['why'][len('waiting for '):].split(' to ', 1)))}
+                       for a in doing if a.get('doing') == 'held' and str(a.get('why') or '').startswith('waiting for ')]
+            if waiting:
+                entry['waiting'] = waiting
+            if doing:
+                # Each at work there, as a Mood's own look has them: shown the moment it's opened, not once
+                # its first look is back (Justin, 25 Oct: they "pop up" a couple of seconds later).
+                entry['activities'] = doing
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list
-    from .services import watchers
+    from .services import listening, watchers
+    for slug in list(live):  # who's listening by voice there, 🎧 beside their names (Justin, 22 Oct)
+        heard_by = listening.in_mood(slug)
+        if heard_by:
+            live[slug]['listening'] = heard_by
     for slug, n in watchers.by_mood().items():  # who's reading without signing in: a count beside the Mood
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['watching'] = n
     body = {'moods': live, 'blocks': AROUND_BLOCKS}

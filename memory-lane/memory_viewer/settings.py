@@ -260,6 +260,13 @@ FACES_KEY = os.getenv('FACES_KEY', '')
 MOOD_WIKI_RULES = os.getenv('MOOD_WIKI_RULES', '1') != '0'
 # Whose revisions of those pages count (PickiPedia names, comma-separated); unset: poller/wiki_rules.EDITORS.
 MOOD_WIKI_RULES_EDITORS = [n for n in os.getenv('MOOD_WIKI_RULES_EDITORS', '').split(',') if n.strip()]
+# The voice's words (what a memo should expect, how a name may be misheard, how a word is said) from
+# PickiPedia's Magenta:Voice (conversations/services/voice_words.py); 0: the code's own lists. Off under
+# `manage.py test`: no test waits on the wiki.
+import sys as _sys  # noqa: E402
+VOICE_WORDS_FROM_WIKI = os.getenv('VOICE_WORDS_FROM_WIKI', '0' if _sys.argv[1:2] == ['test'] else '1') != '0'
+# The page's words for people (services/interface_words.py, Magenta:Interface): likewise.
+INTERFACE_WORDS_FROM_WIKI = os.getenv('INTERFACE_WORDS_FROM_WIKI', '0' if _sys.argv[1:2] == ['test'] else '1') != '0'
 # Each person's PickiPedia name, from hunter's inventory: "<name> <WikiName>" lines.
 MOOD_WIKI_NAMES = os.getenv('MOOD_WIKI_NAMES', '')
 # Editing and deleting (conversations/services/retract.py): what's taken back is sealed to this
@@ -303,3 +310,12 @@ CSRF_TRUSTED_ORIGINS = [f'https://{h}' for h in ALLOWED_HOSTS
 # Served only over https outside development.
 CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE = not DEBUG
 SECURE_HSTS_SECONDS = 0 if DEBUG else 365 * 24 * 3600  # this host only, no subdomains
+
+# Where readers' addresses are (conversations/services/geoip.py): DB-IP's free city database, fetched in the
+# background into GEOIP_PATH (default: under the temp directory). Off under `manage.py test`: no test downloads it.
+import sys as _sys  # noqa: E402
+GEOIP_PATH = os.getenv('GEOIP_PATH', '')
+GEOIP_FETCH = os.getenv('GEOIP_FETCH', '0' if _sys.argv[1:2] == ['test'] else '1') != '0'
+
+# The network shut, and no background thread writing into a test's database (memory_viewer/test_runner.py).
+TEST_RUNNER = 'memory_viewer.test_runner.Runner'

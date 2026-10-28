@@ -16,6 +16,9 @@ A new release is the exception to leaving bots out (refresh_releases): its
 Release: page is made by a bot (Blue Railroad Imports) once delivery-kid has
 pinned it, and each one is news -- "until such time as it gets too loud"
 (Justin, 2026-10-09). It gets a line of its own, with its player.
+
+A picture uploaded to the wiki is a change too, though the wiki logs it rather than editing a page (Justin,
+27 Oct: Aunt Rhonda's upload never showed): its line has a small thumbnail of it.
 """
 
 import re
@@ -33,6 +36,7 @@ RELEASE_FRESH = 3 * 3600  # seconds: on the first look, a release this new is st
 EVERY = 60          # seconds between looks at the wiki
 FIRST_LOOK = 3      # changes taken the first time, before there's anything to go on from
 LIMIT = 25          # changes asked for per look
+THUMB = 120         # px: an uploaded picture's thumbnail, as the wiki makes it
 _TODO = re.compile(r'^Cryptograss:Moods/([^/]+)/todo$', re.I)
 
 
@@ -80,14 +84,42 @@ def _refresh_and_close(http):
 
 
 def changes(http=None):
-    """The wiki's newest changes by people, oldest first."""
+    """The wiki's newest changes by people, oldest first: edits, new pages and uploads (an upload is a log
+    entry; the rest of the log -- sign-ups, moves, rights -- isn't news here). An upload has its thumbnail."""
     import requests
     from conversations.services.mood_view import pickipedia_url
     http = http or requests
     answer = http.get(f'{pickipedia_url()}/api.php', timeout=8, headers={'User-Agent': 'memory-lane (magenta)'},
-                      params={'action': 'query', 'list': 'recentchanges', 'rcshow': '!bot', 'rctype': 'edit|new',
-                              'rcprop': 'title|ids|sizes|user|comment|timestamp', 'rclimit': LIMIT, 'format': 'json'})
-    return list(reversed(answer.json()['query']['recentchanges']))
+                      params={'action': 'query', 'list': 'recentchanges', 'rcshow': '!bot', 'rctype': 'edit|new|log',
+                              'rcprop': 'title|ids|sizes|user|comment|timestamp|loginfo', 'rclimit': LIMIT,
+                              'format': 'json'})
+    found = [c for c in answer.json()['query']['recentchanges']
+             if c.get('type') != 'log' or c.get('logtype') == 'upload']
+    uploads = [c for c in found if c.get('type') == 'log']
+    for c in uploads:
+        c['type'] = 'upload'
+    if uploads:
+        try:
+            thumbs = thumbnails([c['title'] for c in uploads], http)
+        except Exception:
+            thumbs = {}
+        for c in uploads:
+            c['thumb'] = thumbs.get(c['title'], '')
+    return list(reversed(found))
+
+
+def thumbnails(titles, http):
+    """{File: title: its thumbnail's URL, THUMB px wide}, as the wiki makes them."""
+    from conversations.services.mood_view import pickipedia_url
+    answer = http.get(f'{pickipedia_url()}/api.php', timeout=8, headers={'User-Agent': 'memory-lane (magenta)'},
+                      params={'action': 'query', 'titles': '|'.join(sorted(set(titles))[:50]), 'prop': 'imageinfo',
+                              'iiprop': 'url', 'iiurlwidth': THUMB, 'format': 'json', 'formatversion': 2})
+    out = {}
+    for page in (answer.json().get('query') or {}).get('pages') or []:
+        info = (page.get('imageinfo') or [{}])[0]
+        if info.get('thumburl') or info.get('url'):
+            out[page.get('title', '')] = info.get('thumburl') or info.get('url')
+    return out
 
 
 def refresh(http=None):
@@ -120,7 +152,8 @@ def refresh(http=None):
                          'title': change.get('title', ''), 'user': change.get('user', ''),
                          'comment': (change.get('comment') or '')[:300], 'revid': change.get('revid'),
                          'delta': (change.get('newlen') or 0) - (change.get('oldlen') or 0),
-                         'at': change.get('timestamp', '')})
+                         'at': change.get('timestamp', ''),
+                         **({'thumb': change['thumb']} if change.get('thumb') else {})})
             added += 1
             if home_of(change.get('title')):  # its to-do list changed: open pages ask for it again now
                 from .todo import forget
