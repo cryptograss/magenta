@@ -103,7 +103,7 @@ GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
 AGENT_TEMPLATE = 'Emergent'
 EMERGENT_TEMPLATES = ('Emergent', 'Agent')  # both accepted while trusted revisions still say {{Agent|...}}
 AGENT_FIELDS = ('colour', 'hex', 'greeting', 'image')  # what an agent's own page may put in its line
-ROSTER_FIELDS = ('colour', 'for')  # what each other agent's page puts in the roster: '<name> (<colour>), <for>'
+ROSTER_FIELDS = ('colour', 'for')  # what each other agent's page puts in the roster: '<name> (<colour>) <for>'
 BLANK = re.compile(r'(?<!\{)\{([a-z]+)\}(?!\})')
 SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 RECOVERY = Path(__file__).with_name('recovery_instructions.md')
@@ -330,16 +330,18 @@ def template_fields(text, name=EMERGENT_TEMPLATES):
 
 
 def roster_text(pages):
-    """The other agents, as {others} in the line: '<name> (<colour>), <for>; ...', each from that agent's own
-    page (a Layer) at its trusted revision, in the order given. An agent whose page has no trusted revision,
-    or no {{Agent}}, is left out: nothing about it is vouched for. '' if none can be said."""
+    """The other agents, as {others} in the line: '<name> (<colour>) <for>; ...', each from that agent's own
+    page (a Layer) at its trusted revision, in the order given. No comma before `for`: it is a predicate
+    ('works on the connectome: ...'), the same frame Template:Emergent gives the card, so 'blu (blue), the
+    connectome' no longer reads as blu being the connectome (Justin, emergence, 28 Oct). An agent whose page
+    has no trusted revision, or no {{Emergent}}, is left out: nothing about it is vouched for. '' if none."""
     entries = []
     for name, page in pages:
         fields = template_fields(page.text or '') if page.text else {}
         if not fields:
             continue
         entry = name + (f" ({fields['colour']})" if fields.get('colour') else '')
-        entries.append(entry + (f", {fields['for']}" if fields.get('for') else ''))
+        entries.append(entry + (f" {fields['for']}" if fields.get('for') else ''))
     return '; '.join(entries)
 
 
