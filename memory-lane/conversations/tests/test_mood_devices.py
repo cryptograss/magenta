@@ -605,3 +605,25 @@ class AnnounceTest(TestCase):
         turn = self.client.get('/api/moods/jams/turns/').json()['turns'][0]
         self.assertEqual(turn['heard'], [{'by': 'justin', 'from': 'general', 'message': '0123abcd-0000-4000-8000-000000000000',
                                           'text': 'Beta is "tonight" at 8 🎻'}])
+
+
+class RecordingTest(TestCase):
+    """Justin, 28 Oct: nobody could see a person recording a voice memo, as they see one typing."""
+
+    def test_recording_is_typing_out_loud(self):
+        from conversations.services import mood_auth
+        from django.core.cache import cache
+        cache.clear()
+        justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        Mood.objects.create(slug='usage', title='usage')
+        _, token = mood_auth.enrol_device(justin, 'phone', tier='key')
+        self.client.cookies[mood_auth.COOKIE] = token
+        post = lambda body: self.client.post('/api/moods/usage/typing/', json.dumps(body), content_type='application/json')
+        post({'typing': True, 'how': 'recording'})
+        page = self.client.get('/api/moods/usage/turns/').json()
+        self.assertEqual((page['typing'], page['recording']), (['justin'], ['justin']))
+        self.assertEqual(self.client.get('/api/moods/pulse/').json()['moods'][0]['typing'], ['justin'])  # the consider waits
+        post({'typing': True})
+        self.assertEqual(self.client.get('/api/moods/usage/turns/').json()['recording'], [])
+        post({'typing': False})
+        self.assertEqual(self.client.get('/api/moods/usage/turns/').json()['typing'], [])

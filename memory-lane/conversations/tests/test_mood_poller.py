@@ -2264,6 +2264,23 @@ class WaitingTest(TestCase):
         self.assertIn('re, has answered, below', again)              # not "not at work here yet"
         self.assertNotIn('m26', poller.state['waits'])
 
+    def test_a_person_typing_or_recording_is_said_and_may_be_waited_for(self):
+        # Justin, 28 Oct: wait for a person to finish typing or speaking, when what you'd say depends on the rest.
+        poller = self.make(['<wait for="justin" to="finish the thought"/>'], mentions=('magent',))
+        self.page['typing'], self.page['recording'] = ['justin'], ['justin']
+        poller.poll_once()
+        first = self.waker.woken[0][1]
+        self.assertIn('Right now, here: justin is recording a voice memo.', first)
+        self.assertIn('<wait for="justin"', first)
+        self.assertIn('m26', poller.state['waits'])                # taken: justin is at work
+        self.clock[0] += WAIT_FOR + timedelta(seconds=1)
+        self.assertEqual(poller.poll_once(), [])                   # still recording: the wait goes on
+        self.page['typing'], self.page['recording'] = [], []
+        self.page['turns'] = [dict(turn('j2', 'justin', 6, '...and that is the rest of it.'), via='web')]
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), ['m26'])               # posted: its turn now, the rest in view
+        self.assertIn('You chose to wait for justin', self.waker.woken[1][1])
+
     def test_at_work_at_its_check_in_the_wait_goes_on_with_no_turn_spent(self):
         poller = self.make(['<wait for="re"/>'])
         poller.poll_once()

@@ -1111,6 +1111,9 @@ def settings_changed(agent, page, texts=None):
     return ['', wake_line(texts, 'settings-changed', SETTINGS_CHANGED, said=said, who=who, why=why)]
 
 
+TYPING_NOTE = ('Right now, here: {said}. More may be coming. If what you would say depends on the rest of it, '
+               'you may reply with only <wait for="{first}" to="a few words"/> to be woken once they have posted or '
+               'stopped; if it stands on its own, or the talk is lively, say it now.')
 ANNOUNCED_NOTE = ('Announced to every Mood since you were last woken here (with /announce, in another Mood: not said here, '
                   'but meant for you here too):')
 REACTED_NOTE = ('Reactions to your posts here since you were last woken (a nod, not a question: '
@@ -2087,7 +2090,7 @@ class MoodPoller:
         if not match or not owed:
             return
         ids = [t['id'] for t in owed]
-        allowed = others_asked(owed, self.agent) + self.state['wait_also'].pop(slug, [])
+        allowed = others_asked(owed, self.agent) + self.state['wait_also'].pop(slug, []) + self.people_typing(slug)
         wanted = [n for n in re.split(r'[\s,]+', match.group(1).lower()) if n]
         names = [n for n in wanted if n in allowed]
         again = any(i in self.state['waited'] for i in ids)
@@ -2119,6 +2122,15 @@ class MoodPoller:
         self.hold(slug, wait_reason(names, to), now + WAIT_FOR)
         self.save()
 
+    def people_typing(self, slug, page=None):
+        """Who is typing, or recording a voice memo, in `slug` now -- people, never this agent."""
+        if page is None:
+            try:
+                page = self.api.recent(slug, limit=1)
+            except Exception:
+                return []
+        return [n for n in page.get('typing') or () if n != self.agent]
+
     def at_work(self, slug, names, page=None):
         """Which of `names` are at work in `slug` now: thinking, working, writing -- not held, not idle."""
         if page is None:
@@ -2127,7 +2139,8 @@ class MoodPoller:
             except Exception:
                 page = {}
         doing = {a.get('agent'): a.get('doing') for a in page.get('activities') or [] if a.get('agent')}
-        return [n for n in names if doing.get(n) not in (None, 'held')]
+        typing = set(page.get('typing') or ())  # a person typing, or recording a memo, is at work too (Justin, 28 Oct)
+        return [n for n in names if doing.get(n) not in (None, 'held') or n in typing]
 
     def wait_again(self, slug, names, page=None):
         """How a woken agent may wait again: for those it waited for still at work. Said after 'Answer now'."""
@@ -2454,9 +2467,19 @@ class MoodPoller:
             page = self.api.recent(slug, limit=200)
         except Exception:
             page = None
-        return (self.announced_lines(slug, page) + self.reacted_lines(slug, page)
+        return (self.typing_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
                 + self.nearmiss_lines(slug, page)
                 + (wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts) if length else []))
+
+    def typing_lines(self, page):
+        """Who is typing or recording here right now (Justin, 28 Oct: "the emergents are able to see both and
+        consider whether you might want to wait"): a line, and how to wait for them."""
+        typing = [n for n in (page or {}).get('typing') or () if n != self.agent]
+        if not typing:
+            return []
+        rec = set((page or {}).get('recording') or ())
+        said = '; '.join(f"{n} is {'recording a voice memo' if n in rec else 'typing'}" for n in typing)
+        return ['', wake_line(self.texts, 'typing', TYPING_NOTE, said=said, first=typing[0])]
 
     def announced_lines(self, slug, page):
         """/announce made in other Moods, not yet told to it here (memory-lane services/announce.py), once each."""

@@ -1628,6 +1628,7 @@
   let act = null;           // what an agent is doing now, from /turns/: the one stop and Esc stop
   let acts = [];            // every agent at work here, longest at it first (mood_view.activities)
   let typingNow = [];       // who else is typing here, from /turns/
+  let recordingNow = [];    // of them, who's recording a voice memo
 
   const ICONS = {
     human: '<svg class="ico" viewBox="0 0 16 16" aria-label="person"><circle cx="8" cy="4.6" r="3"/><path d="M2.2 15c0-3.4 2.6-5.6 5.8-5.6s5.8 2.2 5.8 5.6z"/></svg>',
@@ -4969,6 +4970,7 @@
     noteAgents(current, data.agents);
     renderLocked(data.scram || null);
     typingNow = (data.typing || []).filter(n => n !== viewer);
+    recordingNow = data.recording || [];
     renderTyping();
     renderWatchers(data.watchers);
     const turnsEl = document.getElementById('turns');
@@ -5638,8 +5640,11 @@
   function renderTyping() {
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('typing', typingNow.includes(el.dataset.who)));
     typingEl.classList.toggle('on', typingNow.length > 0);
-    typingEl.innerHTML = typingNow.map(n => `${icon(n, true)}<b>${esc(shown(n))}</b>`).join(', ')
-      + (typingNow.length ? (typingNow.length > 1 ? ' are typing…' : ' is typing…') : '');
+    const rec = typingNow.filter(n => recordingNow.includes(n)), keys = typingNow.filter(n => !recordingNow.includes(n));
+    const who = ns => ns.map(n => `${icon(n, true)}<b>${esc(shown(n))}</b>`).join(', ');
+    typingEl.innerHTML = [keys.length ? who(keys) + (keys.length > 1 ? ' are typing…' : ' is typing…') : '',
+      rec.length ? '🎙 ' + who(rec) + (rec.length > 1 ? ' are recording a voice memo…' : ' is recording a voice memo…') : '']
+      .filter(Boolean).join(' · ');
     markLive();
   }
 
@@ -6045,12 +6050,12 @@
   // Tell the Mood this person is typing: at most every 3s while there is
   // text, and once when it is cleared or sent.
   let typingSent = 0;
-  function sendTyping(on) {
+  function sendTyping(on, how) {
     if (!viewer || !current) return;
     hereAt = Date.now();  // typing, or stopped: three minutes here from now (services/presence)
     fetch('/api/moods/' + encodeURIComponent(current) + '/typing/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ typing: on }),
+      body: JSON.stringify({ typing: on, ...(how ? { how } : {}) }),
     }).catch(() => {});
   }
   sayBox.addEventListener('input', () => {
@@ -6568,6 +6573,7 @@
     recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
     recorder.addEventListener('stop', async () => {
       clearInterval(memoTimer);
+      sendTyping(false);
       recordingHold(false);
       mic.close();
       stream.getTracks().forEach(t => t.stop());
@@ -6635,8 +6641,11 @@
     composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Recording: ■ stops it to add words; Send sends it as it is.</span>');
     memoBtn.classList.add('recording');
     memoBtn.textContent = '■ 0:00';
+    sendTyping(true, 'recording');  // others see it, as they see typing (Justin, 28 Oct)
+    let recordingSaid = Date.now();
     memoTimer = setInterval(() => {
       const s = (Date.now() - started) / 1000;
+      if (Date.now() - recordingSaid > 3000) { recordingSaid = Date.now(); sendTyping(true, 'recording'); }
       memoBtn.textContent = '■ ' + clock(s);
       if (s >= MEMO_MAX_S && recorder) recorder.stop();
       const since = recorder ? mic.quietSince() : null;
