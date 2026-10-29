@@ -969,6 +969,58 @@ class MentionContextTest(TestCase):
         self.assertNotIn('post 0 ', prompt)
 
 
+class HandedLedgerTest(TestCase):
+    """What another Mood handed the agent here is shown once, on its next wake here, and recorded as shown."""
+
+    def make(self, events, state_handed=None):
+        owed = dict(turn('ask', 'justin', 100, '@magent one more thing'), via='web')
+        turns = [turn('m0', 'magent', 0, 'my last word here')]
+
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                return {'turns': (turns + [owed])[-limit:], 'events': events}
+        api = API([mention('m26', owed)], sessions={'m26': ['s-local']})
+        self.state = Path(tempfile.mkdtemp()) / 'state.json'
+        self.state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': [],
+                                          'handed': state_handed or {}}))
+        waker = FakeWaker()
+        poller = MoodPoller(api, waker, state_path=self.state, now=lambda: T0 + timedelta(minutes=101), consider=False)
+        poller.poll_once()
+        return poller, waker.woken[0][1]
+
+    def event(self, id, minutes, about='the setlist'):
+        return {'id': id, 'type': 'handoff', 'for': 'magent', 'by': 're', 'from_mood': 'jams', 'about': about,
+                'context': 'Salty Dog first.', 'created_at': (T0 + timedelta(minutes=minutes)).isoformat()}
+
+    def test_a_handoff_landing_before_its_last_word_is_shown_and_then_recorded(self):
+        # It landed at T-1 and the agent spoke at T0 (mid-turn): still owed, as the ledger has no entry for it.
+        poller, prompt = self.make([self.event('e1', -1)])
+        self.assertIn('Salty Dog first.', prompt)
+        self.assertEqual(json.loads(self.state.read_text())['handed'], {'m26': ['e1']})
+
+    def test_a_handoff_shown_already_is_not_shown_again(self):
+        poller, prompt = self.make([self.event('e1', 50)], state_handed={'m26': ['e1']})
+        self.assertNotIn('Salty Dog first.', prompt)
+
+    def test_a_cut_off_turn_is_shown_its_handoffs_again(self):
+        owed = dict(turn('ask', 'justin', 100, '@magent one more thing'), via='web')
+        events = [self.event('e1', 50)]
+
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                return {'turns': [owed], 'events': events}
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': [],
+                                     'handed': {'m26': ['e1']},
+                                     'cut_off': [{'mood': 'm26', 'turns': [owed], 'session': 's-local', 'tries': 1,
+                                                  'started': T0.isoformat(), 'command': False, 'handed': ['e1']}]}))
+        waker = FakeWaker()
+        poller = MoodPoller(API([mention('m26', owed)], sessions={'m26': ['s-local']}), waker, state_path=state,
+                            now=lambda: T0 + timedelta(minutes=101), consider=False)
+        poller.poll_once()
+        self.assertIn('Salty Dog first.', waker.woken[0][1])
+
+
 class DefaultsTest(TestCase):
 
     def test_eight_turns_at_once_by_default(self):

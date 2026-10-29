@@ -91,21 +91,43 @@ class HandoffTest(TestCase):
 
 class WakeTest(TestCase):
 
-    def test_whats_handed_to_this_agent_since_it_last_spoke(self):
+    def test_whats_handed_to_this_agent_and_not_shown_it_yet(self):
         from poller.mood_poller import handoffs_for
         page = {'turns': [{'sender': 'magent', 'created_at': '2026-10-07T21:00:00+00:00'}],
                 'events': [
-                    {'type': 'handoff', 'for': 'magent', 'by': 'magent', 'from_mood': 'a', 'about': 'old',
-                     'context': 'before it spoke', 'created_at': '2026-10-07T20:00:00+00:00'},
-                    {'type': 'handoff', 'for': 'magent', 'by': 'magent', 'from_mood': 'a', 'about': 'the setlist',
+                    {'id': 'e1', 'type': 'handoff', 'for': 'magent', 'by': 'magent', 'from_mood': 'a', 'about': 'old',
+                     'context': 'shown already', 'created_at': '2026-10-07T20:00:00+00:00'},
+                    {'id': 'e2', 'type': 'handoff', 'for': 'magent', 'by': 'magent', 'from_mood': 'a', 'about': 'the setlist',
                      'context': 'Salty Dog first.', 'created_at': '2026-10-07T21:05:00+00:00'},
-                    {'type': 'handoff', 'for': 'scout', 'by': 'magent', 'from_mood': 'a', 'about': 'not yours',
+                    {'id': 'e3', 'type': 'handoff', 'for': 'scout', 'by': 'magent', 'from_mood': 'a', 'about': 'not yours',
                      'context': '', 'created_at': '2026-10-07T21:06:00+00:00'},
-                    {'type': 'handoff', 'for': 'magent', 'by': 'magent', 'from_mood': 'b', 'about': 'brought in',
+                    {'id': 'e4', 'type': 'handoff', 'for': 'magent', 'by': 'magent', 'from_mood': 'b', 'about': 'brought in',
                      'context': 'it said so itself', 'created_at': '2026-10-07T21:07:00+00:00', 'pulled': True}]}
-        [line] = handoffs_for(page, 'magent')
+        [line] = handoffs_for(page, 'magent', shown=['e1'])
         self.assertTrue(line.startswith('[magent, from #a, 2026-10-07T21:05Z] the setlist'))
         self.assertIn('Salty Dog first.', line)
+
+    def test_a_handoff_that_landed_while_it_was_mid_turn_is_still_owed(self):
+        # Until 29 Oct the rule was "since it last spoke": a handoff landing at 20:59, answered over by a reply at
+        # 21:00 to something else, was never shown. The ledger, not the clock, says what it has seen.
+        from poller.mood_poller import handoffs_for
+        page = {'turns': [{'sender': 'magent', 'created_at': '2026-10-07T21:00:00+00:00'}],
+                'events': [{'id': 'e1', 'type': 'handoff', 'for': 'magent', 'by': 're', 'from_mood': 'a',
+                            'about': 'mid-turn', 'context': 'landed as you spoke',
+                            'created_at': '2026-10-07T20:59:00+00:00'}]}
+        self.assertEqual(len(handoffs_for(page, 'magent')), 1)
+        self.assertEqual(handoffs_for(page, 'magent', shown=['e1']), [])
+
+    def test_a_fresh_ledger_does_not_replay_old_handoffs(self):
+        from datetime import datetime, timezone
+        from poller.mood_poller import handoffs_for
+        page = {'turns': [], 'events': [
+            {'id': 'e1', 'type': 'handoff', 'for': 'magent', 'by': 're', 'from_mood': 'a', 'about': 'last week',
+             'context': 'stale', 'created_at': '2026-10-01T20:00:00+00:00'},
+            {'id': 'e2', 'type': 'handoff', 'for': 'magent', 'by': 're', 'from_mood': 'a', 'about': 'today',
+             'context': 'fresh', 'created_at': '2026-10-07T20:00:00+00:00'}]}
+        now = datetime(2026, 10, 7, 21, tzinfo=timezone.utc)
+        self.assertEqual([l.split('] ')[1].split('\n')[0] for l in handoffs_for(page, 'magent', now=now)], ['today'])
 
     def test_how_is_in_the_instructions_not_each_wake(self):
         from poller.mood_poller import wake_frames
