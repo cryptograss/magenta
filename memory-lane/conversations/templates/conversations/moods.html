@@ -606,6 +606,18 @@
   #search button { cursor: pointer; padding: 0 9px; }
   #search .bar.opts { padding-top: 0; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
   #search .bar.opts select { min-width: 0; padding: 3px 4px; }
+  /* Said by: a list of its own (a <select> can't show a name written its person's way). */
+  #qwho { position: relative; }
+  #qwho .pick { padding: 3px 6px; display: flex; align-items: center; gap: 4px; max-width: 170px; overflow: hidden; white-space: nowrap; }
+  #qwho .list { position: absolute; top: calc(100% + 3px); left: 0; z-index: 5; min-width: 190px; max-height: 50vh; overflow-y: auto;
+                background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.15); padding: 3px 0; }
+  #qwho .list[hidden] { display: none; }
+  #qwho .opt { display: flex; align-items: center; gap: 6px; padding: 4px 10px; cursor: pointer; color: var(--ink); white-space: nowrap; }
+  #qwho .opt:hover, #qwho .opt[aria-selected="true"] { background: var(--hover); }
+  #qwho .opt .ico, #qwho .pick .ico { width: 13px; height: 13px; fill: currentColor; flex: none; }
+  #qwho .opt.agent .ico { color: var(--agent); }
+  #qwho .sep { border-top: 1px solid var(--line); margin: 3px 0; }
+  #qwho .opt .you { color: var(--muted); font-size: 12px; }
   #search .bar.opts label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
   #search .bar.opts input { flex: none; }
   #qresults .more { display: block; margin: 10px auto; padding: 4px 12px; }
@@ -1503,7 +1515,7 @@
   </div>
   <div class="bar opts">
     <select id="qscope" aria-label="Where"><option value="here">this Mood</option><option value="threads">this Mood and its threads</option><option value="all">all Moods</option></select>
-    <select id="qwho" aria-label="Said by"><option value="">anyone</option><option value="human">humans</option><option value="emergent">emergents</option></select>
+    <span id="qwho" class="picker"><button type="button" class="pick" aria-haspopup="listbox" aria-label="Said by">anyone ▾</button><div class="list" role="listbox" hidden></div></span>
     <label title="Only where each term is a word of its own"><input type="checkbox" id="qword"> whole words</label>
   </div>
   <div id="qresults"></div>
@@ -4811,6 +4823,7 @@
   const qInput = document.getElementById('q');
   const qScope = document.getElementById('qscope');
   const qWho = document.getElementById('qwho');
+  qWho.value = '';  // who said it: '', 'human', 'emergent' or a name, as the server takes it
   const qWord = document.getElementById('qword');
   const qResults = document.getElementById('qresults');
   let qTimer = null, qSeq = 0, qMore = null;
@@ -4822,14 +4835,29 @@
     if (qInput.value.trim().length >= 2) runSearch();
   }
   function closeSearch() { searchBox.hidden = true; }
-  // Said by: anyone, humans, emergents, or one of them by name.
-  function whoOptions() {
-    const had = qWho.value, names = people.map(p => p.name).sort();
-    if (qWho.options.length === 3 + names.length) return;
-    qWho.innerHTML = '<option value="">anyone</option><option value="human">humans</option><option value="emergent">emergents</option>'
-      + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-    qWho.value = had;
+  // Said by: you first, then anyone, humans or emergents, then each by name, written their way
+  // with their icon (Justin, 29 Oct).
+  const qWhoBtn = qWho.querySelector('.pick'), qWhoList = qWho.querySelector('.list');
+  function whoLabel(v) {
+    return v === '' ? 'anyone' : v === 'human' ? ICONS.human + ' humans' : v === 'emergent' ? ICONS.agent + ' emergents'
+      : icon(v) + ' ' + nameHtml(v);
   }
+  function whoOptions() {
+    const opt = (v, cls = '') => `<div class="opt ${cls}" role="option" data-v="${esc(v)}" aria-selected="${v === qWho.value}">${whoLabel(v)}${v && v === me ? ' <span class="you">(you)</span>' : ''}</div>`;
+    const names = people.map(p => p.name).filter(n => n !== me).sort((a, b) => shown(a).localeCompare(shown(b)));
+    const isHuman = n => !!human[n];
+    qWhoList.innerHTML = (me && people.some(p => p.name === me) ? opt(me, 'human') + '<div class="sep"></div>' : '')
+      + opt('') + opt('human') + opt('emergent', 'agent') + '<div class="sep"></div>'
+      + names.filter(isHuman).map(n => opt(n, 'human')).join('') + names.filter(n => !isHuman(n)).map(n => opt(n, 'agent')).join('');
+    qWhoBtn.innerHTML = whoLabel(qWho.value) + ' ▾';
+  }
+  qWhoBtn.addEventListener('click', () => { whoOptions(); qWhoList.hidden = !qWhoList.hidden; });
+  qWhoList.addEventListener('click', e => {
+    const o = e.target.closest('.opt');
+    if (!o) return;
+    qWho.value = o.dataset.v; qWhoList.hidden = true; whoOptions(); runSearch();
+  });
+  document.addEventListener('click', e => { if (!qWho.contains(e.target)) qWhoList.hidden = true; });
   // Every term the server matched, marked where it is in the snippet.
   function marked(text, terms, whole) {
     const safe = esc(text);
@@ -4866,7 +4894,7 @@
     } catch (e) { if (seq === qSeq) qResults.innerHTML = '<div class="note">Search failed; try again.</div>'; }
   }
   qInput.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(() => runSearch(), 300); });
-  for (const el of [qScope, qWho, qWord]) el.addEventListener('change', () => runSearch());
+  for (const el of [qScope, qWord]) el.addEventListener('change', () => runSearch());
   document.getElementById('searchBtn').addEventListener('click', () => (searchBox.hidden ? openSearch() : closeSearch()));
   document.getElementById('qclose').addEventListener('click', closeSearch);
   document.addEventListener('keydown', e => {
