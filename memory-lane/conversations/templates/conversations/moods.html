@@ -452,6 +452,11 @@
   .mood-head .thread button:hover, .mood-head button.newthread:hover, .mood-head .macts button.closethread:hover { color: var(--accent); border-color: var(--accent); }
   #newBox .forkchoice { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
   #newBox .forkchoice[hidden] { display: none; }
+  /* Its closed threads, to read or open again (Justin, 29 Oct): a new one of the same name is a new Mood. */
+  #closedThreads { margin-top: 4px; color: var(--muted); }
+  #closedThreads[hidden] { display: none; }
+  #closedThreads .ct { display: flex; gap: 6px; align-items: baseline; }
+  #closedThreads .ct button { font-size: 12px; padding: 0 6px; }
 
   /* What was said, at its own size: --text-scale is the reader's choice (the menu's text size), apart from zoom. */
   :root { --text-base: 15px; --text-scale: 1; }
@@ -1428,6 +1433,7 @@
     <span class="hint" id="newThreadOf"></span>
     <label><input type="radio" name="threadKind" value="fork" checked> <span id="forkWords"></span></label>
     <label><input type="radio" name="threadKind" value="fresh"> <span id="freshWords"></span></label>
+    <div id="closedThreads" hidden></div>
   </div>
   <span class="hint" id="newHint"></span>
   <span><button type="submit">Start</button> <button type="button" id="newCancel">Cancel</button></span>
@@ -3778,12 +3784,29 @@
       document.getElementById('newHint').hidden = !!newBox._threadOf;
       document.getElementById('newThreadOf').innerHTML = newBox._threadOf ? said('thread-of', { mood: `<b>#${esc(newBox._threadOf)}</b>` }) : '';
       newBox.querySelector('input[name=threadKind][value=fork]').checked = true;
+      const closed = newBox._threadOf ? ((headMood || {}).threads || []).filter(t => isArchived(t.slug)) : [];
+      const ct = document.getElementById('closedThreads');
+      ct.hidden = !closed.length;
+      ct.innerHTML = closed.length ? 'Or open again one closed here, as it was:'
+        + closed.map(t => `<div class="ct"><a href="/moods/${encodeURIComponent(t.slug)}/">#${esc(t.slug)}</a>`
+          + `<span>${esc(t.title && t.title !== t.slug ? t.title : '')}</span>`
+          + `<button type="button" class="reopenthread" data-slug="${esc(t.slug)}">reopen</button></div>`).join('') : '';
       document.getElementById('newTitle').placeholder = newBox._threadOf ? 'What the thread is about' : 'What the new Mood is about';
       newBox.querySelector('button[type=submit]').textContent = newBox._threadOf ? 'Open the thread' : 'Start';
       document.getElementById('newTitle').value = '';
       document.getElementById('newDesc').value = '';
       newBox.hidden = false;
       document.getElementById('newTitle').focus();
+    } else if (e.target.closest('#closedThreads .reopenthread')) {
+      const slug = e.target.closest('.reopenthread').dataset.slug;
+      const r = await fetch(`/api/moods/${encodeURIComponent(slug)}/archive/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ archived: false }),
+      });
+      if (!r.ok) { showError('reopen: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+      newBox.hidden = true;
+      await loadMoods();
+      open(slug, true);
     } else if (e.target.closest('.mood-head .closethread') && !isArchived(current)) {
       // Closing: optionally handed to the Mood it came from, to incorporate -- "/incorporate #<it>" posted there,
       // and the handoff agent writes the one full account (Justin, 27 Oct: one agent, not each of them).
