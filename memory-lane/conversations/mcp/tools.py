@@ -322,9 +322,19 @@ def read_mood_text(slug, start=None, limit=60):
     else:
         found = found[-limit:]
     lines = []
-    for msg, text in found:
+    for i, (msg, text) in enumerate(found):
+        # A lead-in said on the way to a tool call (stop_reason tool_use) is narration, folded on the page
+        # since #210; here too, but only when the same sender has a later reply in the same turn. A turn that
+        # ended after its tool call with only a <silent> left the lead-in as all it said: keep it, marked
+        # (re, 29 Oct: that post would vanish whole).
+        lead_in = (msg.stop_reason == 'tool_use' and msg.session_id
+                   and not getattr(getattr(msg.sender, 'thinkingentity', None), 'is_biological_human', False))
+        if lead_in and any(m.session_id == msg.session_id for m, _ in found[i + 1:]):
+            continue
         if len(text) > EACH_CHARS:
             text = text[:EACH_CHARS] + ' […]'
+        if lead_in:
+            text += ' (lead-in)'
         lines.append(f"[{msg.sender_id}, {msg.created_at.isoformat()[:16]}Z, #m-{msg.id}] {text}")
     dropped = 0
     while lines and sum(len(l) for l in lines) > READ_MOOD_CHARS:

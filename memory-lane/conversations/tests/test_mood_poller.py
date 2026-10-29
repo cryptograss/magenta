@@ -2867,6 +2867,40 @@ class IncorporateTest(TestCase):
         self.assertEqual(waker.options['effort'], 'max')
 
 
+
+class LeadInsTest(TestCase):
+    def test_the_wake_transcript_folds_an_emergents_lead_in(self):
+        from poller.mood_poller import transcript_of
+        lines = transcript_of([dict(turn('p', 're', 1, 'Checking the deploy:'), stop='tool_use', is_human=False,
+                                    session='s1'),
+                               dict(turn('a', 're', 2, 'It is live.'), stop='end_turn', is_human=False,
+                                    session='s1'),
+                               dict(turn('j', 'justin', 3, 'thanks'), is_human=True, session='')])
+        self.assertEqual([l.split('] ', 1)[1] for l in lines], ['It is live.', 'thanks'])
+
+    def test_a_lead_in_with_no_reply_after_it_is_kept_and_marked(self):
+        # re, 29 Oct: an agent writes its full answer, makes a tool call (ticking a todo), and ends the turn
+        # with only a <silent>. The answer has stop tool_use and no later reply in its session: it is all the
+        # turn said, and dropping it would lose it whole.
+        from poller.mood_poller import transcript_of
+        lines = transcript_of([dict(turn('p', 're', 1, 'All fixed, todo ticked.'), stop='tool_use', is_human=False,
+                                    session='s1'),
+                               dict(turn('j', 'justin', 2, 'thanks'), is_human=True, session='')])
+        self.assertEqual([l.split('] ', 1)[1] for l in lines], ['All fixed, todo ticked. (lead-in)', 'thanks'])
+
+    def test_a_later_turn_in_a_new_session_does_not_fold_the_lead_in(self):
+        # The same sender's next turn, later, is another session: it is not the reply the lead-in led to,
+        # so the lead-in stays (and stays marked).
+        from poller.mood_poller import transcript_of
+        lines = transcript_of([dict(turn('p', 're', 1, 'Checking the deploy:'), stop='tool_use', is_human=False,
+                                    session='s1'),
+                               dict(turn('q', 're', 2, 'gm all'), stop='end_turn', is_human=False, session='s2'),
+                               dict(turn('j', 'justin', 3, 'hi'), is_human=True, session='')])
+        self.assertEqual([l.split('] ', 1)[1] for l in lines],
+                         ['Checking the deploy: (lead-in)', 'gm all', 'hi'])
+
+
+
 class FreshCopiesTest(TestCase):
     """~/workspace/.fresh: read-only copies of each repo's main, refreshed in the background as a turn starts,
     at most every ten minutes, a wake line only when a refresh failed (magent, re, blu, 29 Oct)."""
@@ -2957,3 +2991,4 @@ class FreshCopiesTest(TestCase):
         self.assertIn('magenta: fatal: unable to access', line)
         poller.fresh_problems = []
         self.assertEqual(poller.fresh_line(), '')
+
