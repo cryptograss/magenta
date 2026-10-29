@@ -82,6 +82,8 @@
   table.history th { color: var(--muted); font-weight: 600; }
   table.history td.value { font-family: ui-monospace, monospace; word-break: break-word; max-width: 420px; }
   @media (max-width: 720px) { .row { grid-template-columns: 1fr; } .help { margin-left: 0; } }
+  .offered summary { cursor: pointer; }
+  .offered summary h2 { display: inline; }
   .offered .makers { display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .offered .makers label { font-size: 13px; white-space: nowrap; }
 </style>
@@ -117,8 +119,9 @@
   <p class="note">Each emergent in every Mood and thread, new ones included, unless that Mood sets its own.</p>
   <div class="defaults-wrap"><table class="defaults" id="defaults"></table></div>
   <h3>One emergent</h3>
-  <p class="pick-line"><label for="pickAgent">showing</label> <select id="pickAgent"></select></p>
-  <div class="cards" id="cards">Loading…</div>
+  <p class="pick-line"><label for="pickAgent">showing</label> <select id="pickAgent"></select>
+    <label class="note"><input type="checkbox" id="allMoods"> every Mood, not only where it differs</label></p>
+  <div class="defaults-wrap" id="cards">Loading…</div>
   <h3>For all emergents together</h3>
   <div class="cards" id="global"></div>
   <h3 id="voices">Voices: who is read in which</h3>
@@ -280,11 +283,20 @@
   }
 
   let picked = null;  // which emergent the Mood cards show, kept across saves
+  // One emergent (Justin, 29 Oct: "too crazy"): a table, a row per Mood, and only the Moods where
+  // something is set for it there (or for everyone there) unless every Mood is asked for.
+  let allMoods = false;
   function agentView(a) {
-    const cards = [];
-    for (const m of state.moods) cards.push(card(m.title, `${a} in #${m.slug}`, state.resolved[m.slug][a], m.slug, a));
-    return cards.join('') || 'No Moods yet.';
+    const keys = Object.keys(state.knobs).filter(k => !IN_THE_MOOD.includes(k)
+      && (a === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k)));
+    const differs = m => keys.some(k => setHere(m.slug, a, k) || setHere(m.slug, null, k));
+    const moods = state.moods.filter(m => allMoods || differs(m));
+    if (!moods.length) return `<p class="note">${esc(a)} is at its emergent defaults in every Mood.</p>`;
+    const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
+    return `<table class="defaults">${head}` + moods.map(m => `<tr><td class="who" title="${esc(m.title)}">#${esc(m.slug)}</td>`
+      + keys.map(k => `<td>${field(k, state.resolved[m.slug][a][k], m.slug, a, true)}</td>`).join('') + '</tr>').join('') + '</table>';
   }
+
 
   function render() {
     document.getElementById('who').innerHTML = viewer ? `changing as <b>${esc(viewer)}</b>`
@@ -410,16 +422,18 @@
     loadVoices();
   }
 
-  // Models offered (models_off): per vendor, each maker's models ticked on or off (Justin, 28 Oct: "disable
+  let offeredOpen = false;  // folded unless opened (Justin, 29 Oct), and kept open across saves
+  // Models available (models_off): per vendor, each maker's models ticked on or off (Justin, 28 Oct: "disable
   // anthropic models through openrouter"). Off: not in any model menu, and refused as a setting.
   function offeredCard() {
     const off = state.global.models_off || {}, vendors = Object.entries(state.makers || {});
     if (!vendors.length) return '';
-    return `<div class="card offered"><h2>Models offered</h2><div class="sub">per vendor: untick a maker to take its models out of every menu</div>`
+    return `<details class="card offered" id="offered"${offeredOpen ? ' open' : ''}><summary><h2>Models available</h2></summary>`
+      + `<div class="sub">per vendor: untick a maker to take its models out of every menu</div>`
       + vendors.map(([vendor, makers]) => `<div class="row"><label>${esc(vendor)}</label><span class="makers">`
         + makers.map(m => `<label title="${m.models} model${m.models === 1 ? '' : 's'}"><input type="checkbox" data-offer="${esc(vendor)}" data-maker="${esc(m.name)}"`
           + `${(off[vendor] || []).includes(m.name || '*') ? '' : ' checked'}${viewer ? '' : ' disabled'}> ${esc(m.name || 'its own')}</label>`).join(' ')
-        + `<span class="status"></span></span></div>`).join('') + '</div>';
+        + `<span class="status"></span></span></div>`).join('') + '</details>';
   }
   async function saveOffered(el) {
     const off = {};
@@ -467,6 +481,11 @@
     if (e.target.dataset && e.target.dataset.key) save(e.target);
   });
   document.addEventListener('click', e => { if (e.target.id === 'setWide') setWide(); });
+  document.addEventListener('toggle', e => { if (e.target.id === 'offered') offeredOpen = e.target.open; }, true);
+  document.getElementById('allMoods').addEventListener('change', e => {
+    allMoods = e.target.checked;
+    document.getElementById('cards').innerHTML = picked ? agentView(picked) : '';
+  });
   document.getElementById('pickAgent').addEventListener('change', e => {
     picked = e.target.value;
     document.getElementById('cards').innerHTML = picked ? agentView(picked) : '';
