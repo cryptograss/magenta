@@ -1779,7 +1779,7 @@
   let archivedOpen = false;
   function renderNav() {
     const item = ([m, depth]) => `
-      <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && !m.forked_at ? ' fresh' : ''}${depth && m.incorporated ? ' back' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
+      <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && (!m.forked_at || m.compacted) ? ' fresh' : depth && m.incorporated ? ' back' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
         <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.tools_asked || []).length
           ? `<span class="toolsask" title="${esc(m.tools_asked.map(t => `${shown(t.agent)} requested tools for ${t.for}`).join('; '))}">🔨${
               m.tools_asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
@@ -2132,15 +2132,18 @@
     });
   }
 
+  // A thread's mark: 🌱 fresh, or forked from what its Mood has since compacted away (Justin, 29 Oct), whatever
+  // else; ↩ handed back to its Mood; ⑂ forked.
+  const threadMark = m => !m.forked_at || m.compacted ? '🌱' : m.incorporated ? '↩' : '⑂';
   // A thread's line: where it was opened from, forked or fresh, and closing it (archiving); a Mood's threads.
   function threadLine(m) {
     const link = slug => `<a href="/moods/${encodeURIComponent(slug)}/">#${esc(slug)}</a>`;
     const parts = [];
     if (m.thread_of) {
       const shut = isArchived(m.slug);
-      parts.push(`${m.incorporated ? '↩' : m.forked_at ? '⑂' : '🌱'} a thread of ${link(m.thread_of)}, ` + (m.forked_at
+      parts.push(`${threadMark(m)} a thread of ${link(m.thread_of)}, ` + (m.forked_at
         ? `forked ${esc(stamp(m.forked_at))}: its emergents went on from where they were there`
-        : 'started fresh') + (m.incorporated ? ` · handed back to ${link(m.thread_of)}` : '') + (shut ? ' · closed' : '')
+        : 'started fresh') + (m.compacted ? ` · an emergent compacted in ${link(m.thread_of)} since` : '') + (m.incorporated ? ` · handed back to ${link(m.thread_of)}` : '') + (shut ? ' · closed' : '')
         + (keyHolder ? `<button type="button" class="closethread" title="${shut ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${shut ? 'reopen' : 'close thread'}</button>`
           + `<button type="button" class="refork" title="Each emergent's next wake here goes on from where it is in #${esc(m.thread_of)} now. What was said here stays on the page, but leaves their context.">⑂ fork again</button>` : ''));
     }
@@ -2162,7 +2165,7 @@
       <div class="mbar" title="${headOpen ? 'Fold it away' : 'Its description, threads and people'}">
         <button type="button" class="mtoggle" aria-expanded="${headOpen}" aria-label="The Mood's description, threads and people">${headOpen ? '▾' : '▸'}</button>
         <h1>${esc(m.title)}</h1>
-        <span class="mdesc">${m.thread_of ? `${m.incorporated ? '↩' : m.forked_at ? '⑂' : '🌱'} of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
+        <span class="mdesc">${m.thread_of ? `${threadMark(m)} of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
         <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}${m.thread_of && keyHolder ? `<button type="button" class="closethread" title="${isArchived(m.slug) ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${isArchived(m.slug) ? 'reopen' : 'close'}</button>` : ''}</span>
       </div>
       <div class="mbody"${headOpen ? '' : ' hidden'}>
@@ -3961,7 +3964,7 @@
       });
       if (!r.ok) { showError('fork again: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
       const at = (await r.json()).forked_at;
-      [moods.find(x => x.slug === current), headMood].forEach(m => { if (m) { m.forked_at = at; m.incorporated = false; } });
+      [moods.find(x => x.slug === current), headMood].forEach(m => { if (m) { m.forked_at = at; m.incorporated = m.compacted = false; } });
       drawMoodbar(headMood);
       loadMoods().then(() => drawMoodbar(headMood));
     } else if (e.target.closest('#newCancel')) {

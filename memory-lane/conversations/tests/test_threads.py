@@ -236,6 +236,15 @@ class IncorporateThreadTest(TestCase):
         self.assertEqual([(e['type'], e.get('from_mood'), e.get('was')) for e in events if e['type'] == 'reforked'],
                          [('reforked', 'jams', 'fork')])
         self.assertEqual(self.client.post('/api/moods/jams/refork/', '{}', content_type='application/json').status_code, 400)
+        # Compacted in #jams since the fork: shown as fresh, until it's forked again.
+        self.assertFalse(listed()['compacted'])
+        from conversations.models import ConversationParticipant
+        magent = ConversationParticipant.objects.get_or_create(name='magent', defaults={'participant_type': 'assistant'})[0]
+        Message.objects.create(id=uuid.uuid4(), sender=magent, mood=self.jams, timestamp=1, is_continuation_message=True,
+                               content='This session is being continued from a previous conversation...')
+        self.assertTrue(listed()['compacted'])
+        self.client.post('/api/moods/jams-setlist/refork/', '{}', content_type='application/json')
+        self.assertFalse(listed()['compacted'])
         self.client.cookies.clear()
         self.assertEqual(self.client.post('/api/moods/jams-setlist/refork/', '{}', content_type='application/json').status_code, 401)
 

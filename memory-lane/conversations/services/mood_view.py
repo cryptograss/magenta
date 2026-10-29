@@ -1812,7 +1812,7 @@ def mood_payload(mood, light=False):
     # Mood, a rename, a turn's tally): those mustn't make a Mood look active.
     said = mood.messages.exclude(sender_id='system')
     last = last_said(mood)
-    from conversations.models import Mood
+    from conversations.models import Message, Mood
     return {
         **head,
         'message_count': said.count(),
@@ -1823,7 +1823,11 @@ def mood_payload(mood, light=False):
             'forked_at': mood.forked_at.isoformat() if mood.forked_at else None,
             # Handed back to its Mood to incorporate, and not forked again since (Justin, 29 Oct: an arrow).
             'incorporated': mood.messages.filter(sender_id='system', content__type__in=['incorporated', 'reforked'])
-                            .order_by('-created_at').values_list('content__type', flat=True).first() == 'incorporated'}
+                            .order_by('-created_at').values_list('content__type', flat=True).first() == 'incorporated',
+            # An emergent compacted in its Mood since the fork (Justin, 29 Oct): what it was forked from is gone
+            # there, so the page shows it as fresh (🌱), whatever else it is, until it's forked again.
+            'compacted': bool(mood.forked_at) and Message.objects.filter(
+                mood_id=mood.thread_of_id, is_continuation_message=True, created_at__gt=mood.forked_at).exists()}
            if mood.thread_of_id else {}),
         # Threads opened from here, newest first (closing one archives it).
         'threads': [{'slug': s, 'title': t or s} for s, t in mood.threads.order_by('-created_at').values_list('slug', 'title')],
