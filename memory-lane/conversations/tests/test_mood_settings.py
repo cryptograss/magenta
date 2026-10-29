@@ -189,6 +189,53 @@ class SettingsAPITest(TestCase):
         self.assertEqual(turns['mood']['title'], 'Magenta Interface(s)')
         self.assertEqual(turns['turns'], [])  # the note is for the record, not the thread
 
+    def test_a_name_is_had_once_open_or_closed(self):
+        from conversations.models import Mood
+
+        def rename(slug, title):
+            return self.client.post(f'/api/moods/{slug}/rename/', json.dumps({'title': title}), content_type='application/json')
+
+        def new(body):
+            return self.client.post('/api/moods/new/', json.dumps(body), content_type='application/json')
+        Mood.objects.create(slug='setlist', title='setlist', thread_of=self.m26)
+        knobs.change('archived', True, mood=Mood.objects.get(slug='setlist'), by=self.justin)
+        with self.as_(self.justin):
+            got = new({'title': 'Setlist', 'thread_of': 'm26'})
+            self.assertEqual((got.status_code, got.json()['taken'], got.json()['closed'], got.json()['thread_of']),
+                             (409, 'setlist', True, 'm26'))
+            self.assertEqual(new({'title': 'setlist'}).status_code, 409)  # not as a Mood of its own either
+            self.assertEqual(rename('m26', 'setlist').status_code, 409)
+            self.assertEqual(rename('m26', 'Encores').status_code, 200)
+            self.assertEqual(new({'title': 'm26'}).status_code, 409)  # its name before the rename is still had
+            self.assertEqual(rename('encores', 'm26').status_code, 200)  # and it may have it back
+            self.assertFalse(Mood.objects.filter(slug__startswith='setlist-').exists())
+
+    def test_a_mood_opened_by_mistake_is_taken_out_and_its_name_given_back(self):
+        import uuid
+        from io import StringIO
+        from django.core.management import call_command, CommandError
+        from conversations.models import ConversationParticipant, Message, Mood
+        system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        twin = Mood.objects.create(slug='how_i_speak', title='how_i_speak', thread_of=self.m26)
+        kept = Mood.objects.create(slug='how_i_speak-2', title='how_i_speak', thread_of=self.m26)
+        for mood, slug in ((self.m26, 'how_i_speak'), (self.m26, 'how_i_speak-2'), (twin, None)):
+            Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, timestamp=1,
+                                   content={'type': 'thread' if slug else 'created', 'to_mood': slug})
+        out = StringIO()
+        call_command('remove_mood', 'how_i_speak', '--give-name-to', 'how_i_speak-2', stdout=out)
+        self.assertIn('nothing done', out.getvalue())
+        self.assertTrue(Mood.objects.filter(pk=twin.pk).exists())
+        call_command('remove_mood', 'how_i_speak', '--give-name-to', 'how_i_speak-2', '--yes', stdout=StringIO())
+        self.assertFalse(Mood.objects.filter(pk=twin.pk).exists())
+        kept.refresh_from_db()
+        self.assertEqual(kept.slug, 'how_i_speak')
+        self.assertEqual(Mood.by_slug('how_i_speak-2'), kept)  # its old links still find it
+        self.assertEqual([m.content['to_mood'] for m in Message.objects.filter(mood=self.m26, content__type='thread')],
+                         ['how_i_speak-2'])  # the line saying the mistake was opened went with it
+        Message.objects.create(id=uuid.uuid4(), sender=ConversationParticipant.objects.get_or_create(name='justin', defaults={'participant_type': 'human'})[0], mood=kept, timestamp=2, content={'text': 'hi'})
+        with self.assertRaises(CommandError):
+            call_command('remove_mood', 'how_i_speak', '--yes', stdout=StringIO())  # someone spoke there
+
     def test_ultracode_is_a_switch(self):
         self.assertIs(knobs.clean('ultracode', 'on'), True)
         self.assertIs(knobs.clean('ultracode', False), False)

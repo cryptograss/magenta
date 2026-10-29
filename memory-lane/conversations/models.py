@@ -357,6 +357,21 @@ class Mood(models.Model):
             slug, n = f'{base}-{n}', n + 1
         return slug
 
+    @classmethod
+    def holder(cls, title, mood=None):
+        """Who already goes by `title`'s slug, other than `mood`: a Mood (by its name now or one from before a
+        rename), 'page' for a page of the site's own, or None when it's free. A name is had once, open or closed
+        (Justin, 29 Oct: "you can't open two threads with the same name; current or historical")."""
+        from django.utils.text import slugify
+        slug = slugify(title)[:60].strip('-') or 'mood'
+        if slug in PAGE_SLUGS:
+            return 'page'
+        other = cls.objects.filter(slug=slug).exclude(pk=getattr(mood, 'pk', None)).first()
+        if other is None:
+            alias = MoodAlias.objects.filter(slug=slug).exclude(mood=mood).select_related('mood').first()
+            other = alias.mood if alias else None
+        return other
+
     def rename(self, title, description=None):
         """A new title, and the slug that goes with it; the old slug becomes an alias."""
         self.title = title

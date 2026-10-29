@@ -1474,6 +1474,7 @@
     <div id="closedThreads" hidden></div>
   </div>
   <span class="hint" id="newHint"></span>
+  <span class="hint" id="newTaken" hidden></span>
   <span><button type="submit">Start</button> <button type="button" id="newCancel">Cancel</button></span>
 </form>
 <form id="closeBox" hidden>
@@ -3894,9 +3895,10 @@
       newBox.querySelector('button[type=submit]').textContent = newBox._threadOf ? 'Open the thread' : 'Start';
       document.getElementById('newTitle').value = '';
       document.getElementById('newDesc').value = '';
+      document.getElementById('newTaken').hidden = true;
       newBox.hidden = false;
       document.getElementById('newTitle').focus();
-    } else if (e.target.closest('#closedThreads .reopenthread')) {
+    } else if (e.target.closest('#newBox .reopenthread')) {
       const slug = e.target.closest('.reopenthread').dataset.slug;
       const r = await fetch(`/api/moods/${encodeURIComponent(slug)}/archive/`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
@@ -3998,13 +4000,27 @@
   });
   newBox.addEventListener('submit', async e => {
     e.preventDefault();
+    // Once: a second click while the first is on its way opened a twin (#how_i_speak-2, 27 Oct).
+    const go = newBox.querySelector('button[type=submit]');
+    if (go.disabled) return;
+    go.disabled = true;
     const r = await fetch('/api/moods/new/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ title: document.getElementById('newTitle').value,
                              description: document.getElementById('newDesc').value,
                              ...(newBox._threadOf ? { thread_of: newBox._threadOf,
                                  fork: newBox.querySelector('input[name=threadKind]:checked').value === 'fork' } : {}) }),
-    });
+    }).finally(() => { go.disabled = false; });
+    if (r.status === 409) {
+      // A name is had once, open or closed (Justin, 29 Oct): say whose, and offer a closed one back.
+      const j = await r.json().catch(() => ({}));
+      const taken = document.getElementById('newTaken');
+      taken.innerHTML = esc(j.error || 'that name is taken') + (j.closed && j.taken
+        ? ` <button type="button" class="reopenthread" data-slug="${esc(j.taken)}">reopen #${esc(j.taken)}</button>` : '');
+      taken.hidden = false;
+      document.getElementById('newTitle').focus();
+      return;
+    }
     if (!r.ok) { showError((newBox._threadOf ? 'thread: ' : 'new Mood: ') + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     const made = await r.json();
     newBox.hidden = true;
