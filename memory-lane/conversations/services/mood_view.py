@@ -76,6 +76,9 @@ _WAIT = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"(?:\s+to="([^"<>]{0,200
 # An agent taking a question that asked several of them (poller _TAKE_REPLY): a claim, shown as a line ("magent is
 # taking the redeploy question", Justin, 27 Oct), never an answer; its answer follows in its next turn.
 _TAKE = re.compile(r'^\s*<take\s+to="([^"<>]{1,200})"\s*/>\s*$')
+# A look-only turn asking for its full tools (Justin, 28 Oct: "{emergent} requested tools for {purpose}"): a line in
+# the Mood, and 🔨 by its title in the Moods list until a full-tools turn of that emergent there (services/tools_ask.py).
+_TOOLS = re.compile(r'^\s*<tools\s+to="([^"<>]{1,200})"\s*/>\s*$')
 
 
 def quiet_reason(text):
@@ -86,6 +89,11 @@ def quiet_reason(text):
         tail = _QUIET_TAIL.match(text or '')
         if tail:
             return {'reason': (tail.group(2) or '').strip(), 'by': '', 'thought': tail.group(1).strip()}
+        tools = _TOOLS.match(text or '')
+        if tools:
+            to = tools.group(1).split()
+            return {'reason': 'requested tools for ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10]),
+                    'by': '', 'type': 'tools'}
         take = _TAKE.match(text or '')
         if take:
             to = take.group(1).split()

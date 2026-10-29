@@ -117,7 +117,10 @@ def api_moods(request):
     from .services import settings as knobs
     archived, pinned = knobs.archived_slugs(), knobs.mood_flagged('pinned')
     moods = list(Mood.objects.all())
-    payloads = [{**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned} for m in moods]
+    from .services.tools_ask import open_requests
+    asked = open_requests()  # 🔨: emergents waiting there for their full tools
+    payloads = [{**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned,
+                 **({'tools_asked': asked[m.slug]} if m.slug in asked else {})} for m in moods]
     # A Mood nobody has spoken in yet ranks by when it was started: a new one first.
     started = {m.slug: m.created_at.isoformat() for m in moods}
     payloads.sort(key=lambda p: p['last_at'] or started[p['slug']], reverse=True)

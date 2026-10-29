@@ -363,6 +363,7 @@
   nav a.mood .people-line .hears { font-size: .85em; margin-left: 1px; }  /* listening by voice (services/listening.py) */
   header .block { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
+  nav a.mood .toolsask { font-size: 12px; margin-left: 4px; }
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
 {% include "conversations/name_art_css.html" %}
   #lookBox .paint { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0 4px; user-select: none; touch-action: none; }
@@ -1763,7 +1764,8 @@
   function renderNav() {
     const item = ([m, depth]) => `
       <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && !m.forked_at ? ' fresh' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
-        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
+        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.tools_asked || []).length
+          ? `<span class="toolsask" title="${esc(m.tools_asked.map(t => `${shown(t.agent)} requested tools for ${t.for}`).join('; '))}">🔨</span>` : ''}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
@@ -3968,6 +3970,17 @@
   });
 
   function addQuiet(q, container) {
+    // Asking for its full tools (<tools to="…"/>, Justin, 28 Oct): a line, "re requested tools for …", and 🔨 in the list.
+    if (q.by !== 'screen' && (q.type === 'tools' || /^requested tools for /.test(q.reason || ''))) {
+      if (container._held) delete container._held[q.sender];
+      const line = document.createElement('div');
+      line.className = 'waitline tools';
+      line.style.setProperty('--who', agentColor(q.sender));
+      line.innerHTML = `<span class="dot"></span>🔨 ${icon(q.sender, false)}<b>${esc(q.sender)}</b> <span class="wait-verb">${esc(q.reason)}</span>`
+        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      container.appendChild(line);
+      return;
+    }
     // Taking a question that asked several (the poller's <take/>): a line, "magent is taking the redeploy
     // question", that reads "took" once its answer lands (resolveTakes).
     if (q.by !== 'screen' && (q.type === 'take' || /^taking /.test(q.reason || ''))) {
