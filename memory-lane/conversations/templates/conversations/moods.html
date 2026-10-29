@@ -957,6 +957,11 @@
   #tasks .task::before { content: '⚙ '; }
   #tasks .task.helper::before { content: '✦ '; }
   #typing { display: none; padding: 2px 16px 0; font-size: 12px; color: var(--muted); }
+  /* A request for tools still open here, at the bottom where it's seen (Justin, 29 Oct), not only where it was said. */
+  #toolsOpen { padding: 2px 16px 0; font-size: 12px; color: var(--muted); }
+  #toolsOpen:empty { display: none; }
+  #toolsOpen a { color: inherit; cursor: pointer; text-decoration: none; }
+  #toolsOpen a:hover b { text-decoration: underline; }
   #typing.on { display: block; }
 
   /* An agent's tool calls between its words: one line, opened on demand. */
@@ -1507,6 +1512,7 @@
     <div id="footer">
     <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
+    <div id="toolsOpen"></div>
     <div id="typing"></div>
     <div id="tasks"></div>
     <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button><button type="button" id="voiceModeBtn" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧</button></div>
@@ -4550,7 +4556,7 @@
                           if (p.pronouns) pronounsOf[p.name] = p.pronouns;
                           human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
-    renderMe();
+    renderMe(); renderToolsOpen();
     renderNav();
   }
 
@@ -4990,7 +4996,7 @@
     drawMoodbar(null);  // the last Mood's head goes with it
     renderPins([]);  // the last Mood's pins aren't this one's; its own come with its first look
     tasks = []; renderTasks();
-    typingNow = []; renderTyping();
+    typingNow = []; renderTyping(); renderToolsOpen();
     agentsNow = {};  // nothing to compare with: a first drawing never glows
     renderAgents(agentsFor[slug] || {});
     loadTodo();
@@ -5928,6 +5934,18 @@
   }
 
   const typingEl = document.getElementById('typing');
+  // Open requests for tools here (/api/moods/ tools_asked): until a full-tools wake of who asked.
+  function renderToolsOpen() {
+    const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
+    box.innerHTML = ((m && m.tools_asked) || []).map(t => `<a data-agent="${esc(t.agent)}" title="Where it asked; @${esc(t.agent)} on a turn with tools answers it">🔨 `
+      + `${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b> requested tools for ${esc(t.for)} · `
+      + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
+  }
+  document.getElementById('toolsOpen').addEventListener('click', e => {
+    const a = e.target.closest('a[data-agent]');
+    const lines = [...document.querySelectorAll('.waitline.tools')].filter(l => l.querySelector('b')?.textContent === a?.dataset.agent);
+    if (lines.length) lines[lines.length - 1].scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
   function renderTyping() {
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('typing', typingNow.includes(el.dataset.who)));
     typingEl.classList.toggle('on', typingNow.length > 0);
