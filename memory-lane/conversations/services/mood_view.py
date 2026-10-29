@@ -80,7 +80,7 @@ _TAKE = re.compile(r'^\s*<take\s+to="([^"<>]{1,200})"\s*/>\s*$')
 # the Mood, and 🔨 by its title in the Moods list until a full-tools turn of that emergent there (services/tools_ask.py).
 _TOOLS = re.compile(r'^\s*<tools\s+to="([^"<>]{1,200})"\s*/>\s*$')
 # The same shape, other asks (Justin, 29 Oct): <merge to="…"/> -> a merge asked of a person (🔀),
-# <deploy to="…"/> -> a redeploy (🚀). Both posted as a line in the Mood and an icon by its title,
+# <deploy to="…"/> -> a redeploy (🔄). Both posted as a line in the Mood and an icon by its title,
 # as the tools ask is, until the event lands (a full-tools wake, a merged event, a deploy event).
 _MERGE = re.compile(r'^\s*<merge\s+to="([^"<>]{1,200})"\s*/>\s*$')
 _DEPLOY = re.compile(r'^\s*<deploy\s+to="([^"<>]{1,200})"\s*/>\s*$')

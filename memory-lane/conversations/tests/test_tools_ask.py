@@ -1,5 +1,5 @@
 """Asks from a look-only turn (Justin, 28 Oct-29 Oct): <tools/>, <merge/>, <deploy/> are lines in the Mood and
-🔨/🔀/🚀 by its name in the list, until their event lands there -- a full-tools wake answers the tools ask, a
+🔨/🔀/🔄 by its name in the list, until their event lands there -- a full-tools wake answers the tools ask, a
 merged event the merge ask, a deploy event the deploy ask."""
 
 import uuid

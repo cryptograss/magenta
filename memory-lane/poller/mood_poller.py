@@ -912,7 +912,7 @@ TOOLS_OFFER = ('If answering needs your full tools, reply with only <tools to="a
                'shows "you requested tools for …" and 🔨 by its name, and someone trusted can wake you with them. '
                'The same ask, other things you cannot do on a look-only turn (Justin, 29 Oct): '
                '<merge to="a few words on which PR"/> for a merge (🔀), <deploy to="a few words on which server"/> '
-               "for a redeploy (🚀). Each posts a visible line here, and an icon sits by the Mood's name until "
+               "for a redeploy (🔄). Each posts a visible line here, and an icon sits by the Mood's name until "
                'a person does it.')
 
 

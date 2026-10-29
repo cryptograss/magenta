@@ -1673,9 +1673,9 @@
   // The same, as an attribute for drawn HTML: --who, which the stylesheet's agent names and margins take.
   const whoStyle = name => ` style="--who: ${agentColor(name)}"`;
 
-  // Open asks (services/tools_ask.py): <tools/> 🔨 full tools, <merge/> 🔀 a merge, <deploy/> 🚀 a redeploy.
+  // Open asks (services/tools_ask.py): <tools/> 🔨 full tools, <merge/> 🔀 a merge, <deploy/> 🔄 a redeploy.
   // The word after "requested" and "for/of" sets `line`; the emoji shows by the Mood's name until answered.
-  const ASK_EMOJI = { tools: '🔨', merge: '🔀', deploy: '🚀' };
+  const ASK_EMOJI = { tools: '🔨', merge: '🔀', deploy: '🔄' };
   const askLine = t => `${esc(shown(t.agent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
     : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
 
@@ -5957,7 +5957,7 @@
   const typingEl = document.getElementById('typing');
   // Open asks here (/api/moods/ asked): each a link to its own message in the thread (Justin, 29 Oct:
   // "the notice at the bottom needs to be a link to that message"). Until the event lands -- a full-tools
-  // wake, a merged event, a deploy event -- they stay, with 🔨/🔀/🚀 by the Mood's name.
+  // wake, a merged event, a deploy event -- they stay, with 🔨/🔀/🔄 by the Mood's name.
   function renderAsksOpen() {
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
     box.innerHTML = ((m && m.asked) || []).map(t =>
@@ -6050,7 +6050,7 @@
     ['heart_eyes', '😍'], ['sunglasses', '😎'], ['cry', '😢'], ['sob', '😭'], ['scream', '😱'], ['zany', '🤪'],
     ['upside_down', '🙃'], ['shrug', '🤷'], ['facepalm', '🤦'], ['raised_hands', '🙌'], ['muscle', '💪'],
     ['thumbsdown', '👎'], ['point_up', '☝️'], ['point_right', '👉'], ['handshake', '🤝'], ['v', '✌️'],
-    ['rocket', '🚀'], ['star', '⭐'], ['sparkles', '✨'], ['zap', '⚡'], ['rainbow', '🌈'], ['moon', '🌙'],
+    ['rocket', '🔄'], ['star', '⭐'], ['sparkles', '✨'], ['zap', '⚡'], ['rainbow', '🌈'], ['moon', '🌙'],
     ['earth', '🌎'], ['seedling', '🌱'], ['sunflower', '🌻'], ['rose', '🌹'], ['tree', '🌲'], ['cactus', '🌵'],
     ['check', '✅'], ['x', '❌'], ['warning', '⚠️'], ['question', '❓'], ['exclamation', '❗'], ['bulb', '💡'],
     ['memo', '📝'], ['books', '📚'], ['link', '🔗'], ['lock', '🔒'], ['key', '🔑'], ['bell', '🔔'],

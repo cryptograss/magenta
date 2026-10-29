@@ -18,7 +18,7 @@ FULL = 'This turn has your full tools'
 KINDS = {
     'tools': {'tag': '<tools', 'emoji': '🔨', 'source': None},
     'merge': {'tag': '<merge', 'emoji': '🔀', 'source': 'merged'},
-    'deploy': {'tag': '<deploy', 'emoji': '🚀', 'source': 'deploy'},
+    'deploy': {'tag': '<deploy', 'emoji': '🔄', 'source': 'deploy'},
 }
 # Each kind's reason, from quiet_reason (mood_view.py), is "requested … for/of …": what comes after those words.
 _PREFIX = {'tools': 'requested tools for ', 'merge': 'requested a merge for ', 'deploy': 'requested a redeploy of '}
