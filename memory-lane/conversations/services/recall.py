@@ -634,13 +634,17 @@ def how_i_speak_text(agent, count=12, fresh=False, others=False, now=None, short
     lines = []
     for msg, text in found:
         lines += _sample_lines(msg, text)
+    # The counts run to now, not to the samples' pinned end: a number gains nothing by standing still, and a
+    # count that ignores today reads as broken (blu, re, 29 Oct). The footer names both windows.
+    from django.utils import timezone
+    counted_to = now or timezone.now()
     old = voice_stats(agent, at, recent_from) if recent_from > at else None
-    new = voice_stats(agent, recent_from, end)
+    new = voice_stats(agent, recent_from, counted_to)
 
     def said(c):
         return (f"{c['replies']} replies (median {c['median_length']} chars), {c['silences']} silences, "
                 f"{c['reacts']} reacts")
-    lines.append("What the samples leave out: "
+    lines.append(f"What the samples leave out (samples through {when(end)}; counts to now, {when(counted_to)}): "
                  + (f"in the {STATS_SPAN.days} days before {when(recent_from)}, {said(old)}; " if old else '')
                  + f"since, {said(new)}.")
     if others:

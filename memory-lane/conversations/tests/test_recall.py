@@ -225,7 +225,7 @@ class RecallTest(TestCase):
         self.assertIn(f'{recall.STAR} you, justin', text)                                 # its own star first
         self.assertIn('corrected ' + recall.when(fix.created_at) + ' by magent: The setup is not done', text)
         self.assertNotIn('corrects="', text.split('corrected ')[1][:300])               # the tag itself stripped
-        self.assertIn('What the samples leave out:', text)
+        self.assertIn('What the samples leave out (', text)
         self.assertIn('Seeded by the day', text)
         # Its own starred post comes first among the recent picks when the stretch has it.
         reactions.react_on(self.to_magent, 're', recall.STAR)
@@ -250,6 +250,16 @@ class RecallTest(TestCase):
         say('re', '<react emoji="👍" to="magent"/>', RE_ARRIVES + timedelta(days=2, hours=2), self.re_session, self.mood)
         stats = recall.voice_stats('re', RE_ARRIVES, RE_ARRIVES + timedelta(days=4))
         self.assertEqual((stats['silences'], stats['reacts'], stats['replies']), (1, 1, 3))
+
+    def test_the_counts_run_to_now_past_the_samples_pinned_end(self):
+        # A react today, after the day's pin: the samples don't reach it, the counts do (re, 29 Oct).
+        now = RE_ARRIVES + timedelta(days=3, hours=6)
+        say('re', '<silent>reacted 🪞 to magent</silent>', RE_ARRIVES + timedelta(days=3, hours=5), self.re_session, self.mood)
+        text = recall.how_i_speak_text('re', count=2, shortest=20, now=now)
+        footer = next(l for l in text.splitlines() if l.startswith('What the samples leave out'))
+        self.assertIn(f'samples through {recall.when(now.replace(hour=0, minute=0))}', footer)
+        self.assertIn(f'counts to now, {recall.when(now)}', footer)
+        self.assertIn('1 reacts', footer)
 
     def test_a_react_as_the_record_keeps_it_counts_as_a_react_not_a_silence(self):
         # reactions.agent_reacted rewrites a <react/> reply into a dot; it's still a react (re, 29 Oct).
