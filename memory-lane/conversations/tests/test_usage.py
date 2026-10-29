@@ -38,6 +38,9 @@ class UsageTest(TidingsTests):
         self.assertEqual(state['top']['anthropic'][0]['turn'], str(turn_a))
 
     def test_slices_group_by_hour_agent_mood_model_and_harness(self):
+        from datetime import timedelta
+        # Both calls in one hour, whatever the time the test runs (it straddled 02:00 once).
+        self.clock = (self.clock - timedelta(hours=2)).replace(minute=5, second=0, microsecond=0)
         self.call(self.magent, self.mood_a, uuid.uuid4())
         self.call(self.magent, self.mood_a, uuid.uuid4(), out=20)
         state = usage.usage_state(24)
