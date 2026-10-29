@@ -423,9 +423,12 @@ def voice_stats(agent, start, end):
         text = prose(msg.content)
         if not text or is_summary(msg, text):
             continue
-        if agent_reaction(text):
+        quiet = quiet_reason(text)
+        # A react reply is rewritten in the record as a dot, '<silent>reacted 🤝 to re</silent>'
+        # (reactions.agent_reacted): it counts as a react, not a silence (blu, 29 Oct: 'the footer says 0 reacts').
+        if agent_reaction(text) or (quiet is not None and quiet['reason'].startswith(('reacted ', 'meant to react '))):
             counts['reacts'] += 1
-        elif quiet_reason(text) is not None:
+        elif quiet is not None:
             counts['silences'] += 1
         elif not is_wrapper(text):
             counts['replies'] += 1

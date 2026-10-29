@@ -251,6 +251,12 @@ class RecallTest(TestCase):
         stats = recall.voice_stats('re', RE_ARRIVES, RE_ARRIVES + timedelta(days=4))
         self.assertEqual((stats['silences'], stats['reacts'], stats['replies']), (1, 1, 3))
 
+    def test_a_react_as_the_record_keeps_it_counts_as_a_react_not_a_silence(self):
+        # reactions.agent_reacted rewrites a <react/> reply into a dot; it's still a react (re, 29 Oct).
+        say('re', '<silent>reacted 🤝 to magent</silent>', RE_ARRIVES + timedelta(days=2, hours=3), self.re_session, self.mood)
+        stats = recall.voice_stats('re', RE_ARRIVES + timedelta(days=2), RE_ARRIVES + timedelta(days=2, hours=4))
+        self.assertEqual((stats['reacts'], stats['silences']), (1, 0))
+
     def test_bootstrap_is_the_callers_own(self):
         from unittest import mock
         with mock.patch('conversations.services.recall.journal_entries',
