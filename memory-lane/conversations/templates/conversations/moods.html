@@ -1775,12 +1775,31 @@
   }
 
   let archivedOpen = false;
+  // Requests for tools still open: less any whose agent is at work there with its full tools now, seen in the
+  // live list (every few seconds), so its dot goes as its turn starts (Justin, 29 Oct) -- and stays gone after.
+  const asksAnswered = new Set();
+  function asksOf(m) {
+    const working = ((liveData[m.slug] || {}).activities || []).filter(a => a.tools === 'full');
+    return (m.tools_asked || []).filter(t => {
+      const key = `${m.slug} ${t.agent} ${t.at}`;
+      if (working.some(a => a.agent === t.agent && a.since * 1000 >= Date.parse(t.at))) asksAnswered.add(key);
+      return !asksAnswered.has(key);
+    });
+  }
+  let asksDrawn = '';
+  function asksChanged() {
+    const now = moods.map(m => asksOf(m).map(t => m.slug + t.agent).join()).join('|');
+    if (now === asksDrawn) return false;
+    asksDrawn = now;
+    return true;
+  }
   function renderNav() {
+    asksChanged();
     const item = ([m, depth]) => `
       <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && !m.forked_at ? ' fresh' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
-        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.tools_asked || []).length
-          ? `<span class="toolsask" title="${esc(m.tools_asked.map(t => `${shown(t.agent)} requested tools for ${t.for}`).join('; '))}">🔨${
-              m.tools_asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
+        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${asksOf(m).length
+          ? `<span class="toolsask" title="${esc(asksOf(m).map(t => `${shown(t.agent)} requested tools for ${t.for}`).join('; '))}">🔨${
+              asksOf(m).map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
@@ -1802,6 +1821,20 @@
     const fold = document.getElementById('archived');
     if (fold) fold.addEventListener('toggle', () => { archivedOpen = fold.open; });
     markLive();
+    if (navReveal === current) revealInNav();
+  }
+  // A Mood or thread arrived at (a link, a notification, the list itself) sits no lower than third from the
+  // bottom of the list's view, the two after it showing (Justin, 29 Oct); one above the view comes down into it.
+  let navReveal = null;
+  function revealInNav() {
+    const items = [...nav.querySelectorAll('a.mood')].filter(a => a.offsetParent);
+    const i = items.findIndex(a => a.dataset.slug === current);
+    if (i < 0) return;  // not drawn yet: tried again when the list is
+    navReveal = null;
+    const box = nav.getBoundingClientRect(), here = items[i].getBoundingClientRect();
+    const last = items[Math.min(i + 2, items.length - 1)].getBoundingClientRect();
+    if (here.top < box.top) nav.scrollTop -= box.top - here.top + 6;
+    else if (last.bottom > box.bottom) nav.scrollTop += Math.min(last.bottom - box.bottom + 6, here.top - box.top);
   }
 
   // Who's around in each Mood: each person in the one they last opened, typed or spoke in, for three
@@ -1879,6 +1912,7 @@
         const before = liveData;
         liveData = (await r.json()).moods || {};
         markLive();
+        if (asksChanged()) { renderNav(); renderToolsOpen(); }
         noticeThinking(before);
         preload();
         warmAgents();
@@ -4989,6 +5023,7 @@
     if (push) history.pushState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/');
     newBelow = 0;
     touch(slug);
+    navReveal = slug;
     renderNav();
     // Nothing of the Mood just left may linger: not its agent's work, its
     // tasks, who was typing there, or its agents' settings.
@@ -5941,7 +5976,7 @@
   // Open requests for tools here (/api/moods/ tools_asked): until a full-tools wake of who asked.
   function renderToolsOpen() {
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
-    box.innerHTML = ((m && m.tools_asked) || []).map(t => `<a data-agent="${esc(t.agent)}" title="Where it asked; @${esc(t.agent)} on a turn with tools answers it">🔨 `
+    box.innerHTML = (m ? asksOf(m) : []).map(t => `<a data-agent="${esc(t.agent)}" title="Where it asked; @${esc(t.agent)} on a turn with tools answers it">🔨 `
       + `${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b> requested tools for ${esc(t.for)} · `
       + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
   }
