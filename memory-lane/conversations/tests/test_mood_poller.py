@@ -100,6 +100,30 @@ class HeartbeatTest(TestCase):
         self.assertEqual(said[-1], ('m26', None))
 
 
+class PlanReadingTest(TestCase):
+    """A turn's rate_limit_event (Claude Code's word on the plan's windows) is said once the turn is over."""
+
+    def test_the_newest_reading_of_each_window_is_said(self):
+        said = []
+
+        class API(FakeAPI):
+            def plan(self, info):
+                said.append(info)
+                return True
+
+        class Waker(FakeWaker):
+            def wake(self, session_id, prompt, new_session_id=None, on_event=None, stop=None, **options):
+                for used in (0.4, 0.41):
+                    on_event({'type': 'rate_limit_event', 'rate_limit_info': {'rateLimitType': 'five_hour', 'utilization': used}})
+                on_event({'type': 'rate_limit_event', 'rate_limit_info': {'rateLimitType': 'seven_day', 'utilization': 0.6}})
+                return super().wake(session_id, prompt, new_session_id, on_event, stop, **options)
+
+        poller = MoodPoller(API(), Waker(), state_path=None, now=lambda: T0)
+        poller.run_turn_once('m26', 's-local', 'hi', {})
+        self.assertEqual(sorted((i['rateLimitType'], i['utilization']) for i in said),
+                         [('five_hour', 0.41), ('seven_day', 0.6)])
+
+
 def mention(mood, t):
     return {'mood': mood, 'turn': t}
 

@@ -1709,6 +1709,28 @@ class HarnessModels(models.Model):
     def __str__(self):
         return f"{self.agent_id}: {self.harness}, {len(self.vendors)} vendors"
 
+class PlanWindow(models.Model):
+    """
+    How much of one of the Claude plan's rolling windows was used, as Claude Code said with a turn's
+    rate_limit_event: the 5-hour and the weekly, each a fraction of its cap (Justin, #usage, 28 Oct: "every
+    anthropic use is a percentage of our rolling limits, whereas the openrouter usage is literally metered in
+    dollars"). One row per window per change, so the prompts page can draw the meter over time. The plan is
+    the account's, not one agent's: `agent` says whose turn reported it.
+    """
+
+    window = models.CharField(max_length=40)          # 'five_hour', 'seven_day', ... as Claude Code names it
+    utilization = models.FloatField()                 # 0-1, past 1 when usage runs past the cap
+    resets_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=40, blank=True, default='')
+    agent = models.CharField(max_length=60, blank=True, default='')
+    info = models.JSONField(default=dict)             # what Claude Code said, whole
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'plan_windows'
+        indexes = [models.Index(fields=['window', 'at'])]
+
+
 class BundleRecord(models.Model):
     """
     The instructions a turn was given (poller/instructions.py), as its runner sent
