@@ -396,6 +396,8 @@ def agents_in(mood):
                      'reads': resolved['catch_up_tokens'],
                      'discretion': resolved['discretion'], 'verbosity': resolved['verbosity'],
                      'handoff_effort': resolved['handoff_effort'],
+                     # The room's pace, the same for every emergent here (knobs.PACE_KEYS).
+                     'pace': {k: resolved[k] for k in knobs.PACE_KEYS},
                      # Who set each as it stands, and when: the page says so, and flashes one that just changed.
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
                      'context': context, 'runs': runs,

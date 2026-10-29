@@ -79,6 +79,15 @@ class ResolveTest(TestCase):
         self.assertEqual(resolved['mention_effort'], 'low')
         self.assertNotIn('consider_effort', resolved)
 
+    def test_pace_is_the_rooms_not_an_emergents(self):
+        with self.assertRaises(knobs.Invalid):
+            knobs.change('consider_after', 30, agent=self.magent, by=self.justin)
+        Setting.objects.create(key='consider_after', value=99, agent=self.magent)  # from before: passed over
+        knobs.change('consider_after', 20, by=self.justin)
+        knobs.change('consider_after', 5, mood=self.m26, by=self.justin)
+        self.assertEqual(knobs.resolve('general', 'magent')['consider_after'], 20)
+        self.assertEqual(knobs.resolve('m26', 'magent')['consider_after'], 5)
+
     def test_moderation_is_not_a_setting_anyone_can_change(self):
         with self.assertRaises(knobs.Invalid):
             knobs.change('scram', True)
