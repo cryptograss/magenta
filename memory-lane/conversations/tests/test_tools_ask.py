@@ -38,3 +38,15 @@ class ToolsAskTest(TestCase):
         self.say('mood-poller', '<mood-wake mood="jams"> ... This turn has your full tools, as in your terminal ...', 3)
         cache.clear()
         self.assertNotIn('tools_asked', self.client.get('/api/moods/').json()['moods'][0])
+
+    def test_a_full_tools_wake_in_another_mood_answers_it(self):
+        """Tools are the emergent's, not the Mood's (re, 29 Oct)."""
+        self.say('re', '<tools to="re-stamp the Memory page"/>', 2)
+        self.assertTrue(self.client.get('/api/moods/').json()['moods'][0]['tools_asked'])
+        ops, sid = Mood.objects.create(slug='ops', title='ops'), uuid.uuid4()
+        for who, text, n in (('re', 'earlier, in ops', 1),
+                             ('mood-poller', '<mood-wake mood="ops"> ... This turn has your full tools, as in your terminal ...', 3)):
+            Message.objects.create(id=uuid.uuid4(), sender_id=who, mood=ops, session_id=sid, timestamp=n,
+                                   content=[{'type': 'text', 'text': text}])
+        cache.clear()
+        self.assertFalse(any(m.get('tools_asked') for m in self.client.get('/api/moods/').json()['moods']))
