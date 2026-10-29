@@ -1399,7 +1399,9 @@ self.addEventListener('push', e => {
     // timestamp: when it was said, so one held while the phone slept doesn't say "now".
     return self.registration.showNotification(n.title, { body: n.body || '', tag: n.tag, icon: '/moods/icon-192.png',
                                                          badge: '/moods/mark-96.png', data: n.data || {},
-                                                         ...(n.timestamp ? { timestamp: n.timestamp } : {}) });
+                                                         ...(n.timestamp ? { timestamp: n.timestamp } : {}) })
+      // An open page that already read it aloud takes it back.
+      .then(() => list.forEach(c => c.postMessage({ shown: n.tag })));
   }));
 });
 // A notification (a mention, an answer) opens its Mood at that message: in a
