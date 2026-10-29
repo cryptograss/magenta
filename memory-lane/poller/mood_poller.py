@@ -234,6 +234,14 @@ class MoodAPI:
                                   headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
         return response.status_code == 200
 
+    def degraded(self, slug, lines):
+        """Say how the agent's instructions here stand: degraded, with the bundle's lines, or whole ([])."""
+        if not self.key:
+            return False
+        response = self.http.post(f'{self.base}/api/moods/{slug}/degraded/', json={'lines': list(lines)},
+                                  headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
+        return response.status_code == 200
+
     def held(self, slug, reason, until=None):
         """Say the agent's next turn in `slug` is held, and why; no reason lifts it."""
         if not self.key:
@@ -1383,19 +1391,25 @@ HANDED_NOTE = ('Context handed to you here from another Mood (by an emergent, wi
 HANDED_HORIZON = timedelta(days=2)  # a handoff older than this, never shown, is stale rather than owed
 
 
-def handed_events(page, agent, shown=(), now=None):
+def handed_events(page, agent, shown=()):
     """The handoff events (memory-lane services/handoff.py) in this Mood for `agent` that it hasn't been shown
     yet -- from a page of /turns/, which carries the Mood's events; `shown` is the poller's ledger for this Mood.
     Until 29 Oct the rule was "since it last spoke here", and a handoff landing while the agent was mid-turn
     was lost: its reply came after the handoff and hid it for good. The ledger says what it has seen; a handoff
-    with no entry is owed unless it is older than the horizon (so a fresh ledger doesn't replay the past)."""
+    with no entry is owed, however old (the ledger's first look seeds it with the stale ones: stale_handoffs)."""
     # Brought in here by the agent itself (from:), it's in what it said here already.
-    handed = [e for e in page.get('events') or ()
-              if e.get('type') == 'handoff' and e.get('for') == agent and not e.get('pulled')
-              and e.get('id') not in set(shown)]
-    if now is not None:
-        handed = [e for e in handed if parse_time(e['created_at']) > now - HANDED_HORIZON]
-    return handed
+    return [e for e in page.get('events') or ()
+            if e.get('type') == 'handoff' and e.get('for') == agent and not e.get('pulled')
+            and e.get('id') not in set(shown)]
+
+
+def stale_handoffs(page, agent, now):
+    """Ids of the handoffs for `agent` here older than the horizon: what a Mood's fresh ledger starts with, so the
+    first look doesn't replay the past, and only the first look (re, 29 Oct: a horizon on every look drops a
+    handoff to a Mood the agent doesn't wake in for two days)."""
+    return [e['id'] for e in page.get('events') or ()
+            if e.get('type') == 'handoff' and e.get('for') == agent and e.get('id')
+            and parse_time(e['created_at']) <= now - HANDED_HORIZON]
 
 
 def handoff_lines(events, limit=12_000):
@@ -1414,8 +1428,11 @@ def handoff_lines(events, limit=12_000):
 
 
 def handoffs_for(page, agent, limit=12_000, shown=(), now=None):
-    """Context handed to `agent` in this Mood that it hasn't been shown, as prompt lines (handed_events)."""
-    return handoff_lines(handed_events(page, agent, shown=shown, now=now), limit=limit)
+    """Context handed to `agent` in this Mood that it hasn't been shown, as prompt lines (handed_events); with
+    `now` and an empty `shown`, a first look: the stale ones count as shown."""
+    if now is not None and not shown:
+        shown = stale_handoffs(page, agent, now)
+    return handoff_lines(handed_events(page, agent, shown=shown), limit=limit)
 
 
 def transcript_of(turns, new_ids=(), limit=20_000, each=1500):
@@ -1599,6 +1616,7 @@ class MoodPoller:
         self.state.setdefault('waited', [])   # mention ids waited on already: waiting again needs one at work
         self.state.setdefault('wait_also', {})  # slug -> agents an answer waited for handed it on to
         self.state.setdefault('handed', {})   # slug -> handoff event ids shown to the agent there (handed_events)
+        self.state.setdefault('degraded', {})  # slug -> the degraded lines last said there (say_degraded)
         self.replies = {}      # flight -> what its turn replied, for after it lands
         self.wait_notes = {}   # slug -> what the next wake there says of the wait that ended
         self.end_orphans = end_orphans
@@ -1672,14 +1690,17 @@ class MoodPoller:
         """Record a mention's turn as running; returns what `land` takes."""
         ids = {t['id'] for t in owed}
         again = [f for f in self.state['cut_off'] if ids & {t['id'] for t in f['turns']}]
+        # What this prompt showed of the Mood's handoffs (handed_lines); a consider wake's never flies, so only this Mood's.
+        where, handed = getattr(self, 'handed_now', (None, []))
+        handed = list(handed) if where == slug else []
         tries = 1 + max((f.get('tries', 1) for f in again), default=0)
         # This turn is their try again: they're in flight now, not cut off.
         self.state['cut_off'] = [f for f in self.state['cut_off'] if f not in again]
         self.state['in_flight'][session] = {'mood': slug, 'turns': owed, 'session': session,
                                             'started': self.now().isoformat(), 'command': command,
                                             'tries': tries, 'poller': os.getpid(),
-                                            'handed': list(getattr(self, 'handed_now', ()))}
-        self.handed_now = []
+                                            'handed': handed}
+        self.handed_now = (slug, [])
         return session
 
     def land(self, session):
@@ -2120,8 +2141,11 @@ class MoodPoller:
             # carries it instead.
             b = bundle(self.agent, slug, record_id=record_id, others=self.other_agents(), parent=self.thread_of(slug))
             text, record = b.text, b.record()
+            self.say_degraded(slug, b.degraded)
         except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery instructions stand
             logger.error(f'{slug}: instructions not gathered ({e}); the recovery instructions stand in')
+            self.say_degraded(slug, [f'instructions not gathered: {type(e).__name__}: {e}'[:300]
+                                     + '; the recovery instructions stand in'])
             recovery = Path(__file__).with_name('recovery_instructions.md')
             words = recovery.read_text() if recovery.exists() else 'Your instructions could not be gathered.'
             text = (f'<instructions agent="{self.agent}" mood="{slug}">\n<recovery>\n{words}\n'
@@ -2132,6 +2156,18 @@ class MoodPoller:
         record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit,
                       block=block if isinstance(block, int) else None)
         return text, record
+
+    def say_degraded(self, slug, lines):
+        """One plain line in the Mood for the people there when the bundle degrades, said again only when what's
+        wrong changes or it's fixed (the server keeps that rule too; this spares it the call on every wake)."""
+        try:
+            lines = [str(l) for l in lines]
+            if self.dry_run or self.state.setdefault('degraded', {}).get(slug, []) == lines:
+                return
+            if self.api.degraded(slug, lines):
+                self.state['degraded'][slug] = lines
+        except Exception as e:  # noqa: BLE001 -- a line for people is never a reason to stall the wake
+            logger.warning(f'{slug}: could not say the instructions are {"degraded" if lines else "whole"}: {e}')
 
     @staticmethod
     def turn_line(record):
@@ -2549,16 +2585,21 @@ class MoodPoller:
 
     def handed_lines(self, slug, page, again=()):
         """What's been handed to the agent in this Mood and not shown it yet, as prompt lines; marked shown in the
-        ledger as they go into a prompt. `again`: ids a cut-off turn was shown, owed once more with its retry."""
+        ledger as they go into a prompt (never on a dry run: nothing is delivered). `again`: ids a cut-off turn
+        was shown, owed once more with its retry."""
+        self.handed_now = (slug, [])
         try:
-            events = handed_events(page(), self.agent, shown=set(self.state['handed'].get(slug, ())) - set(again),
-                                   now=self.now())
+            page = page()
+            ledger = self.state['handed']
+            if slug not in ledger:  # the first look here: the stale ones count as shown, and only now
+                ledger[slug] = stale_handoffs(page, self.agent, self.now())[-200:]
+            events = handed_events(page, self.agent, shown=set(ledger[slug]) - set(again))
         except Exception:
             events = []
-        self.handed_now = [e['id'] for e in events if e.get('id')]
-        if events:
-            seen = [i for i in self.state['handed'].get(slug, []) if i not in self.handed_now] + self.handed_now
-            self.state['handed'][slug] = seen[-200:]
+        ids = [e['id'] for e in events if e.get('id')]
+        self.handed_now = (slug, ids)
+        if ids and not self.dry_run:
+            self.state['handed'][slug] = ([i for i in self.state['handed'].get(slug, []) if i not in ids] + ids)[-200:]
         return handoff_lines(events)
 
     def handoff_options(self, slug):

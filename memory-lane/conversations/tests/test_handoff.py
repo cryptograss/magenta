@@ -128,6 +128,8 @@ class WakeTest(TestCase):
              'context': 'fresh', 'created_at': '2026-10-07T20:00:00+00:00'}]}
         now = datetime(2026, 10, 7, 21, tzinfo=timezone.utc)
         self.assertEqual([l.split('] ')[1].split('\n')[0] for l in handoffs_for(page, 'magent', now=now)], ['today'])
+        # Only the first look: with a ledger, age is no reason to drop a handoff (re, 29 Oct).
+        self.assertEqual(len(handoffs_for(page, 'magent', shown=['e2'], now=now)), 1)
 
     def test_how_is_in_the_instructions_not_each_wake(self):
         from poller.mood_poller import wake_frames

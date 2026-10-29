@@ -3663,6 +3663,16 @@
       prev = null;
       return;
     }
+    if (e.type === 'degraded') {  // an emergent's instructions bundle degraded, or whole again (services/instructions_state.py)
+      el.className = 'event';
+      const who = `<b>${esc(shown(e.agent || 'an emergent'))}</b>`;
+      el.innerHTML = (e.lines || []).length
+        ? `⚠ ${who}'s instructions are degraded: ${(e.lines || []).map(esc).join('; ')} · ${esc(stamp(e.created_at))}`
+        : `✓ ${who}'s instructions are whole again · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'merged') {  // a pull request on this Mood's to-do list merged (services/todo.py)
       el.className = 'event';
       // "memory-lane#142 (226537a) merged by justin": which one, and its commit; its title on hover.

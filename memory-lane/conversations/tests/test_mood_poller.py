@@ -1002,6 +1002,31 @@ class HandedLedgerTest(TestCase):
         poller, prompt = self.make([self.event('e1', 50)], state_handed={'m26': ['e1']})
         self.assertNotIn('Salty Dog first.', prompt)
 
+    def test_a_fresh_ledger_starts_with_the_stale_ones_and_an_old_ledger_keeps_the_old_ones_owed(self):
+        week_ago, fresh = self.event('old', -7 * 24 * 60, about='last week'), self.event('e1', 50)
+        poller, prompt = self.make([week_ago, fresh])
+        self.assertNotIn('last week', prompt)      # the first look here: stale, so never owed
+        self.assertIn('the setlist', prompt)
+        self.assertEqual(json.loads(self.state.read_text())['handed'], {'m26': ['old', 'e1']})
+        # A ledger that knows this Mood: a week-old handoff with no entry is owed, however long it waited.
+        poller, prompt = self.make([week_ago, fresh], state_handed={'m26': ['e1']})
+        self.assertIn('last week', prompt)
+
+    def test_a_dry_run_marks_nothing_shown(self):
+        owed = dict(turn('ask', 'justin', 100, '@magent one more thing'), via='web')
+        events = [self.event('e1', 50)]
+
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                return {'turns': [owed], 'events': events}
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': [],
+                                     'handed': {'m26': []}}))
+        poller = MoodPoller(API([mention('m26', owed)], sessions={'m26': ['s-local']}), FakeWaker(), state_path=state,
+                            now=lambda: T0 + timedelta(minutes=101), consider=False, dry_run=True)
+        poller.poll_once()
+        self.assertEqual(poller.state['handed'], {'m26': []})
+
     def test_a_cut_off_turn_is_shown_its_handoffs_again(self):
         owed = dict(turn('ask', 'justin', 100, '@magent one more thing'), via='web')
         events = [self.event('e1', 50)]
@@ -1019,6 +1044,40 @@ class HandedLedgerTest(TestCase):
                             now=lambda: T0 + timedelta(minutes=101), consider=False)
         poller.poll_once()
         self.assertIn('Salty Dog first.', waker.woken[0][1])
+
+
+class DegradedLineTest(TestCase):
+    """The poller says in the Mood when its agent's bundle degrades: once, and again only on a change or a fix."""
+
+    def test_said_once_per_change_and_kept_in_state(self):
+        class API(FakeAPI):
+            said = []
+
+            def degraded(inner, slug, lines):
+                inner.said.append((slug, list(lines)))
+                return True
+        api = API()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': T0.isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(api, FakeWaker(), state_path=state, now=lambda: T0)
+        wrong = ['standing (GeneralOrders): HTTP 503, since 2026-10-29T12:00Z; the copy read here stands']
+        poller.say_degraded('m26', wrong)
+        poller.say_degraded('m26', wrong)        # the next wake, same trouble: no call
+        poller.say_degraded('m26', wrong + ['moods: HTTP 503, since 2026-10-29T12:10Z; left out'])
+        poller.say_degraded('m26', [])           # fixed
+        poller.say_degraded('m26', [])
+        self.assertEqual([len(l) for _, l in api.said], [1, 2, 0])
+        self.assertEqual(poller.state['degraded'], {'m26': []})
+
+    def test_a_failed_call_is_no_reason_to_stall_and_is_tried_again(self):
+        class API(FakeAPI):
+            def degraded(inner, slug, lines):
+                raise OSError('maybelle away')
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': T0.isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(API(), FakeWaker(), state_path=state, now=lambda: T0)
+        poller.say_degraded('m26', ['x'])
+        self.assertEqual(poller.state['degraded'], {})  # not recorded as said, so the next wake says it
 
 
 class DefaultsTest(TestCase):

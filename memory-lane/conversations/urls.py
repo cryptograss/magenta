@@ -110,6 +110,7 @@ urlpatterns = [
     path('api/moods/<slug:slug>/quiet/', views_runner.api_quiet, name='api_mood_quiet'),
     path('api/moods/<slug:slug>/held/', views_runner.api_held, name='api_mood_held'),
     path('api/moods/<slug:slug>/running/', views_runner.api_running, name='api_mood_running'),
+    path('api/moods/<slug:slug>/degraded/', views_runner.api_degraded, name='api_mood_degraded'),
     path('api/agents/<str:name>/models/', views_runner.api_agent_models, name='api_agent_models'),
     path('api/agents/<str:name>/tasks/<str:task>/', views_auth.api_task, name='api_task'),
     path('api/deploys/', views_runner.api_deploys, name='api_deploys'),
