@@ -2806,3 +2806,13 @@ class IncorporateTest(TestCase):
         self.assertIn('```handoff block (to: jams-fresh)', prompt)
         self.assertNotIn('Keep replies here short', prompt)
         self.assertEqual(waker.options['effort'], 'max')
+
+
+class LeadInsTest(TestCase):
+    def test_the_wake_transcript_folds_an_emergents_lead_in(self):
+        from poller.mood_poller import transcript_of
+        lines = transcript_of([dict(turn('p', 're', 1, 'Checking the deploy:'), stop='tool_use', is_human=False),
+                               dict(turn('a', 're', 2, 'It is live.'), stop='end_turn', is_human=False),
+                               dict(turn('j', 'justin', 3, 'thanks'), is_human=True)])
+        self.assertEqual([l.split('] ', 1)[1] for l in lines], ['It is live.', 'thanks'])
+

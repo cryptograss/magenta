@@ -36,7 +36,15 @@ EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release',
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).
 POSTED = ('mood-web', 'mood-attest')
-_WRAPPER_PREFIXES = ('<', '[Request interrupted', COMPACTION_PREFIX)
+_WRAPPER_PREFIXES = ('[Request interrupted', COMPACTION_PREFIX)
+# Machinery that opens with a tag, never shown as a post: a harness's or the runner's own tag, which always has a
+# hyphen or underscore in its name (<mood-wake>, <system-reminder>, <local-command-stdout>, <harness-switch>,
+# <new-mood>, <total_tokens>) as no HTML tag does; and an emergent's control reply, when it is the whole reply
+# (<silent>, <wait/>, <take/>, <tools/>, <react/>). Not a bare '<': a post opening with <code>, or a react followed
+# by words, is a post (blu, re, magent, 29 Oct: such posts vanished from the Mood, search, mentions and backlinks).
+_MACHINE_TAG = re.compile(r'^\s*</?[A-Za-z][\w]*[-_][\w-]*[\s>/]')
+_CONTROL_REPLY = re.compile(r'^\s*(?:<silent\s*/>|<silent(?:\s+by="\w+")?>.*</silent>'
+                            r'|<(?:wait|take|tools|react)\s[^<>]*/>)\s*$', re.S)
 
 
 def pickipedia_url():
@@ -124,7 +132,8 @@ def thought_text(content):
 
 
 def is_wrapper(text):
-    return text.startswith(_WRAPPER_PREFIXES)
+    return bool(text) and (text.startswith(_WRAPPER_PREFIXES) or bool(_MACHINE_TAG.match(text))
+                           or bool(_CONTROL_REPLY.match(text)))
 
 
 def is_compaction(text):

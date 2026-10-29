@@ -323,6 +323,11 @@ def read_mood_text(slug, start=None, limit=60):
         found = found[-limit:]
     lines = []
     for msg, text in found:
+        # A lead-in said on the way to a tool call (stop_reason tool_use) is narration, folded on the page
+        # since #210; here too, or a tools turn reads as two near-identical posts (re, blu, 29 Oct).
+        if msg.stop_reason == 'tool_use' and not getattr(getattr(msg.sender, 'thinkingentity', None),
+                                                          'is_biological_human', False):
+            continue
         if len(text) > EACH_CHARS:
             text = text[:EACH_CHARS] + ' […]'
         lines.append(f"[{msg.sender_id}, {msg.created_at.isoformat()[:16]}Z, #m-{msg.id}] {text}")

@@ -100,3 +100,37 @@ class TrailingReactTest(TestCase):
         mine.refresh_from_db()
         self.assertEqual(mine.content[0]['text'], 'Fair. Cite the row.')
         self.assertEqual(reactions.in_mood(mood), {str(hers.id): {'🤝': ['re']}})
+
+    def test_a_react_first_then_words_gives_the_nod_and_keeps_the_words(self):
+        # re, 29 Oct: three such posts hid whole and gave no nod.
+        mood = Mood.objects.create(slug='em2', title='em2')
+        for n in ('re', 'magent'):
+            ThinkingEntity.objects.get_or_create(name=n, defaults={'is_biological_human': False})
+        his = Message.objects.create(id=uuid.uuid4(), sender_id='magent', mood=mood, content='Check the commit.', timestamp=1)
+        sid = uuid.uuid4()
+        mine = Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=mood, session_id=sid, timestamp=2,
+                                      content=[{'type': 'text', 'text': '<react emoji="👍" to="magent"/> blu, here is how.'}])
+        reactions.agent_reacted(sid, 're')
+        mine.refresh_from_db()
+        self.assertEqual(mine.content[0]['text'], 'blu, here is how.')
+        self.assertEqual(reactions.in_mood(mood), {str(his.id): {'👍': ['re']}})
+
+
+class WhatIsMachineryTest(TestCase):
+    """is_wrapper names machinery by its tags, not by a bare '<' (blu, re, magent, 29 Oct)."""
+
+    def test_machinery_stays_out(self):
+        from conversations.services.mood_view import is_wrapper
+        for text in ('<mood-wake mood="m">…', '<system-reminder>x</system-reminder>', '<local-command-stdout>ok',
+                     '<command-name>/compact</command-name>', '<harness-switch mood="m">', '<new-mood slug="x">',
+                     '<total_tokens>1</total_tokens>', '<silent>nothing to add</silent>', '<silent/>',
+                     '<wait for="re" to="check"/>', '<take to="the deploy"/>', '<tools to="a fix"/>',
+                     '<react emoji="👍" to="re"/>', '[Request interrupted by user]'):
+            self.assertTrue(is_wrapper(text), text)
+
+    def test_posts_that_open_with_a_tag_are_posts(self):
+        from conversations.services.mood_view import is_wrapper
+        for text in ('<code>is_wrapper</code> matched a bare <', '<nowiki>[[x]]</nowiki> is literal',
+                     '<react emoji="👍" to="magent"/> blu, here is how.', '<silent>x</silent> and then words',
+                     '<b>bold</b> start', 'An ordinary post.'):
+            self.assertFalse(is_wrapper(text), text)

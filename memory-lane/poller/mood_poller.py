@@ -1415,6 +1415,8 @@ def transcript_of(turns, new_ids=(), limit=20_000, each=1500):
     """Turns as prompt lines, newest last; ► marks the new ones. Clipped to fit."""
     lines = []
     for turn in turns:
+        if turn.get('stop') == 'tool_use' and not turn.get('is_human', True):
+            continue  # a lead-in on the way to a tool call: folded, as on the page (#210)
         text = _WRAPPER_TAG.sub(r'‹\1\2', turn.get('text', ''))
         # A reply says what it answers, a message or an event (a redeploy, a merge), not just its link.
         reply = turn.get('reply')
