@@ -8241,10 +8241,14 @@
   // link from someone else): a fresh frame loads hidden and takes the old one's place once it's in, so
   // nobody waits on it (Justin, 21 Oct). Never under the reader's eyes: open, it's done when they leave.
   const sectionPending = {};
-  function refreshSection(name) {
+  // A data section's kept copy rots while you're away (Justin, 29 Oct: the prompts were "way outta date"):
+  // one shown again after STALE_MS is redrawn behind the scenes and takes its place when it's in, seen or not.
+  const DATA_SECTIONS = new Set(['prompts', 'status']);
+  const STALE_MS = 60000;
+  function refreshSection(name, swapOpen) {
     const old = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
     if (!old || sectionFrames.querySelector(`iframe[data-section="${name}"][data-fresh]`)) return;  // its first load is fresh; or one's on its way
-    if (sectionNow === name) { sectionPending[name] = true; return; }
+    if (sectionNow === name && !swapOpen) { sectionPending[name] = true; return; }  // under the reader: done when they leave, unless it's a data section
     let at = `/moods/${name}/?embed=1`;  // where they were in it -- a link's discussion, say -- drawn again there
     try { const l = old.contentWindow.location; if (l.pathname.startsWith(`/moods/${name}/`)) at = l.pathname + l.search; } catch (e) {}
     const fresh = document.createElement('iframe');
@@ -8257,8 +8261,10 @@
       try { there = fresh.contentWindow.location.pathname === new URL(at, location.origin).pathname; } catch (e) { there = true; }
       if (!there) return;
       fresh.removeEventListener('load', arrived);
-      if (sectionNow === name) { fresh.remove(); sectionPending[name] = true; return; }  // opened meanwhile: theirs stays
+      if (sectionNow === name && !swapOpen) { fresh.remove(); sectionPending[name] = true; return; }  // opened meanwhile: theirs stays
+      if (sectionNow === name) fresh.hidden = false;  // read it now: fresh takes its place
       old.remove();
+      fresh.dataset.loaded = Date.now();  // so the next stale check counts from this copy
       delete fresh.dataset.fresh;
     });
     fresh.src = at;
@@ -8283,6 +8289,7 @@
       let there = false;
       try { there = frame.contentWindow.location.pathname.startsWith(`/moods/${name}/`); } catch (e) { there = true; }
       if (!there) return;
+      frame.dataset.loaded = Date.now();  // when this copy of the section was made, against STALE_MS
       loading.remove();
       frame.removeEventListener('load', arrived);
     });
@@ -8304,6 +8311,11 @@
       frame.hidden = false;
       sectionFrames.querySelectorAll('iframe').forEach(f => { f.hidden = f !== frame; });
       sectionFrames.querySelectorAll('.loading').forEach(l => { l.hidden = l.dataset.section !== name; });
+      // Stale while away (Justin, 29 Oct): a data section shown again is redrawn out of sight; its
+      // fresh copy takes its place the moment it's in, so the numbers are never yesterday's.
+      if (DATA_SECTIONS.has(name) && frame.dataset.loaded && Date.now() - +frame.dataset.loaded > STALE_MS) {
+        refreshSection(name, true);
+      }
     }
     document.querySelectorAll('header [data-section]').forEach(a => {
       if (a.dataset.section === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
