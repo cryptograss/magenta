@@ -32,7 +32,7 @@ INTERRUPT_SOURCE = 'interrupt'
 # System rows shown as a line in the thread.
 NEW_MOOD_SOURCE = 'mood-new'
 EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
-                 'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
+                 'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task', 'instructions')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).
 POSTED = ('mood-web', 'mood-attest')
@@ -481,7 +481,9 @@ def event_line(content):
     if kind == 'wiki-upload':
         return f"🖼 {by or 'someone'} put {c.get('file', 'a picture')} on PickiPedia"
     if kind == 'incorporated':
-        return f"⑂ {by or 'someone'} closed this thread: handed to #{c.get('into', '')} to incorporate"
+        return f"↩ {by or 'someone'} closed this thread: handed to #{c.get('into', '')} to incorporate"
+    if kind == 'reforked':
+        return f"⑂ {by or 'someone'} forked this thread again from #{c.get('from_mood', '')}"
     if kind in ('handoff', 'handoff-sent'):
         where = c.get('from_mood') if kind == 'handoff' else c.get('to_mood')
         return f"🔀 {by or 'someone'} {'brought this from' if kind == 'handoff' else 'took this to'} #{where}: {c.get('about', '')}"
@@ -495,6 +497,10 @@ def event_line(content):
     if kind == 'task':
         from .tasks import line
         return line(c)
+    if kind == 'degraded':  # services/instructions_state.py
+        who = c.get('agent', 'an emergent')
+        return (f"⚠ {who}'s instructions are degraded: " + '; '.join(c.get('lines') or []) if c.get('lines')
+                else f"✓ {who}'s instructions are whole again")
     return (kind or 'an event').replace('-', ' ')
 
 
@@ -1825,7 +1831,7 @@ def mood_payload(mood, light=False):
     # Mood, a rename, a turn's tally): those mustn't make a Mood look active.
     said = mood.messages.exclude(sender_id='system')
     last = last_said(mood)
-    from conversations.models import Mood
+    from conversations.models import Message, Mood
     return {
         **head,
         'message_count': said.count(),
@@ -1833,7 +1839,15 @@ def mood_payload(mood, light=False):
         'participants': sorted(e.name for e in mood.thinking_entities()),
         # A thread: where it was opened from, and when its emergents went on from there (forked; none: fresh).
         **({'thread_of': Mood.objects.filter(pk=mood.thread_of_id).values_list('slug', flat=True).first(),
-            'forked_at': mood.forked_at.isoformat() if mood.forked_at else None} if mood.thread_of_id else {}),
+            'forked_at': mood.forked_at.isoformat() if mood.forked_at else None,
+            # Handed back to its Mood to incorporate, and not forked again since (Justin, 29 Oct: an arrow).
+            'incorporated': mood.messages.filter(sender_id='system', content__type__in=['incorporated', 'reforked'])
+                            .order_by('-created_at').values_list('content__type', flat=True).first() == 'incorporated',
+            # An emergent compacted in its Mood since the fork (Justin, 29 Oct): what it was forked from is gone
+            # there, so the page shows it as fresh (🌱), whatever else it is, until it's forked again.
+            'compacted': bool(mood.forked_at) and Message.objects.filter(
+                mood_id=mood.thread_of_id, is_continuation_message=True, created_at__gt=mood.forked_at).exists()}
+           if mood.thread_of_id else {}),
         # Threads opened from here, newest first (closing one archives it).
         'threads': [{'slug': s, 'title': t or s} for s, t in mood.threads.order_by('-created_at').values_list('slug', 'title')],
     }

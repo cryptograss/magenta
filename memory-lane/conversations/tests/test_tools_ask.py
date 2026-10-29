@@ -79,3 +79,17 @@ class AskTest(TestCase):
         self.say('re', '<tools to="rebase first, then push"/>', 2, session=self.sid)
         self.assertEqual([(t['kind'], t['for']) for t in self.asked()],
                          [('tools', 'rebase first, then push')])
+    def test_answered_as_its_full_tools_wake_lands_before_it_says_a_word(self):
+        """Justin, 29 Oct: the 🔨 stayed until the turn ended. The wake's bundle is the agent's from the
+        start, so an ask is answered the moment the wake lands, not when the agent first speaks."""
+        from django.utils import timezone
+        from conversations.models import BundleRecord
+        self.say('re', '<tools to="push the fix"/>', 2, session=self.sid)
+        self.assertEqual([(t['kind'], t['for']) for t in self.asked()], [('tools', 'push the fix')])
+        bundle, fresh = uuid.uuid4(), uuid.uuid4()
+        BundleRecord.objects.create(id=bundle, agent='re', mood='jams', requested_at=timezone.now(), sha256='0' * 64)
+        Message.objects.create(id=uuid.uuid4(), sender_id='mood-poller', mood=self.mood, session_id=fresh, timestamp=3,
+                               content=[{'type': 'text', 'text': '<mood-wake mood="jams"> ... This turn has your full tools, '
+                                         f'as in your terminal ... Your instructions this turn are bundle {bundle} (Special:AgentBundles).'}])
+        cache.clear()
+        self.assertEqual(self.asked(), [])

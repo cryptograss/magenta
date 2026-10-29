@@ -32,8 +32,8 @@ def open_requests():
     from django.db.models import Q, TextField
     from django.db.models.functions import Cast
     from django.utils import timezone
-    from conversations.models import Message, ThinkingEntity
-    from .mood_view import prose, quiet_reason
+    from conversations.models import BundleRecord, Message, ThinkingEntity
+    from .mood_view import BUNDLE_SAID, prose, quiet_reason
     agents = set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
     since = timezone.now() - LOOK_BACK
     want = Q()
@@ -49,23 +49,31 @@ def open_requests():
             latest[(m.mood.slug, m.sender_id, kind)] = (m, said['reason'][len(_PREFIX[kind]):])
     found = {}
     for (slug, agent, kind), (m, purpose) in latest.items():
-        if not _answered(slug, agent, kind, m):
+        if not _answered(kind, slug, agent, m):
             found.setdefault(slug, []).append({'kind': kind, 'agent': agent, 'for': purpose,
                                                'at': m.created_at.isoformat(), 'id': str(m.id)})
     cache.set(KEY, found, KEEP)
     return found
 
 
-def _answered(slug, agent, kind, request):
-    """Whether an ask's event has landed: a full-tools wake of the asker there; a merged or deploy event."""
-    from django.db.models import Q, TextField
+def _answered(kind, slug, agent, request):
+    """Whether an ask's event has landed: a full-tools wake of the asker there; a merged or deploy event.
+    The tools ask is answered the moment the turn starts, not when it ends: its wake names the bundle the runner
+    made for it (BundleRecord), which the record has before the agent has said a word (Justin, 29 Oct)."""
+    from django.db.models import TextField
     from django.db.models.functions import Cast
-    from conversations.models import Message
+    from conversations.models import BundleRecord, Message
+    from .mood_view import BUNDLE_SAID
     source = KINDS[kind]['source']
     if source:
         return Message.objects.filter(mood=request.mood, source_file=source, created_at__gt=request.created_at)\
             .exists()
+    wakes = (Message.objects.filter(mood=request.mood, sender_id='mood-poller', created_at__gt=request.created_at)
+             .annotate(t=Cast('content', TextField())).filter(t__contains=FULL))
+    bundles = {str(b) for b in BundleRecord.objects.filter(agent=agent, mood=slug, requested_at__gt=request.created_at)
+               .values_list('id', flat=True)}
+    if bundles and any(bundles & set(BUNDLE_SAID.findall(t)) for t in wakes.values_list('t', flat=True)):
+        return True
+    # An older runner, no bundle: a wake in a session the agent has spoken in since the ask.
     sessions = set(Message.objects.filter(mood=request.mood, sender_id=agent).values_list('session_id', flat=True))
-    return (Message.objects.filter(mood=request.mood, sender_id='mood-poller', session_id__in=sessions,
-                                   created_at__gt=request.created_at)
-            .annotate(t=Cast('content', TextField())).filter(t__contains=FULL).exists())
+    return wakes.filter(session_id__in=sessions).exists()

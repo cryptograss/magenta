@@ -234,6 +234,14 @@ class MoodAPI:
                                   headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
         return response.status_code == 200
 
+    def degraded(self, slug, lines):
+        """Say how the agent's instructions here stand: degraded, with the bundle's lines, or whole ([])."""
+        if not self.key:
+            return False
+        response = self.http.post(f'{self.base}/api/moods/{slug}/degraded/', json={'lines': list(lines)},
+                                  headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
+        return response.status_code == 200
+
     def held(self, slug, reason, until=None):
         """Say the agent's next turn in `slug` is held, and why; no reason lifts it."""
         if not self.key:
@@ -885,6 +893,80 @@ def signed_in_with_key(turn):
     return turn.get('via') == 'web' and bool(turn.get('is_human')) and turn.get('tier') != 'wiki'
 
 
+FRESH_EVERY = timedelta(minutes=10)
+FRESH_DIR = '.fresh'
+
+
+def fresh_repos(workspace):
+    """{name: origin url} for each checkout directly under `workspace` that has an origin (not .fresh itself),
+    one per origin."""
+    import subprocess
+    found = {}
+    root = Path(workspace)
+    if not root.is_dir():
+        return found
+    for repo in sorted(root.iterdir()):
+        if repo.name.startswith('.') or not (repo / '.git').exists():
+            continue
+        url = subprocess.run(['git', '-C', str(repo), 'config', '--get', 'remote.origin.url'],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+        # One copy per origin, named for the first checkout of it: several clones of one repo share a copy.
+        if url and url not in found.values():
+            found[repo.name] = url
+    return found
+
+
+def refresh_fresh(workspace, run=None):
+    """Bring each repo's read-only copy under <workspace>/.fresh/<name> to its origin's default branch, as files:
+    a fetch alone moves refs, and a look-only turn reads files (Read, Grep), never refs (magent, re, blu, 29 Oct).
+    Nobody works in .fresh, so a hard reset there can't lose anything; the agents' own checkouts are never
+    touched. Returns [problems], one line per repo that couldn't be refreshed; [] when all were."""
+    import shutil, subprocess
+    run = run or (lambda args: subprocess.run(args, capture_output=True, text=True, timeout=120))
+    fresh = Path(workspace) / FRESH_DIR
+    problems = []
+    for name, url in fresh_repos(workspace).items():
+        copy = fresh / name
+        cloning = not (copy / '.git').exists()
+        try:
+            if cloning:
+                fresh.mkdir(parents=True, exist_ok=True)
+                done = run(['git', 'clone', '-q', '--depth', '1', url, str(copy)])
+            else:
+                done = run(['git', '-C', str(copy), 'fetch', '-q', '--depth', '1', 'origin', 'HEAD'])
+                if done.returncode == 0:
+                    done = run(['git', '-C', str(copy), 'reset', '-q', '--hard', 'FETCH_HEAD'])
+            if done.returncode != 0:
+                problems.append(f'{name}: {_fresh_error(done)}'[:200])
+                if cloning:
+                    # A failed clone can leave a partial copy with a .git; every later refresh would fetch into
+                    # it and fail, and every wake would carry the stale line. Clear it: next refresh clones again
+                    # (re, 29 Oct: on a failed clone, delete the partial copy).
+                    shutil.rmtree(copy, ignore_errors=True)
+        except Exception as e:  # noqa: BLE001 -- a timeout, git missing: said in the next wake, never a stalled turn
+            problems.append(f'{name}: {_fresh_error(e)}'[:200])
+            if cloning:
+                shutil.rmtree(copy, ignore_errors=True)
+    return problems
+
+
+def _fresh_error(done):
+    """The last line of what a refresh reported, with any credential in a remote URL masked: a wake may quote it,
+    and a credential never belongs there (re, 29 Oct)."""
+    if isinstance(done, Exception):
+        text = str(done)
+    else:
+        text = ((done.stderr or '').strip().splitlines() or ['failed'])[-1]
+    return _CRED_IN_URL.sub(r'//***@', text)
+
+
+_CRED_IN_URL = re.compile(r'//[^/@\s]+@')
+
+
+FRESH_FAILED = ('Your read-only copies of the repositories (~/workspace/.fresh/<name>) could not all be brought up to '
+                'date at {when}: {why}. Code read there may be older than main.')
+
+
 def wake_line(texts, name, fallback, **fields):
     """One of the wake's fixed lines: as Cryptograss:Moods/Dials has it, where a trusted editor has written it
     (WikiTexts.line, {{Sent to agents|dial=line|value=<name>|...}}), else as written here; {fields} filled in."""
@@ -1383,19 +1465,25 @@ HANDED_NOTE = ('Context handed to you here from another Mood (by an emergent, wi
 HANDED_HORIZON = timedelta(days=2)  # a handoff older than this, never shown, is stale rather than owed
 
 
-def handed_events(page, agent, shown=(), now=None):
+def handed_events(page, agent, shown=()):
     """The handoff events (memory-lane services/handoff.py) in this Mood for `agent` that it hasn't been shown
     yet -- from a page of /turns/, which carries the Mood's events; `shown` is the poller's ledger for this Mood.
     Until 29 Oct the rule was "since it last spoke here", and a handoff landing while the agent was mid-turn
     was lost: its reply came after the handoff and hid it for good. The ledger says what it has seen; a handoff
-    with no entry is owed unless it is older than the horizon (so a fresh ledger doesn't replay the past)."""
+    with no entry is owed, however old (the ledger's first look seeds it with the stale ones: stale_handoffs)."""
     # Brought in here by the agent itself (from:), it's in what it said here already.
-    handed = [e for e in page.get('events') or ()
-              if e.get('type') == 'handoff' and e.get('for') == agent and not e.get('pulled')
-              and e.get('id') not in set(shown)]
-    if now is not None:
-        handed = [e for e in handed if parse_time(e['created_at']) > now - HANDED_HORIZON]
-    return handed
+    return [e for e in page.get('events') or ()
+            if e.get('type') == 'handoff' and e.get('for') == agent and not e.get('pulled')
+            and e.get('id') not in set(shown)]
+
+
+def stale_handoffs(page, agent, now):
+    """Ids of the handoffs for `agent` here older than the horizon: what a Mood's fresh ledger starts with, so the
+    first look doesn't replay the past, and only the first look (re, 29 Oct: a horizon on every look drops a
+    handoff to a Mood the agent doesn't wake in for two days)."""
+    return [e['id'] for e in page.get('events') or ()
+            if e.get('type') == 'handoff' and e.get('for') == agent and e.get('id')
+            and parse_time(e['created_at']) <= now - HANDED_HORIZON]
 
 
 def handoff_lines(events, limit=12_000):
@@ -1414,8 +1502,11 @@ def handoff_lines(events, limit=12_000):
 
 
 def handoffs_for(page, agent, limit=12_000, shown=(), now=None):
-    """Context handed to `agent` in this Mood that it hasn't been shown, as prompt lines (handed_events)."""
-    return handoff_lines(handed_events(page, agent, shown=shown, now=now), limit=limit)
+    """Context handed to `agent` in this Mood that it hasn't been shown, as prompt lines (handed_events); with
+    `now` and an empty `shown`, a first look: the stale ones count as shown."""
+    if now is not None and not shown:
+        shown = stale_handoffs(page, agent, now)
+    return handoff_lines(handed_events(page, agent, shown=shown), limit=limit)
 
 
 def transcript_of(turns, new_ids=(), limit=20_000, each=1500):
@@ -1512,7 +1603,7 @@ class MoodPoller:
                  consider_budget=3.0, debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
                  agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
-                 end_orphans=end_orphans, texts=None, instructions=False):
+                 end_orphans=end_orphans, texts=None, instructions=False, fresh_workspace=None):
         self.api = api
         # Its instructions, gathered for each turn and given as system prompt (poller/instructions.py): for an
         # agent that has them on PickiPedia (blu first), never for one whose instructions live elsewhere yet.
@@ -1570,6 +1661,12 @@ class MoodPoller:
         # 2026-10-16 three quiet looks read a 510k-token session for $4.10
         # each, all to say nothing. A mention is never skipped for its cost.
         self.quiet_look_max_usd = quiet_look_max_usd
+        # ~/workspace/.fresh: read-only copies of each repo's main, refreshed in the background as a turn
+        # starts, at most every FRESH_EVERY, so look-only turns read current code (29 Oct).
+        self.workspace = fresh_workspace  # None: no refresh (tests); main() gives ~/workspace
+        self.fresh_at = None        # when the last refresh began
+        self.fresh_problems = []    # what the last one that finished couldn't refresh
+        self.fresh_lock = threading.Lock()
         self.last_reply = None
         # Turns at once, at most one per Mood: each Mood is its own context
         # and usually its own person, so one long turn mustn't hold up the
@@ -1599,6 +1696,7 @@ class MoodPoller:
         self.state.setdefault('waited', [])   # mention ids waited on already: waiting again needs one at work
         self.state.setdefault('wait_also', {})  # slug -> agents an answer waited for handed it on to
         self.state.setdefault('handed', {})   # slug -> handoff event ids shown to the agent there (handed_events)
+        self.state.setdefault('degraded', {})  # slug -> the degraded lines last said there (say_degraded)
         self.replies = {}      # flight -> what its turn replied, for after it lands
         self.wait_notes = {}   # slug -> what the next wake there says of the wait that ended
         self.end_orphans = end_orphans
@@ -1672,14 +1770,17 @@ class MoodPoller:
         """Record a mention's turn as running; returns what `land` takes."""
         ids = {t['id'] for t in owed}
         again = [f for f in self.state['cut_off'] if ids & {t['id'] for t in f['turns']}]
+        # What this prompt showed of the Mood's handoffs (handed_lines); a consider wake's never flies, so only this Mood's.
+        where, handed = getattr(self, 'handed_now', (None, []))
+        handed = list(handed) if where == slug else []
         tries = 1 + max((f.get('tries', 1) for f in again), default=0)
         # This turn is their try again: they're in flight now, not cut off.
         self.state['cut_off'] = [f for f in self.state['cut_off'] if f not in again]
         self.state['in_flight'][session] = {'mood': slug, 'turns': owed, 'session': session,
                                             'started': self.now().isoformat(), 'command': command,
                                             'tries': tries, 'poller': os.getpid(),
-                                            'handed': list(getattr(self, 'handed_now', ()))}
-        self.handed_now = []
+                                            'handed': handed}
+        self.handed_now = (slug, [])
         return session
 
     def land(self, session):
@@ -2120,8 +2221,11 @@ class MoodPoller:
             # carries it instead.
             b = bundle(self.agent, slug, record_id=record_id, others=self.other_agents(), parent=self.thread_of(slug))
             text, record = b.text, b.record()
+            self.say_degraded(slug, b.degraded)
         except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery instructions stand
             logger.error(f'{slug}: instructions not gathered ({e}); the recovery instructions stand in')
+            self.say_degraded(slug, [f'instructions not gathered: {type(e).__name__}: {e}'[:300]
+                                     + '; the recovery instructions stand in'])
             recovery = Path(__file__).with_name('recovery_instructions.md')
             words = recovery.read_text() if recovery.exists() else 'Your instructions could not be gathered.'
             text = (f'<instructions agent="{self.agent}" mood="{slug}">\n<recovery>\n{words}\n'
@@ -2132,6 +2236,18 @@ class MoodPoller:
         record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit,
                       block=block if isinstance(block, int) else None)
         return text, record
+
+    def say_degraded(self, slug, lines):
+        """One plain line in the Mood for the people there when the bundle degrades, said again only when what's
+        wrong changes or it's fixed (the server keeps that rule too; this spares it the call on every wake)."""
+        try:
+            lines = [str(l) for l in lines]
+            if self.dry_run or self.state.setdefault('degraded', {}).get(slug, []) == lines:
+                return
+            if self.api.degraded(slug, lines):
+                self.state['degraded'][slug] = lines
+        except Exception as e:  # noqa: BLE001 -- a line for people is never a reason to stall the wake
+            logger.warning(f'{slug}: could not say the instructions are {"degraded" if lines else "whole"}: {e}')
 
     @staticmethod
     def turn_line(record):
@@ -2351,6 +2467,38 @@ class MoodPoller:
         threading.Thread(target=beat, daemon=True).start()
         return done
 
+    def refresh_fresh_soon(self, run=None):
+        """Start a background refresh of ~/workspace/.fresh, unless one began within FRESH_EVERY: the turn never
+        waits on GitHub, and the copies are at most one refresh behind (re, blu, 29 Oct)."""
+        if self.workspace is None:
+            return False
+        with self.fresh_lock:
+            now = self.now()
+            if self.fresh_at is not None and now - self.fresh_at < FRESH_EVERY:
+                return False
+            self.fresh_at = now
+
+        def work():
+            try:
+                self.fresh_problems = refresh_fresh(self.workspace, run=run)
+            except Exception as e:  # noqa: BLE001
+                self.fresh_problems = [str(e)[:200]]
+            self.fresh_done_at = self.now()
+        if self.dry_run:
+            return False
+        thread = threading.Thread(target=work, name='fresh', daemon=True)
+        thread.start()
+        self.fresh_thread = thread
+        return True
+
+    def fresh_line(self):
+        """A line for the wake only when the last finished refresh failed somewhere."""
+        if not self.fresh_problems:
+            return ''
+        when = getattr(self, 'fresh_done_at', None)
+        return '\n\n' + FRESH_FAILED.format(when=f'{when:%H:%MZ}' if when else 'the last try',
+                                            why='; '.join(self.fresh_problems))
+
     def run_turn_once(self, slug, session_id, prompt, options):
         """One try: (outcome, reply, what it cost, failure). failure, if it came back with no words: {'why',
         'retry'}, retry if nothing was spent and its harness said it failed (not a stop, not its budget)."""
@@ -2359,6 +2507,11 @@ class MoodPoller:
         crosstalk = options.pop('crosstalk', False)
         began = self.now().isoformat()
         bundled = None
+        self.refresh_fresh_soon()
+        stale = self.fresh_line()
+        if stale:
+            at = prompt.rfind('</mood-wake>')
+            prompt = prompt[:at].rstrip('\n') + stale + '\n' + prompt[at:] if at >= 0 else prompt + stale
         if self.instructions:
             options['system'], bundled = self.instructions_for(slug)
             line = self.turn_line(bundled)
@@ -2549,16 +2702,21 @@ class MoodPoller:
 
     def handed_lines(self, slug, page, again=()):
         """What's been handed to the agent in this Mood and not shown it yet, as prompt lines; marked shown in the
-        ledger as they go into a prompt. `again`: ids a cut-off turn was shown, owed once more with its retry."""
+        ledger as they go into a prompt (never on a dry run: nothing is delivered). `again`: ids a cut-off turn
+        was shown, owed once more with its retry."""
+        self.handed_now = (slug, [])
         try:
-            events = handed_events(page(), self.agent, shown=set(self.state['handed'].get(slug, ())) - set(again),
-                                   now=self.now())
+            page = page()
+            ledger = self.state['handed']
+            if slug not in ledger:  # the first look here: the stale ones count as shown, and only now
+                ledger[slug] = stale_handoffs(page, self.agent, self.now())[-200:]
+            events = handed_events(page, self.agent, shown=set(ledger[slug]) - set(again))
         except Exception:
             events = []
-        self.handed_now = [e['id'] for e in events if e.get('id')]
-        if events:
-            seen = [i for i in self.state['handed'].get(slug, []) if i not in self.handed_now] + self.handed_now
-            self.state['handed'][slug] = seen[-200:]
+        ids = [e['id'] for e in events if e.get('id')]
+        self.handed_now = (slug, ids)
+        if ids and not self.dry_run:
+            self.state['handed'][slug] = ([i for i in self.state['handed'].get(slug, []) if i not in ids] + ids)[-200:]
         return handoff_lines(events)
 
     def handoff_options(self, slug):
@@ -3251,6 +3409,9 @@ def build_parser():
                              "(its home went with its container), so a mention starts it over from the record")
     # Retired with poller/letter.md: still taken, and ignored, until hunter's container_startup stops passing it.
     parser.add_argument('--letter', default=None, help=argparse.SUPPRESS)
+    parser.add_argument('--fresh', choices=['yes', 'no'], default='yes',
+                        help='Keep ~/workspace/.fresh/<repo>: read-only copies of each checkout\'s main, refreshed in '
+                             'the background at most every ten minutes, for look-only turns to read current code')
     parser.add_argument('--instructions', '--rules-bundle', dest='instructions', action='store_true',
                         help="Give each turn the agent's instructions from PickiPedia as system prompt "
                              "(poller/instructions.py); --rules-bundle is the old name, until the inventory says this one")
@@ -3320,7 +3481,8 @@ def main(argv=None):
                           agent_wakes_per_hour=args.agent_wakes_per_hour,
                           only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
                           texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')),
-                          instructions=args.instructions)
+                          instructions=args.instructions,
+                          fresh_workspace=None if args.fresh == 'no' else Path.home() / 'workspace')
     report_at = 0.0
     while True:
         # What the harness can run, for the model menu: at start, and again a day on
