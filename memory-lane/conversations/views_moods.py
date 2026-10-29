@@ -233,7 +233,8 @@ def api_mood_turns(request, slug):
     if request.GET.get('before'):
         before = _message_or_none(request.GET['before'])
     # ?from=<id>: that message and everything since -- what a runner reads
-    # when a post links a message to read from.
+    # when a post links a message to read from. With ?before=, only up to
+    # there: the page reaching back to a message it hasn't drawn, in one ask.
     start = _message_or_none(request.GET['from']) if request.GET.get('from') else None
     if request.GET.get('from') and (start is None or start.mood_id != mood.id):
         # Never this Mood read from another's moment: the message must be here.
@@ -354,7 +355,8 @@ def api_mood_turns(request, slug):
         'compactions': compactions_out,
         # Things that happened around the conversation: a server redeployed.
         'events': events_out,
-        'has_earlier': clock('earlier', lambda: bool(limit) and first is not None and mood.messages.filter(
+        # (Reaching back to a message, ?from= with ?before=, can still have more before it.)
+        'has_earlier': clock('earlier', lambda: bool(limit or (start and before)) and first is not None and mood.messages.filter(
             is_sidechain=False, created_at__lt=first).exists()),
         'activity': clock('activity', activity, mood),
         # Every agent at work here, each with its own line on the page.
@@ -814,55 +816,108 @@ def api_wikilinks(request):
 
 
 SEARCH_MAX = 40
-SEARCH_SCAN = 300  # candidates read, newest first, before keeping only what people and agents said
+SEARCH_SCAN = 300    # candidates read at a time, newest first, before keeping only what people and agents said
+SEARCH_READS = 10    # batches read for one page of hits; then "more" picks up where it stopped
 
 
-def snippet(text, q, width=160):
-    """`text` around the first place `q` occurs, with its ends marked if cut."""
-    at = text.lower().find(q.lower())
-    if at < 0:
+def search_terms(q):
+    """`q` as what must all be there: "quoted words" as one phrase, the rest a word each."""
+    terms = [a or b for a, b in re.findall(r'"([^"]+)"|(\S+)', q)]
+    return [t.strip() for t in terms if t.strip().strip('"')][:12]
+
+
+def term_pattern(term, whole):
+    """A term as a Python pattern: as it is, or only where it stands as a word (or words) of its own."""
+    body = r'\s+'.join(re.escape(w) for w in term.split())
+    return re.compile(r'(?:^|\W)' + body + r'(?:\W|$)' if whole else body, re.IGNORECASE)
+
+
+def snippet(text, pattern, width=160):
+    """`text` around the first place `pattern` matches, with its ends marked if cut."""
+    found = pattern.search(text)
+    if not found:
         return text[:width]
-    start = max(0, at - width // 3)
+    start = max(0, found.start() - width // 3)
     end = min(len(text), start + width)
     return ('…' if start else '') + text[start:end] + ('…' if end < len(text) else '')
 
 
+def mood_and_threads(mood):
+    """A Mood's id and those of its threads, and theirs, all the way down."""
+    ids, frontier = {mood.id}, [mood.id]
+    while frontier:
+        frontier = [i for i in Mood.objects.filter(thread_of_id__in=frontier).values_list('id', flat=True) if i not in ids]
+        ids.update(frontier)
+    return ids
+
+
 @require_GET
 def api_search(request):
-    """What was said, in one Mood (?mood=<slug>) or all of them, that contains ?q=.
+    """What was said, in one Mood (?mood=<slug>; &threads=1 with its threads) or all
+    of them, that has every term of ?q= in it.
 
-    Newest first, at most SEARCH_MAX. Only what people and agents said --
-    not tool calls, their results or the harness's wrappers. A plain
-    case-insensitive match on the stored text: about 0.15 s in one Mood,
-    1.2 s across all of them, at 25k messages.
+    Terms are words, or "a phrase" in quotes; ?word=1 matches each only as a
+    whole word (or words). ?who=<name>, or ?who=human / ?who=emergent, for
+    who said it. Newest first, SEARCH_MAX at a time: `more` is where the next
+    page starts (pass it back as ?before=), null when there is nothing older.
+    Only what people and agents said -- not tool calls, their results or the
+    harness's wrappers. Case-insensitive.
     """
     from django.db.models import TextField
     from django.db.models.functions import Cast
 
-    q = (request.GET.get('q') or '').strip()
-    if len(q) < 2:
+    q = (request.GET.get('q') or '').strip()[:200]
+    terms = search_terms(q)
+    if len(q.replace('"', '').strip()) < 2 or not terms:
         return JsonResponse({'error': 'two characters at least'}, status=400)
-    q = q[:200]
+    whole = request.GET.get('word') == '1'
+    patterns = [term_pattern(t, whole) for t in terms]
     names = known_names()
     rows = (Message.objects.filter(mood__isnull=False, is_sidechain=False)
             .exclude(sender_id__in=MACHINERY_SENDERS)
-            .annotate(text=Cast('content', TextField())).filter(text__icontains=q))
+            .annotate(text=Cast('content', TextField())))
+    for term in terms:  # narrowed in the database; the prose itself is checked below
+        words = term.split()
+        rows = rows.filter(text__icontains=words[0]) if len(words) > 1 else rows.filter(text__icontains=term)
     mood = request.GET.get('mood')
     if mood:
-        rows = rows.filter(mood__slug=mood)
+        found = Mood.by_slug(mood)
+        if found is None:
+            return JsonResponse({'q': q, 'mood': mood, 'hits': [], 'more': None})
+        rows = rows.filter(mood_id__in=mood_and_threads(found)) if request.GET.get('threads') == '1' else rows.filter(mood=found)
+    who = (request.GET.get('who') or '').strip()
+    if who in ('human', 'emergent', 'agent'):
+        rows = rows.filter(sender_id__in=ThinkingEntity.objects.filter(
+            is_biological_human=who == 'human').values_list('name', flat=True))
+    elif who:
+        rows = rows.filter(sender_id=who)
+    before = parse_datetime(request.GET.get('before') or '')
+    if before:
+        rows = rows.filter(created_at__lt=before)
     titles = dict(Mood.objects.values_list('slug', 'title'))
-    hits = []
-    for msg in rows.select_related('sender').order_by('-created_at')[:SEARCH_SCAN]:
-        if msg.sender_id not in names:
-            continue
-        text = prose(msg.content)
-        if not text or is_wrapper(text) or is_summary(msg) or q.lower() not in text.lower():
-            continue
-        hits.append({'id': str(msg.id), 'mood': msg.mood_slug, 'title': titles.get(msg.mood_slug, msg.mood_slug),
-                     'sender': msg.sender_id, 'created_at': msg.created_at.isoformat(), 'text': snippet(text, q)})
+    hits, last, done = [], None, False
+    rows = rows.select_related('sender').order_by('-created_at')
+    for _ in range(SEARCH_READS):
+        batch = list((rows.filter(created_at__lt=last) if last else rows)[:SEARCH_SCAN])
+        for msg in batch:
+            last = msg.created_at
+            if msg.sender_id not in names:
+                continue
+            text = prose(msg.content)
+            if not text or is_wrapper(text) or is_summary(msg) or not all(p.search(text) for p in patterns):
+                continue
+            hits.append({'id': str(msg.id), 'mood': msg.mood_slug, 'title': titles.get(msg.mood_slug, msg.mood_slug),
+                         'sender': msg.sender_id, 'created_at': msg.created_at.isoformat(),
+                         'text': snippet(text, patterns[0])})
+            if len(hits) >= SEARCH_MAX:
+                break
+        if len(batch) < SEARCH_SCAN and len(hits) < SEARCH_MAX:
+            done = True
+            break
         if len(hits) >= SEARCH_MAX:
             break
-    return JsonResponse({'q': q, 'mood': mood, 'hits': hits})
+    more = None if done or last is None else last.isoformat()
+    return JsonResponse({'q': q, 'mood': mood, 'terms': terms, 'hits': hits, 'more': more})
 
 
 RECENT_MAX = 30

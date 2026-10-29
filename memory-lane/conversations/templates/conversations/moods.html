@@ -600,6 +600,18 @@
   #search select, #search button { font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: 6px;
                                    background: var(--panel); color: var(--ink); }
   #search button { cursor: pointer; padding: 0 9px; }
+  #search .bar.opts { padding-top: 0; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
+  #search .bar.opts select { min-width: 0; padding: 3px 4px; }
+  #search .bar.opts label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  #search .bar.opts input { flex: none; }
+  #qresults .more { display: block; margin: 10px auto; padding: 4px 12px; }
+  /* Reaching back to a message not yet drawn: a spinner over the thread until it's there. */
+  #reaching { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px;
+              pointer-events: none; z-index: 30; color: var(--muted); font-size: 14px; }
+  #reaching[hidden] { display: none; }
+  #reaching .spin { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent);
+                    border-radius: 50%; animation: spin .8s linear infinite; }
+  #reaching span { background: var(--panel); padding: 4px 10px; border-radius: 12px; border: 1px solid var(--line); }
   #qresults { overflow-y: auto; flex: 1; }
   #qresults .hit { display: block; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--muted);
                    text-decoration: none; font-size: 12.5px; }
@@ -1468,11 +1480,16 @@
 <div id="search" hidden role="search">
   <div class="bar">
     <input id="q" type="search" placeholder="Search what was said" aria-label="Search what was said" autocomplete="off">
-    <select id="qscope" aria-label="Where"><option value="here">this Mood</option><option value="all">all Moods</option></select>
     <button type="button" id="qclose" aria-label="Close search">close</button>
+  </div>
+  <div class="bar opts">
+    <select id="qscope" aria-label="Where"><option value="here">this Mood</option><option value="threads">this Mood and its threads</option><option value="all">all Moods</option></select>
+    <select id="qwho" aria-label="Said by"><option value="">anyone</option><option value="human">humans</option><option value="emergent">emergents</option></select>
+    <label title="Only where each term is a word of its own"><input type="checkbox" id="qword"> whole words</label>
   </div>
   <div id="qresults"></div>
 </div>
+<div id="reaching" hidden><div class="spin"></div><span>finding it…</span></div>
 <!-- Tidings, prompts, status and settings: each its own page, loaded once and kept, beside the Moods. -->
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
@@ -4674,36 +4691,63 @@
   const searchBox = document.getElementById('search');
   const qInput = document.getElementById('q');
   const qScope = document.getElementById('qscope');
+  const qWho = document.getElementById('qwho');
+  const qWord = document.getElementById('qword');
   const qResults = document.getElementById('qresults');
-  let qTimer = null, qSeq = 0;
+  let qTimer = null, qSeq = 0, qMore = null;
   function openSearch() {
     searchBox.style.top = document.querySelector('header').getBoundingClientRect().bottom + 'px';  // just below it
     searchBox.hidden = false;
+    whoOptions();
     qInput.focus(); qInput.select();
     if (qInput.value.trim().length >= 2) runSearch();
   }
   function closeSearch() { searchBox.hidden = true; }
-  function marked(text, q) {
-    const safe = esc(text), needle = esc(q);
-    const at = safe.toLowerCase().indexOf(needle.toLowerCase());
-    return at < 0 ? safe : safe.slice(0, at) + '<mark>' + safe.slice(at, at + needle.length) + '</mark>' + safe.slice(at + needle.length);
+  // Said by: anyone, humans, emergents, or one of them by name.
+  function whoOptions() {
+    const had = qWho.value, names = people.map(p => p.name).sort();
+    if (qWho.options.length === 3 + names.length) return;
+    qWho.innerHTML = '<option value="">anyone</option><option value="human">humans</option><option value="emergent">emergents</option>'
+      + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    qWho.value = had;
   }
-  async function runSearch() {
-    const q = qInput.value.trim(), seq = ++qSeq;
-    if (q.length < 2) { qResults.innerHTML = '<div class="note">Two letters at least.</div>'; return; }
-    qResults.innerHTML = '<div class="note">Searching…</div>';
-    const here = qScope.value === 'here' && current;
+  // Every term the server matched, marked where it is in the snippet.
+  function marked(text, terms, whole) {
+    const safe = esc(text);
+    const alts = terms.map(t => t.split(/\s+/).map(w => esc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'));
+    if (!alts.length) return safe;
+    const re = new RegExp((whole ? '(^|[^\\w])' : '()') + '(' + alts.join('|') + ')' + (whole ? '(?=[^\\w]|$)' : ''), 'gi');
+    return safe.replace(re, (m, pre, hit) => pre + '<mark>' + hit + '</mark>');
+  }
+  async function runSearch(more) {
+    const q = qInput.value.trim(), seq = more ? qSeq : ++qSeq;
+    if (q.replace(/"/g, '').trim().length < 2) { qResults.innerHTML = '<div class="note">Two letters at least.</div>'; return; }
+    const scope = current ? qScope.value : 'all', here = scope !== 'all';
+    const params = new URLSearchParams({ q });
+    if (here) params.set('mood', current);
+    if (scope === 'threads') params.set('threads', '1');
+    if (qWho.value) params.set('who', qWho.value);
+    if (qWord.checked) params.set('word', '1');
+    if (more && qMore) params.set('before', qMore);
+    const moreBtn = qResults.querySelector('.more');
+    if (more && moreBtn) { moreBtn.disabled = true; moreBtn.textContent = 'Searching…'; }
+    else qResults.innerHTML = '<div class="note">Searching…</div>';
     try {
-      const r = await fetch('/api/search/?q=' + encodeURIComponent(q) + (here ? '&mood=' + encodeURIComponent(current) : ''));
-      const { hits } = await r.json();
+      const r = await fetch('/api/search/?' + params);
+      const { hits, more: next, terms = [q] } = await r.json();
       if (seq !== qSeq) return;  // a newer search is under way
-      qResults.innerHTML = hits.map(h => `<a class="hit" href="/moods/${encodeURIComponent(h.mood)}/#m-${esc(h.id)}" data-slug="${esc(h.mood)}" data-id="${esc(h.id)}">`
-        + `<b>${esc(h.sender)}</b>${here ? '' : ' in ' + esc(h.title)} · ${esc(stamp(h.created_at))}<span class="txt">${marked(h.text, q)}</span></a>`).join('')
-        || `<div class="note">Nothing said ${here ? 'in this Mood' : 'in any Mood'} contains “${esc(q)}”.</div>`;
+      qMore = next;
+      const where = scope === 'threads' ? 'in this Mood or its threads' : here ? 'in this Mood' : 'in any Mood';
+      const html = hits.map(h => `<a class="hit" href="/moods/${encodeURIComponent(h.mood)}/#m-${esc(h.id)}" data-slug="${esc(h.mood)}" data-id="${esc(h.id)}">`
+        + `<b>${esc(h.sender)}</b>${h.mood === current ? '' : ' in ' + esc(h.title)} · ${esc(stamp(h.created_at))}<span class="txt">${marked(h.text, terms, qWord.checked)}</span></a>`).join('');
+      if (moreBtn) moreBtn.remove();
+      if (!more) qResults.innerHTML = html || (next ? '' : `<div class="note">Nothing said ${where} has “${esc(q)}”.</div>`);
+      else qResults.insertAdjacentHTML('beforeend', html);
+      if (next) qResults.insertAdjacentHTML('beforeend', `<button type="button" class="more">${hits.length ? 'Further back' : 'Nothing yet; look further back'}</button>`);
     } catch (e) { if (seq === qSeq) qResults.innerHTML = '<div class="note">Search failed; try again.</div>'; }
   }
-  qInput.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(runSearch, 300); });
-  qScope.addEventListener('change', runSearch);
+  qInput.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(() => runSearch(), 300); });
+  for (const el of [qScope, qWho, qWord]) el.addEventListener('change', () => runSearch());
   document.getElementById('searchBtn').addEventListener('click', () => (searchBox.hidden ? openSearch() : closeSearch()));
   document.getElementById('qclose').addEventListener('click', closeSearch);
   document.addEventListener('keydown', e => {
@@ -4712,12 +4756,13 @@
     else if (e.key === 'Escape' && !searchBox.hidden) closeSearch();
   });
   qResults.addEventListener('click', async e => {
+    if (e.target.closest('.more')) return runSearch(true);
     const a = e.target.closest('a.hit');
     if (!a) return;
     e.preventDefault();
     if (matchMedia(PHONE).matches) closeSearch();
     if (a.dataset.slug !== current) await open(a.dataset.slug, true);
-    if (!(await reveal(a.dataset.id))) showError('That message is further back than this page reaches.');
+    if (!(await reveal(a.dataset.id))) showError('That message is no longer here.');
   });
 
   function touch(slug) {
@@ -4763,7 +4808,8 @@
   async function reveal(id) {
     if (!id) return false;
     stopSettling();  // taken to a message: the newest no longer pulls
-    for (let i = 0; i < 12; i++) {
+    const reaching = document.getElementById('reaching');
+    for (let i = 0; i < 2; i++) {
       // A message, or a step (a tool call), shown in its opened group.
       const el = document.getElementById('m-' + id) || document.querySelector(`.step[data-id="${CSS.escape(id)}"]`);
       if (el) {
@@ -4776,9 +4822,11 @@
         el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
         return true;
       }
+      // Not drawn yet: everything back to it, in one ask, under a spinner.
       const earlier = document.getElementById('earlier');
-      if (!earlier || earlier.hidden) return false;
-      await loadEarlier();
+      if (i || !earlier || earlier.hidden) return false;
+      const spin = setTimeout(() => { reaching.hidden = false; }, 150);
+      try { if (!(await loadEarlier(id))) return false; } finally { clearTimeout(spin); reaching.hidden = true; }
     }
     return false;
   }
@@ -4941,15 +4989,18 @@
   function stopSettling() { if (settling) { settling.abort(); settling = null; } }
 
   let firstId = null;      // the oldest item shown, for ?before=
-  async function loadEarlier() {
+  // A page further back; or, given `to`, everything back to that message, in one ask.
+  async function loadEarlier(to) {
     const button = document.getElementById('earlier');
-    if (!firstId || !button) return;
+    if (!firstId || !button) return false;
     button.disabled = true; button.textContent = 'loading…';
     const mine = gen;
     try {
-      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/turns/?before=' + firstId);
+      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/turns/?before=' + firstId
+                            + (to ? '&from=' + encodeURIComponent(to) : ''));
+      if (!r.ok) return false;
       const data = await r.json();
-      if (mine !== gen) return;  // switched away meanwhile
+      if (mine !== gen) return false;  // switched away meanwhile
       const items = itemsOf(data);
       const box = document.createElement('div');
       const saved = prev; prev = null;
@@ -4963,6 +5014,7 @@
       main.scrollTop += main.scrollHeight - height;
       if (items.length) firstId = items[0].v.id;
       button.hidden = !data.has_earlier;
+      return true;
     } finally { button.disabled = false; button.textContent = 'Load earlier'; }
   }
   document.addEventListener('click', e => { if (e.target.id === 'earlier') loadEarlier(); });
