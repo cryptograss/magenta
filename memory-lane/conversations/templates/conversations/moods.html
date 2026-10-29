@@ -1277,6 +1277,8 @@
   #todoBody .head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   #todoBody .head b { flex: 1; }
   #todoBody .head a { color: var(--muted); font-size: 12px; }
+  #todoBody .head b a { color: inherit; font-size: inherit; text-decoration: none; }
+  #todoBody .head b a:hover { text-decoration: underline; }
   #todoBody .head button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; }
   #todoBody .note { color: var(--muted); font-size: 12.5px; margin: 0 0 8px; }
   #todoBody .note:empty { display: none; }
@@ -1548,7 +1550,7 @@
   <aside id="todo" hidden aria-label="To do">
     <button type="button" id="todoTab" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
     <div id="todoBody">
-      <div class="head"><b>To do</b><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
+      <div class="head"><b><a id="todoPage" target="_blank" rel="noopener" title="The list's page on PickiPedia">To do</a></b><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
       <p class="note" id="todoNote"></p>
       <ul id="todoList"></ul>
       <details id="todoDone"><summary></summary><ul></ul></details>
@@ -1975,6 +1977,7 @@
     todoEl.querySelector('#todoTab .n').textContent = open.length || '';
     todoEl.querySelector('#todoTab').setAttribute('aria-label', `To do: ${open.length} open`);
     document.getElementById('todoEdit').href = t.edit;
+    document.getElementById('todoPage').href = t.exists ? t.page : t.edit;  // its page, in one click (Justin, 29 Oct)
     document.getElementById('todoNote').textContent = t.error ? `The list couldn't be read: ${t.error}.`
       : !t.exists ? 'No list here yet: "edit" starts one on PickiPedia, as YAML between <todo> tags ("- task: ...").'
       : !t.items.length ? 'Nothing to do.' : '';
@@ -2034,7 +2037,8 @@
   if (store.get('todoOpen', false) && !matchMedia(PHONE).matches) todoEl.classList.add('open');
   document.getElementById('todoTab').addEventListener('click', () => openTodo(true));
   document.getElementById('todoClose').addEventListener('click', () => openTodo(false));
-  document.getElementById('todoEdit').addEventListener('click', () => { todoShown = null; });  // back from editing: ask afresh
+  document.getElementById('todoEdit').addEventListener('click', () => { todoShown = null; });
+  document.getElementById('todoPage').addEventListener('click', () => { todoShown = null; });  // back from editing: ask afresh
   setInterval(() => loadTodo(), 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadTodo(todoShown === null); });
 
