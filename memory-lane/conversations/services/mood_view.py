@@ -79,6 +79,11 @@ _TAKE = re.compile(r'^\s*<take\s+to="([^"<>]{1,200})"\s*/>\s*$')
 # A look-only turn asking for its full tools (Justin, 28 Oct: "{emergent} requested tools for {purpose}"): a line in
 # the Mood, and 🔨 by its title in the Moods list until a full-tools turn of that emergent there (services/tools_ask.py).
 _TOOLS = re.compile(r'^\s*<tools\s+to="([^"<>]{1,200})"\s*/>\s*$')
+# The same shape, other asks (Justin, 29 Oct): <merge to="…"/> -> a merge asked of a person (🔀),
+# <deploy to="…"/> -> a redeploy (🔄). Both posted as a line in the Mood and an icon by its title,
+# as the tools ask is, until the event lands (a full-tools wake, a merged event, a deploy event).
+_MERGE = re.compile(r'^\s*<merge\s+to="([^"<>]{1,200})"\s*/>\s*$')
+_DEPLOY = re.compile(r'^\s*<deploy\s+to="([^"<>]{1,200})"\s*/>\s*$')
 
 
 def quiet_reason(text):
@@ -94,6 +99,16 @@ def quiet_reason(text):
             to = tools.group(1).split()
             return {'reason': 'requested tools for ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10]),
                     'by': '', 'type': 'tools'}
+        merge = _MERGE.match(text or '')
+        if merge:
+            to = merge.group(1).split()
+            return {'reason': 'requested a merge for ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10]),
+                    'by': '', 'type': 'merge'}
+        deploy = _DEPLOY.match(text or '')
+        if deploy:
+            to = deploy.group(1).split()
+            return {'reason': 'requested a redeploy of ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'of', 'for') else to)[:10]),
+                    'by': '', 'type': 'deploy'}
         take = _TAKE.match(text or '')
         if take:
             to = take.group(1).split()
@@ -1686,7 +1701,10 @@ def _activity(mood, now=None, only=None):
                     .order_by('-created_at').first())
         if boundary is not None:
             start = mine.filter(created_at__gt=boundary.created_at).order_by('created_at').first() or start
-    return {'agent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v}}
+    # Which tools this turn has, as its wake said (Justin, 29 Oct: 🔨 by a pulsing name in the list).
+    tools = next((said for said in (wake_said(prose(m.content) or '') for m in streak if m.sender_id == WAKE_SENDER) if said), '')
+    return {'agent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v},
+            **({'tools': tools} if tools else {})}
 
 
 # --- background tasks an agent is supervising ------------------------------

@@ -21,6 +21,7 @@ while a page is open, as before.
 import base64
 import json
 import logging
+import re
 import threading
 from datetime import timedelta
 
@@ -157,17 +158,28 @@ def public_key():
     return _b64url(point)
 
 
+def plain_text(text):
+    """A message's words alone, as the page's plainText: no markup, no links' addresses, one line."""
+    text = re.sub(r'```[^\n]*\n?', '', text or '')
+    text = re.sub(r'</?[a-z][^>]*>', '', text, flags=re.I)
+    text = re.sub(r'\[\[([^\]|]*\|)?([^\]]*)\]\]', r'\2', text)
+    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    text = re.sub(r'[*_`~]+', '', text)
+    text = re.sub(r'^\s*(#+|>|[-*]|\d+\.)\s+', '', text, flags=re.M)
+    return re.sub(r'\s+', ' ', text).strip()
+
+
 def notification(notice):
     """What a notice says on a lock screen: as the page's own notification does."""
     from conversations.models import Mood
     turn = notice['turn']
     mood = Mood.objects.filter(slug=notice['mood']).first()
-    title = {'answer': f"{turn['sender']} answered you", 'mention': f"{turn['sender']} mentioned you",
-             'talk': f"{turn['sender']} edited your talk page"}.get(
-        notice['kind'], f"{turn['sender']} in {(mood.title or mood.slug) if mood else 'a Mood'}")
-    where = f"{(mood.title or mood.slug)}: " if mood and notice['kind'] != 'said' else ''
+    # Who and where in the title; the body, only what they said (Justin, 29 Oct: a phone's fill up fast).
+    where = (mood.title or mood.slug) if mood else 'a Mood'
+    title = {'answer': f"{turn['sender']} answered you in {where}", 'mention': f"{turn['sender']} mentioned you in {where}",
+             'talk': f"{turn['sender']} edited your talk page"}.get(notice['kind'], f"{turn['sender']} in {where}")
     at = parse_datetime(turn.get('created_at') or '')
-    return {'title': title, 'body': (where + (turn.get('text') or ''))[:200], 'tag': turn['id'],
+    return {'title': title, 'body': plain_text(turn.get('text'))[:200], 'tag': turn['id'],
             # When it was said, not when the phone got it: one held while the phone slept shows its own time.
             **({'timestamp': int(at.timestamp() * 1000)} if at else {}),
             'data': {'slug': notice['mood'], 'id': turn['id']}}

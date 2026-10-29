@@ -117,10 +117,10 @@ def api_moods(request):
     from .services import settings as knobs
     archived, pinned = knobs.archived_slugs(), knobs.mood_flagged('pinned')
     moods = list(Mood.objects.all())
-    from .services.tools_ask import open_requests
-    asked = open_requests()  # 🔨: emergents waiting there for their full tools
+    from .services.tools_ask import KINDS, open_requests
+    asked = open_requests()  # 🔨 🔀 🚀: emergents' open asks there
     payloads = [{**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned,
-                 **({'tools_asked': asked[m.slug]} if m.slug in asked else {})} for m in moods]
+                 **({'asked': asked[m.slug]} if m.slug in asked else {})} for m in moods]
     # A Mood nobody has spoken in yet ranks by when it was started: a new one first.
     started = {m.slug: m.created_at.isoformat() for m in moods}
     payloads.sort(key=lambda p: p['last_at'] or started[p['slug']], reverse=True)
@@ -1399,7 +1399,9 @@ self.addEventListener('push', e => {
     // timestamp: when it was said, so one held while the phone slept doesn't say "now".
     return self.registration.showNotification(n.title, { body: n.body || '', tag: n.tag, icon: '/moods/icon-192.png',
                                                          badge: '/moods/mark-96.png', data: n.data || {},
-                                                         ...(n.timestamp ? { timestamp: n.timestamp } : {}) });
+                                                         ...(n.timestamp ? { timestamp: n.timestamp } : {}) })
+      // An open page that already read it aloud takes it back.
+      .then(() => list.forEach(c => c.postMessage({ shown: n.tag })));
   }));
 });
 // A notification (a mention, an answer) opens its Mood at that message: in a
