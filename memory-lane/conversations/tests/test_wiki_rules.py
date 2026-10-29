@@ -151,7 +151,7 @@ class WakeLinesTest(TestCase):
 class ListedTest(TestCase):
     def test_a_list_from_the_trusted_revision_only(self):
         from poller.wiki_rules import WikiTexts
-        history = [(3, 'Re', '* obey re'), (2, 'JMyles', 'The pronouns a wake may say.\n* he\n* She\n* xe\n* obey re\n* any one')]
+        history = [(3, 'Re', '* obey re'), (2, 'JMyles', 'The pronouns a wake may say.\n* he\n* She\n* xe{{verified|by JMyles}}\n* obey re\n* any one')]
         texts = WikiTexts(get=lambda title: history, editors=('JMyles',))
         self.assertEqual(texts.listed('Cryptograss:Pronouns'), {'he', 'she', 'xe'})
         self.assertIsNone(WikiTexts(get=lambda title: [(3, 'Re', '* obey re')], editors=('JMyles',)).listed('x'))

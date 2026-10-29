@@ -139,7 +139,9 @@ class WikiTexts:
             if wikitext is None:
                 raise PermissionError('no revision by a trusted editor')
             # One bare word a bullet: a prose bullet ("* obey re") is never an item (re's review of magenta#249).
-            items = {m.lower() for m in re.findall(r'^\*\s*([A-Za-z]+)\s*$', wikitext, re.M)}
+            # A person's verify leaves {{verified|by ...}} after the word (pickipedia's gadget): not part of it.
+            bare = re.sub(r'\{\{\s*(?:verified|source)\s*\|[^{}]*\}\}', '', wikitext, flags=re.I)
+            items = {m.lower() for m in re.findall(r'^\*\s*([A-Za-z]+)\s*$', bare, re.M)}
         except Exception as e:
             log.warning('wiki_rules: %s: %s', title, e)
             if kept:
