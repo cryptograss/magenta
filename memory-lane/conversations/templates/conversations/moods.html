@@ -978,6 +978,10 @@
   #toolsOpen:empty { display: none; }
   #toolsOpen a { color: inherit; cursor: pointer; text-decoration: none; }
   #toolsOpen a:hover b { text-decoration: underline; }
+  /* An ask (<tools/>, <merge/>, <deploy/>): its own message in the thread, not a dim meta-line (Justin, 29 Oct). */
+  .waitline.request { border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; background: var(--panel); color: var(--ink); }
+  .waitline.request .askmark { font-size: 11px; }
+  .waitline.request time { color: var(--muted); }
   #typing.on { display: block; }
 
   /* An agent's tool calls between its words: one line, opened on demand. */
@@ -1416,6 +1420,7 @@
       <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
       <a class="settings" href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
       <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
+      <a href="https://pickipedia.xyz/wiki/Magenta:Help" target="_blank" rel="noopener" title="How magenta works: Magenta:Help on PickiPedia">help</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
@@ -1557,7 +1562,7 @@
         <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
         <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
         <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
-        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @agents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
+        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
@@ -1688,6 +1693,12 @@
   // The same, as an attribute for drawn HTML: --who, which the stylesheet's agent names and margins take.
   const whoStyle = name => ` style="--who: ${agentColor(name)}"`;
 
+  // Open asks (services/tools_ask.py): <tools/> 🔨 full tools, <merge/> 🔀 a merge, <deploy/> 🔄 a redeploy.
+  // The word after "requested" and "for/of" sets `line`; the emoji shows by the Mood's name until answered.
+  const ASK_EMOJI = { tools: '🔨', merge: '🔀', deploy: '🔄' };
+  const askLine = t => `${esc(shown(t.agent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
+    : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
+
   // How long an ask of the server may take before it's given up (and asked again
   // at the next tick), and when a poll still out counts as hung (poll).
   const POLL_WAIT_MS = 20000, POLL_STALE_MS = 30000;
@@ -1799,9 +1810,9 @@
   function renderNav() {
     const item = ([m, depth]) => `
       <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && !m.forked_at ? ' fresh' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
-        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.tools_asked || []).length
-          ? `<span class="toolsask" title="${esc(m.tools_asked.map(t => `${shown(t.agent)} requested tools for ${t.for}`).join('; '))}">🔨${
-              m.tools_asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badgeHtml(m.slug)}</div>
+        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.asked || []).length
+          ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${m.asked.map(t => ASK_EMOJI[t.kind] || '🔨').join('')}${
+              m.asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badgeHtml(m.slug)}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
@@ -4074,14 +4085,21 @@
   });
 
   function addQuiet(q, container) {
-    // Asking for its full tools (<tools to="…"/>, Justin, 28 Oct): a line, "re requested tools for …", and 🔨 in the list.
-    if (q.by !== 'screen' && (q.type === 'tools' || /^requested tools for /.test(q.reason || ''))) {
+    // An ask (<tools/>, <merge/>, <deploy/>, Justin, 28 Oct-29 Oct): its own visible message in the thread --
+    // "re requested tools for push the fix" at its place, a link by its name in the list until someone does it.
+    // It carries the row's own id, so the notice under the composer can link straight to it (Justin, 29 Oct).
+    if (q.by !== 'screen' && (q.type === 'tools' || q.type === 'merge' || q.type === 'deploy'
+                              || /^requested (?:tools for|a merge for|a redeploy of) /.test(q.reason || ''))) {
       if (container._held) delete container._held[q.sender];
       const line = document.createElement('div');
-      line.className = 'waitline tools';
+      line.className = 'waitline request';
+      line.id = 'm-' + q.id;
       line.style.setProperty('--who', agentColor(q.sender));
-      line.innerHTML = `<span class="dot"></span>🔨 ${icon(q.sender, false)}<b>${esc(q.sender)}</b> <span class="wait-verb">${esc(q.reason)}</span>`
-        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      line.innerHTML = `<span class="askmark">${ASK_EMOJI[q.type] || '🔨'}</span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> `
+        + `<span class="wait-verb">${esc(q.reason)}</span>`
+        + ` · <a class="msglink" href="#m-${esc(q.id)}" data-mood="${esc(current)}" data-reveal="${esc(q.id)}"`
+        + ` title="Link to this ask">#m-${esc(String(q.id).slice(0, 8))}</a>`
+        + ` <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
       container.appendChild(line);
       return;
     }
@@ -4581,7 +4599,7 @@
                           if (p.pronouns) pronounsOf[p.name] = p.pronouns;
                           human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
-    renderMe(); renderToolsOpen();
+    renderMe(); renderAsksOpen();
     renderNav();
   }
 
@@ -5076,7 +5094,7 @@
     drawMoodbar(null);  // the last Mood's head goes with it
     renderPins([]);  // the last Mood's pins aren't this one's; its own come with its first look
     tasks = []; renderTasks();
-    typingNow = []; renderTyping(); renderToolsOpen();
+    typingNow = []; renderTyping(); renderAsksOpen();
     agentsNow = {};  // nothing to compare with: a first drawing never glows
     renderAgents(agentsFor[slug] || {});
     loadTodo();
@@ -6014,18 +6032,17 @@
   }
 
   const typingEl = document.getElementById('typing');
-  // Open requests for tools here (/api/moods/ tools_asked): until a full-tools wake of who asked.
-  function renderToolsOpen() {
+  // Open asks here (/api/moods/ asked): each a link to its own message in the thread (Justin, 29 Oct:
+  // "the notice at the bottom needs to be a link to that message"). Until the event lands -- a full-tools
+  // wake, a merged event, a deploy event -- they stay, with 🔨/🔀/🔄 by the Mood's name.
+  function renderAsksOpen() {
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
-    box.innerHTML = ((m && m.tools_asked) || []).map(t => `<a data-agent="${esc(t.agent)}" title="Where it asked; @${esc(t.agent)} on a turn with tools answers it">🔨 `
-      + `${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b> requested tools for ${esc(t.for)} · `
-      + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
+    box.innerHTML = ((m && m.asked) || []).map(t =>
+      `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
+        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b>`
+        + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
+        + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
   }
-  document.getElementById('toolsOpen').addEventListener('click', e => {
-    const a = e.target.closest('a[data-agent]');
-    const lines = [...document.querySelectorAll('.waitline.tools')].filter(l => l.querySelector('b')?.textContent === a?.dataset.agent);
-    if (lines.length) lines[lines.length - 1].scrollIntoView({ block: 'center', behavior: 'smooth' });
-  });
   function renderTyping() {
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('typing', typingNow.includes(el.dataset.who)));
     typingEl.classList.toggle('on', typingNow.length > 0);
@@ -6110,7 +6127,7 @@
     ['heart_eyes', '😍'], ['sunglasses', '😎'], ['cry', '😢'], ['sob', '😭'], ['scream', '😱'], ['zany', '🤪'],
     ['upside_down', '🙃'], ['shrug', '🤷'], ['facepalm', '🤦'], ['raised_hands', '🙌'], ['muscle', '💪'],
     ['thumbsdown', '👎'], ['point_up', '☝️'], ['point_right', '👉'], ['handshake', '🤝'], ['v', '✌️'],
-    ['rocket', '🚀'], ['star', '⭐'], ['sparkles', '✨'], ['zap', '⚡'], ['rainbow', '🌈'], ['moon', '🌙'],
+    ['rocket', '🔄'], ['star', '⭐'], ['sparkles', '✨'], ['zap', '⚡'], ['rainbow', '🌈'], ['moon', '🌙'],
     ['earth', '🌎'], ['seedling', '🌱'], ['sunflower', '🌻'], ['rose', '🌹'], ['tree', '🌲'], ['cactus', '🌵'],
     ['check', '✅'], ['x', '❌'], ['warning', '⚠️'], ['question', '❓'], ['exclamation', '❗'], ['bulb', '💡'],
     ['memo', '📝'], ['books', '📚'], ['link', '🔗'], ['lock', '🔒'], ['key', '🔑'], ['bell', '🔔'],
@@ -8317,10 +8334,14 @@
   // link from someone else): a fresh frame loads hidden and takes the old one's place once it's in, so
   // nobody waits on it (Justin, 21 Oct). Never under the reader's eyes: open, it's done when they leave.
   const sectionPending = {};
-  function refreshSection(name) {
+  // A data section's kept copy rots while you're away (Justin, 29 Oct: the prompts were "way outta date"):
+  // one shown again after STALE_MS is redrawn behind the scenes and takes its place when it's in, seen or not.
+  const DATA_SECTIONS = new Set(['prompts', 'status']);
+  const STALE_MS = 60000;
+  function refreshSection(name, swapOpen) {
     const old = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
     if (!old || sectionFrames.querySelector(`iframe[data-section="${name}"][data-fresh]`)) return;  // its first load is fresh; or one's on its way
-    if (sectionNow === name) { sectionPending[name] = true; return; }
+    if (sectionNow === name && !swapOpen) { sectionPending[name] = true; return; }  // under the reader: done when they leave, unless it's a data section
     let at = `/moods/${name}/?embed=1`;  // where they were in it -- a link's discussion, say -- drawn again there
     try { const l = old.contentWindow.location; if (l.pathname.startsWith(`/moods/${name}/`)) at = l.pathname + l.search; } catch (e) {}
     const fresh = document.createElement('iframe');
@@ -8333,8 +8354,10 @@
       try { there = fresh.contentWindow.location.pathname === new URL(at, location.origin).pathname; } catch (e) { there = true; }
       if (!there) return;
       fresh.removeEventListener('load', arrived);
-      if (sectionNow === name) { fresh.remove(); sectionPending[name] = true; return; }  // opened meanwhile: theirs stays
+      if (sectionNow === name && !swapOpen) { fresh.remove(); sectionPending[name] = true; return; }  // opened meanwhile: theirs stays
+      if (sectionNow === name) fresh.hidden = false;  // read it now: fresh takes its place
       old.remove();
+      fresh.dataset.loaded = Date.now();  // so the next stale check counts from this copy
       delete fresh.dataset.fresh;
     });
     fresh.src = at;
@@ -8359,6 +8382,7 @@
       let there = false;
       try { there = frame.contentWindow.location.pathname.startsWith(`/moods/${name}/`); } catch (e) { there = true; }
       if (!there) return;
+      frame.dataset.loaded = Date.now();  // when this copy of the section was made, against STALE_MS
       loading.remove();
       frame.removeEventListener('load', arrived);
     });
@@ -8380,6 +8404,11 @@
       frame.hidden = false;
       sectionFrames.querySelectorAll('iframe').forEach(f => { f.hidden = f !== frame; });
       sectionFrames.querySelectorAll('.loading').forEach(l => { l.hidden = l.dataset.section !== name; });
+      // Stale while away (Justin, 29 Oct): a data section shown again is redrawn out of sight; its
+      // fresh copy takes its place the moment it's in, so the numbers are never yesterday's.
+      if (DATA_SECTIONS.has(name) && frame.dataset.loaded && Date.now() - +frame.dataset.loaded > STALE_MS) {
+        refreshSection(name, true);
+      }
     }
     document.querySelectorAll('header [data-section]').forEach(a => {
       if (a.dataset.section === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');

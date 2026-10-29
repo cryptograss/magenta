@@ -68,6 +68,18 @@ class DirectionTest(TestCase):
                            'See https://example.com and `make test`. [[Banjo]] too.')
         self.assertEqual(said, 'Done\nMerged number 69\n (some code) \nSee a link to example.com and make test. Banjo too.')
 
+    def test_a_tag_in_backticks_is_said_as_its_name_not_performed(self):
+        said = voice.plain('A tag quoted as `[sighs]` is said as its name; two in one span `[sighs] and [laughs]` '
+                           'and a mid-phrase `run [tag] now` read the same way.')
+        self.assertEqual(said, 'A tag quoted as sighs is said as its name; two in one span sighs and laughs '
+                               'and a mid-phrase run tag now read the same way.')
+        # Outside backticks the tag stays for ElevenLabs to perform.
+        self.assertEqual(voice.plain('a bare [sighs] stays'), 'a bare [sighs] stays')
+
+    def test_a_double_bracket_page_in_backticks_survives_to_the_wiki_link_strip(self):
+        said = voice.plain('Quoting the page `[[Maple Leaf Rag]]` should name it, not drop its brackets to tags.')
+        self.assertEqual(said, 'Quoting the page Maple Leaf Rag should name it, not drop its brackets to tags.')
+
     def test_ids_hashes_paths_and_symbols_are_said_not_spelled(self):
         said = voice.plain('Read /moods/magenta-26-million/#m-b1623e2c-24ba-4f1c-bac1-237ee20110a2 and '
                            'session 7ba09e1d-b666-4416-bf15-c4fb9beddc1e; commit 85d0964, in '
