@@ -97,6 +97,18 @@
   header .status.live::before { color: #2e9e5b; }
   header .status.stale::before { color: #d08b00; }
   header .account { position: relative; }
+  header .bellwrap { position: relative; }
+  #bellBtn { position: relative; border: 0; background: none; font-size: 16px; padding: 2px 4px; cursor: pointer; line-height: 1; }
+  #bellBtn.off .ring { opacity: .45; }
+  #bellBtn .badge { position: absolute; top: -5px; right: -7px; min-width: 15px; padding: 0 4px; font-size: 10px; line-height: 15px; }
+  #bellMenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 230px; max-width: 320px; background: var(--panel);
+              border: 1px solid var(--line); border-radius: 10px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 13.5px; }
+  #bellMenu[hidden] { display: none; }
+  #bellList a { display: flex; justify-content: space-between; gap: 10px; padding: 5px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; }
+  #bellList a:hover { background: var(--hover); }
+  #bellList .none { color: var(--muted); padding: 4px 6px; }
+  #bellMenu .belltoggle { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+  #bellMenu #notify { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
   #userBtn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 14px; padding: 1px 10px;
              font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
   #userBtn:hover { border-color: var(--accent); }
@@ -1321,6 +1333,11 @@
   <button id="searchBtn" type="button" title="Search what was said (/)">⌕</button>
   <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
   <span class="status" id="status" title="connecting…"></span>
+  <!-- The bell, out front with what's waiting for you (Justin, 29 Oct): mentions of you and answers to you, by Mood. -->
+  <span class="bellwrap" id="bellWrap" hidden>
+    <button id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span></button>
+    <div id="bellMenu" hidden><div id="bellList"></div><div class="belltoggle"><button id="notify" type="button" hidden aria-label="Notifications"></button></div></div>
+  </span>
   <span class="account">
     <button id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"></button>
     <div id="userMenu" hidden>
@@ -1334,7 +1351,7 @@
         <label><input type="checkbox" data-sound="agent-mention"> emergents mentioning me</label>
         <label><input type="checkbox" data-sound="person"> every message from people</label>
         <label><input type="checkbox" data-sound="agent"> every message from emergents</label>
-        <span class="head" id="tellHead">Notifications <button id="notify" type="button" hidden aria-label="Notifications"></button></span>
+        <span class="head" id="tellHead">Notifications <small>(on or off at the 🔔)</small></span>
         <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
         <label><input type="checkbox" data-tell="person"> every message from people</label>
         <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
@@ -4419,7 +4436,37 @@
   function countBadges() {
     badges = {};
     for (const [slug, ids] of Object.entries(unread)) if (ids.size) badges[slug] = ids.size;
+    renderBellCount();
   }
+  // The bell's number: everything waiting for you, every Mood; its menu, which Moods.
+  const bellBtn = document.getElementById('bellBtn'), bellMenu = document.getElementById('bellMenu');
+  function renderBellCount() {  // called early (renderBell, at load): its elements by id, not the consts below
+    const bellBtn = document.getElementById('bellBtn'), bellMenu = document.getElementById('bellMenu');
+    document.getElementById('bellWrap').hidden = !me;
+    const total = Object.values(badges).reduce((a, b) => a + b, 0);
+    const count = document.getElementById('bellCount');
+    count.hidden = !total; count.textContent = total > 99 ? '99+' : total;
+    bellBtn.classList.toggle('off', typeof notifying === 'function' && !notifying());
+    bellBtn.title = total ? `${total} for you: mentions and answers` : 'Nothing new for you';
+    if (!bellMenu.hidden) renderBellList();
+  }
+  function renderBellList() {
+    const rows = Object.entries(badges).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
+    document.getElementById('bellList').innerHTML = rows.length
+      ? rows.map(([slug, n]) => `<a href="/moods/${encodeURIComponent(slug)}/" data-mood="${esc(slug)}"><span>#${esc((moods.find(m => m.slug === slug) || {}).title || slug)}</span><span class="badge">${n}</span></a>`).join('')
+      : '<div class="none">Nothing new for you.</div>';
+  }
+  bellBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    bellMenu.hidden = !bellMenu.hidden;
+    bellBtn.setAttribute('aria-expanded', String(!bellMenu.hidden));
+    if (!bellMenu.hidden) renderBellList();
+  });
+  bellMenu.addEventListener('click', e => {
+    const a = e.target.closest('a[data-mood]');
+    if (a) { e.preventDefault(); bellMenu.hidden = true; open(a.dataset.mood, true); }
+  });
+  document.addEventListener('click', e => { if (!bellMenu.hidden && !e.target.closest('#bellWrap')) bellMenu.hidden = true; });
   async function refreshBadges(force) {
     if (!me) { badges = {}; renderNav(); setTitle(); return; }
     // Asked for sooner while a sound or the bell waits on every message: 15 s late is too late to chime.
@@ -4472,7 +4519,8 @@
   }
   function renderBell() {
     bell.hidden = !me || !('Notification' in window);
-    bell.textContent = notifying() ? '🔔 on' : '🔕 off';
+    bell.textContent = notifying() ? '🔔 notifications on: turn off' : '🔕 notifications off: turn on';
+    renderBellCount();
     document.getElementById('alerts').classList.toggle('bell-off', !notifying());
     const closed = pushable() ? ', even with magenta closed' : '';
     bell.title = notifying() ? `Notifying you of mentions and answers${closed} (click to stop)`
