@@ -144,7 +144,7 @@ class WakeLinesTest(TestCase):
         from poller.mood_poller import LOOK_ONLY, wake_footer
         texts = self.texts()
         self.assertEqual(wake_footer(full=True, texts=texts)[1], 'Full tools: careful. {nonsense}')
-        self.assertEqual(wake_footer(full=False, texts=texts)[1], LOOK_ONLY)
+        self.assertTrue(wake_footer(full=False, texts=texts)[1].startswith(LOOK_ONLY))  # then the offer of tools
 
 
 
