@@ -269,8 +269,15 @@ Every change is kept at the bottom, with who made it.</p>
   // Emergent defaults: one emergent everywhere (agent, no Mood). The Mood's bar has listening, discretion and
   // verbosity; the model is here too (Justin, 28 Oct: the defaults had no way to pick it -- the row above writes
   // a model into every Mood, which is a different thing from the default a new Mood starts from).
+  // A room's pace: one default here, for every emergent; a Mood sets its own in its bar (Justin, 29 Oct).
+  const PACE_KEYS = ['consider_after', 'idle_after', 'considers_per_hour'];
+  function paceCard() {
+    const value = k => { const row = state.set.find(s => s.key === k && !s.mood && !s.agent); return row ? row.value : state.knobs[k].default; };
+    return `<div class="card"><h2>Pace</h2><div class="sub">every emergent, in every Mood that doesn't set its own (in its bar)</div>`
+      + PACE_KEYS.map(k => field(k, value(k), null, null)).join('') + '</div>';
+  }
   function defaultsTable() {
-    const keys = Object.keys(state.knobs).filter(k => k === 'model' || !IN_THE_MOOD.includes(k));
+    const keys = Object.keys(state.knobs).filter(k => (k === 'model' || !IN_THE_MOOD.includes(k)) && !PACE_KEYS.includes(k));
     const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
     return head + state.agents.map(a => {
       const v = everywhere(a);
@@ -293,7 +300,7 @@ Every change is kept at the bottom, with who made it.</p>
     document.getElementById('global').innerHTML = [`<div class="card"><h2>Budget</h2><div class="sub">for all emergents together</div>`
       + `<div class="row"><label title="${esc(state.global_knobs.consider_usd_per_day.help)}">$ a day</label>`
       + `<span><input type="number" min="0" step="0.5" data-key="consider_usd_per_day" data-mood="" data-agent="" value="${esc(state.global.consider_usd_per_day)}" ${viewer ? '' : 'disabled'}><span class="status"></span></span></div></div>`,
-      offeredCard()].join('');
+      paceCard(), offeredCard()].join('');
     document.getElementById('history').innerHTML = state.history.map(h =>
       `<tr><td>${esc(when(h.at))}</td><td>${esc(h.set_by || '')}</td><td>${esc(h.mood ? '#' + h.mood : 'everywhere')}${h.agent ? ' · ' + esc(h.agent) : ''}</td>`
       + `<td>${esc(h.key)}</td><td class="value">${esc(JSON.stringify(h.value))}</td><td>${esc(h.note)}</td></tr>`).join('')

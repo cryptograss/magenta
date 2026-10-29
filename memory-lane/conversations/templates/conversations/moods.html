@@ -1179,6 +1179,8 @@
   /* Mode: just its sign, closed; the menu open says the rest (1hr and such) (Justin, 27 Oct). */
   .hush select[data-knob="listening"] { width: 3.2em; }
   .hush .agentgrid .cell { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .hush .pace { flex-basis: 100%; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .hush .pace input { width: 4.5em; font-size: 12px; }
   .hush .agentgrid .heads { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
   .hush .agentgrid .heads .cell[title] { cursor: help; }
   /* Folded, all the agents are one line: each one's pie, model and effort in its colour; ▸ opens their menus. */
@@ -5468,7 +5470,7 @@
     const box = document.getElementById('hush');
     // Redraw the menus only when a setting changed: never under someone's open menu.
     const key = JSON.stringify(Object.entries(agents).map(([n, a]) => [n, a.listening, a.model, a.effort, a.ultracode, a.reads,
-                                                                       a.discretion, a.verbosity, viewer]).concat(agentsWhole()));
+                                                                       a.discretion, a.verbosity, a.pace, viewer]).concat(agentsWhole()));
     if (box && (key !== agentsShown || !box.childElementCount)) {
       agentsShown = key;
       box.innerHTML = agentRows(agents);
@@ -5573,8 +5575,31 @@
       // A cell each, in the grid every agent's row shares: listening, then model and effort, then the rest.
       return [listen, `<span class="cell">${model}</span>`, effort, discretion, verbosity, reads, ultra || '<span></span>']
         .reduce((out, cell) => out + cell, row) + '</span>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' + paceLine(agents);
   }
+  // This Mood's pace, the same for every emergent here (Justin, 29 Oct): under the open rows, for a key-holder.
+  const PACE = [['consider_after', 'wait', 's', 1, 'seconds of quiet (and nobody typing) before an emergent considers new posts'],
+                ['idle_after', 'first unasked look', 'min', 60, 'minutes of silence before the first unprompted look; doubles after each one it stays quiet'],
+                ['considers_per_hour', 'looks', '/hr', 1, 'at most this many full considerations an hour, here']];
+  function paceLine(agents) {
+    const pace = (Object.values(agents)[0] || {}).pace;
+    if (!pace || !keyHolder) return '';
+    return '<div class="pace" title="the pace here, for every emergent">pace here: ' + PACE.map(([k, label, unit, scale, what]) =>
+      `<label title="${esc(what)}">${esc(label)} <input type="number" min="0" data-pace="${k}" data-scale="${scale}"`
+      + ` value="${Math.round((pace[k] || 0) / scale)}">${esc(unit)}</label>`).join(' · ') + '</div>';
+  }
+  document.addEventListener('change', async e => {
+    const input = e.target.closest('#hush input[data-pace]');
+    if (!input) return;
+    const key = input.dataset.pace, value = Number(input.value) * Number(input.dataset.scale);
+    const r = await fetch('/api/settings/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ key, value, mood: current, agent: null, note: 'from the Mood' }),
+    });
+    if (!r.ok) showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status));
+    agentsShown = '';
+    poll(false);
+  });
   document.addEventListener('change', async e => {
     const select = e.target.closest('#hush select, #hush input[type=checkbox]');
     if (!select) return;
