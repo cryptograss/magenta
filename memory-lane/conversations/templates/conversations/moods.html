@@ -134,16 +134,15 @@
   #userMenu label.only { display: none; }
   body.has-me #userMenu label.only { display: flex; }
   body.writer #userMenu label.me { display: none; }
-  #userMenu #notify { border: 0; background: none; font: inherit; cursor: pointer; }
-  /* Alerts: a sound, and the bell for every message, as this browser's person chose. */
-  #userMenu #alerts { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-                      margin: 4px 0; padding-top: 8px; padding-bottom: 8px; }
-  #userMenu #alerts[hidden] { display: none; }
-  #userMenu #alerts .head { color: var(--ink); font-size: 12px; font-weight: 600; margin-top: 2px; }
-  #userMenu #alerts .hint { color: var(--muted); font-size: 12px; }
-  #userMenu #alerts .hint[hidden] { display: none; }
-  #userMenu #alerts.bell-off [data-tell] { opacity: .5; }  /* chosen, but nothing tells until the bell's on */
-  #userMenu #alerts label[hidden] { display: none; }
+  /* Alerts: a sound, and the bell for every message, as this browser's person chose; in the bell's menu (Justin, 29 Oct). */
+  #bellMenu #alerts { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); margin-top: 6px; padding: 6px 6px 0; }
+  #bellMenu #alerts label { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; font-size: 12.5px; }
+  #bellMenu #alerts[hidden] { display: none; }
+  #bellMenu #alerts .head { color: var(--ink); font-size: 12px; font-weight: 600; margin-top: 2px; }
+  #bellMenu #alerts .hint { color: var(--muted); font-size: 12px; }
+  #bellMenu #alerts .hint[hidden] { display: none; }
+  #bellMenu #alerts.bell-off [data-tell] { opacity: .5; }  /* chosen, but nothing tells until the bell's on */
+  #bellMenu #alerts label[hidden] { display: none; }
   /* The servers: four dots, pulsing while one is being redeployed. */
   .servers { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
   .servers .srv { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
@@ -1356,7 +1355,18 @@
   <!-- The bell, out front with what's waiting for you (Justin, 29 Oct): mentions of you and answers to you, by Mood. -->
   <span class="bellwrap" id="bellWrap" hidden>
     <button id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span></button>
-    <div id="bellMenu" hidden><div id="bellList"></div><div class="belltoggle"><button id="notify" type="button" hidden aria-label="Notifications"></button></div></div>
+    <div id="bellMenu" hidden><div id="bellList"></div><div class="belltoggle"><button id="notify" type="button" hidden aria-label="Notifications"></button></div>
+      <div id="alerts" hidden>
+        <span class="head">Sounds</span>
+        <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
+        <label><input type="checkbox" data-sound="agent-mention"> emergents mentioning me</label>
+        <label><input type="checkbox" data-sound="person"> every message from people</label>
+        <label><input type="checkbox" data-sound="agent"> every message from emergents</label>
+        <span class="head" id="tellHead">Notifications</span>
+        <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
+        <label><input type="checkbox" data-tell="person"> every message from people</label>
+        <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
+      </div></div>
   </span>
   <span class="account">
     <button id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"></button>
@@ -1365,17 +1375,6 @@
       <label class="me">viewing as <select id="me"><option value="">nobody</option></select></label>
       <label class="only"><input type="checkbox" id="onlyMine"> only mentions of me</label>
       <span class="textsize">text size <button type="button" data-step="-1" aria-label="Smaller text">A−</button><span id="textSizeVal">100%</span><button type="button" data-step="1" aria-label="Larger text">A+</button></span>
-      <div id="alerts" hidden>
-        <span class="head">Sounds</span>
-        <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
-        <label><input type="checkbox" data-sound="agent-mention"> emergents mentioning me</label>
-        <label><input type="checkbox" data-sound="person"> every message from people</label>
-        <label><input type="checkbox" data-sound="agent"> every message from emergents</label>
-        <span class="head" id="tellHead">Notifications <small>(on or off at the 🔔)</small></span>
-        <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
-        <label><input type="checkbox" data-tell="person"> every message from people</label>
-        <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
-      </div>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an emergent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
       <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
       <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: emergents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
