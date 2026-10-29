@@ -96,6 +96,23 @@ class ForkedThreadTest(TestCase):
         self.assertEqual(r['sessions'][0]['session_id'], fork)
         self.assertNotIn('from', r['sessions'][0])
 
+    def test_forked_again_it_goes_on_from_the_parents_session_as_it_is_now(self):
+        fork = str(uuid.uuid4())
+        self.client.post('/api/moods/jams-setlist/stream/', json.dumps(
+            {'harness': 'claude-code', 'session_id': fork, 'events': []}), content_type='application/json', **AUTH)
+        lines, _ = self.fork_file(fork)
+        import_lines(lines, source='hunter-watcher', username='justin')
+        later = str(uuid.uuid4())  # magent went on in #jams meanwhile
+        self.jams.claim(later)
+        import_lines([line('assistant', 'Later, in jams.', later, str(uuid.uuid4()), at='2026-10-26T10:00:00.000Z')],
+                     source='hunter-watcher', username='justin')
+        self.thread.forked_at = timezone.now()  # what api_refork does
+        self.thread.save()
+        r = self.client.get('/api/moods/jams-setlist/sessions/?sender=magent').json()
+        self.assertEqual([s['session_id'] for s in r['sessions']][0], later)  # not its own fork from before
+        self.assertNotIn(fork, [s['session_id'] for s in r['sessions']])
+        self.assertEqual(r['sessions'][0]['from'], 'jams')
+
     def test_a_fresh_thread_starts_empty(self):
         Mood.objects.create(slug='jams-fresh', thread_of=self.jams)  # no forked_at: fresh
         self.assertEqual(self.client.get('/api/moods/jams-fresh/sessions/?sender=magent').json()['sessions'], [])
@@ -202,6 +219,34 @@ class IncorporateThreadTest(TestCase):
         events = self.client.get('/api/moods/jams-setlist/turns/').json()['events']
         self.assertEqual([(e['type'], e.get('into')) for e in events if e['type'] == 'incorporated'], [('incorporated', 'jams')])
         self.assertEqual(self.client.post('/api/moods/jams/close-thread/', '{}', content_type='application/json').status_code, 400)
+
+    def test_handed_back_it_has_an_arrow_until_forked_again(self):
+        def listed():
+            return next(m for m in self.client.get('/api/moods/').json()['moods'] if m['slug'] == 'jams-setlist')
+        self.assertFalse(listed()['incorporated'])
+        self.client.post('/api/moods/jams-setlist/close-thread/', json.dumps({'incorporated': True}), content_type='application/json')
+        self.assertTrue(listed()['incorporated'])
+        was = self.thread.forked_at
+        r = self.client.post('/api/moods/jams-setlist/refork/', '{}', content_type='application/json')
+        self.assertEqual(r.status_code, 200)
+        self.thread.refresh_from_db()
+        self.assertGreater(self.thread.forked_at, was)
+        self.assertFalse(listed()['incorporated'])
+        events = self.client.get('/api/moods/jams-setlist/turns/').json()['events']
+        self.assertEqual([(e['type'], e.get('from_mood'), e.get('was')) for e in events if e['type'] == 'reforked'],
+                         [('reforked', 'jams', 'fork')])
+        self.assertEqual(self.client.post('/api/moods/jams/refork/', '{}', content_type='application/json').status_code, 400)
+        # Compacted in #jams since the fork: shown as fresh, until it's forked again.
+        self.assertFalse(listed()['compacted'])
+        from conversations.models import ConversationParticipant
+        magent = ConversationParticipant.objects.get_or_create(name='magent', defaults={'participant_type': 'assistant'})[0]
+        Message.objects.create(id=uuid.uuid4(), sender=magent, mood=self.jams, timestamp=1, is_continuation_message=True,
+                               content='This session is being continued from a previous conversation...')
+        self.assertTrue(listed()['compacted'])
+        self.client.post('/api/moods/jams-setlist/refork/', '{}', content_type='application/json')
+        self.assertFalse(listed()['compacted'])
+        self.client.cookies.clear()
+        self.assertEqual(self.client.post('/api/moods/jams-setlist/refork/', '{}', content_type='application/json').status_code, 401)
 
     def test_handoff_to_another_mood_wakes_magent_alone(self):
         self.assertEqual(self.say('jams', '/handoff #elsewhere the setlist').status_code, 201)
