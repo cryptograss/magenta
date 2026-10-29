@@ -67,6 +67,7 @@
   .pill.nokey { color: var(--muted); opacity: .75; }
   details.archived-moods { margin-top: 10px; }
   details.archived-moods > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  table.heaps td { padding: 2px 8px 2px 0; vertical-align: middle; }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -98,6 +99,8 @@
   <h1>Status</h1>
   <p class="lede">How magenta and its four servers stand right now: every emergent's settings bar in every Mood, server uptime and redeploys, database backups, recent humans, and running versions.</p>
   <div id="scram"></div>
+  <h2>Context heaps over half full</h2>
+  <div id="fullHeaps">Loading…</div>
 
   <h2>Servers</h2>
   <div id="servers">Loading…</div>
@@ -112,6 +115,19 @@
       <div id="pickipediaMcp">Loading…</div>
     </div>
   </div>
+
+  <h2>Spend by kind of turn</h2>
+  <div class="meta" style="margin-bottom: 6px;">
+    <label>Last <select id="kindsHours"><option value="24">24 hours</option><option value="72">3 days</option>
+      <option value="168">7 days</option></select></label>
+    <label style="margin-left: 10px;">Mood <select id="kindsMood"><option value="">every Mood</option></select></label>
+  </div>
+  <div id="kinds">Loading…</div>
+  <p class="meta">What woke each turn, as its wake said. Each model call is counted once; "read" is its whole context,
+    cached or not. What it wrote is split by what each row of the call holds, an estimate: words and tool calls at
+    four characters a token, thinking the rest where the harness kept no thinking (Claude Code), by characters where
+    it did (Pi). A screened moment never woke the agent; its cost is the screen's own call, recorded from this
+    change on. "Wake not recorded" is re's and blu's Claude Code turns before the runner posted their wakes.</p>
 
   <h2>Database backups (magenta_memory on maybelle)</h2>
   <div id="backups">Loading…</div>
@@ -383,12 +399,30 @@
     }).join('');
   }
 
+  // Every emergent's context over 50% in any open Mood, fullest first (Justin, 26 Oct): where a /compact is due.
+  function renderFullHeaps(moods) {
+    const rows = [];
+    for (const m of moods) {
+      if (m.archived) continue;
+      for (const [agent, a] of Object.entries(m.agents || {})) {
+        const c = a.context;
+        if (c && c.window && c.tokens / c.window > 0.5) rows.push({ agent, mood: m.slug, c, pct: Math.round(100 * c.tokens / c.window) });
+      }
+    }
+    if (!rows.length) return '<div class="card meta">None: every context is under half full.</div>';
+    rows.sort((x, y) => y.pct - x.pct);
+    return '<div class="card"><table class="heaps">' + rows.map(r => `<tr><td>${pieHtml(r.c)}</td><td><b>${esc(r.pct)}%</b></td>`
+      + `<td>${esc(r.agent)}</td><td><a href="/moods/${encodeURIComponent(r.mood)}/">#${esc(r.mood)}</a></td>`
+      + `<td class="meta">${esc((r.c.tokens || 0).toLocaleString())} of ${esc(r.c.window.toLocaleString())}${r.c.model ? ' · ' + esc(shortModel(r.c.model)) : ''}${r.c.at ? ' · ' + esc(ago(r.c.at)) : ''}</td></tr>`).join('')
+      + '</table></div>';
+  }
   function render() {
     document.getElementById('who').innerHTML = keyHolder ? `signed in as <b>${esc(viewer)}</b>`
       : 'read-only · <a href="/moods/">sign in</a> with SSH key to change settings';
     const scram = state.scram;
     document.getElementById('scram').innerHTML = scram
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
+    document.getElementById('fullHeaps').innerHTML = renderFullHeaps(state.moods || []);
     document.getElementById('servers').innerHTML = renderServers(state.servers || []);
     document.getElementById('magentaVersion').innerHTML = renderMagenta(state.magenta);
     document.getElementById('pickipediaMcp').innerHTML = renderPickipediaMcp(state.pickipedia_mcp);
@@ -405,6 +439,31 @@
         : '');
     document.getElementById('harnesses').innerHTML = renderHarnesses(state.harnesses || []);
   }
+
+  // Spend by kind of turn (/api/usage/kinds/, services/spend_kinds.py): Justin, #interfaces, 28 Oct.
+  const tok = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n);
+  const usd = v => v >= 100 ? '$' + Math.round(v) : v >= 1 ? '$' + v.toFixed(2) : v > 0 ? '$' + v.toFixed(3) : '$0';
+  async function loadKinds() {
+    const hours = document.getElementById('kindsHours').value, mood = document.getElementById('kindsMood').value;
+    const box = document.getElementById('kinds');
+    let k;
+    try {
+      k = await (await fetch(`/api/usage/kinds/?hours=${hours}&mood=${encodeURIComponent(mood)}`)).json();
+    } catch (e) { box.textContent = 'Could not load: ' + e; return; }
+    const pick = document.getElementById('kindsMood');
+    if (pick.options.length === 1) for (const m of k.moods) pick.add(new Option('#' + m, m));
+    const most = Math.max(...k.kinds.map(r => r.usd), 0) || 1;
+    const row = (r, total) => `<tr${total ? ' style="font-weight:600"' : ''}>
+      <td>${esc(total ? 'every kind' : r.label)}</td><td>${r.turns}</td><td>${r.calls}</td><td>${tok(r.ctx)}</td>
+      <td>${total ? '' : `<span class="pie" style="--p:${Math.round(100 * r.usd / most)}%"></span>`}${usd(r.usd)}${r.unpriced ? ` <span class="meta" title="calls with no price">+${r.unpriced}?</span>` : ''}</td>
+      <td>${tok(r.out)}</td><td>${tok(r.thinking)}</td><td>${tok(r.words)}</td><td>${tok(r.tools)}</td></tr>`;
+    box.innerHTML = `<table class="tbl"><thead><tr><th>woken by</th><th>turns</th><th>calls</th><th>read</th><th>cost</th>
+      <th>written</th><th>thinking</th><th>words</th><th>tool calls</th></tr></thead><tbody>`
+      + k.kinds.map(r => row(r)).join('') + row(k.total, true) + '</tbody></table>';
+  }
+  document.getElementById('kindsHours').addEventListener('change', loadKinds);
+  document.getElementById('kindsMood').addEventListener('change', loadKinds);
+  loadKinds();
 
   async function load() {
     state = await (await fetch('/api/status/')).json();

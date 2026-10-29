@@ -160,6 +160,17 @@ class RecordEventsTest(TestCase):
         brief, answer = Message.objects.filter(session_id=session).order_by('timestamp')
         self.assertEqual((brief.sender_id, brief.is_sidechain, answer.is_sidechain), ('magent', True, True))
 
+    def test_a_line_said_on_the_way_to_a_tool_keeps_how_it_stopped(self):
+        # Justin, 28 Oct: Pi's "Let me check..." lines showed as answers; Pi says tool_use, which was dropped here.
+        session = str(uuid.uuid4())
+        self.post([ev('assistant_message', 1, text='Checking the PR.', stop_reason='tool_use'),
+                   ev('tool_call', 2, name='Bash', call_id='c1'),
+                   ev('assistant_message', 3, text='It is merged.', stop_reason='end_turn'),
+                   ev('assistant_message', 4, text='Odd one.', stop_reason='nonsense')], session=session)
+        self.assertEqual([m.stop_reason for m in Message.objects.filter(session_id=session).exclude(
+            content__icontains='"tool_use"').order_by('timestamp') if m.sender_id == 'magent' and not hasattr(m, 'tooluse')],
+            ['tool_use', 'end_turn', None])
+
     def test_what_this_importer_does_not_know_is_counted_not_refused(self):
         body = self.post([ev('plan', 1, steps=['a']), ev('assistant_message', 2, text='Hi.')]).json()
         self.assertEqual((body['imported'], body['ignored'], body['errors']), (1, 1, []))
@@ -326,9 +337,11 @@ class AgentReactsTest(TestCase):
     def test_nothing_there_is_said_and_words_are_left_as_said(self):
         self.assertEqual(self.reply('<react emoji="🎻" to="nobody"/>'),
                          ['<silent>meant to react 🎻 to nobody, found nothing there</silent>'])
-        for text in ('<react emoji="yes" to="re"/>', 'I agree <react emoji="🎻" to="re"/>'):
-            self.assertEqual(self.reply(text), [text])
+        self.assertEqual(self.reply('<react emoji="yes" to="re"/>'), ['<react emoji="yes" to="re"/>'])  # not an emoji
+        # Words, then the tag (Justin, 28 Oct): the words said, the tag taken out, the nod given if there's a post.
         self.assertEqual(self.reactions(), {})
+        self.assertEqual(self.reply('I agree <react emoji="🎻" to="re"/>'), ['I agree'])
+        self.assertEqual([list(r) for r in self.reactions().values()], [['🎻']])  # and re's post got its nod
 
     def test_the_poller_counts_it_as_silent(self):
         from poller.mood_poller import _SILENT_REPLY

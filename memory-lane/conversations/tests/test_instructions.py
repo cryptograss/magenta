@@ -268,15 +268,17 @@ class RosterTest(TestCase):
     def gather(self, others, extra=None, agent='re'):
         pages = {'Cryptograss:Emergents/Greeting': [(200, 'JMyles', ROSTER_LINE)],
                  'Cryptograss:Emergents/Re': [(210, 'JMyles', agent_page('red', 'Look before you claim.'))],
-                 'Cryptograss:Emergents/Magent': [(211, 'JMyles', agent_page('magenta', 'Hi.', **{'for': 'the longest memory'}))],
-                 'Cryptograss:Emergents/Blu': [(212, 'JMyles', agent_page('blue', 'Hi.', **{'for': 'the connectome'}))],
+                 'Cryptograss:Emergents/Magent': [(211, 'JMyles', agent_page('magenta', 'Hi.', **{'for': 'keeps the longest memory'}))],
+                 'Cryptograss:Emergents/Blu': [(212, 'JMyles', agent_page('blue', 'Hi.', **{'for': 'works on the connectome'}))],
                  identity_title('re'): [(104, 'JMyles', 'You keep the docs.')]}
         pages.update(extra or {})
         return bundle(agent, 'magent-self', get=wiki(**pages).get, state_dir=None, now=T0, others=others)
 
     def test_each_other_agent_by_name_colour_and_what_it_is_for_in_name_order(self):
         b = self.gather(['magent', 'blu', 're'])  # its own name is left out
-        self.assertIn('The other agents: blu (blue), the connectome; magent (magenta), the longest memory. '
+        # No comma before what each is for: a predicate, so 'blu (blue), the connectome' doesn't read as blu
+        # being the connectome (Justin, 28 Oct).
+        self.assertIn('The other agents: blu (blue) works on the connectome; magent (magenta) keeps the longest memory. '
                       'You are in #magent-self.', b.greeting_line)
         self.assertEqual(sorted(b.stamps()['greeting']['roster']), ['blu', 'magent'])
         self.assertEqual(b.stamps()['greeting']['roster']['blu']['revision'], 212)
@@ -285,7 +287,7 @@ class RosterTest(TestCase):
         b = self.gather(['magent', 'blu', 'yeller'], {'Cryptograss:Emergents/Yeller': [(300, 'Magent', agent_page('gold', 'x'))],
                                                      'Cryptograss:Emergents/Blu': [(213, 'Blu', agent_page('green', 'x')),
                                                                                    (212, 'JMyles', agent_page('blue', 'Hi.'))]})
-        self.assertIn('The other agents: blu (blue); magent (magenta), the longest memory.', b.greeting_line)
+        self.assertIn('The other agents: blu (blue); magent (magenta) keeps the longest memory.', b.greeting_line)
         self.assertNotIn('yeller', b.greeting_line)
         self.assertNotIn('green', b.greeting_line)
 

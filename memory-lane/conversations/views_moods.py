@@ -71,7 +71,18 @@ def moods_page(request, slug=None, section=''):
         'page_version': page_version(),
         # The slash commands, for the composer to offer as one is typed (services/agent_commands).
         'slash_commands': json.dumps(agent_commands.suggestions()),
+        # The words people read where they're settable on PickiPedia (Magenta:Interface; services/interface_words.py).
+        'interface_words': json.dumps(interface_words()),
     })
+
+
+def interface_words():
+    """services/interface_words.words(), or its defaults if anything about the page is amiss: the page loads regardless."""
+    from .services import interface_words as words
+    try:
+        return words.words()
+    except Exception:  # noqa: BLE001
+        return dict(words.DEFAULTS)
 
 
 def push_key():
@@ -239,9 +250,9 @@ def api_mood_turns(request, slug):
         elif kind == 'event':
             events_out.append({'id': str(msg.id), 'created_at': msg.created_at.isoformat(),
                                **{k: text.get(k) for k in ('type', 'server', 'state', 'commit', 'by', 'note', 'took', 'agent',
-                                                   'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at',
+                                                   'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at', 'thumb',
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
-                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'about', 'context',
+                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'into', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
                                                    'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools')},
                                # A deploy's server, linked to its page; a release, with its player.
@@ -276,6 +287,8 @@ def api_mood_turns(request, slug):
             p['tools'] = said['tools']
         if said and said.get('reason'):
             p['why'] = said['reason']  # what woke it, when it wasn't asked: a look at crosstalk, an unasked look
+        if said and said.get('heard'):
+            p['heard'] = said['heard']  # an /announce from another Mood this wake carried (services/announce.py)
         if said and said['bundle'] in marks:
             p['bundle'] = marks[said['bundle']]
     first = min([i['created_at'] for i in turns_out + steps_out + quiet_out + thoughts_out + compactions_out
@@ -297,7 +310,7 @@ def api_mood_turns(request, slug):
             changes.append({**c, 'turn': retract.mark(turn_payload(msg, text, names), retract.change_of(msg))
                             if msg and text else None})
     clock.lap('changes')
-    from .services import polls, reactions
+    from .services import announce, pins, polls, reactions
     return clock.report(JsonResponse({
         # A poll for what's new: its name only (a rename shows at once); the rest is a first look's.
         'mood': clock('mood', mood_payload, mood, light=after is not None),
@@ -305,6 +318,10 @@ def api_mood_turns(request, slug):
         'reactions': clock('reactions', reactions.in_mood, mood),
         # Every poll here, its votes and whether it's closed (services/polls.py).
         'polls': clock('polls', polls.in_mood, mood),
+        # What's pinned to this Mood's top, newest first (services/pins.py).
+        'pins': clock('pins', pins.in_mood, mood),
+        # /announce from other Moods, for the runner's next wake here; never drawn (services/announce.py).
+        'announcements': clock('announcements', announce.in_mood, mood),
         # What was edited or deleted since ?changes_since=, as it stands now; and the time to ask from next.
         'changes': changes,
         'now': timezone.now().isoformat(),
@@ -337,6 +354,7 @@ def api_mood_turns(request, slug):
         'agents': agents,
         'scram': clock('scram', settings_scram),
         'typing': clock('typing', typing_in, mood.slug),
+        'recording': recording_in(mood.slug),  # of those typing, who's speaking a memo
     }), f'look at #{mood.slug}' + (' (what is new)' if after is not None else ''))
 
 
@@ -361,16 +379,26 @@ def agents_in(mood):
     # Which harness reported what it can run (the menu fetches the list itself, from api_agent_models).
     from .models import HarnessModels
     catalogs = dict(HarnessModels.objects.values_list('agent_id', 'harness'))
+    from .models import Message
     out = {}
     for name in agents:
         resolved = knobs.resolve(mood.slug, name)
+        context = context_in(mood, name)
+        # No model set and no turn here yet: the one it last ran on anywhere, so the bar
+        # names a model, never "default" (Justin, 27 Oct).
+        runs = resolved['model'] or (context or {}).get('model') or (
+            Message.objects.filter(sender_id=name, is_sidechain=False, model_backend__isnull=False)
+            .exclude(model_backend__in=('', '<synthetic>')).order_by('-created_at')
+            .values_list('model_backend', flat=True).first() or '')
         out[name] = {'listening': resolved['listening'], 'model': resolved['model'],
-                     'effort': resolved['mention_effort'], 'ultracode': bool(resolved['ultracode']),
+                     'effort': resolved['mention_effort'],
+                     'ultracode': bool(resolved['ultracode']),
                      'reads': resolved['catch_up_tokens'],
                      'discretion': resolved['discretion'], 'verbosity': resolved['verbosity'],
+                     'handoff_effort': resolved['handoff_effort'],
                      # Who set each as it stands, and when: the page says so, and flashes one that just changed.
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
-                     'context': context_in(mood, name),
+                     'context': context, 'runs': runs,
                      'catalog': catalogs.get(name)}
         # What's changed in its settings here since its last word: told at its next wake (agent_settings).
         changes, by, note = agent_settings.changed_since(mood.slug, name, rows=every)
@@ -500,12 +528,13 @@ def _in_a_mood(message_id):
 @require_GET
 def front_page(request):
     """magenta's front page (services/front.py): anyone may read it, signed in or not."""
-    import random
     from .services import front
     slogans = front.slogans()
     here = request.build_absolute_uri('/')
     return render(request, 'conversations/front.html', {'front': front.state(), 'slogans': slogans,
-                                                        'slogan': random.choice(slogans),
+                                                        # The page's first line first, always; the rest after
+                                                        # it, in turns (Justin, 27 Oct).
+                                                        'slogan': slogans[0],
                                                         'here': here, 'qr': front.qr_svg(here)})
 
 
@@ -625,6 +654,14 @@ def typing_in(slug):
     return sorted(name for name, at in (cache.get(_typing_key(slug)) or {}).items() if now - at < TYPING_FOR)
 
 
+def recording_in(slug):
+    """Who of those typing is recording a voice memo, not typing (Justin, 28 Oct: nobody could see it)."""
+    from django.core.cache import cache
+    import time
+    now = time.time()
+    return sorted(name for name, at in (cache.get(_typing_key(slug) + ':rec') or {}).items() if now - at < TYPING_FOR)
+
+
 @require_POST
 def api_typing(request, slug):
     """Say this device's person is (or stopped) typing in a Mood."""
@@ -639,9 +676,11 @@ def api_typing(request, slug):
         return JsonResponse({'error': 'sign in to write'}, status=401)
     Mood.by_slug_or_404(slug)
     try:
-        typing = bool(json.loads(request.body or b'{}').get('typing', True))
+        body = json.loads(request.body or b'{}')
+        typing = bool(body.get('typing', True))
+        recording = body.get('how') == 'recording'  # a voice memo, as its 🎙 says: typing, out loud
     except (ValueError, AttributeError):
-        return JsonResponse({'error': 'expected {"typing": true|false}'}, status=400)
+        return JsonResponse({'error': 'expected {"typing": true|false, "how"?: "recording"}'}, status=400)
     now = time.time()
     state = {n: at for n, at in (cache.get(_typing_key(slug)) or {}).items() if now - at < TYPING_FOR}
     if typing:
@@ -649,6 +688,12 @@ def api_typing(request, slug):
     else:
         state.pop(device.entity_id, None)
     cache.set(_typing_key(slug), state, TYPING_FOR * 2)
+    rec = {n: at for n, at in (cache.get(_typing_key(slug) + ':rec') or {}).items() if now - at < TYPING_FOR}
+    if typing and recording:
+        rec[device.entity_id] = now
+    else:
+        rec.pop(device.entity_id, None)
+    cache.set(_typing_key(slug) + ':rec', rec, TYPING_FOR * 2)
     from .services import presence
     presence.note(device.entity_id, slug, now)  # typing, or stopped: shown here, three minutes from now
     return JsonResponse({'typing': sorted(state)})
@@ -678,15 +723,23 @@ def api_mood_sessions(request, slug):
     the one to continue. A session id is a local handle, not a credential.
     """
     mood = Mood.by_slug_or_404(slug)
-    messages = Message.objects.filter(mood=mood, session_id__isnull=False)
-    sender = request.GET.get('sender')
-    if sender:
-        messages = messages.filter(sender_id=sender.lower())
-    sessions = (messages.values('session_id')
-                .annotate(last_at=Max('created_at'))
-                .order_by('-last_at'))
+
+    def sessions_in(where, before=None):
+        messages = Message.objects.filter(mood=where, session_id__isnull=False)
+        sender = request.GET.get('sender')
+        if sender:
+            messages = messages.filter(sender_id=sender.lower())
+        found = messages.values('session_id').annotate(last_at=Max('created_at')).order_by('-last_at')
+        return [s for s in found if before is None or s['last_at'] <= before]
+
+    sessions, came_from = sessions_in(mood), None
+    # A thread forked from another Mood: until an agent has spoken here, it goes on from where it was there
+    # when the thread was forked -- its session then, never one from after.
+    if not sessions and mood.thread_of_id and mood.forked_at:
+        sessions, came_from = sessions_in(mood.thread_of, before=mood.forked_at), mood.thread_of.slug
     return JsonResponse({'mood': mood.slug, 'sessions': [
-        {'session_id': str(s['session_id']), 'last_at': s['last_at'].isoformat()} for s in sessions
+        {'session_id': str(s['session_id']), 'last_at': s['last_at'].isoformat(),
+         **({'from': came_from} if came_from else {})} for s in sessions
     ]})
 
 
@@ -1445,6 +1498,10 @@ def api_moods_live(request):
                        for a in doing if a.get('doing') == 'held' and str(a.get('why') or '').startswith('waiting for ')]
             if waiting:
                 entry['waiting'] = waiting
+            if doing:
+                # Each at work there, as a Mood's own look has them: shown the moment it's opened, not once
+                # its first look is back (Justin, 25 Oct: they "pop up" a couple of seconds later).
+                entry['activities'] = doing
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list

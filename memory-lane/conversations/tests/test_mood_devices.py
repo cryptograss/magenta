@@ -382,6 +382,30 @@ class WikiFeedTest(TestCase):
         self.assertEqual(body['turns'], [])  # lines, not words: nothing to answer
         self.assertEqual(self.client.get('/api/moods/').json()['moods'][0]['message_count'], 0)
 
+    def test_an_upload_is_news_with_its_thumbnail_and_the_rest_of_the_log_is_not(self):
+        # Justin, 27 Oct: Aunt Rhonda uploaded a picture, and #general never said so.
+        from conversations.services import wiki_feed
+        changes = [{'type': 'log', 'logtype': 'upload', 'logaction': 'upload', 'ns': 6, 'title': 'File:Rose and Fib.jpg',
+                    'rcid': 12, 'revid': 0, 'user': 'Auntrhonda', 'oldlen': 0, 'newlen': 0,
+                    'timestamp': '2026-10-27T02:57:48Z', 'comment': 'Uploaded with Media Uploader'},
+                   {'type': 'log', 'logtype': 'newusers', 'title': 'User:Caruso', 'rcid': 11, 'user': 'Caruso',
+                    'timestamp': '2026-10-26T17:00:04Z', 'comment': ''},
+                   {'type': 'edit', 'title': 'Page 10', 'rcid': 10, 'revid': 910, 'user': 'JMyles', 'oldlen': 1,
+                    'newlen': 3, 'timestamp': '2026-10-26T16:00:00Z', 'comment': ''}]
+        pages = {'pages': [{'title': 'File:Rose and Fib.jpg', 'imageinfo': [
+            {'url': 'https://pickipedia.xyz/images/a/ab/Rose_and_Fib.jpg',
+             'thumburl': 'https://pickipedia.xyz/images/thumb/a/ab/Rose_and_Fib.jpg/120px-Rose_and_Fib.jpg'}]}]}
+        answers = iter([{'query': {'recentchanges': changes}}, {'query': pages}])
+        http = mock.Mock(get=mock.Mock(side_effect=lambda *a, **k: mock.Mock(json=lambda a=next(answers): a)))
+        self.assertEqual(wiki_feed.refresh(http), 2)
+        self.assertIn('log', http.get.call_args_list[0].kwargs['params']['rctype'])
+        self.assertEqual(http.get.call_args_list[1].kwargs['params']['iiurlwidth'], wiki_feed.THUMB)
+        events = self.client.get('/api/moods/general/turns/').json()['events']
+        self.assertEqual([(e['kind'], e['title']) for e in events], [('edit', 'Page 10'), ('upload', 'File:Rose and Fib.jpg')])
+        self.assertTrue(events[1]['thumb'].endswith('120px-Rose_and_Fib.jpg'))
+        from conversations.services.mood_view import event_line
+        self.assertEqual(event_line(events[1]), '🖼 Auntrhonda uploaded File:Rose and Fib.jpg to PickiPedia')
+
     def test_a_moods_todo_list_is_shown_in_that_mood_only(self):
         from conversations.models import MoodAlias
         from conversations.services import wiki_feed
@@ -526,3 +550,80 @@ class SignInsAreAnnouncedTest(SignedInCase):
         events = self.client.get('/api/moods/general/turns/').json()['events']
         self.assertEqual([(e['kind'], e['who'], e['tier'], e['label']) for e in events],
                          [('signed-in', 'justin', 'key', 'laptop')])
+
+
+class AnnounceTest(TestCase):
+    """/announce (Justin, 27 Oct): posted where it's typed, told quietly to every other Mood's emergents."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        from conversations.services import mood_auth
+        cache.clear()
+        self.justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        ThinkingEntity.objects.create(name='magent', is_biological_human=False)
+        for slug in ('general', 'jams', 'old'):
+            Mood.objects.create(slug=slug, title=slug)
+        from conversations.services import settings as knobs
+        knobs.change('archived', True, mood=Mood.objects.get(slug='old'), by=self.justin)
+        _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
+        self.client.cookies[mood_auth.COOKIE] = token
+
+    def say(self, text, slug='general'):
+        return self.client.post(f'/api/moods/{slug}/say/', json.dumps({'text': text}), content_type='application/json')
+
+    def test_posted_here_marked_told_quietly_elsewhere(self):
+        r = self.say('/announce Beta is tonight at 8')
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.json()['note'], 'announced in 1 other Moods')
+        here = self.client.get('/api/moods/general/turns/').json()
+        self.assertEqual([t['text'] for t in here['turns']], ['📣 Beta is tonight at 8'])
+        self.assertEqual(here['announcements'], [])
+        there = self.client.get('/api/moods/jams/turns/').json()
+        self.assertEqual((there['turns'], there['events']), ([], []))  # never shown there
+        self.assertEqual([(a['by'], a['from_mood'], a['text']) for a in there['announcements']],
+                         [('justin', 'general', 'Beta is tonight at 8')])
+        self.assertEqual(self.client.get('/api/moods/old/turns/').json()['announcements'], [])  # archived: not told
+        self.assertEqual(self.client.get('/api/moods/').json()['moods'][0]['slug'], 'general')  # jams doesn't look active
+
+    def test_nothing_to_announce_is_refused(self):
+        self.assertEqual(self.say('/announce').status_code, 400)
+        self.assertEqual(self.say('/announcements are fun').status_code, 201)  # not the command
+
+    def test_the_turn_that_heard_it_says_so(self):
+        import uuid as _uuid
+        from conversations.models import Message
+        magent = ThinkingEntity.objects.get(name='magent')
+        jams, sid = Mood.objects.get(slug='jams'), _uuid.uuid4()
+        ThinkingEntity.objects.get_or_create(name='mood-poller', defaults={'is_biological_human': False})
+        wake = ('<mood-wake mood="jams" reason="consider">\nNobody asked.\n\nAnnounced to every Mood:\n'
+                '[announced by justin in #general (#m-0123abcd-0000-4000-8000-000000000000), 2026-10-27T11:31Z] Beta is "tonight" at 8 🎻\n\nKeep replies short. '
+                'This turn has your full tools. Your instructions this turn are bundle b-1 (Special:AgentBundles).')
+        Message.objects.create(id=_uuid.uuid4(), sender_id='mood-poller', mood=jams, session_id=sid, timestamp=1,
+                               content=[{'type': 'text', 'text': wake}])
+        Message.objects.create(id=_uuid.uuid4(), sender=magent, mood=jams, session_id=sid, timestamp=2,
+                               stop_reason='end_turn', content=[{'type': 'text', 'text': 'Noted: 8 tonight.'}])
+        turn = self.client.get('/api/moods/jams/turns/').json()['turns'][0]
+        self.assertEqual(turn['heard'], [{'by': 'justin', 'from': 'general', 'message': '0123abcd-0000-4000-8000-000000000000',
+                                          'text': 'Beta is "tonight" at 8 🎻'}])
+
+
+class RecordingTest(TestCase):
+    """Justin, 28 Oct: nobody could see a person recording a voice memo, as they see one typing."""
+
+    def test_recording_is_typing_out_loud(self):
+        from conversations.services import mood_auth
+        from django.core.cache import cache
+        cache.clear()
+        justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        Mood.objects.create(slug='usage', title='usage')
+        _, token = mood_auth.enrol_device(justin, 'phone', tier='key')
+        self.client.cookies[mood_auth.COOKIE] = token
+        post = lambda body: self.client.post('/api/moods/usage/typing/', json.dumps(body), content_type='application/json')
+        post({'typing': True, 'how': 'recording'})
+        page = self.client.get('/api/moods/usage/turns/').json()
+        self.assertEqual((page['typing'], page['recording']), (['justin'], ['justin']))
+        self.assertEqual(self.client.get('/api/moods/pulse/').json()['moods'][0]['typing'], ['justin'])  # the consider waits
+        post({'typing': True})
+        self.assertEqual(self.client.get('/api/moods/usage/turns/').json()['recording'], [])
+        post({'typing': False})
+        self.assertEqual(self.client.get('/api/moods/usage/turns/').json()['typing'], [])

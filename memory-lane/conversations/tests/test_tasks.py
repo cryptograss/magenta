@@ -19,6 +19,14 @@ Link each connection to its source."""
 WEEKLY = """{{Agent task|mood=connectome|schedule=mondays 09:00, daily 18:30|cap=2}}
 Look over the week's new pages for pickers with no connections."""
 
+JOURNAL = """{{Agent task|mood=connectome|schedule=every 3600 blocks|cap=1|tools=full|shared=Cryptograss:Emergents/Tasks/Journal}}
+<!-- for people: only what this agent needs beyond the shared text -->
+Note anything only blu would need."""
+
+JOURNAL_SHARED = """Write the next entry in your journal.
+<!-- for people: why this text is shared -->
+Read the record since your last entry."""
+
 MONDAY = datetime(2026, 10, 26, 9, 0, tzinfo=timezone.utc)  # a Monday
 
 
@@ -51,6 +59,37 @@ class TaskPageTest(TestCase):
             tasks.read('blu', 'Connect', wiki({}))
         with self.assertRaisesRegex(tasks.Refused, "isn't a task name"):
             tasks.read('blu', '../Rules', wiki({}))
+
+    def test_shared_instructions_are_read_once_and_the_pages_own_text_follows(self):
+        pages = {tasks.title('blu', 'Journal'): [(51, 'JMyles', JOURNAL)],
+                 'Cryptograss:Emergents/Tasks/Journal': [(60, 'JMyles', JOURNAL_SHARED)]}
+        task = tasks.read('blu', 'Journal', wiki(pages))
+        self.assertEqual(task.shared, 'Cryptograss:Emergents/Tasks/Journal')
+        self.assertEqual(task.shared_revision, 60)
+        self.assertEqual(task.prompt, 'Write the next entry in your journal.\n\nRead the record since your last entry.'
+                                      '\n\nNote anything only blu would need.')
+        self.assertNotIn('for people', task.prompt)  # comments on either page aren't sent
+
+    def test_a_shared_task_with_nothing_of_its_own_is_all_shared(self):
+        bare = '{{Agent task|mood=connectome|shared=Cryptograss:Emergents/Tasks/Journal}}'
+        pages = {tasks.title('blu', 'Journal'): [(51, 'JMyles', bare)],
+                 'Cryptograss:Emergents/Tasks/Journal': [(60, 'JMyles', JOURNAL_SHARED)]}
+        task = tasks.read('blu', 'Journal', wiki(pages))
+        self.assertEqual(task.prompt, 'Write the next entry in your journal.\n\nRead the record since your last entry.')
+        self.assertEqual(task.blanks, [])
+
+    def test_a_blank_in_the_shared_text_is_still_a_blank(self):
+        pages = {tasks.title('blu', 'Journal'): [(51, 'JMyles', JOURNAL)],
+                 'Cryptograss:Emergents/Tasks/Journal': [(60, 'JMyles', JOURNAL_SHARED + '\nCover {since}.')]}
+        self.assertEqual(tasks.read('blu', 'Journal', wiki(pages)).blanks, ['since'])
+
+    def test_a_shared_page_needs_a_trusted_revision_and_to_exist(self):
+        page = tasks.title('blu', 'Journal')
+        with self.assertRaisesRegex(tasks.Refused, 'no revision by a trusted editor'):
+            tasks.read('blu', 'Journal', wiki({page: [(51, 'JMyles', JOURNAL)],
+                                              'Cryptograss:Emergents/Tasks/Journal': [(60, 'Blu', JOURNAL_SHARED)]}))
+        with self.assertRaisesRegex(tasks.Refused, 'there is no page Cryptograss:Emergents/Tasks/Journal'):
+            tasks.read('blu', 'Journal', wiki({page: [(51, 'JMyles', JOURNAL)]}))
 
     def test_blanks_are_filled_and_none_left_or_made_up(self):
         task = tasks.parse('blu', 'Connect', 41, 'JMyles', CONNECT)
@@ -124,6 +163,17 @@ class StartingTest(TestCase):
         self.assertIn("your task Connect, at justin's call", turn['text'])
         self.assertIn('played with: Peter Rowan.', turn['text'])
         self.assertEqual(self.mentions('magent'), [])  # it's blu's, nobody else's
+
+    def test_shared_instructions_are_named_in_the_wake_and_the_record(self):
+        self.pages[tasks.title('blu', 'Journal')] = [(51, 'JMyles', JOURNAL)]
+        self.pages['Cryptograss:Emergents/Tasks/Journal'] = [(60, 'JMyles', JOURNAL_SHARED)]
+        line = tasks.start(tasks.read('blu', 'Journal', wiki(self.pages)), 'justin')
+        self.assertEqual(line.content['shared'],
+                         {'page': 'Cryptograss:Emergents/Tasks/Journal', 'revision': 60})
+        [m] = self.mentions()
+        self.assertIn('instructions from Cryptograss:Emergents/Tasks/Journal revision 60', m['turn']['text'])
+        self.assertIn('Read the record since your last entry.', m['turn']['text'])
+        self.assertIn('Note anything only blu would need.', m['turn']['text'])
 
     def test_refused_it_says_why_and_wakes_nobody(self):
         line = tasks.start(self.task(), 'justin', params={})

@@ -65,18 +65,33 @@ def prose(content):
 # An agent's choice not to speak: <silent/>, or <silent>why</silent>.
 # by="screen": the runner's quick screen let it pass, not the agent itself.
 _QUIET = re.compile(r'^<silent\s*/>$|^<silent(?:\s+by="(\w+)")?>(.*)</silent>$', re.S)
+# One that thought out loud first: words, then the tag at the very end. Still a choice not to speak (Justin,
+# 27 Oct: re's "...Stay quiet.<silent>...</silent>" posted as a message): a dot, its words kept as its thought.
+_QUIET_TAIL = re.compile(r'^(.*\S)\s*(?:<silent\s*/>|<silent>([^<>]*)</silent>)\s*$', re.S)
 
 
 # An agent waiting for another asked the same thing (poller/mood_poller.py _WAIT_REPLY): no answer yet, so a
 # silence -- a dot saying whom it's waiting for -- never a turn, an answer, or a mention.
 _WAIT = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"(?:\s+to="([^"<>]{0,200})")?\s*/>\s*$')
+# An agent taking a question that asked several of them (poller _TAKE_REPLY): a claim, shown as a line ("magent is
+# taking the redeploy question", Justin, 27 Oct), never an answer; its answer follows in its next turn.
+_TAKE = re.compile(r'^\s*<take\s+to="([^"<>]{1,200})"\s*/>\s*$')
 
 
 def quiet_reason(text):
     """{'reason', 'by'} for a silent reply ('by' is '' when the agent itself
-    chose), or None if the text isn't one. A wait for another agent is one."""
+    chose), or None if the text isn't one. A wait for another agent is one, and a take."""
     match = _QUIET.match(text)
     if not match:
+        tail = _QUIET_TAIL.match(text or '')
+        if tail:
+            return {'reason': (tail.group(2) or '').strip(), 'by': '', 'thought': tail.group(1).strip()}
+        take = _TAKE.match(text or '')
+        if take:
+            to = take.group(1).split()
+            # type: what it is, so a reader needn't match the words (re's review of magenta#206).
+            return {'reason': 'taking ' + ' '.join((to[1:] if to and to[0].lower() == 'to' else to)[:8]), 'by': '',
+                    'type': 'take'}
         wait = _WAIT.match(text or '')
         if not wait:
             return None
@@ -161,7 +176,7 @@ _PLACEHOLDER_CHARS = re.compile(r'[\x00\x01\x02]')
 _TRAILING_PUNCT = '.,;:!?)]\'"'
 _HEADING = re.compile(r'^#{1,6}\s+(.+)$')
 _BULLET = re.compile(r'^\s*[-*–]\s+(.*)$')
-_NUMBERED = re.compile(r'^\s*\d+[.)]\s+(.*)$')
+_NUMBERED = re.compile(r'^\s*(\d+)[.)]\s+(.*)$')
 _TABLE_SEP_CELL = re.compile(r'^:?-+:?$')
 
 
@@ -442,6 +457,8 @@ def event_line(content):
         return wiki_sentence(c)
     if kind == 'wiki-upload':
         return f"🖼 {by or 'someone'} put {c.get('file', 'a picture')} on PickiPedia"
+    if kind == 'incorporated':
+        return f"⑂ {by or 'someone'} closed this thread: handed to #{c.get('into', '')} to incorporate"
     if kind in ('handoff', 'handoff-sent'):
         where = c.get('from_mood') if kind == 'handoff' else c.get('to_mood')
         return f"🔀 {by or 'someone'} {'brought this from' if kind == 'handoff' else 'took this to'} #{where}: {c.get('about', '')}"
@@ -475,6 +492,8 @@ def wiki_sentence(c):
     """A PickiPedia change in words, without its links: the reply quote's and the narrator's."""
     user = c.get('user', 'someone')
     page = user_page_of(c.get('title'))
+    if c.get('kind') == 'upload':
+        return f"🖼 {user} uploaded {c.get('title', 'a file')} to PickiPedia"
     if page is None:
         return f"✎ {user} {'started' if c.get('kind') == 'new' else 'edited'} {c.get('title', '')} on PickiPedia"
     owner, talk = page
@@ -815,11 +834,18 @@ def render_html(text, mentionable=()):
             blocks.append('<p>' + inline('<br>'.join(paragraph)) + '</p>')
             paragraph.clear()
 
+    list_start = 1
+
     def flush_list():
         nonlocal list_tag
         if list_items:
-            items = ''.join(f'<li>{inline(i)}</li>' for i in list_items)
-            blocks.append(f'<{list_tag}>{items}</{list_tag}>')
+            def li(text, subs):
+                sub = ''.join(f'<li>{inline(t)}</li>' for t in subs)
+                return f'<li>{inline("<br>".join(text))}' + (f'<ul>{sub}</ul>' if sub else '') + '</li>'
+            items = ''.join(li(*i) for i in list_items)
+            # A list split by a blank line, a note or a sub-list goes on counting where it was.
+            start = f' start="{list_start}"' if list_tag == 'ol' and list_start != 1 else ''
+            blocks.append(f'<{list_tag}{start}>{items}</{list_tag}>')
             list_items.clear()
         list_tag = None
 
@@ -834,11 +860,15 @@ def render_html(text, mentionable=()):
             blocks.append(f'<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>')
         table_rows.clear()
 
-    for line in text.split('\n'):
+    lines = text.split('\n')
+    for n, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
             flush_paragraph()
-            flush_list()
+            # A blank line between numbered items (a loose list) keeps the list.
+            ahead = next((l for l in lines[n + 1:] if l.strip()), '')
+            if not (list_tag == 'ol' and _NUMBERED.match(ahead)):
+                flush_list()
             flush_table()
             continue
         if stripped.startswith('|') and stripped.endswith('|'):
@@ -853,19 +883,37 @@ def render_html(text, mentionable=()):
             blocks.append(stripped)
             continue
         heading = _HEADING.match(stripped)
+        wiki = lambda l: l.strip().startswith('# ')
+        if heading and wiki(line) and (n and wiki(lines[n - 1]) or n + 1 < len(lines) and wiki(lines[n + 1])):
+            numbered = re.match(r'#\s+(.+)', stripped)  # two or more '# ' lines together: the wiki's numbered list
+            flush_paragraph()
+            if list_tag != 'ol':
+                flush_list()
+                list_tag, list_start = 'ol', 1
+            list_items.append(([numbered.group(1)], []))
+            continue
         if heading:
             flush_paragraph()
             flush_list()
             blocks.append(f'<h4>{inline(heading.group(1))}</h4>')
             continue
         bullet, numbered = _BULLET.match(line), _NUMBERED.match(line)
+        indented = line[:1] in (' ', '\t')
+        if list_items and indented and list_tag == 'ol' and bullet:
+            list_items[-1][1].append(bullet.group(1))  # a sub-point of the numbered item above
+            continue
         if bullet or numbered:
             flush_paragraph()
             tag = 'ul' if bullet else 'ol'
             if list_tag != tag:
                 flush_list()
                 list_tag = tag
-            list_items.append((bullet or numbered).group(1))
+                if numbered:
+                    list_start = int(numbered.group(1))
+            list_items.append(([bullet.group(1) if bullet else numbered.group(2)], []))
+            continue
+        if list_items and indented and not list_items[-1][1]:
+            list_items[-1][0].append(stripped)  # the item's own next line
             continue
         flush_list()
         paragraph.append(stripped)
@@ -1014,6 +1062,7 @@ def model_label(model):
     model = model.rsplit('/', 1)[-1]
     if not model.startswith('claude-'):
         return model
+    model = model.replace('.', '-')  # OpenRouter spells it 'claude-fable-5.1'
     parts = re.sub(r'-\d{8}$', '', model[len('claude-'):]).split('-')
     family = next((p for p in parts if not p.isdigit()), '')
     version = '.'.join(p for p in parts if p.isdigit())
@@ -1044,7 +1093,9 @@ PRICES = (
 
 def call_usd(model, fresh, out, read, written):
     """Dollars a call cost at list prices, or None for a model with no price here."""
-    rates = next((r for prefix, r in PRICES if (model or '').startswith(prefix)), None)
+    # Anthropic's own models through OpenRouter: 'anthropic/claude-fable-5.1' is claude-fable-5-1.
+    model = (model or '').removeprefix('anthropic/').replace('.', '-')
+    rates = next((r for prefix, r in PRICES if model.startswith(prefix)), None)
     if rates is None:
         return None
     return ((fresh or 0) * rates[0] + (out or 0) * rates[1] + (read or 0) * rates[2] + (written or 0) * rates[3]) / 1e6
@@ -1084,31 +1135,52 @@ def turn_tools(messages):
 WAKE_REASON = re.compile(r'<mood-wake\b[^>]*?\breason=\\?"([a-z-]{1,20})\\?"')
 
 
+# An /announce the wake carried (the poller's announced_lines; services/announce.py): who, from where, its words.
+HEARD_AT = '[announced by '
+HEARD = re.compile(r'\[announced by ([\w.-]+) in #([\w-]+)(?: \(#m-([0-9a-f-]{36})\))?, [^\]]*\] ((?:[^\\]|\\[^n])*)')
+
+
+def heard_in(text):
+    """[{'by', 'from', 'message', 'text'}] for the announcements a stored wake's text (its content as JSON) carries."""
+    import json
+    out = []
+    for by, where, message, words in HEARD.findall(text or ''):
+        try:
+            words = json.loads(f'"{words}"')  # as stored: JSON's escapes (a quote, a \\uXXXX) undone
+        except ValueError:
+            pass
+        out.append({'by': by, 'from': where, 'message': message, 'text': words.strip()[:140]})
+    return out
+
+
 def turn_wakes(messages):
     """{message id (str): {'tools': 'look', 'full' or '', 'bundle': the instructions' record id or '', 'reason': why
     it was woken ('crosstalk', 'consider', 'quiet', 'arrival'; '' for a mention)}} for agents' messages in a Mood,
     by the last wake before each in its session (the poller's turn line names the bundle, mood_poller.turn_line).
     One with no wake within reach is left out."""
     from datetime import timedelta
-    from django.db.models import TextField
-    from django.db.models.functions import Cast, Left, Right
+    from django.db.models import F, TextField, Value
+    from django.db.models.functions import Cast, Left, Right, StrIndex, Substr
     from conversations.models import Message
     messages = [m for m in messages if m.session_id]
     if not messages:
         return {}
     reach = timedelta(seconds=WAKE_REACH)
     wakes = {}
-    for sid, at, tail, head in (Message.objects.filter(session_id__in={m.session_id for m in messages}, sender_id=WAKE_SENDER,
+    for sid, at, tail, head, heard in (Message.objects.filter(session_id__in={m.session_id for m in messages}, sender_id=WAKE_SENDER,
                                                  created_at__gte=min(m.created_at for m in messages) - reach,
                                                  created_at__lte=max(m.created_at for m in messages))
                           .annotate(tail=Right(Cast('content', TextField()), WAKE_TAIL),
-                                    head=Left(Cast('content', TextField()), 300))
-                          .order_by('created_at').values_list('session_id', 'created_at', 'tail', 'head')):
+                                    head=Left(Cast('content', TextField()), 300),
+                                    at_heard=StrIndex(Cast('content', TextField()), Value(HEARD_AT)))
+                          .annotate(heard=Substr(Cast('content', TextField()), F('at_heard'), 2000))
+                          .order_by('created_at').values_list('session_id', 'created_at', 'tail', 'head', 'heard')):
         bundle = BUNDLE_SAID.search(tail or '')
         reason = WAKE_REASON.search(head or '')
         wakes.setdefault(str(sid), []).append((at, {'tools': wake_said(tail or ''),
                                                     'bundle': bundle.group(1) if bundle else '',
-                                                    'reason': reason.group(1) if reason else ''}))
+                                                    'reason': reason.group(1) if reason else '',
+                                                    'heard': heard_in(heard) if (heard or '').startswith(HEARD_AT) else []}))
     found = {}
     for m in messages:  # as text: a row just made holds its session as it was given, a row read as a UUID
         before = [said for at, said in wakes.get(str(m.session_id), []) if m.created_at - reach <= at <= m.created_at]
@@ -1151,6 +1223,10 @@ def how_payload(msg):
             out['usd'] = round(usd, 5)
     if msg.stop_reason:
         out['stop'] = msg.stop_reason
+    # The block it was written in, once stamped (a few minutes on): what its heading shows. Only where it was
+    # loaded: a list that asked for a few fields mustn't ask again for each row.
+    if 'eth_blockheight' not in msg.get_deferred_fields() and msg.eth_blockheight:
+        out['block'] = msg.eth_blockheight
     return out
 
 
@@ -1361,6 +1437,40 @@ def set_held(slug, agent, reason, until=None, now=None):
     return holds
 
 
+# The runner says, every RUNNING_EVERY seconds, which of its agents' turns is still running in a
+# Mood (mood_poller.MoodPoller.run_turn_once). The record alone can't: a tool call that runs half an
+# hour writes nothing, and past ACTIVITY_WINDOW its streak read as a session that died -- magent's
+# Playwright call on 28 Oct hung 30 minutes and the Mood showed nobody at work (Justin, #usage).
+# Ephemeral, like a hold: it lapses unless renewed, so a runner that dies leaves no ghost at work.
+RUNNING_FOR = 300  # seconds a turn is taken as running after the runner last said so
+
+
+def _running_key(slug):
+    return f'running:{slug}'
+
+
+def running_in(slug, now=None):
+    """agent -> {'since', 'at'} for each turn its runner says is still running here."""
+    from django.core.cache import cache
+    import time
+    now = now or time.time()
+    return {agent: r for agent, r in (cache.get(_running_key(slug)) or {}).items() if now - r['at'] < RUNNING_FOR}
+
+
+def set_running(slug, agent, since=None, now=None):
+    """`agent`'s turn in `slug` is running, since `since` (epoch seconds); None says it has ended."""
+    from django.core.cache import cache
+    import time
+    now = now or time.time()
+    running = running_in(slug, now)
+    if since is not None:
+        running[agent] = {'since': since, 'at': now}
+    else:
+        running.pop(agent, None)
+    cache.set(_running_key(slug), running, RUNNING_FOR)
+    return running
+
+
 def activity(mood, now=None, only=None):
     """What an agent in this Mood is doing now, or None: see _activity.
     Someone stopping the agent since that began ends it at once, without
@@ -1480,13 +1590,21 @@ def _activity(mood, now=None, only=None):
         if hold and hold['at'] >= _when(newest):
             return {'agent': named[0], 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
                     'since': _when(newest)}
+        alive = running_in(mood.slug, now).get(named[0])
+        if alive and alive['since'] <= _when(newest):
+            # Posted while its turn was already running: it's at work on that, not waking for this.
+            return {'agent': named[0], 'doing': 'still at work', 'since': alive['since']}
         if now - _when(newest) > ACTIVITY_WINDOW:
             return None
         # "@magent /compact" runs the command, not a turn: say what's happening.
         return {'agent': named[0], 'doing': command_doing(prose(newest.content), named[0]) or 'waking',
                 'since': _when(newest)}
 
-    if now - _when(newest) > ACTIVITY_WINDOW:
+    # Quiet past the window is a session that died -- unless its runner says the turn is still running
+    # (a tool call that takes half an hour writes nothing while it runs).
+    stale = now - _when(newest) > ACTIVITY_WINDOW
+    alive = running_in(mood.slug, now) if stale else {}
+    if stale and not alive:
         return None
     # A runner writes what a turn came to once it has ended, and nothing of a
     # turn is after that. Most turns end on a line that says so too, but a
@@ -1534,7 +1652,7 @@ def _activity(mood, now=None, only=None):
         # Asked about one agent, lines nobody can say are its are not its turn. (Once, the first agent
         # by name took them: magent, then blu -- and re's wake read as blu thinking, Justin, 21 Oct.)
         agent = owner or (None if only else sorted(agents or {'magent'})[0])
-    if agent is None or (only and agent != only):
+    if agent is None or (only and agent != only) or (stale and agent not in alive):
         return None
     how = next((how_payload(m) for m in streak if m.sender_id in agents and m.model_backend), {'model': '', 'effort': ''})
     start = streak[-1]
@@ -1667,9 +1785,15 @@ def mood_payload(mood, light=False):
     # Mood, a rename, a turn's tally): those mustn't make a Mood look active.
     said = mood.messages.exclude(sender_id='system')
     last = last_said(mood)
+    from conversations.models import Mood
     return {
         **head,
         'message_count': said.count(),
         'last_at': last.isoformat() if last else None,
         'participants': sorted(e.name for e in mood.thinking_entities()),
+        # A thread: where it was opened from, and when its emergents went on from there (forked; none: fresh).
+        **({'thread_of': Mood.objects.filter(pk=mood.thread_of_id).values_list('slug', flat=True).first(),
+            'forked_at': mood.forked_at.isoformat() if mood.forked_at else None} if mood.thread_of_id else {}),
+        # Threads opened from here, newest first (closing one archives it).
+        'threads': [{'slug': s, 'title': t or s} for s, t in mood.threads.order_by('-created_at').values_list('slug', 'title')],
     }

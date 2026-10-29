@@ -6,6 +6,7 @@ so the page also shows who changed what, when, and why.
 """
 
 import json
+import re
 
 from django.http import JsonResponse
 from django.conf import settings
@@ -40,10 +41,28 @@ def settings_state():
         'global': {k: knobs.global_value(k) for k in knobs.GLOBAL_KNOBS},
         'history': [knobs.describe(row) for row in Setting.objects.order_by('-created_at')[:100]],
         'scram': knobs.scram(),
+        # Every vendor any harness reported, and its makers (OpenRouter's anthropic, moonshotai...): what
+        # models_off can switch off, a maker's group at a time (Justin, 28 Oct).
+        'makers': makers_offered(),
         # Everyone who's read aloud: the Voices section's rows (as the Moods page names them).
         'people': [{'name': n, 'human': h, 'shown': wiki_names.get(n, n)}
                    for n, h in ThinkingEntity.objects.order_by('name').values_list('name', 'is_biological_human')],
     }
+
+
+def makers_offered():
+    """{vendor: [{'name': maker, 'models': how many}]}, over every harness's catalog; a vendor whose ids carry no
+    maker (anthropic's own) is one group, ''."""
+    from .models import HarnessModels
+    found = {}
+    for vendors in HarnessModels.objects.values_list('vendors', flat=True):
+        for v in vendors or ():
+            makers = found.setdefault(v.get('name'), {})
+            for m in v.get('models') or ():
+                maker = str(m[0]).lstrip('~').split('/', 1)[0] if '/' in str(m[0]) else ''
+                makers.setdefault(maker, set()).add(str(m[0]))
+    return {vendor: [{'name': k, 'models': len(ids)} for k, ids in sorted(makers.items())]
+            for vendor, makers in sorted(found.items()) if vendor}
 
 
 SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'settings')
@@ -210,6 +229,42 @@ def api_tidings(request):
 
 
 @require_GET
+def api_tidings_find(request):
+    """{"links": [{id, title, host, at}]}: the links on Tidings whose title or address has every word of ?q=,
+    newest first, eight at most -- what '#t-' offers in the composer. No ?q=: the newest eight."""
+    from django.db.models import Q
+    from urllib.parse import urlsplit
+    from .models import Tiding
+    found = Tiding.objects.only('id', 'title', 'url', 'at')
+    for word in re.findall(r'[^\s\-_]+', request.GET.get('q', ''))[:6]:
+        found = found.filter(Q(title__icontains=word) | Q(url__icontains=word))
+    return JsonResponse({'links': [{'id': str(t.id), 'title': t.title or t.url, 'host': urlsplit(t.url).hostname or '',
+                                    'at': t.at.isoformat()} for t in found.order_by('-at')[:8]]})
+
+
+@require_GET
+def api_usage(request):
+    """What the agents spent (services/usage.py): ?hours= 24, 72, 168 or 720."""
+    from .services import usage
+    try:
+        hours = int(request.GET.get('hours', 24))
+    except ValueError:
+        hours = 24
+    return JsonResponse(usage.usage_state(hours))
+
+
+@require_GET
+def api_usage_kinds(request):
+    """Spend by kind of turn (services/spend_kinds.py): ?hours= (24 unless 1 to 168), ?mood= a slug or nothing."""
+    from .services import spend_kinds
+    try:
+        hours = min(168, max(1, int(request.GET.get('hours', 24))))
+    except ValueError:
+        hours = 24
+    return JsonResponse(spend_kinds.spend_by_kind(hours, request.GET.get('mood') or None))
+
+
+@require_GET
 def api_prompts(request):
     from .services import tidings
     return JsonResponse(tidings.prompts_state())
@@ -258,6 +313,11 @@ def api_settings(request):
         if agent is None:
             return JsonResponse({'error': f"no agent {body['agent']}"}, status=400)
     try:
+        if body.get('every_mood'):  # one agent's setting, in every Mood at once (the settings page's Set)
+            if agent is None or mood is not None or key not in knobs.KNOBS:
+                return JsonResponse({'error': 'every_mood: one agent, one per-agent setting, no Mood'}, status=400)
+            rows = knobs.change_every_mood(key, body.get('value'), agent, by=device.entity, note=body.get('note', ''))
+            return JsonResponse({'set': [knobs.describe(r) for r in rows]}, status=201)
         row = knobs.change(key, body.get('value'), mood=mood, agent=agent, by=device.entity,
                            note=body.get('note', ''))
     except knobs.Invalid as e:

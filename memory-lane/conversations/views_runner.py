@@ -273,7 +273,7 @@ def stream_events(mood, session_id, agent, body, asked=()):
 def api_quiet(request, slug):
     """Record that the runner's screen let a moment pass for its agent.
 
-    Body: {"reason": "a few words", "by": "screen"}. Shown as a dot, like the
+    Body: {"reason": "a few words", "by": "screen", "cost_usd": what the screen cost, if known}. Shown as a dot, like the
     agent's own silences, but marked as the screen's: the record never
     passes a reflex off as the agent's considered judgment. No session: a
     screen is not a turn anyone could resume.
@@ -292,6 +292,9 @@ def api_quiet(request, slug):
         body = json.loads(request.body)
         reason = str(body.get('reason', ''))
         by = str(body.get('by', 'screen'))
+        # What the screen's own call cost, when the runner says: the status page's spend by kind counts it.
+        cost = body.get('cost_usd')
+        cost = float(cost) if isinstance(cost, (int, float)) and cost >= 0 else None
     except (ValueError, AttributeError):
         return JsonResponse({'error': 'expected {"reason": ..., "by": "screen"}'}, status=400)
     if not re.fullmatch(r'\w{1,20}', by):
@@ -303,7 +306,7 @@ def api_quiet(request, slug):
         return JsonResponse({'error': f'no entity {agent}'}, status=400)
     message = Message.objects.create(
         id=uuid.uuid4(), sender=sender, mood=mood, content=f'<silent by="{by}">{reason}</silent>',
-        timestamp=int(time.time() * 1000), source_file=f'ingest-{SOURCE}', stop_reason='end_turn')
+        timestamp=int(time.time() * 1000), source_file=f'ingest-{SOURCE}', stop_reason='end_turn', cost_usd=cost)
     return JsonResponse({'id': str(message.id)}, status=201)
 
 
@@ -336,6 +339,31 @@ def api_held(request, slug):
         return JsonResponse({'error': 'expected {"reason": ..., "until": <iso> or null}'}, status=400)
     holds = set_held(slug, agent, reason, until)
     return JsonResponse({'held': holds.get(agent)})
+
+
+@csrf_exempt  # authenticated by the runner's key
+@require_POST
+def api_running(request, slug):
+    """The runner's agent has a turn running here, since when -- or no longer.
+
+    Body: {"since": <epoch seconds>} while it runs, renewed every couple of minutes; {"since": null}
+    when it ends. Not in the record: how things stand, like a hold (services/mood_view.py,
+    RUNNING_FOR), so the Mood shows an agent at work through a tool call that writes nothing.
+    """
+    from .services.mood_view import set_running
+
+    if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
+        return JsonResponse({'error': 'no runners are configured'}, status=503)
+    agent = runner_agent(request)
+    if agent is None:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    Mood.by_slug_or_404(slug)
+    try:
+        since = json.loads(request.body).get('since')
+        since = None if since is None else float(since)
+    except (ValueError, AttributeError, TypeError):
+        return JsonResponse({'error': 'expected {"since": <epoch seconds> or null}'}, status=400)
+    return JsonResponse({'running': set_running(slug, agent, since).get(agent)})
 
 
 # --- servers: whether each answers, and their redeploys -------------------------
@@ -458,7 +486,10 @@ def api_agent_models(request, name):
         found = HarnessModels.objects.filter(agent_id=name).first()
         if found is None:
             return JsonResponse({'error': f'{name} has reported no models'}, status=404)
-        return JsonResponse({'agent': name, 'harness': found.harness, 'vendors': found.vendors,
+        from .services import settings as knobs
+        # Less what's switched off (settings: models offered); ?all=1, everything, for that very list.
+        vendors = found.vendors if request.GET.get('all') == '1' else knobs.offered(found.vendors)
+        return JsonResponse({'agent': name, 'harness': found.harness, 'vendors': vendors,
                              'reported_at': found.reported_at.isoformat()})
     if request.method != 'POST':
         return JsonResponse({'error': 'GET or POST'}, status=405)

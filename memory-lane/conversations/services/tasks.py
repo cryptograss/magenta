@@ -20,6 +20,16 @@ agent can edit pages, so it can propose a task but not set one going.
               past it, the task doesn't start, and says so
     tools     full (it may change things: edit the wiki, push a branch) or
               look (the default: read and search only)
+    shared    a page whose text is the task's instructions, for tasks several
+              agents run alike; what the task page says after its template is
+              added below it, as that agent's own. The shared page is plain
+              instructions, not a task page: it is not resolved further, and
+              only a trusted editor's revision of it is read.
+
+So the same instructions live once. Three agents journalling:
+
+    {{Emergent task|mood=connectome|schedule=every 3600 blocks|cap=1|tools=full|shared=Cryptograss:Emergents/Tasks/Journal}}
+    (nothing here, or a line only this agent needs)
 
 Run, a task becomes a line in its Mood (source 'task'), which addresses the
 agent as a mention does (views_moods.api_mentions), so its runner wakes it
@@ -77,6 +87,8 @@ class Task:
     cap: float = None
     tools: str = 'look'
     blanks: list = field(default_factory=list)
+    shared: str = ''            # the page whose text is read as these instructions' base, if any
+    shared_revision: int = None  # the trusted revision of that page that was read
 
 
 # --- the page -------------------------------------------------------------------
@@ -129,7 +141,8 @@ def parse(agent, name, revision, editor, wikitext, page_title=None):
     tools = 'full' if fields.get('tools', '').lower() == 'full' else 'look'
     blanks = list(dict.fromkeys(BLANK.findall(prompt)))
     return Task(agent, name, page_title or title(agent, name), revision, editor, prompt,
-                fields.get('mood', '').lstrip('#').strip().lower(), fields.get('schedule', ''), cap, tools, blanks)
+                fields.get('mood', '').lstrip('#').strip().lower(), fields.get('schedule', ''), cap, tools, blanks,
+                fields.get('shared', '').strip())
 
 
 def editors():
@@ -142,6 +155,21 @@ def history(page):
     """A page's newest revisions from PickiPedia, newest first: [(revision, editor, wikitext)]."""
     from poller.wiki_rules import WikiTexts
     return WikiTexts().get(page)
+
+
+def shared_body(page, history_of):
+    """(revision, text) of the page holding a task's shared instructions: its newest revision by a
+    trusted editor, comments gone. Refused when the page or such a revision isn't there."""
+    revisions = history_of(page)
+    if not revisions:
+        raise Refused(f'there is no page {page}, which it names as its shared instructions')
+    trusted = {e.strip().lower().replace('_', ' ') for e in editors()}
+    found = next(((rev, ed, text) for rev, ed, text in revisions
+                  if (ed or '').lower().replace('_', ' ') in trusted), None)
+    if found is None:
+        who = ', '.join(editors())
+        raise Refused(f'{page} has no revision by a trusted editor ({who}) yet')
+    return found[0], COMMENTS.sub('', found[2] or '').strip()
 
 
 def read(agent, name, get=None):
@@ -158,6 +186,11 @@ def read(agent, name, get=None):
     if found is None:
         raise Refused(f'{page} has no revision by a trusted editor ({", ".join(editors())}) yet')
     task = parse(agent, name, *found, page_title=page)
+    if task.shared:
+        # One copy of the instructions several agents run alike; this page's own text goes below it.
+        task.shared_revision, base = shared_body(task.shared, get or history)
+        task.prompt = (base + '\n\n' + task.prompt).strip() if task.prompt else base
+        task.blanks = list(dict.fromkeys(BLANK.findall(task.prompt)))
     if not task.prompt:
         raise Refused(f'{page}, revision {task.revision}, says nothing to do')
     return task
@@ -295,7 +328,9 @@ def start(task, by, params=None, mood=None, slot=None, now=None):
                       else f'{task.title} names no mood, and none was given')
     content = {'type': 'task', 'for': task.agent, 'task': task.name, 'page': task.title,
                'revision': task.revision, 'by': by, 'tools': task.tools, 'params': params or {},
-               **({'slot': slot} if slot else {})}
+               **({'slot': slot} if slot else {}),
+               # Where the instructions themselves came from, when they are shared with other agents.
+               **({'shared': {'page': task.shared, 'revision': task.shared_revision}} if task.shared else {})}
     try:
         content['text'] = fill(task, params)
         if task.cap is not None:
@@ -364,7 +399,10 @@ def mention(msg, agent):
     if c.get('type') != 'task' or c.get('for') != agent or c.get('state') != 'asked':
         return None
     how = 'on its schedule' if c.get('by') == 'schedule' else f"at {c.get('by')}'s call"
-    text = (f"@{agent}: your task {c.get('task')}, {how} ({c.get('page')}, revision {c.get('revision')}; "
+    shared = c.get('shared') or {}
+    from_shared = (f", instructions from {shared['page']} revision {shared['revision']}"
+                   if shared.get('page') else '')
+    text = (f"@{agent}: your task {c.get('task')}, {how} ({c.get('page')}, revision {c.get('revision')}{from_shared}; "
             f"{'full tools' if c.get('tools') == 'full' else 'look-only'}):\n\n{c.get('text', '')}")
     # Not a person's words: the page decides its tools, not who called it (poller trusted()).
     return {'id': str(msg.id), 'sender': 'task', 'is_human': False, 'created_at': msg.created_at.isoformat(),

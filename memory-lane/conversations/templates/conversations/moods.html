@@ -15,7 +15,7 @@
   :root {
     --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
     --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1;
-    --human: #2a5d9f; --agent: #b8106b; --code: #f3efe8; --mention: #fff3c4;
+    --human: #2a5d9f; --agent: #b8106b; --code: #f3efe8; --mention: #fff3c4; --for-me: #d9a400;
     --hover: #f6f3ee; --warn-ink: #7a4b00; --warn-bg: #ffe9b0; --dot-edge: #d6cfc2; --err: #b3261e;
   }
   /* Dark, when the system is: the same tokens, night colours. */
@@ -23,7 +23,7 @@
     :root {
       --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
       --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b;
-      --human: #86b4f0; --agent: #ef5aa6; --code: #29252c; --mention: #4a3f12;
+      --human: #86b4f0; --agent: #ef5aa6; --code: #29252c; --mention: #4a3f12; --for-me: #c99a1e;
       --hover: #262228; --warn-ink: #ffd27a; --warn-bg: #3b2c08; --dot-edge: #4d4652; --err: #ff8a80;
     }
   }
@@ -302,12 +302,16 @@
   #promotePick .cancel { background: none; color: var(--muted); }
   #noAgents p { margin: 0 0 10px; }
   #noAgents button { font: inherit; border: 0; border-radius: 6px; padding: 6px 16px; background: var(--accent); color: #fff; cursor: pointer; }
-  #renameBox, #newBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
+  #renameBox, #newBox, #closeBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
                background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.18);
                padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-  #renameBox[hidden], #newBox[hidden] { display: none; }
+  #renameBox[hidden], #newBox[hidden], #closeBox[hidden] { display: none; }
   #renameBox .archive { float: right; color: var(--muted); }
-  #newBox .hint { font-size: 12.5px; color: var(--muted); }
+  #newBox .hint, #closeBox .hint { font-size: 12.5px; color: var(--muted); }
+  #closeBox label { display: flex; gap: 6px; align-items: baseline; font-size: 13.5px; }
+  #closeBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  #closeBox textarea[hidden], #closeBox #closeModel[hidden] { display: none; }
+  #closeBox #closeModel select { font: inherit; font-size: 12.5px; }
   #renameBox input, #renameBox textarea, #newBox input, #newBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
                                           background: var(--bg); color: var(--ink); }
   #renameBox input, #newBox input { font-size: 17px; font-weight: 600; }
@@ -334,6 +338,12 @@
     border-left: 3px solid transparent;
   }
   nav a.mood:hover { background: var(--hover); }
+  /* A thread, under the Mood it came from (Justin, 27 Oct). */
+  nav a.mood.sub { padding-left: calc(14px + 14px * var(--depth, 1)); padding-top: 3px; padding-bottom: 3px; }
+  nav a.mood.sub .title { font-size: 13px; font-weight: 500; }
+  nav a.mood.sub .title::before { content: '⑂'; color: var(--muted); font-weight: 400; margin-right: -3px; }
+  /* A fresh thread isn't a fork of anything (Justin, 27 Oct): its own mark. */
+  nav a.mood.sub.fresh .title::before { content: '🌱'; font-size: .8em; }
   nav a.mood.active { background: var(--accent-soft); border-left-color: var(--accent); }
   nav a.mood .title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
   nav a.mood .meta { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
@@ -382,6 +392,14 @@
   /* Drag the pane's edge to size it; the width is remembered in this browser. */
   #grip { width: 5px; margin-left: -3px; flex: none; cursor: col-resize; position: relative; z-index: 1; }
   #grip:hover, body.sizing #grip { background: var(--accent-soft); }
+  /* A handle at the grip's middle folds the Moods pane away, or brings it back; dragging still resizes it
+     (Justin, 28 Oct: "sometimes I want to collapse it entirely"). */
+  #grip .navfold { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 14px; height: 38px;
+                   padding: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted);
+                   font-size: 9px; line-height: 1; cursor: pointer; z-index: 2; }
+  #grip .navfold:hover { color: var(--accent); border-color: var(--accent); }
+  body.nav-folded nav { display: none; }
+  body.nav-folded #grip { cursor: default; margin-left: 0; width: 8px; }
   body.sizing { cursor: col-resize; user-select: none; }
   .badge {
     display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 9px;
@@ -393,14 +411,47 @@
   /* --gutter: what the jump strip takes at the right (25px + margins). When the
      window leaves room beside the column the text never reaches it; when the
      column fills the width (a phone, zoomed in), its text stops short of it. */
+  /* Pinned messages (services/pins.py): one quiet line at the top of the thread, the newest; the rest on a click. */
+  /* Sticky against main's own top edge: its 22px padding is above where sticky's 0 is measured from. */
+  /* The Mood's head (a slim drawer) and its pins, sticky together. */
+  #topbar { position: sticky; top: -22px; z-index: 5; margin: -22px 0 6px; background: var(--bg); }
+  #pins { max-width: 760px; margin: 0 auto; padding: 3px 12px; box-sizing: border-box;
+          font-size: 12.5px; color: var(--muted); border-bottom: 1px solid var(--line); }
+  #pins[hidden] { display: none; }
+  #pins .pin { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  #pins .pin a.go { flex: 1; min-width: 0; color: inherit; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  #pins .pin a.go:hover { color: var(--ink); }
+  #pins .pin b { color: var(--ink); font-weight: 600; }
+  #pins button { font: inherit; font-size: 12px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 3px; white-space: nowrap; }
+  #pins button:hover { color: var(--accent); }
+  #pins .more { padding: 2px 0 1px 18px; display: grid; gap: 2px; }
+  #pins .more[hidden] { display: none; }
+  .turn.pinned > .who .name::after { content: ' 📌'; font-size: 11px; }
   .inner { --gutter: 36px; max-width: 760px; margin: 0 auto;
            padding: 0 max(22px, calc(var(--gutter) - max(0px, (100cqw - 760px) / 2))) 0 22px; }
 
-  .mood-head h1 { font-size: 22px; margin: 0 0 4px; }
-  .mood-head .desc { color: var(--muted); margin: 0 0 6px; }
+  /* A Mood's head: one slim line at the top that stays (Justin, 27 Oct: "I never look at the top of the mood"),
+     its description, threads and people a click away. */
+  .mood-head { max-width: 760px; margin: 0 auto; padding: 3px 12px; box-sizing: border-box; border-bottom: 1px solid var(--line); }
+  .mood-head .mbar { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+  .mood-head .mtoggle { font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; width: 1em; flex: none; }
+  .mood-head h1 { font-size: 13px; margin: 0; color: var(--ink); flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mood-head .mdesc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mood-head .macts { flex: none; display: flex; align-items: baseline; gap: 6px; }
+  .mood-head .macts a { color: var(--muted); }
+  .mood-head .mbody { padding: 4px 0 6px 1.6em; }
+  .mood-head .mbody[hidden] { display: none; }
+  .mood-head .desc { color: var(--muted); margin: 0 0 4px; font-size: 13.5px; }
   .mood-head .meta { font-size: 12px; color: var(--muted); }
   .mood-head .meta a { color: var(--muted); }
-  .mood-head { padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+  /* A thread (services: Mood.thread_of): where it came from, and the threads opened from here. */
+  .mood-head .thread { font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
+  .mood-head .thread a { color: var(--accent); }
+  .mood-head .thread button, .mood-head button.newthread, .mood-head .macts button.closethread { font: inherit; font-size: 12px; border: 1px solid var(--line);
+                               background: none; color: var(--muted); border-radius: 6px; padding: 0 7px; cursor: pointer; margin-left: 4px; }
+  .mood-head .thread button:hover, .mood-head button.newthread:hover, .mood-head .macts button.closethread:hover { color: var(--accent); border-color: var(--accent); }
+  #newBox .forkchoice { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+  #newBox .forkchoice[hidden] { display: none; }
 
   /* What was said, at its own size: --text-scale is the reader's choice (the menu's text size), apart from zoom. */
   :root { --text-base: 15px; --text-scale: 1; }
@@ -420,6 +471,11 @@
   /* Every message an agent says in the Mood carries its colour down the margin (--who), whoever it's
      for (Justin, 18 Oct): not its thinking, steps, silences or compactions, which aren't .turn.agent. */
   .turn.agent { border-left-color: var(--who, var(--agent)); }
+  /* For you (it names you, or a group you're in, or replies to you): the other three edges, in the gold of your
+     highlighted @name, so the left keeps its sender's colour (Justin, 26 Oct). Not an agent's every answer after
+     you spoke: that was "way too many" (Justin, 26 Oct); those still ring the bell. */
+  .turn.mentions-me { box-shadow: inset 0 2px 0 var(--for-me), inset -2px 0 0 var(--for-me), inset 0 -2px 0 var(--for-me);
+                                    border-top-color: transparent; padding-right: 10px; border-radius: 0 6px 6px 0; }
   body.only-mine .turn:not(.mentions-me) { display: none; }
   .turn .who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
   .turn .who .name { font-weight: 700; }
@@ -441,6 +497,7 @@
   .turn .body > :last-child { margin-bottom: 0; }
   .turn .body p { margin: 0 0 .7em; }
   .turn .body ul, .turn .body ol { margin: 0 0 .7em; padding-left: 1.4em; }
+  .turn .body li > ul { margin: 0; }
   .turn .body h4 { margin: .8em 0 .3em; font-size: 1em; }
   .turn .body code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .87em; }
   .turn .body pre { background: var(--code); padding: 10px 12px; border-radius: 6px; overflow-x: auto; font-size: .87em; }
@@ -464,7 +521,11 @@
   .mention { background: var(--code); border-radius: 4px; padding: 0 4px; font-weight: 600; }
   a.mention { color: inherit; text-decoration: none; }  /* to their PickiPedia page (mood_view.mention_page) */
   a.mention:hover { text-decoration: underline; }
-  .mention.me { background: var(--mention); }
+  /* Each @name its own way (Skyler, 26 Oct): an emergent's in its colour; a person's in their name art (markTurn). */
+  .turn .body .mention.tagged, .mention.tagged { color: var(--tag); background: color-mix(in srgb, var(--tag) 15%, transparent); }
+  .turn .body .mention.named, .mention.named { background: none; padding: 0; }  /* a person in their own name art, bare */
+  /* Yours: a gold underline, no fill (Justin, 26 Oct: the fill read grey behind name art). */
+  .turn .body .mention.me, .mention.me { background: none; color: inherit; box-shadow: inset 0 -2px 0 var(--for-me); border-radius: 0; }
   .wake { font-size: .85em; margin-left: 2px; cursor: help; }  /* 👀 or 🔨: which tools a turn had */
   .mention .wake { margin-left: 3px; }
   .turn.new { animation: arrive .6s ease-out; }
@@ -474,7 +535,9 @@
   header .auth { font-size: 13px; color: var(--muted); }
   header .preview { font-size: 12px; font-weight: 600; color: var(--warn-ink); background: var(--warn-bg); border-radius: 4px; padding: 1px 8px; }
   header .auth a { color: var(--muted); }
-  #footer { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); }
+  /* Above the sticky ▶ and ⏩ (z-index 3 on a touch screen), which otherwise
+     scroll over the message box. Skyler, 2026-10-28. */
+  #footer { position: sticky; bottom: 0; z-index: 4; background: var(--bg); border-top: 1px solid var(--line); }
   /* Up and down a message at a time, at the right of the thread. */
   /* Two pairs: every message (right), people's messages only (left, with a person on them). */
   /* Tight little tabs in the right margin; the thread keeps a gutter clear of them (main, below). */
@@ -640,7 +703,7 @@
            padding: 6px 10px 2px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
   .ahead b { color: var(--who, var(--agent)); font-weight: 600; }
   .ahead .caret { width: 10px; flex: none; }
-  .ahead .turnlink { flex: none; font-size: 11.5px; color: var(--muted); cursor: copy; }
+  .ahead .turnlink { flex: none; font-size: 11.5px; color: var(--muted); cursor: copy; text-decoration: none; }
   .ahead .turnlink:hover { text-decoration: underline; }
   .ahead .turnlink[data-copied]::after { content: ' link copied'; color: var(--accent); font-size: 11px; }
   /* 🔥 or 🧊: whether a turn's first call read its context from the cache; and its instructions' checksum */
@@ -690,7 +753,11 @@
   .event.wiki a { color: inherit; }
   .event.wiki .delta { color: var(--muted); text-decoration: none; }
   .event.wiki summary { cursor: pointer; }
+  .aturn .heard { font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
+  .aturn .heard a { color: var(--accent); }
   .event.wiki .each { margin: 4px 0 0 18px; }
+  .event.wiki .wthumb img { height: 32px; max-width: 64px; object-fit: cover; border-radius: 3px; border: 1px solid var(--line);
+                            vertical-align: middle; margin: 0 5px 0 1px; }
   .event code { font-size: 11.5px; }
   /* A link's preview card (services/unfurl.py): its picture at the left, its title and a line. */
   .turn .cards { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; max-width: 520px; }
@@ -755,6 +822,15 @@
   #composer textarea { flex: 1; font-family: inherit; line-height: inherit; min-height: 44px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
   #composer button { font: inherit; padding: 8px 14px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
   #composer button:disabled { opacity: .5; cursor: default; }
+  /* A tiny chevron at the top centre: pull the box up to write at length, and back down (Justin, 27 Oct).
+     Just inside the composer's top edge, not astride it, so a click aimed at the settings row above
+     doesn't land on it (Justin, 28 Oct). */
+  #composer .expand { position: absolute; top: 1px; left: 50%; transform: translateX(-50%);
+    width: 42px; height: 13px; padding: 0; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--panel); color: var(--muted); font-size: 9px; line-height: 11px; text-align: center;
+    cursor: pointer; z-index: 2; }
+  #composer .expand:hover { color: var(--accent); border-color: var(--accent); }
+  body.say-expanded #composer textarea { max-height: 85vh; }
   /* A word from the page (an error, a note) goes on its own line under the box: beside it, a
      long one squeezed the box to a sliver on a phone, and you couldn't type to clear it. */
   #composer textarea { min-width: 0; }
@@ -764,9 +840,11 @@
   #composer .field:focus-within { border-color: var(--accent); }
   #composer.dropping .field { outline: 2px dashed var(--accent); }
   #composer .field textarea { border: 0; border-radius: 0; background: none; outline: none; padding: 9px 6px; resize: none; }
-  #composer .field #attach, #composer .field #memoBtn, #composer .field #emojiBtn { flex: none; border: 0; border-radius: 50%; background: none;
+  #composer .field #attach, #composer .field #memoBtn, #composer .field #emojiBtn, #composer .field #sayHelp { flex: none; border: 0; border-radius: 50%; background: none;
                                                         min-width: 38px; height: 38px; padding: 0 8px; margin-bottom: 1px; }
   #composer .field #memoBtn.recording { border-radius: 19px; }
+  #composer .field #sayHelp { min-width: 28px; padding: 0 6px; color: var(--muted); font-size: 13px; font-weight: 600; cursor: help; opacity: .7; }
+  #composer .field #sayHelp:hover { opacity: 1; color: var(--accent); }
   /* Pictures with the words: thumbnails above the field, each with how far up it is and ✕ (renderTray). */
   #tray { flex: 0 0 100%; display: flex; gap: 8px; overflow-x: auto; padding: 2px 0; scrollbar-width: thin; }
   #tray[hidden] { display: none; }
@@ -793,17 +871,23 @@
   #signedOut b { color: var(--ink); }
   #signedOut a { color: var(--accent); font-weight: 600; }
   #composer .note { color: var(--muted); font-size: 12px; }
-  #activity { display: none; align-items: center; gap: 8px; padding: 8px 16px; font-size: 13px; color: var(--muted); }
+  #activity { display: none; align-items: center; gap: 8px; padding: 2px 16px 3px; font-size: 12px; color: var(--muted); }
   #activity.on { display: flex; }
   #activity .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); animation: pulse 1.2s ease-in-out infinite; }
   #activity b { color: var(--who, var(--agent)); }
   /* Held: owed a turn the runner isn't starting yet -- a still dot, not a pulse. */
   #activity .one.held .dot { animation: none; opacity: .35; }
-  #activityText { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+  /* One line however many are at work: scrolls sideways rather than stacking (Justin, 27 Oct: reclaim the space). */
+  #activityText { display: flex; flex-wrap: nowrap; gap: 4px 14px; overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; }
+  #activityText::-webkit-scrollbar { display: none; }
   #activity .one { display: inline-flex; align-items: center; gap: 8px; }
   #activity #stopBtn { margin-left: auto; font: inherit; font-size: 12px; padding: 2px 9px; border: 1px solid var(--line);
                        border-radius: 10px; background: var(--panel); color: var(--muted); cursor: pointer; white-space: nowrap; }
   #activity #stopBtn:hover { color: var(--err); border-color: var(--err); }
+  /* Between the verb and the timer (Justin, 28 Oct: beside the name it read as another pie). */
+  #activity .stopone { font-size: 11px; line-height: 1; padding: 1px 2px; margin-right: 3px; border: 0; background: none; cursor: pointer;
+                       opacity: .7; vertical-align: -1px; }
+  #activity .stopone:hover { opacity: 1; transform: scale(1.15); }
   @keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
   .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .people .who { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--code); }
@@ -821,7 +905,7 @@
   /* Who is a person and who is an agent, wherever a name appears. */
   .ico { width: 13px; height: 13px; fill: currentColor; vertical-align: -1px; margin-right: 4px; flex: none; }
   .people .who.typing::after { content: ' typing…'; color: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
-  #tasks { display: none; flex-wrap: wrap; gap: 6px; padding: 6px 16px 0; font-size: 12.5px; color: var(--muted);
+  #tasks { display: none; flex-wrap: wrap; gap: 6px; padding: 2px 16px 0; font-size: 12px; color: var(--muted);
            max-width: 760px; margin: 0 auto; }
   #tasks.on { display: flex; }
   #tasks .task { background: var(--code); border-radius: 10px; padding: 1px 9px; border: 0; font: inherit; color: inherit; cursor: pointer; }
@@ -839,7 +923,7 @@
   #tasks.open .list { display: flex; }
   #tasks .task::before { content: '⚙ '; }
   #tasks .task.helper::before { content: '✦ '; }
-  #typing { display: none; padding: 6px 16px 0; font-size: 13px; color: var(--muted); }
+  #typing { display: none; padding: 2px 16px 0; font-size: 12px; color: var(--muted); }
   #typing.on { display: block; }
 
   /* An agent's tool calls between its words: one line, opened on demand. */
@@ -883,7 +967,11 @@
   .waitline { display: flex; align-items: center; gap: 8px; margin: 4px 0; padding: 2px 3px; font-size: 13px; color: var(--muted); }
   .waitline .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); opacity: .35; flex: none; }
   .waitline b { color: var(--who, var(--agent)); }
+  .waitline b.answered { opacity: .6; font-weight: 500; }
   .waitline time { margin-left: 2px; }
+  /* A turn that came back with nothing, twice: said plainly, in the error colour, its dot hollow. */
+  .waitline.failed { color: var(--err, #c0392b); }
+  .waitline.failed .dot { background: none; border: 1.5px solid var(--who, var(--agent)); opacity: .7; }
   /* Each in its agent's colour (--who, agentColor): pale, full when hovered or opened. */
   .quiet .dot { --who: var(--agent); width: 9px; height: 9px; border-radius: 50%; padding: 0; cursor: pointer;
                 background: color-mix(in srgb, var(--who) 30%, var(--panel)); border: 1px solid var(--who); }
@@ -919,6 +1007,11 @@
   .tdot.empty { min-width: 12px; width: 12px; height: 12px; padding: 0; }
   .work-head .what { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .work .steps .trow { margin: 4px 0; }
+  /* What the agent said on its way to a tool call (stop: tool_use): a lead-in, folded with the steps it led to,
+     so a turn reads as one answer, not two near-identical posts (Justin and re, 27 Oct). */
+  .work .steps .lead { margin: 4px 0 8px; }
+  .work .steps .lead .turn { margin: 0; }
+  .work-head .lead-sum { color: var(--muted); font-style: italic; max-width: 28em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .work .steps .trow .harness { margin-right: 4px; font-size: 13px; vertical-align: middle; }  /* the harness's note, not its thinking */
   .work .steps .trow .thought { display: none; }
   .work .steps .trow.on .thought { display: block; }
@@ -1062,6 +1155,11 @@
   .hush { display: flex; flex-wrap: wrap; gap: 8px; max-width: 760px; margin: 0 auto; padding: 6px 16px 0;
           font-size: 12.5px; color: var(--muted); }
   .hush:empty { display: none; }
+  /* Folded, the agents stay one row whatever a model's or name's length: the line scrolls sideways instead
+     of wrapping (Justin, 27 Oct: long model names pushed it to two rows). */
+  .hush:has(.agent.gist) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 4px; }
+  .hush:has(.agent.gist)::-webkit-scrollbar { display: none; }
+  .hush:has(.agent.gist) .agent { flex: 0 0 auto; }
   /* An agent's setting someone else just changed: a moment's glow (renderAgents). */
   @keyframes justset { 0%, 60% { box-shadow: 0 0 0 2px var(--accent); background: var(--accent-soft); } 100% { box-shadow: 0 0 0 0 transparent; } }
   .hush .justset { animation: justset 4s ease-out; border-radius: 4px; }
@@ -1078,6 +1176,8 @@
   .hush .agentgrid { flex: 1 1 0; min-width: 0; display: grid; grid-template-columns: repeat(8, auto) 1fr; gap: 4px 6px; align-items: center; }
   .hush .agentgrid .agent { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
   .hush .agentgrid .agent > * { justify-self: start; }
+  /* Mode: just its sign, closed; the menu open says the rest (1hr and such) (Justin, 27 Oct). */
+  .hush select[data-knob="listening"] { width: 3.2em; }
   .hush .agentgrid .cell { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
   .hush .agentgrid .heads { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
   .hush .agentgrid .heads .cell[title] { cursor: help; }
@@ -1085,8 +1185,8 @@
   .hush .fold { border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 2px; }
   .hush .fold:hover { color: var(--accent); }
   /* Each reads as a menu (Sky, 16 Oct: memory-lane#201): boxed like the menus it opens into, a caret after it. */
-  .hush .agent.gist { color: var(--who); cursor: pointer; margin-right: 6px; background: var(--panel);
-                      border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+  .hush .agent.gist { color: var(--who); cursor: pointer; margin-right: 0; background: var(--panel);
+                      border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
   .hush .agent.gist::after { content: ' ▾'; color: var(--muted); }
   .hush .agent.gist:hover { border-color: var(--who); }
   .hush .agent.gist:hover::after { color: var(--who); }
@@ -1183,7 +1283,7 @@
     main { padding-top: 12px; }
     .inner { padding: 0 max(12px, calc(var(--gutter) - max(0px, (100cqw - 760px) / 2))) 0 12px; }
     .mood-head h1 { font-size: 19px; }
-    #activity { padding: 6px 12px; }
+    #activity { padding: 2px 12px 3px; }
     .hush { padding: 4px 12px 0; }
     #jump { right: 3px; }
     :root { --text-base: 16.5px; }
@@ -1324,8 +1424,20 @@
 <form id="newBox" hidden>
   <input id="newTitle" maxlength="200" aria-label="Title" placeholder="What the new Mood is about">
   <textarea id="newDesc" rows="2" maxlength="2000" aria-label="Description" placeholder="A line or two more (optional)"></textarea>
-  <span class="hint">Its first @magent starts a new session there, briefed by the letter magent left itself.</span>
+  <div class="forkchoice" id="newThread" hidden>
+    <span class="hint" id="newThreadOf"></span>
+    <label><input type="radio" name="threadKind" value="fork" checked> <span id="forkWords"></span></label>
+    <label><input type="radio" name="threadKind" value="fresh"> <span id="freshWords"></span></label>
+  </div>
+  <span class="hint" id="newHint"></span>
   <span><button type="submit">Start</button> <button type="button" id="newCancel">Cancel</button></span>
+</form>
+<form id="closeBox" hidden>
+  <b id="closeTitle"></b>
+  <label id="closeAskLine"><input type="checkbox" id="closeAsk" checked> <span id="closeAskWords"></span></label>
+  <textarea id="closeNote" rows="2" maxlength="2000" aria-label="A note for them"></textarea>
+  <span class="hint" id="closeModel"></span>
+  <span><button type="submit" id="closeGo"></button> <button type="button" id="closeCancel">Cancel</button></span>
 </form>
 <div id="locked"></div>
 <div id="search" hidden role="search">
@@ -1340,9 +1452,9 @@
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
   <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
-  <div id="grip" title="Drag to resize; double-click to reset"></div>
+  <div id="grip" title="Drag to resize; double-click to reset"><button type="button" class="navfold" id="navFold" title="Fold the Moods away" aria-label="Fold the Moods list away" aria-expanded="true">‹</button></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
-  <main id="main"><div class="inner" id="inner"><div class="empty">Loading…</div></div>
+  <main id="main"><div id="topbar"><div id="moodbar"></div><div id="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
     <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
@@ -1360,13 +1472,16 @@
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
     <form id="composer" autocomplete="off">
       <div id="suggest"></div>
+      <button type="button" id="expandComposer" class="expand" title="Expand the box to write at length" aria-label="Expand the message box" aria-expanded="false">▴</button>
       <button type="button" id="agentsBtn" title="Emergents here: listening, model, effort" aria-label="Emergent settings" aria-expanded="false">⚙</button>
       <div id="tray" hidden></div>
       <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
       <!-- One field, as Signal and WhatsApp have it: ＋ and 🎙 inside it, the words between. -->
       <div class="field">
         <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
-        <textarea id="say" placeholder="Say something. @name to address someone; [[Page]] links PickiPedia. Enter sends; Ctrl+Enter for a new line." rows="2"></textarea>
+        <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
+        <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
+        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @agents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
@@ -1438,10 +1553,13 @@
   const AGENT_COLORS = { magent: '#ff67fd', re: '#ff3c00', blu: '#1976d2' };
   const AGENT_PALETTE = ['#1f8a70', '#c77c02', '#5b5bd6', '#0b7fab', '#8e5a2b', '#6b8e23'];
   // "waiting for re, blu to settle the schema": each it waits for in its own colour, then what for (Justin, 24 Oct).
-  function waitedFor(why) {
+  // Each that has answered already, with a ✓ (a wait for several goes on until the last has).
+  function waitedFor(why, answered = []) {
     const [names, to] = String(why || '').replace(/^waiting for /, '').split(/ to (.*)/s);
-    return 'waiting for ' + names.split(/,\s*/).map(n => `<b style="color: ${agentColor(n)}">${esc(n)}</b>`).join(', ')
-      + (to ? ' to ' + esc(to) : '');
+    const each = names.split(/,\s*/).map(n => `<b style="color: ${agentColor(n)}"${answered.includes(n) ? ' class="answered" title="has answered"' : ''}>${esc(n)}${answered.includes(n) ? ' ✓' : ''}</b>`);
+    // "re", "re and blu", "re, blu, and magent" (Justin, 27 Oct).
+    const listed = each.length < 3 ? each.join(' and ') : each.slice(0, -1).join(', ') + ', and ' + each[each.length - 1];
+    return 'waiting for ' + listed + (to ? ' to ' + esc(to) : '');
   }
   function humanDuration(ms) {
     const s = Math.round(ms / 1000);
@@ -1451,18 +1569,38 @@
     return Math.round(m / 60) + ' h';
   }
   // When an agent whose arrival was waited for posts, flip its preceding waitline to past tense
-  // with elapsed time: "magent waited for 12 s for re to set up the joke" (Justin, 25 Oct).
-  function resolveWaits(container, agentName, resolvedAt) {
+  // with elapsed time: "magent waited for 12 s for re to set up the joke" (Justin, 25 Oct), and move it
+  // below what it waited for, where the waiting finished (Justin, 26 Oct).
+  function resolveWaits(container, agentName, resolvedAt, after) {
     const resolvedMs = new Date(resolvedAt).getTime();
     container.querySelectorAll('.waitline[data-waiting-for]').forEach(line => {
-      if (!line.dataset.waitingFor.split(',').includes(agentName)) return;
-      const dur = humanDuration(resolvedMs - new Date(line.dataset.waitAt).getTime());
+      const names = line.dataset.waitingFor.split(',');
+      if (!names.includes(agentName)) return;
+      const answered = [...new Set([...(line.dataset.answered || '').split(',').filter(Boolean), agentName])];
+      line.dataset.answered = answered.join(',');
       const verbSpan = line.querySelector('.wait-verb');
+      // Waiting for several (Justin, 26 Oct: "duke it out"): each that answers is ticked; the line is finished,
+      // and moved below, only when the last has -- as the runner wakes the waiter then, not before.
+      if (names.some(n => !answered.includes(n))) {
+        if (verbSpan) verbSpan.innerHTML = 'is ' + waitedFor(line.dataset.waitReason, answered);
+        return;
+      }
+      const dur = humanDuration(resolvedMs - new Date(line.dataset.waitAt).getTime());
       if (verbSpan) {
         const rest = waitedFor(line.dataset.waitReason).replace(/^waiting for /, '');
         verbSpan.innerHTML = `waited for ${esc(dur)} for ` + rest;
       }
+      if (after && after.parentNode === container) { after.after(line); line.classList.add('waited'); }
       delete line.dataset.waitingFor;
+    });
+  }
+  // Its answer has landed: "is taking X" reads "took X".
+  function resolveTakes(container, agentName) {
+    container.querySelectorAll('.waitline[data-taking-by]').forEach(line => {
+      if (line.dataset.takingBy !== agentName) return;
+      const verbSpan = line.querySelector('.wait-verb');
+      if (verbSpan) verbSpan.textContent = verbSpan.textContent.replace(/^is taking /, 'took ');
+      delete line.dataset.takingBy;
     });
   }
   function agentColor(name) {
@@ -1494,6 +1632,7 @@
   let act = null;           // what an agent is doing now, from /turns/: the one stop and Esc stop
   let acts = [];            // every agent at work here, longest at it first (mood_view.activities)
   let typingNow = [];       // who else is typing here, from /turns/
+  let recordingNow = [];    // of them, who's recording a voice memo
 
   const ICONS = {
     human: '<svg class="ico" viewBox="0 0 16 16" aria-label="person"><circle cx="8" cy="4.6" r="3"/><path d="M2.2 15c0-3.4 2.6-5.6 5.8-5.6s5.8 2.2 5.8 5.6z"/></svg>',
@@ -1578,15 +1717,22 @@
 
   let archivedOpen = false;
   function renderNav() {
-    const item = m => `
-      <a class="mood ${m.slug === current ? 'active' : ''}" href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
+    const item = ([m, depth]) => `
+      <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && !m.forked_at ? ' fresh' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
         <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
-    const live = moods.filter(m => !m.archived), archived = moods.filter(m => m.archived);  // pinned come first, from the server
+    // A thread under the Mood it came from, indented (Justin, 27 Oct); one whose Mood isn't in the same list stands alone.
+    const nest = list => {
+      const here = new Set(list.map(m => m.slug)), out = [];
+      const add = (m, depth) => { out.push([m, depth]); list.filter(t => t.thread_of === m.slug).forEach(t => add(t, depth + 1)); };
+      list.filter(m => !m.thread_of || !here.has(m.thread_of)).forEach(m => add(m, 0));
+      return out;
+    };
+    const live = nest(moods.filter(m => !m.archived)), archived = nest(moods.filter(m => m.archived));  // pinned come first, from the server
     // The one open stays in view: an archived Mood opened shows its fold open.
-    const open = archivedOpen || archived.some(m => m.slug === current);
+    const open = archivedOpen || archived.some(([m]) => m.slug === current);
     document.getElementById('moodList').innerHTML =
       `<div class="label">Moods${keyHolder ? '<button type="button" id="newMood" title="Start a Mood" aria-label="Start a Mood">＋</button>' : ''}</div>`
       + live.map(item).join('')
@@ -1710,16 +1856,27 @@
     if (/^#[\w-]+$/.test(link)) return '/moods/' + link.slice(1) + '/';
     return link ? `${WIKI}/wiki/${encodeURIComponent(link.replace(/ /g, '_'))}` : '';
   }
-  // `code` in a task or a note, as in a message.
-  function todoText(text) { return esc(text).replace(/`([^`\n]+)`/g, '<code>$1</code>'); }
+  // `code` in a task or a note, as in a message; [[Page]] and [[Page|label]] links to the page, as
+  // PickiPedia's <todo> shows them (Justin, 27 Oct: the list names a dozen pages a reader had to
+  // search for). Code is set aside first, so brackets inside it stay as written.
+  function todoText(text, links = true) {
+    const codes = [];
+    let h = esc(text).replace(/`([^`\n]+)`/g, (_, c) => `\x01${codes.push('<code>' + c + '</code>') - 1}\x01`);
+    if (links) h = h.replace(/\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]/g, (whole, title, label) => {
+      const name = title.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
+      return name ? `<a href="${esc(linkOf(name))}">${(label || '').trim() || esc(name)}</a>` : whole;
+    });
+    return h.replace(/\x01(\d+)\x01/g, (_, i) => codes[+i]);
+  }
   // Each item's own name in a link (#todo-<its words>): stable while its words are.
   function todoId(it) { return 'todo-' + it.task.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60); }
   function todoItem(it) {
     const who = it.who.map(n => n.toLowerCase() === viewer ? '<span class="you">you</span>' : esc(shown(n.toLowerCase())));
     const meta = [it.merged ? 'merged, says GitHub' : it.kind, who.join(', ')].filter(Boolean).join(' · ');
-    // A task with a link is the link, as on PickiPedia (its <todo> tag).
+    // A task with a link is the link, as on PickiPedia (its <todo> tag), and one link whole: a [[page]]
+    // inside it would be a link in a link, which browsers cut apart. The note is never wrapped.
     const href = it.link ? linkOf(it.link) : '';
-    const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''} title="${esc(it.link)}">${todoText(it.task)}</a>`
+    const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''} title="${esc(it.link)}">${todoText(it.task, false)}</a>`
       : todoText(it.task);
     const id = todoId(it);
     return `<li id="${esc(id)}"><span class="box">${it.done ? '☑' : '☐'}</span><div><span class="task">${task}</span>`
@@ -1812,6 +1969,16 @@
   // --- the chain's height: from the explorer now and then, a block every 12 s between ---
   const blockEl = document.getElementById('block');
   let blockAnchor = null;
+  // A moment as its block, with commas: its own where it's stamped (eth_blockheight), else counted from the
+  // explorer's (est: about), else its time as before. {text, est}
+  function blockText(block, iso) {
+    if (block) return { text: '⛓ ' + Number(block).toLocaleString(), est: false };
+    if (blockAnchor && iso) {
+      const at = blockAnchor.height + Math.floor((new Date(iso) - new Date(blockAnchor.at)) / 1000 / blockAnchor.seconds);
+      return { text: '⛓ ≈' + at.toLocaleString(), est: true };
+    }
+    return { text: iso ? stamp(iso) : '', est: false };
+  }
   async function refreshBlock() {
     try {
       const b = await (await fetch('/api/block/')).json();
@@ -1837,7 +2004,20 @@
     else document.documentElement.style.removeProperty('--nav-width');
   }
   navWidth(store.get('navWidth', 0));
+  // Folded away (the handle on the grip), remembered on this computer; a drag still resizes it when open.
+  const navFold = document.getElementById('navFold');
+  function foldNav(on) {
+    document.body.classList.toggle('nav-folded', on);
+    navFold.textContent = on ? '›' : '‹';
+    navFold.title = on ? 'Show the Moods' : 'Fold the Moods away';
+    navFold.setAttribute('aria-expanded', on ? 'false' : 'true');
+    store.set('navFolded', on);
+  }
+  if (store.get('navFolded', false)) foldNav(true);
+  navFold.addEventListener('click', e => { e.stopPropagation(); foldNav(!document.body.classList.contains('nav-folded')); });
+  navFold.addEventListener('pointerdown', e => e.stopPropagation());  // a click on the handle is no drag
   grip.addEventListener('pointerdown', e => {
+    if (document.body.classList.contains('nav-folded')) return;
     e.preventDefault();
     grip.setPointerCapture(e.pointerId);
     document.body.classList.add('sizing');
@@ -1865,18 +2045,64 @@
     // You, or a group you're in (@core).
     el.querySelectorAll('.mention').forEach(s => s.classList.toggle('me', s.dataset.who === me
       || (s.dataset.members || '').split(',').includes(me)));
+    // Who's tagged, at a glance: an emergent in its colour (it wakes); a person written their own way, as their name
+    // is above their messages (Justin, 26 Oct: the icon's colour is kept to mean something else); a group stays plain.
+    el.querySelectorAll('.mention[data-who]:not(.group)').forEach(s => {
+      const who = s.dataset.who;
+      if (human[who] === false) { s.style.setProperty('--tag', agentColor(who)); s.classList.add('tagged'); }
+      else if (human[who] && (looks[who] || {}).art && !s.querySelector('.art')) { s.innerHTML = '@' + nameHtml(who); s.classList.add('named'); }
+    });
   }
 
-  function renderHead(m) {
+  // A thread's line: where it was opened from, forked or fresh, and closing it (archiving); a Mood's threads.
+  function threadLine(m) {
+    const link = slug => `<a href="/moods/${encodeURIComponent(slug)}/">#${esc(slug)}</a>`;
+    const parts = [];
+    if (m.thread_of) {
+      const shut = isArchived(m.slug);
+      parts.push(`${m.forked_at ? '⑂' : '🌱'} a thread of ${link(m.thread_of)}, ` + (m.forked_at
+        ? `forked ${esc(stamp(m.forked_at))}: its emergents went on from where they were there`
+        : 'started fresh') + (shut ? ' · closed' : '')
+        + (keyHolder ? `<button type="button" class="closethread" title="${shut ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${shut ? 'reopen' : 'close thread'}</button>` : ''));
+    }
+    const open = (m.threads || []).filter(t => !isArchived(t.slug)), shut = (m.threads || []).filter(t => isArchived(t.slug));
+    if (open.length) parts.push('threads: ' + open.map(t => `<a href="/moods/${encodeURIComponent(t.slug)}/" title="${esc(t.title)}">#${esc(t.slug)}</a>`).join(', ')
+      + (shut.length ? ` (and ${shut.length} closed)` : ''));
+    else if (shut.length) parts.push(`${shut.length} closed thread${shut.length === 1 ? '' : 's'}`);
+    return parts.length ? `<div class="thread">${parts.join(' · ')}</div>` : '';
+  }
+
+  // The head lives in #moodbar, outside the thread's own nodes (stash keeps those per Mood); drawn by showMoodName.
+  const moodbar = document.getElementById('moodbar');
+  let headOpen = !!store.get('headOpen', false);
+  function drawMoodbar(m) {
+    if (!m) { moodbar.innerHTML = ''; return; }
     const block = m.eth_blockheight ? 'opened at block ' + m.eth_blockheight.toLocaleString() : '';
-    return `<div class="mood-head">
-      <h1>${esc(m.title)}</h1>
-      ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
-      <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record · ' : ''}
-        <a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a></div>
-      <div class="people" id="people">${(m.participants || []).map(n =>
-        `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
-    </div><button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
+    const thread = threadLine(m);
+    moodbar.innerHTML = `<div class="mood-head${headOpen ? ' open' : ''}">
+      <div class="mbar" title="${headOpen ? 'Fold it away' : 'Its description, threads and people'}">
+        <button type="button" class="mtoggle" aria-expanded="${headOpen}" aria-label="The Mood's description, threads and people">${headOpen ? '▾' : '▸'}</button>
+        <h1>${esc(m.title)}</h1>
+        <span class="mdesc">${m.thread_of ? `${m.forked_at ? '⑂' : '🌱'} of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
+        <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}${m.thread_of && keyHolder ? `<button type="button" class="closethread" title="${isArchived(m.slug) ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${isArchived(m.slug) ? 'reopen' : 'close'}</button>` : ''}</span>
+      </div>
+      <div class="mbody"${headOpen ? '' : ' hidden'}>
+        ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
+        ${thread}
+        <div class="meta">${block ? block + ' · ' : ''}${m.message_count != null ? m.message_count.toLocaleString() + ' messages in the record' : ''}</div>
+        <div class="people" id="people">${(m.participants || []).map(n =>
+          `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
+      </div>
+    </div>`;
+  }
+  moodbar.addEventListener('click', e => {
+    if (!e.target.closest('.mbar') || e.target.closest('a, button:not(.mtoggle)')) return;
+    headOpen = !headOpen;
+    store.set('headOpen', headOpen);
+    drawMoodbar(headMood);
+  });
+  function renderHead(m) {
+    return `<button id="earlier" type="button" hidden>Load earlier</button><div id="turns"></div>`;
   }
 
   const RUN_MS = 5 * 60 * 1000;  // the same sender within this is one run
@@ -1990,7 +2216,9 @@
   // be read -- by ▶, ⏩, or reading as they come -- and a falling one when reading aloud has read all
   // there is and is still listening for more. Made here as WAV, and played through the reader itself,
   // so they sound wherever reading does, a locked phone too.
-  const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]] };
+  const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]],
+                        tick: [[1760, .035]] };  // "still coming": the tiniest sound (Justin, 28 Oct)
+  const CHIME_GAIN = { tick: .07 };
   const chimeUrls = {};
   function chimeUrl(kind) {
     if (chimeUrls[kind]) return chimeUrls[kind];
@@ -2001,7 +2229,7 @@
       const n = Math.floor(rate * len);
       for (let i = 0; i < n && at + i < pcm.length; i++) {
         const swell = Math.min(1, i / (rate * .005)) * Math.exp(-4 * i / n);  // a soft start, a bell's fall
-        pcm[at + i] = Math.round(Math.sin(2 * Math.PI * freq * i / rate) * swell * .35 * 32767);
+        pcm[at + i] = Math.round(Math.sin(2 * Math.PI * freq * i / rate) * swell * (CHIME_GAIN[kind] || .35) * 32767);
       }
       at += n;
     }
@@ -2615,7 +2843,7 @@
     el.dataset.mentions = JSON.stringify(t.mentions || []);
     el.dataset.id = t.id;
     el.id = 'm-' + t.id;
-    if (forMe.has(t.id)) el.classList.add('for-me');
+    if (pinsNow.some(p => p.id === t.id)) el.classList.add('pinned');
     if (!t.is_human) el.style.setProperty('--who', agentColor(t.sender));
     const signed = t.attested ? `<button type="button" class="signed" title="Signed with ${esc(t.sender)}'s SSH key: click for the proof">✓ signed</button>` : '';
     const phone = t.mobile ? '<span class="from-phone" title="sent from a phone" aria-label="sent from a phone">📱</span>' : '';
@@ -2637,9 +2865,11 @@
     const mayPromote = viewer && !t.deleted && (t.links || []).some(u => !promoted.has(u));
     // 📝 into your notes for the current sprint (services/sprint_notes.py): a person's, any message.
     const mayNote = viewer && human[viewer] !== false && !t.deleted;
-    const moreBtn = mayEdit || mayDelete || mayPromote || mayNote
+    // 📌 to the Mood's top (services/pins.py): anyone signed in with a key.
+    const mayPin = keyHolder && !t.deleted;
+    const moreBtn = mayEdit || mayDelete || mayPromote || mayNote || mayPin
       ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
-        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
+        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" data-pin="${mayPin ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
     const onTidings = onTidingsMark(t.tidings || []);
     const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
@@ -2945,7 +3175,10 @@
     };
     [...el.querySelector('.steps').children].forEach((row, i) => {
       if (row.classList.contains('step')) verbs.push(row.dataset.verb);
-      else if (row.classList.contains('trow')) {
+      else if (row.classList.contains('lead')) {
+        said();
+        parts.push(`<span class="lead-sum" title="${esc(row.dataset.text)}">“${esc(row.dataset.text)}”</span>`);
+      } else if (row.classList.contains('trow')) {
         said();
         const dot = row.querySelector('.tdot');
         // The harness's note keeps its ⚙️ in the folded line too, so it never reads as the agent's thinking.
@@ -3033,6 +3266,19 @@
     } catch (err) { box.textContent = 'could not load this step'; }
   });
 
+  // A turn message said on the way to a tool call (stop: tool_use, since magenta#206): "Checking the deploy."
+  // It keeps its id and link, but sits among the steps it led to, with a few of its words in the folded line.
+  function addLeadIn(t, container, isNew) {
+    const work = workEl(t, container);
+    const row = document.createElement('div');
+    row.className = 'lead';
+    row.dataset.text = (t.text || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    prev = null;
+    row.appendChild(turnEl(t, isNew));
+    work.querySelector('.steps').appendChild(row);
+    describeWork(work);
+    prev = { sender: t.sender, at: new Date(t.created_at).getTime() };
+  }
   function addThought(t, container) {
     const el = document.createElement('div');
     el.className = 'thought';
@@ -3086,6 +3332,7 @@
   function wikiLine(e, one) {
     const who = `<b>${esc(e.user || 'someone')}</b>`;
     const page = (e.title || '').replace(/_/g, ' ').match(/^User( talk)?:([^/#]+)/i);
+    if (e.kind === 'upload') return `🖼 ${who} uploaded ${one}`;
     if (!page) return `✎ ${who} ${e.kind === 'new' ? 'started' : 'edited'} ${one}`;
     const owner = page[2].trim(), talk = !!page[1];
     const rest = one.slice(one.indexOf('</a>') + 4);  // the change's size and comment, after the page's link
@@ -3100,21 +3347,27 @@
     if (e.type === 'wiki') {  // a change on PickiPedia (services/wiki_feed.py), at the wiki's own time
       const page = `${WIKI}/wiki/${encodeURIComponent((e.title || '').replace(/ /g, '_'))}`;
       const diff = e.revid ? `${WIKI}/index.php?diff=${encodeURIComponent(e.revid)}` : page;
-      const one = `<a href="${esc(page)}" target="_blank" rel="noopener">${esc(e.title)}</a>`
-        + (e.kind === 'new' ? ' (new)' : ` <a class="delta" href="${esc(diff)}" target="_blank" rel="noopener">(${e.delta > 0 ? '+' : ''}${Number(e.delta) || 0})</a>`)
-        + (e.comment ? ` · <i>${esc(e.comment)}</i>` : '');
-      // A run of changes by one account folds into one line, opened on demand.
+      // An upload: its picture, small, beside its name (Justin, 27 Oct).
+      const thumb = e.kind === 'upload' && e.thumb && /^https:\/\//.test(e.thumb)
+        ? `<a class="wthumb" href="${esc(page)}" target="_blank" rel="noopener"><img src="${esc(e.thumb)}" alt="" loading="lazy"></a>` : '';
+      const one = thumb + `<a href="${esc(page)}" target="_blank" rel="noopener">${esc((e.title || '').replace(/^File:/, ''))}</a>`
+        + (e.kind === 'new' || e.kind === 'upload' ? (e.kind === 'new' ? ' (new)' : '') : ` <a class="delta" href="${esc(diff)}" target="_blank" rel="noopener">(${e.delta > 0 ? '+' : ''}${Number(e.delta) || 0})</a>`)
+        // The Media Uploader's own words ("Uploaded a work by null from null with Media Uploader") say nothing.
+        + (e.comment && !(e.kind === 'upload' && /^Uploaded a work by /.test(e.comment)) ? ` · <i>${esc(e.comment)}</i>` : '');
+      // A run of changes by one account folds into one line, opened on demand; its pictures stay in view.
       const last = container.lastElementChild;
       if (last && last.classList.contains('wiki') && last.dataset.user === (e.user || '')) {
         const n = Number(last.dataset.n) + 1;
         last.dataset.n = n;
         if (n === 2) last.innerHTML = `<details><summary></summary><div class="each">${last.dataset.first}</div></details>`;
         last.querySelector('.each').insertAdjacentHTML('beforeend', `<div>${one}</div>`);
-        last.querySelector('summary').innerHTML = `✎ <b>${esc(e.user || 'someone')}</b> made ${n} changes on PickiPedia · ${esc(stamp(e.at || e.created_at))}`;
+        if (thumb) last.dataset.thumbs = (last.dataset.thumbs || '') + thumb;
+        last.querySelector('summary').innerHTML = `✎ <b>${esc(e.user || 'someone')}</b> made ${n} changes on PickiPedia · ${esc(stamp(e.at || e.created_at))}`
+          + (last.dataset.thumbs ? ` ${last.dataset.thumbs}` : '');
         return;
       }
       el.className = 'event wiki';
-      el.dataset.user = e.user || ''; el.dataset.n = 1; el.dataset.first = `<div>${one}</div>`;
+      el.dataset.user = e.user || ''; el.dataset.n = 1; el.dataset.first = `<div>${one}</div>`; el.dataset.thumbs = thumb;
       el.innerHTML = wikiLine(e, one) + ` · ${esc(stamp(e.at || e.created_at))}`;
       container.appendChild(el);
       prev = null;
@@ -3201,6 +3454,26 @@
         ? `✗ ${who}'s task ${task} didn't start (${how}): ${esc(e.reason || '')} · ${esc(stamp(e.created_at))}`
         : `<details><summary>▶ ${who}'s task ${task}, started ${how}${e.tools === 'full' ? '' : ' · look-only'}`
           + ` · ${esc(stamp(e.created_at))}</summary><div class="body">${e.html || ''}</div></details>`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
+    if (e.type === 'incorporated') {  // closed, and handed to its Mood to incorporate (Justin, 27 Oct)
+      el.className = 'event';
+      const at = blockText(null, e.created_at);
+      el.innerHTML = `⑂ <b>${esc(e.by || 'someone')}</b> closed this thread: handed to `
+        + `<a href="/moods/${encodeURIComponent(e.into)}/">#${esc(e.into)}</a> to incorporate · <span title="${esc(stamp(e.created_at))}">${esc(at.text)}</span>`
+        + ` · opening it again starts a new thread, fresh or forked`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
+    if (e.type === 'thread' || (e.type === 'created' && e.from_mood)) {  // a thread opened from here; this one, from there
+      el.className = 'event';
+      const there = e.type === 'thread' ? e.to_mood : e.from_mood;
+      const how = e.kind === 'fresh' ? 'fresh' : 'forked';
+      el.innerHTML = `${how === 'fresh' ? '🌱' : '⑂'} <b>${esc(e.by || 'someone')}</b> ${e.type === 'thread' ? 'opened a thread,' : 'opened this thread from'} `
+        + `<a href="/moods/${encodeURIComponent(there)}/">#${esc(there)}</a> (${how}) · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
       return;
@@ -3425,8 +3698,8 @@
   }
   document.getElementById('jumpUp').addEventListener('click', () => jump(-1));
   document.getElementById('jumpDown').addEventListener('click', () => jump(1));
-  document.getElementById('jumpMeUp').addEventListener('click', () => jump(-1, '.mentions-me, .for-me'));
-  document.getElementById('jumpMeDown').addEventListener('click', () => jump(1, '.mentions-me, .for-me'));
+  document.getElementById('jumpMeUp').addEventListener('click', () => jump(-1, '.mentions-me'));
+  document.getElementById('jumpMeDown').addEventListener('click', () => jump(1, '.mentions-me'));
   for (const [id, dir] of [['jumpHumanUp', -1], ['jumpHumanDown', 1]]) {
     const b = document.getElementById(id);
     b.innerHTML = ICONS.human + b.textContent;
@@ -3451,13 +3724,27 @@
   function showMoodName(m) {
     headMood = m;
     crumb.innerHTML = m ? `<span class="title">${esc(m.title)}</span>` + (keyHolder ? '<button type="button" id="rename" title="Rename this Mood" aria-label="Rename this Mood">✎</button>' : '') : '';
-    const h1 = document.querySelector('.mood-head h1');
-    if (h1 && m) h1.textContent = m.title;
+    drawMoodbar(m);
     if (m) { baseTitle = m.title + ' · magenta'; setTitle(); }
   }
   const isArchived = slug => !!(moods.find(m => m.slug === slug) || {}).archived;
   const isPinned = slug => !!(moods.find(m => m.slug === slug) || {}).pinned;
   const newBox = document.getElementById('newBox');
+  // The words people read here, as Magenta:Interface has them (services/interface_words.py): escaped, then any
+  // {field} filled with the HTML given for it.
+  const WORDS = JSON.parse("{{ interface_words|escapejs }}" || '{}');
+  const said = (key, fields = {}) => esc(WORDS[key] || '').replace(/\{(\w+)\}/g, (all, f) => f in fields ? fields[f] : all);
+  // Where a text comes from, on hover (Justin, 27 Oct: which line of the page is this?): "Magenta:Interface · fork".
+  const wordsFrom = (el, ...keys) => { el.title = 'Magenta:Interface · ' + keys.join(', '); return el; };
+  wordsFrom(document.getElementById('newHint'), 'new-hint').innerHTML = said('new-hint');
+  wordsFrom(document.getElementById('forkWords'), 'fork-label', 'fork').innerHTML = `<b>${said('fork-label')}</b>: ${said('fork')}`;
+  wordsFrom(document.getElementById('freshWords'), 'fresh-label', 'fresh').innerHTML = `<b>${said('fresh-label')}</b>: ${said('fresh')}`;
+  wordsFrom(document.getElementById('newThreadOf'), 'thread-of');
+  wordsFrom(document.getElementById('closeAskWords'), 'close-ask');
+  wordsFrom(document.getElementById('closeNote'), 'close-note');
+  wordsFrom(document.getElementById('closeGo'), 'close-button');
+  const closeBox = document.getElementById('closeBox');
+  const HANDOFF_AGENT = 'magent';  // who incorporates a thread (services/agent_commands.HANDOFF_AGENT)
   document.addEventListener('click', async e => {
     if (e.target.closest('#rename')) {
       document.getElementById('renameTitle').value = headMood.title;
@@ -3484,23 +3771,119 @@
       if (!r.ok) { showError('pin: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
       renameBox.hidden = true;
       loadMoods();
-    } else if (e.target.closest('#newMood')) {
+    } else if (e.target.closest('#newMood') || e.target.closest('.mood-head .newthread')) {
+      // A thread (from the head's ⑂): of the Mood open now, forked by default.
+      newBox._threadOf = e.target.closest('.newthread') ? current : null;
+      document.getElementById('newThread').hidden = !newBox._threadOf;
+      document.getElementById('newHint').hidden = !!newBox._threadOf;
+      document.getElementById('newThreadOf').innerHTML = newBox._threadOf ? said('thread-of', { mood: `<b>#${esc(newBox._threadOf)}</b>` }) : '';
+      newBox.querySelector('input[name=threadKind][value=fork]').checked = true;
+      document.getElementById('newTitle').placeholder = newBox._threadOf ? 'What the thread is about' : 'What the new Mood is about';
+      newBox.querySelector('button[type=submit]').textContent = newBox._threadOf ? 'Open the thread' : 'Start';
       document.getElementById('newTitle').value = '';
       document.getElementById('newDesc').value = '';
       newBox.hidden = false;
       document.getElementById('newTitle').focus();
+    } else if (e.target.closest('.mood-head .closethread') && !isArchived(current)) {
+      // Closing: optionally handed to the Mood it came from, to incorporate -- "/incorporate #<it>" posted there,
+      // and the handoff agent writes the one full account (Justin, 27 Oct: one agent, not each of them).
+      const parent = (headMood || {}).thread_of || '';
+      closeBox._parent = parent;
+      document.getElementById('closeTitle').textContent = `#${current}`;
+      document.getElementById('closeAskLine').hidden = !parent;
+      document.getElementById('closeAsk').checked = !!parent;
+      const handoffAgent = `<b style="color: ${agentColor(HANDOFF_AGENT)}">${esc(HANDOFF_AGENT)}</b>`;
+      document.getElementById('closeAskWords').innerHTML = said('close-ask', {
+        agent: handoffAgent, agents: handoffAgent, parent: `<b>#${esc(parent)}</b>` });  // {agents}: the page's words before #incorporate
+      const note = document.getElementById('closeNote');
+      note.value = ''; note.placeholder = WORDS['close-note'] || ''; note.hidden = !parent;
+      document.getElementById('closeGo').textContent = WORDS['close-button'] || 'Close';
+      closeBox._was = closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
+      drawCloseModel(parent);
+      closeBox.hidden = false;
+    } else if (e.target.closest('#closeCancel')) {
+      closeBox.hidden = true; delete vendorPicked[HANDOFF_AGENT];
+    } else if (e.target.closest('.mood-head .closethread')) {
+      const r = await fetch(`/api/moods/${encodeURIComponent(current)}/archive/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ archived: !isArchived(current) }),
+      });
+      if (!r.ok) { showError('thread: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+      await loadMoods();
+      drawMoodbar(headMood);
     } else if (e.target.closest('#newCancel')) {
       newBox.hidden = true;
     }
+  });
+  // The handoff agent's model and effort in the Mood it hands back to, to change just before (Justin, 27 Oct):
+  // the model is the one it runs on there anyway (a handoff never switches: the cache), the effort its handoff_effort.
+  const closeModel = document.getElementById('closeModel');
+  async function drawCloseModel(parent, vendor) {
+    closeModel.hidden = !parent;
+    if (!parent) return;
+    if (!agentsFor[parent] || !closeBox._was) {
+      try {
+        const r = await fetch('/api/moods/' + encodeURIComponent(parent) + '/turns/?limit=1');
+        if (r.ok) noteAgents(parent, (await r.json()).agents);
+      } catch (e) {}
+    }
+    const a = (agentsFor[parent] || {})[HANDOFF_AGENT];
+    if (!a) { closeModel.hidden = true; return; }
+    if (!closeBox._was) closeBox._was = { model: a.model || '', handoff_effort: a.handoff_effort || 'high' };
+    const chosen = closeBox._chosen || closeBox._was;
+    const ctx = a.context || {}, inUse = shortModel((ctx.model || a.runs || '').split('/').pop()) || '?';
+    const catalog = catalogFor(HANDOFF_AGENT, a);
+    if (vendor) vendorPicked[HANDOFF_AGENT] = vendor;
+    const models = MODELS.some(([v]) => v === chosen.model) ? MODELS : [...MODELS, [chosen.model, chosen.model]];
+    const model = catalog ? catalogMenus(HANDOFF_AGENT, catalog, chosen.model, inUse, ctx.model || a.runs)
+      : `<select data-knob="model">` + models.map(([v, label]) => `<option value="${esc(v)}"${v === chosen.model ? ' selected' : ''}>${esc(v ? label : inUse)}</option>`).join('') + '</select>';
+    const effort = `<select data-knob="handoff_effort" title="how hard it thinks for the handoff">`
+      + EFFORTS.map(v => `<option value="${v}"${v === chosen.handoff_effort ? ' selected' : ''}>${EFFORT_LABELS[v] || v}</option>`).join('') + '</select>';
+    closeModel.innerHTML = `${esc(HANDOFF_AGENT)} in #${esc(parent)}: ${model} ${effort}`;
+  }
+  closeModel.addEventListener('change', e => {
+    const el = e.target.closest('select');
+    if (!el) return;
+    const chosen = closeBox._chosen = { ...(closeBox._chosen || closeBox._was) };
+    if (el.dataset.role === 'vendor') { drawCloseModel(closeBox._parent, el.value); return; }
+    chosen[el.dataset.knob] = el.value;
+  });
+  // Close the thread: if asked, "/incorporate #<it> [note]" posted in the Mood it came from, as its closer (the
+  // handoff agent is woken there, with the tools their sign-in gives); then closed -- archived, with a line in it.
+  closeBox.addEventListener('submit', async e => {
+    e.preventDefault();
+    const slug = current, ask = document.getElementById('closeAsk').checked && closeBox._parent;
+    const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                             body: JSON.stringify(body) });
+    if (ask) {
+      // Its model and effort there first, if changed here: set as any of its settings are, noted as from here.
+      for (const [key, value] of Object.entries(closeBox._chosen || {})) {
+        if (value === (closeBox._was || {})[key]) continue;
+        const r = await post('/api/settings/', { key, value, mood: closeBox._parent, agent: HANDOFF_AGENT, note: 'from the close dialog' });
+        if (!r.ok) { showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+      }
+      closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
+      const note = document.getElementById('closeNote').value.trim();
+      const r = await post(`/api/moods/${encodeURIComponent(closeBox._parent)}/say/`, { text: `/incorporate #${slug}${note ? ' ' + note : ''}` });
+      if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+    }
+    const r = await post(`/api/moods/${encodeURIComponent(slug)}/close-thread/`, { incorporated: !!ask });
+    if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+    closeBox.hidden = true;
+    await loadMoods();
+    drawMoodbar(headMood);
+    poll(false);
   });
   newBox.addEventListener('submit', async e => {
     e.preventDefault();
     const r = await fetch('/api/moods/new/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ title: document.getElementById('newTitle').value,
-                             description: document.getElementById('newDesc').value }),
+                             description: document.getElementById('newDesc').value,
+                             ...(newBox._threadOf ? { thread_of: newBox._threadOf,
+                                 fork: newBox.querySelector('input[name=threadKind]:checked').value === 'fork' } : {}) }),
     });
-    if (!r.ok) { showError('new Mood: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+    if (!r.ok) { showError((newBox._threadOf ? 'thread: ' : 'new Mood: ') + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     const made = await r.json();
     newBox.hidden = true;
     await loadMoods();
@@ -3524,6 +3907,19 @@
   });
 
   function addQuiet(q, container) {
+    // Taking a question that asked several (the poller's <take/>): a line, "magent is taking the redeploy
+    // question", that reads "took" once its answer lands (resolveTakes).
+    if (q.by !== 'screen' && (q.type === 'take' || /^taking /.test(q.reason || ''))) {
+      if (container._held) delete container._held[q.sender];
+      const line = document.createElement('div');
+      line.className = 'waitline';
+      line.style.setProperty('--who', agentColor(q.sender));
+      line.dataset.takingBy = q.sender;
+      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> <span class="wait-verb">is ${esc(q.reason)}</span>`
+        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      container.appendChild(line);
+      return;
+    }
     // A wait for another agent stays in the thread as a line, the status line's words and colours:
     // "magent is waiting for re to settle the schema" (Justin, 25 Oct), not a dot.
     if (q.by !== 'screen' && /^waiting for /.test(q.reason || '')) {
@@ -3540,10 +3936,22 @@
       container.appendChild(line);
       return;
     }
+    // A turn that came back with nothing, tried twice (the runner says so, by="failed"): a line, not a dot --
+    // it isn't a choice not to speak, and whoever asked should know to ask again.
+    if (q.by === 'failed') {
+      const line = document.createElement('div');
+      line.className = 'waitline failed';
+      line.style.setProperty('--who', agentColor(q.sender));
+      line.innerHTML = `<span class="dot"></span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> ${esc(q.reason || "couldn't answer")}`
+        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      container.appendChild(line);
+      return;
+    }
     // What it thought before choosing not to speak: shown when its dot is pressed (Justin, 20 Oct).
-    const thought = ((container._held || {})[q.sender] || []).map(t => t.text).filter(Boolean).join('\n\n');
+    // Its thinking, and any words it wrote before choosing silence (q.thought: mood_view._QUIET_TAIL).
+    const thought = [...((container._held || {})[q.sender] || []).map(t => t.text), q.thought].filter(Boolean).join('\n\n');
     if (container._held) delete container._held[q.sender];
-    let row = container.lastElementChild;
+    let row = lastOf(container);
     if (!row || !row.classList.contains('quiet')) {
       row = document.createElement('div'); row.className = 'quiet';
       container.appendChild(row);
@@ -3566,7 +3974,10 @@
       dot.textContent = kTokens(words);
       dot.title += ` · thought ${words.toLocaleString()} word${words === 1 ? '' : 's'} first`;
     }
+    // A crosstalk look says so inside its dot, as a turn's ⇆ crosstalk does beside its name (Justin, 27 Oct).
+    if (q.why === 'crosstalk') { dot.classList.add('n'); dot.textContent = '⇆' + (thought ? ' ' + dot.textContent : ''); }
     row.appendChild(dot);
+    if (q.by !== 'screen') resolveWaits(container, q.sender, q.created_at, row);  // finished without a word: answered, for a wait
   }
   document.addEventListener('click', e => {
     const dot = e.target.closest('.quiet .dot');
@@ -3646,8 +4057,14 @@
     if (n >= 1000) return (n < 10000 && n % 1000 ? (n / 1000).toFixed(1) : Math.round(n / 1000)) + 'k';
     return String(n);
   }
+  // The newest thing here, not counting a finished wait: that sits just below what it waited for.
+  function lastOf(container) {
+    let last = container.lastElementChild;
+    while (last && last.classList.contains('waited')) last = last.previousElementSibling;
+    return last;
+  }
   function openBlock(container, agent) {
-    const last = container.lastElementChild;
+    const last = lastOf(container);
     return last && last.classList.contains('aturn') && !last._ended && last._agent === agent ? last : null;
   }
   // Thinking alone makes no turn: held until the agent says or does something, so a quiet
@@ -3696,6 +4113,18 @@
     if (v.effort) b._how.effort = v.effort;
     if (v.tools) b._tools = v.tools;
     if (v.why) b._why = v.why;
+    // An /announce it heard on this wake: said at the top of the turn (Justin, 27 Oct).
+    if ((v.heard || []).length && !b._heardShown) {
+      b._heardShown = true;
+      const line = document.createElement('div');
+      line.className = 'heard';
+      // Not its words (Justin, 27 Oct): "announcement" links to the message, with its words on hover.
+      line.innerHTML = v.heard.map(h => `📣 heard <b>${esc(shown(h.by))}</b>'s `
+        + (h.message ? `<a href="/moods/${encodeURIComponent(h.from)}/#m-${esc(h.message)}" title="${esc(h.text)}">announcement</a>` : 'announcement')
+        + ` from <a class="moodlink" data-mood="${esc(h.from)}" href="/moods/${encodeURIComponent(h.from)}/">#${esc(h.from)}</a>`).join('<br>');
+      const body = b.querySelector('.abody');
+      if (body) body.prepend(line);
+    }
     if (v.bundle) b._bundle = v.bundle;
   }
   // Whether a turn's first call read its context back from the cache (🔥, warm) or afresh (🧊, cold): its
@@ -3729,7 +4158,7 @@
   // Why it was woken, when nobody asked it (mood_view.turn_wakes; Justin, 26 Oct: "it needs to be clear that
   // the look was triggered by the crosstalk rule"): a small word beside its name, the rule on hover.
   const WHY_MARKS = {
-    crosstalk: ['↺ crosstalk', 'A look at what others said here while it was on its last turn, which it hadn\'t seen: '
+    crosstalk: ['⇆ crosstalk', 'A look at what others said here while it was on its last turn, which it hadn\'t seen: '
       + 'once, right after that turn ended, asking only whether it bears on what it had just said (the crosstalk rule)'],
     consider: ['unasked', 'Not asked: it looked in of its own accord, as this Mood\'s discretion dial allows'],
     quiet: ['quiet look', 'Not asked: the Mood had been quiet a while, and it looked in to see if anything wanted picking up'],
@@ -3772,12 +4201,17 @@
       ? `What ${calls} cost, as ${b._agent}'s harness reported it (${b._how.model || 'this model'}).`
       : `At API list prices (${b._how.model || 'this model'}), for ${calls}: `
         + `what this turn would cost through the API. On a subscription it's included. Helpers it started aren't counted.`;
-    b.querySelector('.ahead').innerHTML = `<span class="caret">${b.classList.contains('folded') ? '▸' : '▾'}</span>`
-      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${whyMark(b._why)}${cacheMark(b)}${bundleMark(b)}`
-      // When it began, and the turn's link (to its first step, which opens the turn): click to copy.
-      + (b._firstId ? ` <span class="turnlink" data-href="#m-${esc(b._firstId)}" title="This turn's link: click to copy">${esc(stamp(b._firstAt))}</span>` : '')
+    // Folded, its heading is kept to a line (Justin, 25 Oct): which instructions and what it added to its
+    // context are shown once it's opened.
+    const open = !b.classList.contains('folded');
+    // When it began, as the block it began in (with commas; the time on hover), and the turn's link (to its
+    // first step, which opens the turn): click to copy.
+    const began = blockText(b._firstBlock, b._firstAt);
+    b.querySelector('.ahead').innerHTML = `<span class="caret">${open ? '▾' : '▸'}</span>`
+      + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${whyMark(b._why)}${cacheMark(b)}${open ? bundleMark(b) : ''}`
+      + (b._firstId ? ` <a class="turnlink" href="/messages/${esc(b._firstId)}" data-href="#m-${esc(b._firstId)}" title="${esc(stamp(b._firstAt))}${began.est ? ' (about this block: its own is stamped a few minutes on)' : ''} · this turn's link: click to copy">${esc(began.text)}</a>` : '')
       + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
-      + (added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
+      + (open && added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
       + (b._priced ? ` · <span class="spent" title="${esc(costTitle)}">${esc(usdText(b._usd))}</span>` : '')
       + (!b._ended && isWorking(b) ? ' · working…' : '')
       + `<span class="preview">${esc(b._final)}</span>`;
@@ -3796,11 +4230,11 @@
   }
   // Working only if it's the newest thing here and the agent is at work now.
   function isWorking(b) {
-    return b.parentNode && b.parentNode.lastElementChild === b && acts.some(a => a.agent === b._agent && a.doing !== 'held');
+    return b.parentNode && lastOf(b.parentNode) === b && acts.some(a => a.agent === b._agent && a.doing !== 'held');
   }
   // A turn that a person spoke after is over, whether or not its end was marked.
   function closeBlock(container) {
-    const last = container.lastElementChild;
+    const last = lastOf(container);
     if (last && last.classList.contains('aturn') && !last._ended) { last._ended = true; drawBlockHead(last); }
   }
 
@@ -3813,7 +4247,8 @@
     const head = e.target.closest('.ahead');
     if (!head) return;
     const link = e.target.closest('.turnlink');
-    if (link) { copyLink(link, link.dataset.href); return; }  // the turn's time: its link, copied
+    // The turn's block: its link, copied on a click; a real link, so a right-click or a long press copies it too.
+    if (link) { e.preventDefault(); copyLink(link, link.dataset.href); return; }
     const bundle = e.target.closest('.bundlemark');
     if (bundle) { window.open(bundle.dataset.href, '_blank', 'noopener'); return; }  // its instructions, rebuilt
     const b = head.closest('.aturn');
@@ -3825,7 +4260,7 @@
   // --- the agents between two people's words, under one heading ------------------
   // With agents answering each other, a person's words can be followed by many turns (Justin, 24 Oct):
   // a heading over them says who spoke, and folds them all away; opened, each turn shows as before, under
-  // its own heading; "open all" opens every turn at once, their steps and thinking still each a folded
+  // its own heading; "open entire round" opens every turn at once, their steps and thinking still each a folded
   // line. Only where two turns or more stand together: one turn is already a heading of its own.
   // Older ones start folded; the newest, open.
   function drawRuns(container, keepNewest = true) {
@@ -3880,7 +4315,7 @@
       + (turns.some(b => !b._ended && isWorking(b)) ? ' · working…' : '') + '</span>'
       + (shut && last ? `<span class="preview">${esc(last._final)}</span>` : '') + '</button>'
       + `<button type="button" class="runall" title="${allOpen ? 'Each turn back to its heading' : 'Every turn opened, its steps and thinking still folded'}">`
-      + `${allOpen ? 'fold each' : 'open all'}</button>`;
+      + `${allOpen ? 'fold all turns' : 'open entire round'}</button>`;
     head._members.forEach(el => el.classList.toggle('runhid', shut));
   }
   // A message inside a folded run, taken to: its run opens.
@@ -3914,14 +4349,19 @@
       if (agent) {
         const b = blockFor(container, agent, it.v);
         // Its first message or step (a thought has nowhere to be taken to): the turn's link.
-        if (!b._firstId && it.v.id && it.kind !== 'thought') { b._firstId = it.v.id; b._firstAt = it.v.created_at; }
+        if (!b._firstId && it.v.id && it.kind !== 'thought') { b._firstId = it.v.id; b._firstAt = it.v.created_at; b._firstBlock = it.v.block || null; }
         const body = b.querySelector('.abody');
         if (it.kind === 'turn') {
           // Never a follow-on of its own steps or notes: each message in a turn keeps its time and
           // its link (Justin, 19 Oct: replies with nowhere to take their address from).
           prev = null;
-          body.appendChild(turnEl(it.v, isNew));
-          resolveWaits(container, agent, it.v.created_at);
+          if (it.v.stop === 'tool_use') addLeadIn(it.v, body, isNew);
+          else {
+            body.appendChild(turnEl(it.v, isNew));
+            // A wait, or a take, is answered by a turn that ended, not a line on the way (as the poller has it).
+            resolveWaits(container, agent, it.v.created_at, b);
+            resolveTakes(container, agent);
+          }
           // Naming another agent wakes it: its turn is timed from here.
           (it.v.mentions || []).filter(n => n !== agent).forEach(n => {
             (container._askedOf ||= {})[n] = new Date(it.v.created_at).getTime() / 1000;
@@ -3974,9 +4414,8 @@
   const pageOpened = new Date().toISOString();
   let badgeCursor = null, badgeAt = 0;
   const counted = new Set();  // notices already seen, by turn id
-  const forMe = new Set();    // answers to me, marked in the thread
   let unread = {};            // slug -> Map(turn id -> created_at)
-  function resetBadges() { badges = {}; unread = {}; badgeCursor = null; badgeAt = 0; counted.clear(); forMe.clear(); }
+  function resetBadges() { badges = {}; unread = {}; badgeCursor = null; badgeAt = 0; counted.clear(); }
   function countBadges() {
     badges = {};
     for (const [slug, ids] of Object.entries(unread)) if (ids.size) badges[slug] = ids.size;
@@ -4013,11 +4452,6 @@
           if (n.kind === 'said' && tellAll[by]) notify(n);
         }
         if (n.kind === 'said') continue;  // not a badge: badges count what's for you
-        if (n.kind === 'answer') {
-          forMe.add(n.turn.id);
-          const el = document.getElementById('m-' + n.turn.id);
-          if (el) el.classList.add('for-me');
-        }
         const floor = lastSeen[n.mood];
         if (floor && n.turn.created_at <= floor) continue;  // seen already
         const looking = n.mood === current && !document.hidden;
@@ -4259,7 +4693,7 @@
         openRunOf(el);
         const folded = el.closest('.aturn.folded');
         if (folded) { folded.classList.remove('folded'); drawBlockHead(folded); }
-        const work = el.classList.contains('step') && el.closest('.work');
+        const work = (el.classList.contains('step') || el.closest('.lead')) && el.closest('.work');
         if (work) work.classList.add('open');
         el.scrollIntoView({ block: 'center' });
         el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
@@ -4318,7 +4752,13 @@
     renderNav();
     // Nothing of the Mood just left may linger: not its agent's work, its
     // tasks, who was typing there, or its agents' settings.
-    act = null; acts = []; renderActivity();
+    // Who's at work there, as the list of Moods last heard it (/api/moods/live/): shown at once, and put
+    // right by the Mood's own look when it's back (Justin, 25 Oct: they "suddenly pop up").
+    acts = (liveData[slug] && liveData[slug].activities) || [];
+    act = [...acts].reverse().find(a => a.doing !== 'held') || acts[0] || null;
+    renderActivity();
+    drawMoodbar(null);  // the last Mood's head goes with it
+    renderPins([]);  // the last Mood's pins aren't this one's; its own come with its first look
     tasks = []; renderTasks();
     typingNow = []; renderTyping();
     agentsNow = {};  // nothing to compare with: a first drawing never glows
@@ -4562,6 +5002,7 @@
     noteAgents(current, data.agents);
     renderLocked(data.scram || null);
     typingNow = (data.typing || []).filter(n => n !== viewer);
+    recordingNow = data.recording || [];
     renderTyping();
     renderWatchers(data.watchers);
     const turnsEl = document.getElementById('turns');
@@ -4573,6 +5014,7 @@
       todoStamp = data.todo_stamp;
     }
     (data.changes || []).forEach(applyChange);
+    renderPins(data.pins || []);
     reactionsNow = data.reactions || {};
     turnsEl.querySelectorAll('.turn[data-id]').forEach(el => renderReacts(el, reactionsNow[el.dataset.id] || {}));
     pollsNow = data.polls || {};
@@ -4657,7 +5099,8 @@
     const more = e.target.closest('.turn .morebtn[data-more]');
     if (more) {
       if (msgMenu._for === more) { closeMsgMenu(); return; }
-      msgMenu.innerHTML = (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
+      msgMenu.innerHTML = (more.dataset.pin ? `<button type="button" role="menuitem" data-act="pin">${pinsNow.some(p => p.id === more.dataset.more) ? '📌 Unpin' : '📌 Pin to the top'}</button>` : '')
+        + (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
         + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my sprint notes</button>'
           + '<button type="button" role="menuitem" data-act="wiki">⧉ Copy for PickiPedia</button>' : '')
         + ((more.dataset.promote || more.dataset.note) && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
@@ -4682,11 +5125,51 @@
     if (act.dataset.act === 'edit') editMessage(el, from.dataset.more);
     else if (act.dataset.act === 'promote') promoteMessage(el, from);
     else if (act.dataset.act === 'note') noteMessage(from.dataset.more);
+    else if (act.dataset.act === 'pin') pinMessage(from.dataset.more);
     else if (act.dataset.act === 'wiki') copyForWiki(from.dataset.more);
     else deleteMessage(from.dataset.more);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !msgMenu.hidden) closeMsgMenu(); });
   main.addEventListener('scroll', () => { if (!msgMenu.hidden) closeMsgMenu(); }, { passive: true });
+  // --- pinned (services/pins.py): the newest pin's line at the top, the rest a click away; a pinned message
+  // wears 📌 by its name. Each look brings them; pinning or unpinning answers with them as they now stand.
+  let pinsNow = [];
+  const pinsEl = document.getElementById('pins');
+  function renderPins(pins) {
+    const key = JSON.stringify(pins);
+    if (pinsEl.dataset.key !== key) {
+      pinsEl.dataset.key = key;
+      const open = pinsEl.querySelector('.more:not([hidden])');
+      const line = p => `<div class="pin"><span>📌</span><a class="go" data-id="${esc(p.id)}" title="Go to it · pinned by ${esc(shown(p.by || ''))}">`
+        + `<b>${esc(shown(p.sender))}</b> ${esc(p.snippet || '(a message)')}</a>`
+        + (keyHolder ? `<button type="button" class="unpin" data-id="${esc(p.id)}" title="Unpin it">×</button>` : '') + '</div>';
+      pinsEl.innerHTML = pins.length ? line(pins[0]).replace('</div>', pins.length > 1
+          ? `<button type="button" class="toggle" aria-expanded="${!!open}">${pins.length - 1} more ${open ? '▴' : '▾'}</button></div>` : '</div>')
+        + (pins.length > 1 ? `<div class="more"${open ? '' : ' hidden'}>${pins.slice(1).map(line).join('')}</div>` : '') : '';
+      pinsEl.hidden = !pins.length;
+    }
+    pinsNow = pins;
+    const pinned = new Set(pins.map(p => p.id));
+    document.querySelectorAll('#turns .turn[data-id]').forEach(el => el.classList.toggle('pinned', pinned.has(el.dataset.id)));
+  }
+  pinsEl.addEventListener('click', e => {
+    const go = e.target.closest('a.go[data-id]');
+    if (go) { e.preventDefault(); openAndReveal(current, go.dataset.id); return; }
+    const toggle = e.target.closest('button.toggle');
+    if (toggle) {
+      const more = pinsEl.querySelector('.more'), open = more.hidden;
+      more.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.textContent = toggle.textContent.replace(/[▾▴]/, open ? '▴' : '▾');
+      return;
+    }
+    const unpin = e.target.closest('button.unpin[data-id]');
+    if (unpin) pinMessage(unpin.dataset.id);
+  });
+  async function pinMessage(id) {
+    try { renderPins((await changeMessage(id, 'pin')).pins || []); }
+    catch (err) { showError('pin: ' + err.message); }
+  }
   function changeMessage(id, what, body) {
     return fetch(`/api/moods/${encodeURIComponent(current)}/messages/${encodeURIComponent(id)}/${what}/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify(body || {}) })
@@ -4833,6 +5316,8 @@
   const MODELS = [['', 'default'], ['opus', 'opus'], ['sonnet', 'sonnet'], ['fable', 'fable'], ['haiku', 'haiku']];
   const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
   const EFFORT_LABELS = { xhigh: 'extra' };  // as the terminal names them
+  // In the agents' bar, short (Justin, 27 Oct): lo/med/hi/x/max.
+  const EFFORT_SHORT = { low: 'lo', medium: 'med', high: 'hi', xhigh: 'x', max: 'max' };
   const DISCRETIONS = ['chatty', 'normal', 'reserved'];
   const VERBOSITIES = ['brief', 'normal', 'thorough'];
   // Under the header row, which says what each is: a word apiece (Justin, 18 Oct).
@@ -4843,7 +5328,7 @@
     ['', ''],
     ['mode', '👂 listening: answers @mentions and may speak up unasked · @: answers @mentions only · 🤫 hushed: wakes for nothing (mentions wait)'],
     ['model', 'the model its wakes here run on'],
-    ['effort', 'how hard it thinks when @mentioned here'],
+    ['effort', 'how hard it thinks here, whether @mentioned or looking in unasked: lo, med, hi, x (extra), max'],
     ['speaks up', 'how readily it speaks up unasked here'],
     ['replies', 'how long its replies run here'],
     ['reads back', "how much of what was said here since it last spoke a wake reads word for word, in tokens (10k ≈ 40,000 characters, about 7,500 words); anything older is summarized"],
@@ -5012,12 +5497,23 @@
   // the one line, which is all the room it has above the box (and there's no ⚙ any more).
   let agentsOpen = matchMedia(PHONE).matches ? false : store.get('agentsOpen', false);
   const agentsWhole = () => agentsOpen;
+  // The model it runs here: set, or last seen running here, or last seen anywhere (never "default").
+  function ctx_runs(a) { return a.model || (a.context || {}).model || a.runs || ''; }
   function agentGist(a) {
     const ctx = a.context || {};
-    const model = a.model ? shortModel(a.model.split('/').pop()) : ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
-    // Listening is the usual; hushed or mentions-only is worth the room.
-    return (a.listening.mode === 'on' ? '' : describeListening(a.listening) + ' · ')
-      + `${model} · ${EFFORT_LABELS[a.effort] || a.effort || 'default'}`;
+    // The ear as the @ (Justin, 27 Oct); effort and model scrunched: lo/med/hi, and the model cut from its id.
+    // OpenRouter names no model briefly, so cut one from the id, no table: drop the maker the id repeats
+    // (~deepseek/deepseek-pro-latest -> pro) and a trailing 'latest'; keep versions (sonnet 5.5, v4.1-flash).
+    const long = m => {
+      if (!m) return 'default';
+      const parts = String(m).split('/');
+      let s = shortModel(parts.pop().replace(/^~/, ''));
+      const maker = (parts.pop() || '').replace(/^~/, '');
+      if (maker && s.toLowerCase().startsWith(maker.toLowerCase() + '-')) s = s.slice(maker.length + 1);
+      return s.replace(/[\s-]latest$/i, '') || maker || 'default';
+    };
+    return `${describeListening(a.listening)} · ${long(a.model || ctx.model || a.runs)}`
+      + ` · ${EFFORT_SHORT[a.effort] || a.effort || 'default'}`;
   }
   document.addEventListener('click', e => {
     if (!e.target.closest('#hush .fold, #hush .gist')) return;
@@ -5034,7 +5530,7 @@
     if (!whole) {
       return fold + Object.entries(agents).map(([agent, a]) =>
         `<span class="agent gist${a.listening.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}`
-        + ` title="${esc(agent)}: ${esc(describeListening(a.listening))}; click for its settings">${esc(agentGist(a))}</span>`).join('');
+        + ` title="${esc(agent)}: ${esc(describeListening(a.listening))}; model ${esc(a.model || ctx_runs(a))}; click for its settings">${esc(agentGist(a))}</span>`).join('');
     }
     const head = '<span class="agent heads">' + AGENT_HEADS.map(([label, what]) =>
       `<span class="cell"${what ? ` title="${esc(what)}"` : ''}>${esc(label)}</span>`).join('') + '</span>';
@@ -5043,24 +5539,25 @@
       const row = `<span class="agent${l.mode === 'on' ? '' : ' off'}" data-who="${esc(agent)}"${whoStyle(agent)}>`
         + `<span class="cell">${icon(agent, false)}<span class="name">${esc(agent)}</span></span>`;
       if (!keyHolder) {
-        const runs = a.model ? shortModel(a.model.split('/').pop()) : ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
-        return [describeListening(l), runs, EFFORT_LABELS[a.effort] || a.effort,
+        const runs = shortModel(ctx_runs(a).split('/').pop()) || '?';
+        return [describeListening(l), runs, EFFORT_SHORT[a.effort] || a.effort,
                 SPEAKING_UP[a.discretion || 'normal'] || a.discretion, REPLY_LENGTHS[a.verbosity || 'normal'],
                 kTokens(a.reads || 10000), a.ultracode ? 'ultracode' : '']
           .reduce((out, cell) => out + `<span class="cell">${esc(cell)}</span>`, row) + '</span>';
       }
-      const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="👂 listening: answers @mentions and may speak up unasked · @: answers @mentions only · 🤫 hushed: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening(l))}</option>`
+      const listen = `<select data-agent="${esc(agent)}" data-knob="listening" title="👂 listening: answers @mentions and may speak up unasked · @: answers @mentions only · 🤫 hushed: wakes for nothing (mentions wait); with a time, back to listening then"><option selected disabled>${esc(describeListening({ mode: l.mode }))}${l.until ? ' ⏱' : ''}</option>`
         + HUSH.map(([mode, minutes, label], i) => `<option value="${i}">${esc(label)}</option>`).join('') + '</select>';
       const models = MODELS.some(([v]) => v === a.model) ? MODELS : [...MODELS, [a.model, a.model]];
       const catalog = catalogFor(agent, a);
       // Its own default is the model it runs, so that's what's shown (Justin, 18 Oct: "default" says nothing).
-      const inUse = ctx.model ? shortModel(ctx.model.split('/').pop()) : 'default';
-      const model = catalog ? catalogMenus(agent, catalog, a.model, inUse, ctx.model)
+      const inUse = shortModel((ctx.model || a.runs || '').split('/').pop()) || '?';
+      const model = catalog ? catalogMenus(agent, catalog, a.model, inUse, ctx.model || a.runs)
         : `<select data-agent="${esc(agent)}" data-knob="model" title="model for its wakes here">`
           + models.map(([v, label]) => `<option value="${esc(v)}"${v === a.model ? ' selected' : ''}>`
             + `${esc(v ? label : inUse)}</option>`).join('') + '</select>';
-      const effort = `<select data-agent="${esc(agent)}" data-knob="mention_effort" title="how hard it thinks when @mentioned here">`
-        + EFFORTS.map(v => `<option value="${v}"${v === a.effort ? ' selected' : ''}>${EFFORT_LABELS[v] || v}</option>`).join('') + '</select>';
+      const efforts = (knob, now, what) => `<select data-agent="${esc(agent)}" data-knob="${knob}" title="${what}">`
+        + EFFORTS.map(v => `<option value="${v}"${v === now ? ' selected' : ''}>${EFFORT_SHORT[v] || v}</option>`).join('') + '</select>';
+      const effort = efforts('mention_effort', a.effort, 'how hard it thinks here, whether @mentioned or looking in unasked');
       // How much of what was said since its last word a wake reads word for word.
       const reads = `<select data-agent="${esc(agent)}" data-knob="catch_up_tokens" title="How much of what was said here since it last spoke a wake reads word for word; older is summarized">`
         + READS.map(n => `<option value="${n}"${n === a.reads ? ' selected' : ''}>${kTokens(n)}</option>`).join('')
@@ -5177,30 +5674,40 @@
   function renderTyping() {
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('typing', typingNow.includes(el.dataset.who)));
     typingEl.classList.toggle('on', typingNow.length > 0);
-    typingEl.innerHTML = typingNow.map(n => `${icon(n, true)}<b>${esc(shown(n))}</b>`).join(', ')
-      + (typingNow.length ? (typingNow.length > 1 ? ' are typing…' : ' is typing…') : '');
+    const rec = typingNow.filter(n => recordingNow.includes(n)), keys = typingNow.filter(n => !recordingNow.includes(n));
+    const who = ns => ns.map(n => `${icon(n, true)}<b>${esc(shown(n))}</b>`).join(', ');
+    typingEl.innerHTML = [keys.length ? who(keys) + (keys.length > 1 ? ' are typing…' : ' is typing…') : '',
+      rec.length ? '🎙 ' + who(rec) + (rec.length > 1 ? ' are recording a voice memo…' : ' is recording a voice memo…') : '']
+      .filter(Boolean).join(' · ');
     markLive();
   }
 
   // Stop what the agent here is doing: a turn under way ends within seconds,
   // and a mention it hasn't answered yet is let go (POST .../interrupt/).
   const stopBtn = document.getElementById('stopBtn');
-  async function interrupt() {
-    if (!act || act.doing === 'held' || !keyHolder || !current) return false;
+  // `agent`: whom to stop (a line's own 🛑); none: the one that started last (the button, Esc).
+  async function interrupt(agent) {
+    if (typeof agent !== 'string') agent = null;
+    if (!agent && (!act || act.doing === 'held')) return false;
+    if (!keyHolder || !current) return false;
+    agent = agent || act.agent;
     stopBtn.disabled = true;
     try {
       const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/interrupt/', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-        body: JSON.stringify({ agent: act.agent }),
+        body: JSON.stringify({ agent }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
-      act = null; acts = []; renderActivity();
+      acts = acts.filter(a => a.agent !== agent);
+      act = [...acts].reverse().find(a => a.doing !== 'held') || null;
+      renderActivity();
       await poll(false);
     } catch (e) { showError('stop: ' + e.message); }
     finally { stopBtn.disabled = false; }
     return true;
   }
-  stopBtn.addEventListener('click', interrupt);
+  stopBtn.addEventListener('click', () => interrupt());
+  activityText.addEventListener('click', e => { const b = e.target.closest('.stopone'); if (b) interrupt(b.dataset.agent); });
 
   function renderActivity() {
     const turnsEl = document.getElementById('turns');
@@ -5210,21 +5717,25 @@
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('busy', working.some(a => el.dataset.who === a.agent)));
     activityEl.classList.toggle('on', acts.length > 0);
     markLive();
-    stopBtn.hidden = !(keyHolder && act && act.doing !== 'held');
-    // Several at work: the button says whom it stops (the one that started last).
-    stopBtn.textContent = working.length > 1 && act ? `■ stop ${act.agent}` : '■ stop';
+    // One at work: the stop button. Several: a little stop sign by each one's name instead (Justin, 28 Oct:
+    // the button named only one of them).
+    const several = working.length > 1;
+    stopBtn.hidden = !(keyHolder && act && act.doing !== 'held') || several;
+    stopBtn.textContent = '■ stop';
+    const stopOne = a => keyHolder && several && a.doing !== 'held'
+      ? `<button type="button" class="stopone" data-agent="${esc(a.agent)}" title="Stop ${esc(a.agent)}" aria-label="Stop ${esc(a.agent)}">🛑</button>` : '';
     if (!acts.length) return;
     const hhmm = iso => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     // A line for each, in its colour: two woken by one post, or one asked and one looking in.
     activityText.innerHTML = acts.map(a => `<span class="one${a.doing === 'held' ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
       + (a.doing === 'waking'
-        ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${elapsed(a.since)}`
+        ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${stopOne(a)}${elapsed(a.since)}`
         : a.doing === 'held' && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${waitedFor(a.why)}` + (a.until ? ` · checks in by ${esc(hhmm(a.until))}` : '')
         : a.doing === 'held'
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
           + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
-        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${esc(a.doing)} · ${elapsed(a.since)}`
+        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${esc(a.doing)} · ${stopOne(a)}${elapsed(a.since)}`
           + ([a.model, a.effort].filter(Boolean).length ? ` · ${esc([a.model, a.effort].filter(Boolean).join(' · '))}` : ''))
       + '</span>').join('');
   }
@@ -5332,6 +5843,17 @@
     return titles;
   }
 
+  // '#t-' and words: links on Tidings whose title or address has them (api/tidings/find), newest first.
+  const tidingCache = new Map();
+  let tidingTimer = null;
+  async function findTidings(q) {
+    if (tidingCache.has(q)) return tidingCache.get(q);
+    let links = [];
+    try { links = (await (await fetch('/api/tidings/find/?q=' + encodeURIComponent(q))).json()).links || []; } catch (e) {}
+    tidingCache.set(q, links);
+    return links;
+  }
+
   // /clips <name> and /clips forget <name>: the team's saved clips, by name (/yarn, as it was first called, too).
   let clipsCache = null;
   async function savedClips() {
@@ -5359,6 +5881,9 @@
     if (w) return { kind: 'wiki', start: upto.length - w[1].length, prefix: w[1] };
     let m = upto.match(/(^|[^\w@\/.])@([A-Za-z][\w.-]*)?$/);
     if (m) return { kind: 'mention', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
+    // #t-: a link on Tidings, found by the words of its title or address.
+    m = upto.match(/(^|[^\w&#\/;=])#t-([^\s#\[\]]{0,80})$/i);
+    if (m) return { kind: 'tiding', start: upto.length - m[2].length - 2, prefix: m[2] };
     // #mood, as mood_view._HASH links it: not after a word, an & or a / (a URL's #anchor, &#39;).
     m = upto.match(/(^|[^\w&#\/;=])#([a-z0-9][a-z0-9-]{0,79})?$/i);
     if (m) return { kind: 'mood', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
@@ -5384,6 +5909,22 @@
         suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
         suggest.classList.add('on');
       }, wikiCache.has(prefix) ? 0 : 150);
+      return;
+    }
+    if (at.kind === 'tiding') {
+      clearTimeout(tidingTimer);
+      const prefix = at.prefix;
+      tidingTimer = setTimeout(async () => {
+        const links = await findTidings(prefix);
+        const still = wordAtCaret();
+        if (!still || still.kind !== 'tiding' || still.prefix !== prefix) return;  // they've typed on
+        choices = links.map(l => ({ insert: `t-${l.id.slice(0, 8)} `,
+          html: `<span class="emo">🔗</span>${esc(l.title.slice(0, 80))}<small>${esc(l.host)}</small>` }));
+        if (!choices.length) return closeSuggest();
+        chosen = Math.min(chosen, choices.length - 1);
+        suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
+        suggest.classList.add('on');
+      }, tidingCache.has(prefix) ? 0 : 150);
       return;
     }
     if (at.kind === 'clips') {
@@ -5514,7 +6055,7 @@
   // On a phone: one line until there's more to say, growing with the text (to 40% of the screen).
   const phone = matchMedia(PHONE).matches;
   function fitSay() {
-    if (!phone) return;
+    if (!phone || document.body.classList.contains('say-expanded')) return;
     // Empty, it's one line again: an empty textarea's scrollHeight counts its
     // placeholder, wrapped to the box's width, so measuring it then made the
     // box as tall as the placeholder written a word per line.
@@ -5523,19 +6064,32 @@
     sayBox.style.height = sayBox.scrollHeight + 2 + 'px';
   }
   // Short: a phone's box is narrow, and a placeholder can't wrap or end in an ellipsis there.
-  if (phone) { sayBox.placeholder = 'Say something…'; sayBox.rows = 1; }
   sayBox.addEventListener('input', fitSay);
   addEventListener('resize', fitSay);  // turning the phone rewraps what's typed
+
+  // The chevron at the box's top centre: pull it up to a long box, and back to the size it was (Justin, 27 Oct).
+  const expandBtn = document.getElementById('expandComposer');
+  const expandSay = on => {
+    const was = expandSay.height ?? '';
+    if (on) expandSay.height = sayBox.style.height;  // whatever it was: a drag, or fitSay's
+    sayBox.style.height = on ? Math.round(innerHeight * 0.6) + 'px' : was;
+    document.body.classList.toggle('say-expanded', on);
+    expandBtn.textContent = on ? '▾' : '▴';
+    expandBtn.title = on ? 'Collapse the box' : 'Expand the box to write at length';
+    expandBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) { sayBox.focus(); sayBox.setSelectionRange(sayBox.value.length, sayBox.value.length); }
+  };
+  expandBtn.addEventListener('click', () => expandSay(!document.body.classList.contains('say-expanded')));
 
   // Tell the Mood this person is typing: at most every 3s while there is
   // text, and once when it is cleared or sent.
   let typingSent = 0;
-  function sendTyping(on) {
+  function sendTyping(on, how) {
     if (!viewer || !current) return;
     hereAt = Date.now();  // typing, or stopped: three minutes here from now (services/presence)
     fetch('/api/moods/' + encodeURIComponent(current) + '/typing/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ typing: on }),
+      body: JSON.stringify({ typing: on, ...(how ? { how } : {}) }),
     }).catch(() => {});
   }
   sayBox.addEventListener('input', () => {
@@ -5553,6 +6107,7 @@
   }
   // What's said next makes an old error old news.
   sayBox.addEventListener('input', () => { const err = composer.querySelector('.err'); if (err) err.remove(); });
+  document.getElementById('sayHelp').addEventListener('click', e => { showNote(e.currentTarget.title, 9000); sayBox.focus(); });
   function showNote(message, ms, isHtml) {  // a word under the box, gone after a while (isHtml: already escaped, with a link)
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
     composer.insertAdjacentHTML('beforeend', `<span class="note">${isHtml ? message : esc(message)}</span>`);
@@ -6052,6 +6607,7 @@
     recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
     recorder.addEventListener('stop', async () => {
       clearInterval(memoTimer);
+      sendTyping(false);
       recordingHold(false);
       mic.close();
       stream.getTracks().forEach(t => t.stop());
@@ -6119,8 +6675,11 @@
     composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Recording: ■ stops it to add words; Send sends it as it is.</span>');
     memoBtn.classList.add('recording');
     memoBtn.textContent = '■ 0:00';
+    sendTyping(true, 'recording');  // others see it, as they see typing (Justin, 28 Oct)
+    let recordingSaid = Date.now();
     memoTimer = setInterval(() => {
       const s = (Date.now() - started) / 1000;
+      if (Date.now() - recordingSaid > 3000) { recordingSaid = Date.now(); sendTyping(true, 'recording'); }
       memoBtn.textContent = '■ ' + clock(s);
       if (s >= MEMO_MAX_S && recorder) recorder.stop();
       const since = recorder ? mic.quietSince() : null;
@@ -6346,6 +6905,7 @@
     const fresh = events.filter(e => (said(e) || redeployed(e)) && e.id && !readHeard.has(e.id))
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     for (const e of fresh) { readHeard.add(e.id); readQueue.push(e); }
+    if (readRecording) prefetchNext();  // came while recording: ready for when it stops
     if (fresh.length) saveReadPlace();
     // Next time from a minute before the newest: a clock a little off misses nothing, and ids keep it once.
     // A full page (reading a stretch through from a message): on from its last, or it would ask the same again.
@@ -6460,7 +7020,7 @@
   // recording's done; a message's own ▶ stops. Messages that come meanwhile are queued.
   function recordingHold(on) {
     readRecording = on;
-    if (on) { reader.pause(); if (speaking) stopSpeaking(); }
+    if (on) { reader.pause(); if (speaking) stopSpeaking(); prefetchNext(); }
     else if (clipDone && reader.paused && !readHeld) atSpeed(reader).play().catch(() => {});
     if (!on) readNext();
     renderReadBar();
@@ -6497,6 +7057,40 @@
                              rate: Math.round(reader.playbackRate * 100) / 100, pace: Math.round(paceOf(reader) || 0) }) }).catch(() => {});
   }
 
+  // Who's said to speak, for an item read next: the narrator names them when the Mood or the speaker changes.
+  function introFor(item) {
+    const newMood = !readLast || readLast.mood !== item.mood;
+    return newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
+  }
+  // A message's clip (speak/), its audio brought into this browser too, so it plays without the network.
+  function speakFetch(item, ask, keep) {
+    const url = `/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${new URLSearchParams(ask)}`;
+    const asked = fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+    if (!keep) return asked;
+    return asked.then(async r => {
+      if (!r.ok) return r;
+      const body = await r.json();
+      for (const k of ['url', 'intro']) {
+        if (body[k] && body[k].startsWith('/')) {
+          try { body[k] = URL.createObjectURL(await (await fetch(body[k])).blob()); } catch (e) {}
+        }
+      }
+      return new Response(JSON.stringify(body), { status: r.status, headers: { 'Content-Type': 'application/json' } });
+    });
+  }
+  // While a memo is recorded, what's next is fetched -- its words and its narrator line, audio and all -- so it's
+  // heard the moment the recording stops, not after the upload has had the connection (Justin, 28 Oct, in the woods).
+  const prefetched = new Map();  // item id -> {intro, said, words}
+  function prefetchNext() {
+    const item = readQueue[0];
+    if (!item || prefetched.has(item.id) || item.kind === 'thinking' || item.kind === 'deploy'
+        || (item.text || '').match(MEMO_AUDIO)) return;
+    const intro = introFor(item);
+    prefetched.set(item.id, { intro, words: speakFetch(item, {}, true),
+                              said: intro ? speakFetch(item, { intro, only: 'intro' }, true) : null });
+    while (prefetched.size > 4) prefetched.delete(prefetched.keys().next().value);
+  }
+
   async function readNext() {
     if (readNow || readHeld || readRecording || readBlocked || readMode === 'off' || !readQueue.length) { renderReadBar(); return; }
     const item = readQueue.shift();
@@ -6510,9 +7104,29 @@
     // A message about to be read says so at once, while its words are fetched (a memo's may still be heard).
     const chimed = item.kind !== 'thinking' && item.kind !== 'deploy' ? playClip(chimeUrl('in')) : null;
     const memo = (item.text || '').match(MEMO_AUDIO);  // heard as recorded: only who's speaking needs saying
-    const newMood = !readLast || readLast.mood !== item.mood;
-    const intro = newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
+    const intro = introFor(item);
+    const early = prefetched.get(item.id);  // fetched while a memo was recorded
+    prefetched.delete(item.id);
     const clips = [];
+    // Who and where, said at once after the chime, while the message's own words are still being made (Justin,
+    // 28 Oct: "chime, then narrator, immediately"); a tick every 3 s after it until they're ready.
+    let words = null;
+    if (!memo && item.kind !== 'thinking' && item.kind !== 'deploy') {
+      words = early ? early.words : speakFetch(item, {});
+      if (intro) try {
+        const said = await (early && early.intro === intro ? early.said : speakFetch(item, { intro, only: 'intro' }))
+          .then(r => r.ok ? r.json() : {});
+        if (said.intro && readNow === now && !now.skipped) {
+          if (chimed) await chimed;
+          await playClip(said.intro);
+        }
+      } catch (e) {}
+      else if (chimed) await chimed;
+      let ticks = null;
+      const settled = words.finally(() => clearInterval(ticks));
+      ticks = setInterval(() => { if (readNow === now && !readHeld) atSpeed(new Audio(chimeUrl('tick'))).play().catch(() => {}); }, 3000);
+      words = settled;
+    }
     try {
       if (item.kind === 'thinking' || item.kind === 'deploy') {
         const r = await fetch('/api/voice/narrate/', { method: 'POST',
@@ -6524,10 +7138,10 @@
         if (!r.ok) throw new Error(body.error || r.status);
         clips.push([item.kind, body.url]);
       } else if (intro || !memo) {
-        const ask = new URLSearchParams(intro ? { intro } : {});
+        const ask = new URLSearchParams(intro && !words ? { intro } : {});
         if (memo) ask.set('only', 'intro');
-        const r = await fetch(`/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${ask}`,
-                              { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+        const r = words ? await words : await fetch(`/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${ask}`,
+                                                    { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
         const body = await r.json().catch(() => ({}));
         if (r.status === 429 && !/spent/.test(body.error || '')) {  // asked too fast: this one again in a moment
           readQueue.unshift(item); readNow = null;
@@ -7637,7 +8251,9 @@
       + `<button type="button" data-v="skip">⏭<small>skip</small></button>`
       + `<button type="button" data-v="go"${goBtn.classList.contains('listening') ? ' class="hot"' : ''}>🧭<small>go to…</small></button>`
       + `<button type="button" data-v="memo"${recording ? ' class="hot"' : ''}${saving ? ' disabled' : ''}>🎙<small>${recording ? 'stop' : saving ? 'saving' : 'record'}</small></button>`
-      + `<button type="button" data-v="send"${sayBox.value.trim() && !saving ? '' : ' disabled'}>➤<small>send</small></button>`
+      // Send while recording or saving sends the memo once it's in (say: memoThenSend), as the composer's does
+      // (Justin, 28 Oct: greyed out while recording, so a memo could only be sent from outside voice mode).
+      + `<button type="button" data-v="send"${sayBox.value.trim() || recording || saving ? '' : ' disabled'}>➤<small>${recording || saving ? 'send it' : 'send'}</small></button>`
       + `<button type="button" data-v="where">${readMode === 'everywhere' ? '🌐' : '📍'}<small>${readMode === 'everywhere' ? 'every Mood' : 'this Mood'}</small></button>`
       + '</div><button type="button" class="leave" data-v="leave">leave voice mode</button>';
     if (voiceMode.innerHTML !== html) voiceMode.innerHTML = html;

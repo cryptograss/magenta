@@ -186,7 +186,8 @@ class RankingAndPinsTest(FrontBase):
                          [('justin', 'jams'), ('skyler', 'magenta-interface'), ('skyler', 'jams')])
         html = self.client.get('/').content.decode()
         self.assertIn('class="enter" href="/moods/tidings/"', html)                      # come in: Tidings
-        self.assertIn(f'class="it" href="/moods/tidings/{tiding.id}/"', html)            # a link: its discussion
+        self.assertIn('class="title" href="https://example.org/x"', html)              # a link's title: out to it
+        self.assertIn(f'<a href="/moods/tidings/{tiding.id}/">0 comments</a>', html)     # its comments: its discussion
         self.assertIn('<li><a href="/moods/magenta-interface/">', html)                 # who spoke: that Mood
 
 
@@ -233,8 +234,9 @@ class SlogansTest(TestCase):
 
     def test_the_page_shows_one_and_carries_them_all(self):
         cache.set('front:slogans', ['one line', 'another line'], 600)
-        html = self.client.get('/').content.decode()
-        self.assertTrue('>one line</p>' in html or '>another line</p>' in html)
+        for _ in range(5):  # always the first first (Justin, 27 Oct), the rest in turns after it
+            html = self.client.get('/').content.decode()
+            self.assertIn('>one line</p>', html)
         self.assertIn('"another line"', html)  # for the turns
 
     def test_an_agents_line_waits_for_a_person_and_templates_are_not_words(self):

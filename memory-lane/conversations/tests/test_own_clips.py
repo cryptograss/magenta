@@ -75,6 +75,10 @@ class OwnClipsTest(TestCase):
                          f'/clips whole-point {link}\nand that\'s that')  # an agent's reply too
         with self.assertRaises(clips.Refused):
             clips.command('/clips nothing-saved\nwords', 'skyler')       # still a name it knows
+        # Its last line, after its words (blu, 28 Oct): moved to the top, the words under it.
+        self.assertEqual(clips.played_by("That's two of us.\n\n/clip whole-point"),
+                         f"/clips whole-point {link}\nThat's two of us.")
+        self.assertIsNone(clips.played_by('Use /clip whole-point like that.'))  # mid-sentence: words
 
     def test_refused(self):
         self.make()

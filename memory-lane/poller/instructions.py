@@ -68,7 +68,7 @@ the bundle"): not its text, but its parts -- the words this file wrote, as
 they were, and in each layer's place only its page and revision -- with a
 sha256 of the whole. Joining the revisions' texts back in (rebuild) gives the
 bundle again, byte for byte, without this code at that commit: the
-transformation from a revision to its part is only layer_body(). A revision
+transformation from a revision to its part is only layer_body() (or, for an older record, the one it names). A revision
 deleted from the wiki since can't be rebuilt, and rebuild says so.
 
     python poller/instructions.py magent magent-self      # what magent is told there
@@ -103,7 +103,7 @@ GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
 AGENT_TEMPLATE = 'Emergent'
 EMERGENT_TEMPLATES = ('Emergent', 'Agent')  # both accepted while trusted revisions still say {{Agent|...}}
 AGENT_FIELDS = ('colour', 'hex', 'greeting', 'image')  # what an agent's own page may put in its line
-ROSTER_FIELDS = ('colour', 'for')  # what each other agent's page puts in the roster: '<name> (<colour>), <for>'
+ROSTER_FIELDS = ('colour', 'for')  # what each other agent's page puts in the roster: '<name> (<colour>) <for>'
 BLANK = re.compile(r'(?<!\{)\{([a-z]+)\}(?!\})')
 SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 RECOVERY = Path(__file__).with_name('recovery_instructions.md')
@@ -112,14 +112,29 @@ COMMENTS = re.compile(r'<!--.*?-->', re.S)
 STATE = '~/.local/state/magenta'
 CACHE_FILE = 'instructions-cache.json'
 MAGENTA = 'https://memory-lane.maybelle.cryptograss.live'  # where bundles are recorded
-# How a revision becomes its part of a bundle, named in each record: a rebuild applies the same.
-TRANSFORM = 'layer_body: the wikitext less <!-- comments -->, stripped'
-
+# How a revision becomes its part of a bundle, named in each record: a rebuild applies the one its record names.
+TRANSFORM = ('layer_body: the wikitext less <!-- comments -->, {{verified|X}} as [✓ verified: X] and '
+             '{{source|X}} as [✓ source: X], stripped')
+TRANSFORM_V1 = 'layer_body: the wikitext less <!-- comments -->, stripped'
+# A person's verification, as the wiki marks it (Template:Verified, Template:Source): read as raw wikitext
+# it was a template call in the prompt; it says someone in a position to know vouched, and by what (Justin,
+# 26 Oct: "the wiki needs to reflect that"), so it's kept, in words.
+VERIFIED = re.compile(r'\{\{\s*(verified|source)\s*\|([^{}]*)\}\}', re.I)
 
 
 def layer_body(wikitext):
     """A revision's wikitext as it goes into a bundle."""
+    text = COMMENTS.sub('', wikitext or '')
+    text = VERIFIED.sub(lambda m: f'[✓ {m.group(1).lower()}: {m.group(2).strip()}]', text)
+    return text.strip()
+
+
+def layer_body_v1(wikitext):
+    """As bundles recorded before 26 Oct were made."""
     return COMMENTS.sub('', wikitext or '').strip()
+
+
+TRANSFORMS = {TRANSFORM: layer_body, TRANSFORM_V1: layer_body_v1}
 
 
 def agent_title(agent):
@@ -315,16 +330,18 @@ def template_fields(text, name=EMERGENT_TEMPLATES):
 
 
 def roster_text(pages):
-    """The other agents, as {others} in the line: '<name> (<colour>), <for>; ...', each from that agent's own
-    page (a Layer) at its trusted revision, in the order given. An agent whose page has no trusted revision,
-    or no {{Agent}}, is left out: nothing about it is vouched for. '' if none can be said."""
+    """The other agents, as {others} in the line: '<name> (<colour>) <for>; ...', each from that agent's own
+    page (a Layer) at its trusted revision, in the order given. No comma before `for`: it is a predicate
+    ('works on the connectome: ...'), the same frame Template:Emergent gives the card, so 'blu (blue), the
+    connectome' no longer reads as blu being the connectome (Justin, emergence, 28 Oct). An agent whose page
+    has no trusted revision, or no {{Emergent}}, is left out: nothing about it is vouched for. '' if none."""
     entries = []
     for name, page in pages:
         fields = template_fields(page.text or '') if page.text else {}
         if not fields:
             continue
         entry = name + (f" ({fields['colour']})" if fields.get('colour') else '')
-        entries.append(entry + (f", {fields['for']}" if fields.get('for') else ''))
+        entries.append(entry + (f" {fields['for']}" if fields.get('for') else ''))
     return '; '.join(entries)
 
 
@@ -372,9 +389,11 @@ def assemble(out):
     return parts
 
 
-def rebuild(parts, revision_text):
-    """A recorded bundle's text again: `revision_text(revision)` gives that revision's wikitext."""
-    return ''.join(part if isinstance(part, str) else layer_body(revision_text(part['revision'])) for part in parts)
+def rebuild(parts, revision_text, transform=TRANSFORM):
+    """A recorded bundle's text again: `revision_text(revision)` gives that revision's wikitext; `transform`,
+    as its record names it (one recorded before any was named: the first)."""
+    body = TRANSFORMS.get(transform or TRANSFORM_V1, layer_body)
+    return ''.join(part if isinstance(part, str) else body(revision_text(part['revision'])) for part in parts)
 
 
 def revision_texts(revisions, api=API):
@@ -400,7 +419,7 @@ def rebuilt(record, texts=None, api=API):
     missing = sorted({r for r in revisions if r not in texts})
     if missing:
         return {'text': None, 'sha256': None, 'matches': False, 'missing': missing}
-    text = rebuild(record['parts'], texts.__getitem__)
+    text = rebuild(record['parts'], texts.__getitem__, record.get('transform'))
     sha = hashlib.sha256(text.encode()).hexdigest()
     return {'text': text, 'sha256': sha, 'matches': sha == record['sha256'], 'missing': []}
 
@@ -435,8 +454,12 @@ def render(b, degraded_path=DEGRADED):
 
 
 def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITORS, recovery_path=RECOVERY,
-           degraded_path=DEGRADED, block=None, fallback_path=GREETING_FALLBACK, record_id=None, others=()):
+           degraded_path=DEGRADED, block=None, fallback_path=GREETING_FALLBACK, record_id=None, others=(),
+           parent=None):
     """The agent's instructions for `mood` (or with no Mood: standing and identity alone, as a terminal gets).
+    `parent`: the Mood a thread was opened from; a thread with no instructions page of its own has that Mood's,
+    as its page and revision, so the record rebuilds it as any other (Justin, 25 Oct: threads; re: "forked
+    continuations should keep the same standing rules").
     `others`: the other agents' names, for the roster ({others} in the line), from magenta's list of agents
     (no wiki query names them); each is read from its own page at its trusted revision, in name order, so
     the instructions stay the same turn to turn."""
@@ -453,6 +476,8 @@ def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITOR
     if mood:
         layers.append(read_layer('moods', MOODS, get, cache, stamp, editors, optional=True))
         layers.append(read_layer('mood', mood_title(mood), get, cache, stamp, editors, optional=True))
+        if layers[-1].absent and parent:
+            layers[-1] = read_layer('mood', mood_title(parent), get, cache, stamp, editors, optional=True)
     cache.save()
     recovery = ''
     if any(layer.problem and not layer.text and not layer.optional for layer in layers):

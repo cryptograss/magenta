@@ -167,7 +167,7 @@ def api_logout(request):
 UPLOADING = re.compile(r'!\[uploading [^\]\n]*…\]\(\)\n?')
 
 
-def _say_checks(text, device):
+def _say_checks(text, device, slug=None):
     """What a text can't be posted as, by this device -- refused with the reason -- or None. The same
     checks wherever the device speaks: in a Mood (api_say) or on a link's Tidings page, which posts
     its comments into the Mood."""
@@ -190,6 +190,17 @@ def _say_checks(text, device):
         command = agent_commands.parse(_reply_to(text)[1], agent_names())
     except agent_commands.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
+    if command and command[0] == 'incorporate':
+        thread = Mood.by_slug(command[2].split()[0].lstrip('#'))
+        if slug and (thread is None or thread.thread_of_id is None or thread.thread_of.slug != slug):
+            return JsonResponse({'error': f'{command[2].split()[0]} is not a thread of this Mood. '
+                                          f'{agent_commands.INCORPORATE_FORM}'}, status=400)
+        return None
+    if command and command[0] == 'handoff':
+        to = command[2].split()[0]
+        if slug and (Mood.by_slug(to.lstrip('#')) is None or to.lstrip('#') == slug):
+            return JsonResponse({'error': f'{to}: no other Mood by that name. {agent_commands.HANDOFF_FORM}'}, status=400)
+        return None
     if command:
         # They're Claude Code's; an agent on Pi has /compact too (its runner asks Pi's RPC
         # mode, poller/pi_harness.py), and none of the others yet.
@@ -231,7 +242,7 @@ def api_say(request, slug):
     if len(text) > MAX_CHARS:
         return JsonResponse({'error': f'longer than {MAX_CHARS} characters'}, status=400)
 
-    refused = _say_checks(text, device)
+    refused = _say_checks(text, device, slug)
     if refused:
         return refused
 
@@ -256,6 +267,15 @@ def api_say(request, slug):
     except polls.Refused as e:
         return JsonResponse({'error': str(e)}, status=400)
 
+    # /announce: posted here, marked, and told quietly to every other Mood's emergents (services/announce.py).
+    from .services import announce
+    try:
+        announced = announce.parse(said)
+    except announce.Refused as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    if announced is not None:
+        text = (f'↩ #m-{answering}\n' if answering else '') + announce.MARK + announced
+
     recent = Message.objects.filter(sender=device.entity, source_file=WEB_SOURCE,
                                     created_at__gt=timezone.now() - timedelta(minutes=1)).count()
     if recent >= PER_MINUTE:
@@ -279,6 +299,8 @@ def api_say(request, slug):
         text = voice.with_transcript(text, voice.heard(memo))
     message = post(text)
     polls.note_posted(message)
+    if announced is not None:
+        note = f'announced in {announce.spread(message, device.entity_id, announced)} other Moods'
     if text.startswith('/clips '):
         clips.forget_cached()  # the library has a new save, or one fewer
     from .services import yarn_kept
@@ -590,6 +612,29 @@ def _retract(request, slug, message_id, edit):
         except retract.Refused as e:
             return JsonResponse({'error': str(e)}, status=e.status)
     return JsonResponse({'id': str(message.id), 'kind': 'edited' if edit else 'deleted', **done})
+
+
+@require_POST
+def api_pin_message(request, slug, message_id):
+    """Pin a message to its Mood's top, or unpin it (services/pins.py): anyone signed in with an SSH key.
+    Answers the Mood's pins as they now stand: {"pinned", "pins"}."""
+    from .services import pins
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device, refused = mood_auth.key_device(request, 'pin a message')
+    if refused:
+        return refused
+    message = Message.objects.filter(id=_uuid_or_none(message_id), mood=Mood.by_slug(slug)).first()
+    if message is None:
+        return JsonResponse({'error': 'no such message in this Mood'}, status=404)
+    if not _under_limit(f'pin:{device.pk}', 20):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        pinned = pins.toggle(message, device.entity_id)
+    except pins.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'pinned': pinned, 'pins': pins.in_mood(message.mood)})
 
 
 @require_POST
@@ -1119,8 +1164,8 @@ def api_new_mood(request):
 
     Its slug comes from the title (made unique), and never changes. Nothing
     else is needed here: the first @mention there wakes an agent in a new
-    session (a runner that starts new ones; see poller/letter.md for what
-    that session is told). A system row says who started it.
+    session (a runner that starts new ones; see new_mood_opening in
+    poller/mood_poller.py for what that session is told). A system row says who started it.
     """
     from .models import ConversationParticipant
     from .services.mood_view import NEW_MOOD_SOURCE
@@ -1140,12 +1185,44 @@ def api_new_mood(request):
         return JsonResponse({'error': 'a title, please'}, status=400)
     if len(title) > 200 or len(description) > 2000:
         return JsonResponse({'error': 'at most 200 characters for a title, 2000 for a description'}, status=400)
-    mood = Mood.objects.create(slug=Mood.free_slug(title), title=title, description=description)
+    # A thread (Justin, 25 Oct): opened from a Mood, forked (its emergents go on from where they were there) or
+    # fresh (they start anew), with that Mood's settings carried over.
+    parent = None
+    if body.get('thread_of'):
+        parent = Mood.by_slug(str(body['thread_of']))
+        if parent is None:
+            return JsonResponse({'error': 'no such Mood to open a thread from'}, status=404)
+    fork = bool(parent) and body.get('fork', True) is not False
+    from django.utils import timezone as tz
+    mood = Mood.objects.create(slug=Mood.free_slug(title), title=title, description=description,
+                               thread_of=parent, forked_at=tz.now() if fork else None)
     system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+    kind = ('fork' if fork else 'fresh') if parent else None
     Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=NEW_MOOD_SOURCE,
-                           content={'type': 'created', 'by': device.entity_id, 'title': title},
+                           content={'type': 'created', 'by': device.entity_id, 'title': title,
+                                    **({'from_mood': parent.slug, 'kind': kind} if parent else {})},
                            timestamp=int(time.time() * 1000))
-    return JsonResponse({'slug': mood.slug, 'title': mood.title, 'description': mood.description}, status=201)
+    if parent:
+        _carry_settings(parent, mood, device.entity)
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=parent, source_file=NEW_MOOD_SOURCE,
+                               content={'type': 'thread', 'by': device.entity_id, 'title': title, 'to_mood': mood.slug,
+                                        'kind': kind},
+                               timestamp=int(time.time() * 1000))
+    return JsonResponse({'slug': mood.slug, 'title': mood.title, 'description': mood.description,
+                         **({'thread_of': parent.slug, 'kind': kind} if parent else {})}, status=201)
+
+
+def _carry_settings(parent, thread, by):
+    """A thread starts with its Mood's settings as they stand -- each agent's listening, model, effort and the
+    rest -- as rows of its own, noted as carried; not the Mood's own flags (archived, pinned)."""
+    from .models import Setting
+    from .services import settings as knobs
+    newest = {}
+    for row in Setting.objects.filter(mood=parent).exclude(key__in=list(knobs.MOOD_KEYS)).order_by('created_at'):
+        newest[(row.key, row.agent_id)] = row
+    for row in newest.values():
+        Setting.objects.create(mood=thread, agent_id=row.agent_id, key=row.key, value=row.value, set_by=by,
+                               note=f'carried from #{parent.slug} into its thread')
 
 
 @require_POST
@@ -1157,6 +1234,37 @@ def api_archive(request, slug):
     is still answered. Recorded as a setting row: who, and when.
     """
     return _mood_flag(request, slug, 'archived')
+
+
+@require_POST
+def api_close_thread(request, slug):
+    """Close a thread: POST {"incorporated": true|false}. Archived, as any Mood (readable, a mention still answered),
+    and, when it was handed to its Mood to incorporate (the close dialog posts "/incorporate #<it>" there first), a
+    line in it saying so: its history stays, and opening it again is a new thread's choice, fresh or forked
+    (Justin, 27 Oct)."""
+    from .services import settings as knobs
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device, refused = mood_auth.key_device(request, 'close a thread')
+    if refused:
+        return refused
+    mood = Mood.by_slug_or_404(slug)
+    if mood.thread_of_id is None:
+        return JsonResponse({'error': 'not a thread'}, status=400)
+    try:
+        incorporated = json.loads(request.body or b'{}').get('incorporated') is True
+    except (ValueError, AttributeError):
+        return JsonResponse({'error': 'expected {"incorporated": true|false}'}, status=400)
+    from .models import ConversationParticipant
+    from .services.mood_view import NEW_MOOD_SOURCE
+    knobs.change('archived', True, mood=mood, by=device.entity, note='closed')
+    if incorporated:
+        system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=NEW_MOOD_SOURCE,
+                               content={'type': 'incorporated', 'by': device.entity_id, 'into': mood.thread_of.slug},
+                               timestamp=int(time.time() * 1000))
+    return JsonResponse({'slug': mood.slug, 'archived': True, 'incorporated': incorporated})
 
 
 @require_POST

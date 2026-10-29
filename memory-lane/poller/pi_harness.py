@@ -47,6 +47,16 @@ EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # Pi 1.1.0 picked Amazon Bedrock's.
 ALIASES = {'opus': 'anthropic/claude-opus-5-5', 'sonnet': 'anthropic/claude-sonnet-5-5',
            'fable': 'anthropic/claude-fable-5-1', 'haiku': 'anthropic/claude-haiku-5-5'}
+# OpenRouter's routers ('auto', 'openrouter/pareto-code', ...) pick a model per call, at that model's
+# price, and no setting here caps which: on 28 Oct pareto-code picked Fable 5.1 for 46 uncached calls,
+# $265 (magent, #usage). Neither offered nor run (Justin: "it was just wrong").
+def is_router(model):
+    """Whether a model setting ('openrouter/auto', 'openrouter/openrouter/pareto-code', 'auto') names one."""
+    model = (model or '').strip()
+    rest = model.split('/', 1)[1] if model.startswith('openrouter/') else model
+    return rest in ('auto', 'auto-beta') or rest.startswith('openrouter/')
+
+
 # Every model Pi's own library knows, by vendor (its public `compat` entry).
 CATALOG_JS = """
 import { getProviders, getModels } from '@earendil-works/pi-ai/compat';
@@ -137,21 +147,34 @@ class PiTranslator:
                 'cache_read': usage.get('cacheRead'), 'cache_write': usage.get('cacheWrite')}
         for k, v in mine.items():
             self.usage[k] += int(v or 0)
-        mine['cost'] = round(cost, 6)  # Pi's own price for the call: the vendor's, not a guess
+        mine['cost'] = round(cost, 6)  # Pi's own price for the call, from its library's price list
+        # What ran, which isn't always what was asked: a router ('auto', 'openrouter/pareto-code') names a
+        # model per call, and Pi's list prices a router at $0, so its every call read as free while OpenRouter
+        # billed it as Fable 5.1 (magent, 28 Oct: $6.11 for one 610k-token call recorded as $0).
+        ran = message.get('responseModel') or message.get('model')
+        if message.get('provider'):
+            mine['provider'] = message['provider']  # who billed it: EventsPoster puts it on the rows' harness
+        if message.get('provider') == 'openrouter' and message.get('responseId'):
+            mine['generation'] = message['responseId']  # EventsPoster asks OpenRouter what it billed
+        if not cost and ran != message.get('model'):
+            mine['cost'] = None  # unknown, not free: a router's $0 is no price
+        model = ran
         self.last_stop = message.get('stopReason')
         if self.last_stop == 'error':
             # Without this the Mood saw a turn end with no word and no reason: re on Anthropic,
             # 2026-10-18 and -19 ("400 ... Third-party apps now draw from your extra usage").
             self.error = str(message.get('errorMessage') or 'the model call failed')[:500]
-        model = message.get('model')
         out = []
         blocks = [b for b in message.get('content') or () if isinstance(b, dict)]
         for i, block in enumerate(blocks):
             # The message's usage goes on its last block, whatever it is, so it's counted once.
             extra = {'usage': mine} if i == len(blocks) - 1 else {}
             if block.get('type') == 'text':
+                # How the message stopped, in the record's words, so a text said on the way to a tool call
+                # (toolUse) reads as a progress line, not the turn's answer: the poller's waits and stagger
+                # lift on an ended turn only (re's review of magenta#206).
                 out.append(self.event('assistant_message', at, id=self.id(millis, 'assistant', i), text=block.get('text', ''),
-                                      model=model, **extra))
+                                      model=model, stop_reason=STOP_REASONS.get(self.last_stop, 'end_turn'), **extra))
                 if block.get('text', '').strip():
                     self.reply = block['text']
             elif block.get('type') == 'thinking':
@@ -168,13 +191,16 @@ class EventsPoster:
     reading thread. Same contract as mood_poller.StreamPoster."""
 
     def __init__(self, base, key, slug, session_id, harness='pi', forked_from=None, http=requests, retries=3,
-                 pause=1.0):
+                 pause=1.0, openrouter_key=None):
         self.url = f"{base.rstrip('/')}/api/moods/{slug}/stream/"
         self.headers = {'Authorization': f'Bearer {key}'}
         self.slug, self.session_id, self.harness, self.forked_from = slug, session_id, harness, forked_from
         self.full_tools = None  # set by the runner: whether this wake has the agent's full tools
         self.answers = None  # set by the runner: the posts that woke it (an answer asked on Tidings goes there)
         self.http, self.retries, self.pause = http, retries, pause
+        # OpenRouter's own bill for each call (bill()), when the turn ran there; Pi's key is OpenRouter's.
+        self.openrouter_key = openrouter_key if openrouter_key is not None else os.environ.get('OPENROUTER_API_KEY')
+        self.spent, self.billed = 0.0, 0  # this turn's cost, call by call, and how many calls OpenRouter priced
         self.queue = queue.Queue()
         self.sent = self.failed = 0
         self.errors = []
@@ -205,7 +231,41 @@ class EventsPoster:
             done = None in batch
             events = [e for e in batch if e is not None]
             if events:
+                self.bill(events)
                 self.send(events)
+
+    def bill(self, events, tries=4):
+        """Each call's cost as OpenRouter billed it (GET /api/v1/generation), in place of Pi's list price:
+        what was paid, not what Pi's price list guessed. Its stats can lag the response by a second or two,
+        so a 404 is asked again. A call it won't price keeps Pi's figure (None for a router's). The turn's
+        end then says the sum."""
+        for event in events:
+            usage = event.get('usage') if isinstance(event.get('usage'), dict) else None
+            if usage and usage.get('generation') and self.openrouter_key:
+                for attempt in range(tries):
+                    try:
+                        response = self.http.get('https://openrouter.ai/api/v1/generation',
+                                                 params={'id': usage['generation']}, timeout=10,
+                                                 headers={'Authorization': f'Bearer {self.openrouter_key}'})
+                        if response.status_code == 200:
+                            paid = (response.json().get('data') or {}).get('total_cost')
+                            if isinstance(paid, (int, float)):
+                                usage['cost'], usage['billed'] = round(float(paid), 6), True
+                                self.billed += 1
+                            break
+                        if response.status_code != 404:
+                            break
+                    except (requests.RequestException, ValueError) as e:
+                        logger.warning(f'{self.slug}: OpenRouter would not say what a call cost: {e}')
+                    time.sleep(self.pause * (attempt + 1))
+            if usage and usage.get('provider') and self.harness.startswith('pi'):
+                # Which vendor billed the turn, on its rows ('pi 1.1.0 · openrouter'): Pi reaches OpenRouter
+                # and vendors directly alike, and the usage page tabs them by who was paid (re, #237).
+                self.harness = f"{self.harness.split(' · ')[0]} · {usage['provider']}"[:50]
+            if usage and isinstance(usage.get('cost'), (int, float)):
+                self.spent += usage['cost']
+            if event.get('type') == 'turn_ended' and self.billed:
+                event['cost_usd'] = round(self.spent, 6)
 
     def send(self, events):
         body = {'format': 'events/1', 'harness': self.harness, 'session_id': self.session_id, 'events': events}
@@ -308,6 +368,7 @@ class PiWaker:
             models = [list(m)[:2] for m in known.get(name, [])]
             ids = {m[0] for m in models}
             models += [[m, None] for m in usable.get(name, []) if m not in ids]  # a vendor of its own (models.json)
+            models = [m for m in models if not is_router(f'{name}/{m[0]}')]
             vendors.append({'name': name, 'usable': name in usable, 'models': models})
         return {'harness': self.harness(), 'vendors': vendors}
 
@@ -355,6 +416,8 @@ class PiWaker:
 
         cmd = [self.pi, '--mode', 'rpc', '--session-dir', str(self.session_dir), '--session-id', new_session_id,
                '--fork', session_id]
+        if is_router(model or self.model):
+            raise RuntimeError(f'{model or self.model} is a router, which may pick any model at any price: not run')
         if model or self.model:
             cmd += ['--model', ALIASES.get(model or self.model, model or self.model)]
         say([translator.event('turn_started', iso(time.time() * 1000), cwd=cwd)])
@@ -427,6 +490,8 @@ class PiWaker:
         if session_id:
             cmd += ['--fork', session_id]
         model = model or self.model
+        if is_router(model):
+            raise RuntimeError(f'{model} is a router, which may pick any model at any price: not run')
         if model:
             cmd += ['--model', ALIASES.get(model, model)]
         if effort:
