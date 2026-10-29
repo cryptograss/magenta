@@ -886,7 +886,7 @@ def api_search(request):
     harness's wrappers. Case-insensitive.
     """
     from django.db.models import TextField
-    from django.db.models.functions import Cast
+    from django.db.models.functions import Cast, Lower
 
     q = (request.GET.get('q') or '').strip()[:200]
     terms = search_terms(q)
@@ -897,10 +897,16 @@ def api_search(request):
     names = known_names()
     rows = (Message.objects.filter(mood__isnull=False, is_sidechain=False)
             .exclude(sender_id__in=MACHINERY_SENDERS)
-            .annotate(text=Cast('content', TextField())))
-    for term in terms:  # narrowed in the database; the prose itself is checked below
+            .annotate(text=Cast('content', TextField()),
+                      ltxt=Lower(Cast('content', TextField()))))
+    # Narrowed in the database via lower(content::text): pg_trgm's GIN index
+    # (migration 0042_search_vectors) serves this LIKE; the old icontains over
+    # a year of messages was a full scan. The prose itself is still checked
+    # below, case-insensitively, so the index only decides what rows arrive.
+    for term in terms:
         words = term.split()
-        rows = rows.filter(text__icontains=words[0]) if len(words) > 1 else rows.filter(text__icontains=term)
+        need = words[0] if len(words) > 1 else term
+        rows = rows.filter(ltxt__contains=need.lower())
     mood = request.GET.get('mood')
     if mood:
         found = Mood.by_slug(mood)
