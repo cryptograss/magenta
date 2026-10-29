@@ -1415,6 +1415,40 @@ def set_held(slug, agent, reason, until=None, now=None):
     return holds
 
 
+# The runner says, every RUNNING_EVERY seconds, which of its agents' turns is still running in a
+# Mood (mood_poller.MoodPoller.run_turn_once). The record alone can't: a tool call that runs half an
+# hour writes nothing, and past ACTIVITY_WINDOW its streak read as a session that died -- magent's
+# Playwright call on 28 Oct hung 30 minutes and the Mood showed nobody at work (Justin, #usage).
+# Ephemeral, like a hold: it lapses unless renewed, so a runner that dies leaves no ghost at work.
+RUNNING_FOR = 300  # seconds a turn is taken as running after the runner last said so
+
+
+def _running_key(slug):
+    return f'running:{slug}'
+
+
+def running_in(slug, now=None):
+    """agent -> {'since', 'at'} for each turn its runner says is still running here."""
+    from django.core.cache import cache
+    import time
+    now = now or time.time()
+    return {agent: r for agent, r in (cache.get(_running_key(slug)) or {}).items() if now - r['at'] < RUNNING_FOR}
+
+
+def set_running(slug, agent, since=None, now=None):
+    """`agent`'s turn in `slug` is running, since `since` (epoch seconds); None says it has ended."""
+    from django.core.cache import cache
+    import time
+    now = now or time.time()
+    running = running_in(slug, now)
+    if since is not None:
+        running[agent] = {'since': since, 'at': now}
+    else:
+        running.pop(agent, None)
+    cache.set(_running_key(slug), running, RUNNING_FOR)
+    return running
+
+
 def activity(mood, now=None, only=None):
     """What an agent in this Mood is doing now, or None: see _activity.
     Someone stopping the agent since that began ends it at once, without
@@ -1534,13 +1568,21 @@ def _activity(mood, now=None, only=None):
         if hold and hold['at'] >= _when(newest):
             return {'agent': named[0], 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
                     'since': _when(newest)}
+        alive = running_in(mood.slug, now).get(named[0])
+        if alive and alive['since'] <= _when(newest):
+            # Posted while its turn was already running: it's at work on that, not waking for this.
+            return {'agent': named[0], 'doing': 'still at work', 'since': alive['since']}
         if now - _when(newest) > ACTIVITY_WINDOW:
             return None
         # "@magent /compact" runs the command, not a turn: say what's happening.
         return {'agent': named[0], 'doing': command_doing(prose(newest.content), named[0]) or 'waking',
                 'since': _when(newest)}
 
-    if now - _when(newest) > ACTIVITY_WINDOW:
+    # Quiet past the window is a session that died -- unless its runner says the turn is still running
+    # (a tool call that takes half an hour writes nothing while it runs).
+    stale = now - _when(newest) > ACTIVITY_WINDOW
+    alive = running_in(mood.slug, now) if stale else {}
+    if stale and not alive:
         return None
     # A runner writes what a turn came to once it has ended, and nothing of a
     # turn is after that. Most turns end on a line that says so too, but a
@@ -1588,7 +1630,7 @@ def _activity(mood, now=None, only=None):
         # Asked about one agent, lines nobody can say are its are not its turn. (Once, the first agent
         # by name took them: magent, then blu -- and re's wake read as blu thinking, Justin, 21 Oct.)
         agent = owner or (None if only else sorted(agents or {'magent'})[0])
-    if agent is None or (only and agent != only):
+    if agent is None or (only and agent != only) or (stale and agent not in alive):
         return None
     how = next((how_payload(m) for m in streak if m.sender_id in agents and m.model_backend), {'model': '', 'effort': ''})
     start = streak[-1]

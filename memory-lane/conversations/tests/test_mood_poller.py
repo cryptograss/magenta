@@ -4,6 +4,7 @@ No Django, no network, no model: the API and the waker are fakes.
 """
 
 import json
+import time
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -65,6 +66,38 @@ class FakeWaker:
                 {'type': 'text', 'text': self.reply}]}})
             on_event({'type': 'result', 'subtype': 'success', 'result': self.reply, 'total_cost_usd': 0.01})
         return new_session_id or 'fork-1', self.reply
+
+
+class HeartbeatTest(TestCase):
+    """While a wake runs, the poller tells the Mood so; when it ends, that it ended (Justin, #usage, 28 Oct)."""
+
+    def test_a_running_turn_beats_until_it_ends(self):
+        import threading
+
+        said, ended = [], threading.Event()
+
+        class API(FakeAPI):
+            key = 'k'
+
+            def running(self, slug, since):
+                said.append((slug, since))
+                if since is None:
+                    ended.set()
+                return True
+
+        class SlowWaker(FakeWaker):
+            def wake(self, *args, **kwargs):
+                deadline = time.time() + 2
+                while sum(1 for _, s in said if s) < 2 and time.time() < deadline:
+                    time.sleep(0.01)
+                return super().wake(*args, **kwargs)
+
+        poller = MoodPoller(API(), SlowWaker(), state_path=None, now=lambda: T0)
+        poller.RUNNING_EVERY = 0.05
+        poller.run_turn_once('m26', 's-local', 'hi', {})
+        self.assertTrue(ended.wait(2))
+        self.assertGreaterEqual(sum(1 for _, s in said if s), 2)
+        self.assertEqual(said[-1], ('m26', None))
 
 
 def mention(mood, t):

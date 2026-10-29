@@ -10,7 +10,7 @@ from conversations.models import (
 )
 from django.core.cache import cache
 
-from conversations.services.mood_view import HELD_FOR, activity, held_in, set_held
+from conversations.services.mood_view import HELD_FOR, RUNNING_FOR, activity, held_in, running_in, set_held, set_running
 
 NOW = 1_790_000_000.0
 
@@ -26,6 +26,7 @@ class ActivityTest(TestCase):
 
     def setUp(self):
         cache.delete('held:m26')  # the cache is shared, not rolled back with the test
+        cache.delete('running:m26')
 
     def add(self, sender, seconds_ago, content='x', model=Message, **fields):
         return model.objects.create(id=uuid.uuid4(), sender=sender, mood=self.mood, content=content,
@@ -230,6 +231,23 @@ class ActivityTest(TestCase):
         self.add(self.justin, 900, 'go')
         self.add(self.magent, 800, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use')
         self.assertIsNone(self.now())
+
+    def test_a_tool_call_that_runs_past_the_window_is_at_work_while_its_runner_says_so(self):
+        """magent's Playwright call, 28 Oct: it hung 30 minutes, wrote nothing, and the Mood showed
+        nobody at work (Justin, #usage). The runner's word keeps it there; a dead runner's lapses."""
+        self.add(self.justin, 1900, 'go')
+        self.add(self.magent, 1800, {}, model=ToolUse, tool_name='mcp__playwright__browser_evaluate', tool_id='t1',
+                 stop_reason='tool_use')
+        self.assertIsNone(self.now())
+        set_running('m26', 'magent', since=NOW - 1900, now=NOW - 60)
+        self.assertEqual(self.now()['agent'], 'magent')
+        self.assertEqual(self.now()['since'], NOW - 1900)
+        # A person asking after it meanwhile: it's still at work on that turn, not waking for this.
+        self.add(self.justin, 30, '@magent are you there?', source_file='mood-web')
+        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'still at work', 'since': NOW - 1900})
+        self.assertEqual(running_in('m26', now=NOW - 60 + RUNNING_FOR + 1), {})
+        set_running('m26', 'magent', None, now=NOW - 1)  # the turn ended
+        self.assertEqual(self.now()['doing'], 'waking')
 
     def test_older_rows_without_stop_reason_end_on_a_quiet_reply(self):
         self.add(self.justin, 90, 'go')

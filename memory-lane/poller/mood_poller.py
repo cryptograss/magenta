@@ -215,6 +215,14 @@ class MoodAPI:
         time someone stopped `agent` in `slug` ({'by', 'at', ...} or None)."""
         return self._get(f'/api/moods/{slug}/interrupt/', agent=agent)
 
+    def running(self, slug, since):
+        """Say the agent's turn in `slug` is still running, since `since` (epoch seconds); None, that it ended."""
+        if not self.key:
+            return False
+        response = self.http.post(f'{self.base}/api/moods/{slug}/running/', json={'since': since},
+                                  headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
+        return response.status_code == 200
+
     def held(self, slug, reason, until=None):
         """Say the agent's next turn in `slug` is held, and why; no reason lifts it."""
         if not self.key:
@@ -2234,6 +2242,32 @@ class MoodPoller:
                 logger.warning(f'{slug}: could not say the turn failed: {e}')
         return outcome, reply, cost
 
+    RUNNING_EVERY = 120  # seconds between "still running" (mood_view.RUNNING_FOR is 300)
+
+    def heartbeat(self, slug):
+        """Tell the Mood, until the returned event is set, that this agent's turn there is still running:
+        a tool call can run half an hour and write nothing, and the record alone then reads it as dead
+        (Justin, #usage, 28 Oct). Ends by saying it has ended, so the Mood needn't wait out the lapse."""
+        done = threading.Event()
+        if self.dry_run or not getattr(self.api, 'key', None):
+            return done
+        since = time.time()
+
+        def say(value):
+            try:
+                self.api.running(slug, value)
+            except Exception as e:  # the indicator lapsing is no reason to stall a turn
+                logger.warning(f'{slug}: could not say whether the turn is running: {e}')
+
+        def beat():
+            while not done.is_set():
+                say(since)
+                done.wait(self.RUNNING_EVERY)
+            say(None)
+
+        threading.Thread(target=beat, daemon=True).start()
+        return done
+
     def run_turn_once(self, slug, session_id, prompt, options):
         """One try: (outcome, reply, what it cost, failure). failure, if it came back with no words: {'why',
         'retry'}, retry if nothing was spent and its harness said it failed (not a stop, not its budget)."""
@@ -2277,6 +2311,7 @@ class MoodPoller:
                 heard.setdefault('at', utc_seconds())
                 if put:
                     put(event)
+        beating = self.heartbeat(slug)
         try:
             new_session, reply = self.waker.wake(session_id, prompt, new_session_id=new_session,
                                                  on_event=on_event, stop=stop,
@@ -2291,6 +2326,8 @@ class MoodPoller:
                 poster.close()
             return 'failed', None, 0.0, {'why': str(e).splitlines()[0][:200] if str(e) else 'it failed to run',
                                          'retry': False}
+        finally:
+            beating.set()
         if poster:
             poster.close()
         if bundled is not None:

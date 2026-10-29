@@ -334,6 +334,31 @@ def api_held(request, slug):
     return JsonResponse({'held': holds.get(agent)})
 
 
+@csrf_exempt  # authenticated by the runner's key
+@require_POST
+def api_running(request, slug):
+    """The runner's agent has a turn running here, since when -- or no longer.
+
+    Body: {"since": <epoch seconds>} while it runs, renewed every couple of minutes; {"since": null}
+    when it ends. Not in the record: how things stand, like a hold (services/mood_view.py,
+    RUNNING_FOR), so the Mood shows an agent at work through a tool call that writes nothing.
+    """
+    from .services.mood_view import set_running
+
+    if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
+        return JsonResponse({'error': 'no runners are configured'}, status=503)
+    agent = runner_agent(request)
+    if agent is None:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    Mood.by_slug_or_404(slug)
+    try:
+        since = json.loads(request.body).get('since')
+        since = None if since is None else float(since)
+    except (ValueError, AttributeError, TypeError):
+        return JsonResponse({'error': 'expected {"since": <epoch seconds> or null}'}, status=400)
+    return JsonResponse({'running': set_running(slug, agent, since).get(agent)})
+
+
 # --- servers: whether each answers, and their redeploys -------------------------
 
 @csrf_exempt  # authenticated by the deploy key, not a browser session
