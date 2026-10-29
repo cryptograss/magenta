@@ -1682,7 +1682,10 @@ def _activity(mood, now=None, only=None):
                     .order_by('-created_at').first())
         if boundary is not None:
             start = mine.filter(created_at__gt=boundary.created_at).order_by('created_at').first() or start
-    return {'agent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v}}
+    # Which tools this turn has, as its wake said (Justin, 29 Oct: 🔨 by a pulsing name in the list).
+    tools = next((said for said in (wake_said(prose(m.content) or '') for m in streak if m.sender_id == WAKE_SENDER) if said), '')
+    return {'agent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v},
+            **({'tools': tools} if tools else {})}
 
 
 # --- background tasks an agent is supervising ------------------------------
