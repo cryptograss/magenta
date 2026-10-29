@@ -129,3 +129,19 @@ class SpendKindsTest(TidingsTests):
         full = self.kinds()['mention-full']
         self.assertEqual(full['words'], 100)
         self.assertAlmostEqual(full['tools'], 103, delta=2)
+
+    def test_who_prompted_each_turn(self):
+        """Justin, 29 Oct: who prompted it, on the costliest turns."""
+        from conversations.services import usage
+        pk = spend_kinds.prompted_by
+        mention = '<mood-wake mood="m">\nYou were woken by the Mood poller: from the web.\n\n[justin, 2026-10-29T01:51Z] @magent who?\n[re, 2026-10-29T01:52Z] hm'
+        self.assertEqual(pk('mention-full', mention), ['justin'])
+        look = '<mood-wake mood="m" reason="consider">\n[blu, 2026-10-29T01:00Z] old\n► [justin, 2026-10-29T01:50Z] new\n► [re, 2026-10-29T01:51Z] newer\n► [justin, 2026-10-29T01:52Z] again'
+        self.assertEqual(pk('consider', look), ['justin', 're'])
+        self.assertEqual(pk('quiet', '<mood-wake mood="m" reason="quiet">\n[re, 2026-10-29T01:00Z] x'), [])
+        self.assertEqual(pk('arrival', '<mood-wake mood="m" reason="arrival">\nskyler just signed in with PickiPedia.'), ['skyler'])
+        s = uuid.uuid4()
+        self.wake(s, self.mood_a, '<mood-wake mood="magenta-interface">\n\n[skyler, 2026-10-29T01:51Z] @magent hi', FULL)
+        self.response(s, self.mood_a, ('words', 40))
+        (top,) = usage.usage_state(24)['top']['anthropic']
+        self.assertEqual((top['kind'], top['by']), ('mention-full', ['skyler']))
