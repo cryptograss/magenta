@@ -327,6 +327,20 @@ class SeveralAtOnceTest(TestCase):
         [(agent, since)] = [(a['agent'], a['since']) for a in activities(self.mood, now=NOW)]
         self.assertEqual((agent, since), ('magent', NOW - 120))
 
+    def test_a_turn_says_which_tools_its_wake_gave(self):
+        # Justin, 29 Oct: 🔨 by a pulsing name in the list, for a turn with its full tools.
+        poller, _ = ConversationParticipant.objects.get_or_create(name='mood-poller')
+        from conversations.services.mood_view import activities
+        for wake, tools in (('This turn has your full tools, as in your terminal', 'full'),
+                            ('This turn can look but not touch', 'look')):
+            session = uuid.uuid4()
+            self.add(self.justin, 100, '@magent look', source_file='mood-web')
+            self.add(poller, 95, f'<mood-wake mood="m26">... {wake} ...</mood-wake>', session_id=session)
+            self.add(self.magent, 90, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use', session_id=session)
+            [now] = activities(self.mood, now=NOW)
+            self.assertEqual(now.get('tools'), tools)
+            self.add(self.magent, 80, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn', session_id=session)
+
     def test_a_wake_prompt_is_its_agents_before_the_agent_has_said_anything(self):
         # Justin, 21 Oct 09:40: re woken (on deepseek, ~90 s to its first line), and the page said blu
         # was thinking and not re. The poller's prompt, alone in re's new session, was nobody's: the
