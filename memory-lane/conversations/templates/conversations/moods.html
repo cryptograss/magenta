@@ -962,6 +962,10 @@
   #toolsOpen:empty { display: none; }
   #toolsOpen a { color: inherit; cursor: pointer; text-decoration: none; }
   #toolsOpen a:hover b { text-decoration: underline; }
+  /* An ask (<tools/>, <merge/>, <deploy/>): its own message in the thread, not a dim meta-line (Justin, 29 Oct). */
+  .waitline.request { border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; background: var(--panel); color: var(--ink); }
+  .waitline.request .askmark { font-size: 11px; }
+  .waitline.request time { color: var(--muted); }
   #typing.on { display: block; }
 
   /* An agent's tool calls between its words: one line, opened on demand. */
@@ -1669,6 +1673,12 @@
   // The same, as an attribute for drawn HTML: --who, which the stylesheet's agent names and margins take.
   const whoStyle = name => ` style="--who: ${agentColor(name)}"`;
 
+  // Open asks (services/tools_ask.py): <tools/> 🔨 full tools, <merge/> 🔀 a merge, <deploy/> 🚀 a redeploy.
+  // The word after "requested" and "for/of" sets `line`; the emoji shows by the Mood's name until answered.
+  const ASK_EMOJI = { tools: '🔨', merge: '🔀', deploy: '🚀' };
+  const askLine = t => `${esc(shown(t.agent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
+    : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
+
   // How long an ask of the server may take before it's given up (and asked again
   // at the next tick), and when a poll still out counts as hung (poll).
   const POLL_WAIT_MS = 20000, POLL_STALE_MS = 30000;
@@ -1778,9 +1788,9 @@
   function renderNav() {
     const item = ([m, depth]) => `
       <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && !m.forked_at ? ' fresh' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
-        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.tools_asked || []).length
-          ? `<span class="toolsask" title="${esc(m.tools_asked.map(t => `${shown(t.agent)} requested tools for ${t.for}`).join('; '))}">🔨${
-              m.tools_asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
+        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.asked || []).length
+          ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${m.asked.map(t => ASK_EMOJI[t.kind] || '🔨').join('')}${
+              m.asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
@@ -4053,14 +4063,21 @@
   });
 
   function addQuiet(q, container) {
-    // Asking for its full tools (<tools to="…"/>, Justin, 28 Oct): a line, "re requested tools for …", and 🔨 in the list.
-    if (q.by !== 'screen' && (q.type === 'tools' || /^requested tools for /.test(q.reason || ''))) {
+    // An ask (<tools/>, <merge/>, <deploy/>, Justin, 28 Oct-29 Oct): its own visible message in the thread --
+    // "re requested tools for push the fix" at its place, a link by its name in the list until someone does it.
+    // It carries the row's own id, so the notice under the composer can link straight to it (Justin, 29 Oct).
+    if (q.by !== 'screen' && (q.type === 'tools' || q.type === 'merge' || q.type === 'deploy'
+                              || /^requested (?:tools for|a merge for|a redeploy of) /.test(q.reason || ''))) {
       if (container._held) delete container._held[q.sender];
       const line = document.createElement('div');
-      line.className = 'waitline tools';
+      line.className = 'waitline request';
+      line.id = 'm-' + q.id;
       line.style.setProperty('--who', agentColor(q.sender));
-      line.innerHTML = `<span class="dot"></span>🔨 ${icon(q.sender, false)}<b>${esc(q.sender)}</b> <span class="wait-verb">${esc(q.reason)}</span>`
-        + ` · <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      line.innerHTML = `<span class="askmark">${ASK_EMOJI[q.type] || '🔨'}</span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> `
+        + `<span class="wait-verb">${esc(q.reason)}</span>`
+        + ` · <a class="msglink" href="#m-${esc(q.id)}" data-mood="${esc(current)}" data-reveal="${esc(q.id)}"`
+        + ` title="Link to this ask">#m-${esc(String(q.id).slice(0, 8))}</a>`
+        + ` <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
       container.appendChild(line);
       return;
     }
@@ -4560,7 +4577,7 @@
                           if (p.pronouns) pronounsOf[p.name] = p.pronouns;
                           human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
-    renderMe(); renderToolsOpen();
+    renderMe(); renderAsksOpen();
     renderNav();
   }
 
@@ -5000,7 +5017,7 @@
     drawMoodbar(null);  // the last Mood's head goes with it
     renderPins([]);  // the last Mood's pins aren't this one's; its own come with its first look
     tasks = []; renderTasks();
-    typingNow = []; renderTyping(); renderToolsOpen();
+    typingNow = []; renderTyping(); renderAsksOpen();
     agentsNow = {};  // nothing to compare with: a first drawing never glows
     renderAgents(agentsFor[slug] || {});
     loadTodo();
@@ -5938,18 +5955,17 @@
   }
 
   const typingEl = document.getElementById('typing');
-  // Open requests for tools here (/api/moods/ tools_asked): until a full-tools wake of who asked.
-  function renderToolsOpen() {
+  // Open asks here (/api/moods/ asked): each a link to its own message in the thread (Justin, 29 Oct:
+  // "the notice at the bottom needs to be a link to that message"). Until the event lands -- a full-tools
+  // wake, a merged event, a deploy event -- they stay, with 🔨/🔀/🚀 by the Mood's name.
+  function renderAsksOpen() {
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
-    box.innerHTML = ((m && m.tools_asked) || []).map(t => `<a data-agent="${esc(t.agent)}" title="Where it asked; @${esc(t.agent)} on a turn with tools answers it">🔨 `
-      + `${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b> requested tools for ${esc(t.for)} · `
-      + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
+    box.innerHTML = ((m && m.asked) || []).map(t =>
+      `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
+        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b>`
+        + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
+        + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
   }
-  document.getElementById('toolsOpen').addEventListener('click', e => {
-    const a = e.target.closest('a[data-agent]');
-    const lines = [...document.querySelectorAll('.waitline.tools')].filter(l => l.querySelector('b')?.textContent === a?.dataset.agent);
-    if (lines.length) lines[lines.length - 1].scrollIntoView({ block: 'center', behavior: 'smooth' });
-  });
   function renderTyping() {
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('typing', typingNow.includes(el.dataset.who)));
     typingEl.classList.toggle('on', typingNow.length > 0);
