@@ -366,6 +366,34 @@ class PulseAndQuietTest(TestCase):
         posted = post({'reason': 'small talk', 'cost_usd': 0.0021})
         self.assertEqual(Message.objects.get(id=posted.json()['id']).cost_usd, 0.0021)
 
+    def test_a_runner_says_its_agents_instructions_are_degraded_once_per_change(self):
+        # One plain line for the people in the Mood: what failed, since when, for which agent (emergence todo,
+        # 29 Oct). Said again only when what's wrong changes, and once more when it's whole again.
+        from conversations.services.mood_view import event_line
+
+        def post(body, auth=AUTH):
+            return self.client.post('/api/moods/m26/degraded/', json.dumps(body),
+                                    content_type='application/json', **auth)
+        wrong = ['standing (Cryptograss:Emergents/GeneralOrders): HTTP 503, since 2026-10-29T12:00Z; '
+                 'the copy read here at 2026-10-28T09:00Z (revision 11481) stands']
+        self.assertEqual(post({'lines': wrong}, auth={}).status_code, 401)
+        self.assertEqual(post({'lines': 'no'}).status_code, 400)
+        first = post({'lines': wrong}).json()
+        self.assertTrue(first['said'])
+        self.assertFalse(post({'lines': wrong}).json()['said'])  # the next wake: nothing changed, nothing written
+        self.assertTrue(post({'lines': wrong + ['moods (Cryptograss:Moods/Instructions): HTTP 503, since '
+                                                '2026-10-29T12:10Z; never read here, so left out']}).json()['said'])
+        self.assertTrue(post({'lines': []}).json()['said'])  # whole again
+        self.assertFalse(post({'lines': []}).json()['said'])
+        rows = list(Message.objects.filter(mood=self.mood, source_file='instructions').order_by('created_at'))
+        self.assertEqual([len(r.content['lines']) for r in rows], [1, 2, 0])
+        self.assertEqual(rows[0].content['agent'], 'magent')
+        self.assertTrue(event_line(rows[0].content).startswith("⚠ magent's instructions are degraded: standing ("))
+        self.assertEqual(event_line(rows[2].content), "✓ magent's instructions are whole again")
+        page = self.client.get('/api/moods/m26/turns/').json()
+        self.assertEqual([(e['type'], e['agent'], len(e['lines'])) for e in page['events']],
+                         [('degraded', 'magent', 1), ('degraded', 'magent', 2), ('degraded', 'magent', 0)])
+
     def test_a_runner_says_why_a_mention_is_held(self):
         from django.core.cache import cache
         cache.delete('held:m26')

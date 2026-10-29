@@ -343,6 +343,32 @@ def api_held(request, slug):
 
 @csrf_exempt  # authenticated by the runner's key
 @require_POST
+def api_degraded(request, slug):
+    """The runner's agent's instructions bundle, as it stands: degraded, and how, or whole.
+
+    Body: {"lines": ["<layer>: <problem>, since <when>; <what stands in>", ...]}; [] when all is well.
+    In the record as a line for the people in the Mood, once per change (services/instructions_state.py).
+    """
+    from .services.instructions_state import say_degraded
+
+    if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
+        return JsonResponse({'error': 'no runners are configured'}, status=503)
+    agent = runner_agent(request)
+    if agent is None:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    Mood.by_slug_or_404(slug)
+    try:
+        lines = json.loads(request.body).get('lines') or []
+        if not isinstance(lines, list) or not all(isinstance(l, str) for l in lines):
+            raise ValueError
+    except (ValueError, AttributeError, TypeError):
+        return JsonResponse({'error': 'expected {"lines": [...]}'}, status=400)
+    row = say_degraded(slug, agent, [re.sub(r'<[^>]*>|[<>]', '', l) for l in lines])
+    return JsonResponse({'id': str(row.id) if row else None, 'said': row is not None})
+
+
+@csrf_exempt  # authenticated by the runner's key
+@require_POST
 def api_running(request, slug):
     """The runner's agent has a turn running here, since when -- or no longer.
 

@@ -271,9 +271,9 @@ def api_mood_turns(request, slug):
                                **{k: text.get(k) for k in ('type', 'server', 'state', 'commit', 'by', 'note', 'took', 'agent',
                                                    'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at', 'thumb',
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
-                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'into', 'about', 'context',
+                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'into', 'was', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
-                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools')},
+                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools', 'lines')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
@@ -749,15 +749,20 @@ def api_mood_sessions(request, slug):
     """
     mood = Mood.by_slug_or_404(slug)
 
-    def sessions_in(where, before=None):
+    def sessions_in(where, before=None, after=None):
         messages = Message.objects.filter(mood=where, session_id__isnull=False)
+        if after is not None:
+            messages = messages.filter(created_at__gt=after)
         sender = request.GET.get('sender')
         if sender:
             messages = messages.filter(sender_id=sender.lower())
         found = messages.values('session_id').annotate(last_at=Max('created_at')).order_by('-last_at')
         return [s for s in found if before is None or s['last_at'] <= before]
 
-    sessions, came_from = sessions_in(mood), None
+    # A thread forked again (Justin, 29 Oct: "re-copy the mood's contexts into the thread") counts only what was
+    # said here since: what came before stays on the page, out of its emergents' context.
+    forked = mood.forked_at if mood.thread_of_id else None
+    sessions, came_from = sessions_in(mood, after=forked), None
     # A thread forked from another Mood: until an agent has spoken here, it goes on from where it was there
     # when the thread was forked -- its session then, never one from after.
     if not sessions and mood.thread_of_id and mood.forked_at:
@@ -1090,9 +1095,39 @@ def notices_for(name, since, limit=NOTICES_MAX, everything=False):
             found.append({'kind': 'said', 'from': by, 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
         if len(found) >= limit:
             break
+    if len(found) >= limit:
+        # Agents' answers can fill the cap in minutes (Justin: 100 in under an hour), and a person's
+        # @mention from before them was cut and never told (29 Oct: Skyler's to Justin). Mentions
+        # are what the bell is for: the rest of the window, only posts that could mention anyone.
+        from django.db.models import Q, TextField
+        from django.db.models.functions import Cast
+        older = (messages.filter(created_at__lt=parse_datetime(found[-1]['turn']['created_at']))
+                 .annotate(t=Cast('content', TextField())).filter(Q(t__contains='@') | Q(t__contains='↩')))
+        mentions = []
+        for msg in older.iterator():
+            if msg.sender_id not in names or msg.sender_id == name:
+                continue
+            text = prose(msg.content)
+            if text and not is_wrapper(text) and not is_summary(msg) and name in addressed_in(text, names, by=msg.sender_id):
+                mentions.append({'kind': 'mention', 'from': 'agent' if msg.sender_id in agents else 'person',
+                                 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
+                if len(mentions) >= limit:
+                    break
+        # Mentions first, then the newest of the rest, to the cap.
+        kept = [n for n in found if n['kind'] == 'mention'] + mentions
+        rest = [n for n in found if n['kind'] != 'mention']
+        found = kept + rest[:max(0, limit - len(kept))]
     found += talk_page_notices(name, since)
     found.sort(key=lambda n: n['turn']['created_at'], reverse=True)
-    return found[:limit]
+    return found if len(found) <= limit else _mentions_first(found, limit)
+
+
+def _mentions_first(found, limit):
+    """At most `limit`, newest first, keeping every mention and talk-page note there's room for."""
+    told = [n for n in found if n['kind'] in ('mention', 'talk')][:limit]
+    keep = {id(n) for n in told}
+    keep |= {id(n) for n in [n for n in found if id(n) not in keep][:limit - len(told)]}
+    return [n for n in found if id(n) in keep]
 
 
 def talk_page_notices(name, since):

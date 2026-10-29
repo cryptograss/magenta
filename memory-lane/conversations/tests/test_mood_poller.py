@@ -1002,6 +1002,31 @@ class HandedLedgerTest(TestCase):
         poller, prompt = self.make([self.event('e1', 50)], state_handed={'m26': ['e1']})
         self.assertNotIn('Salty Dog first.', prompt)
 
+    def test_a_fresh_ledger_starts_with_the_stale_ones_and_an_old_ledger_keeps_the_old_ones_owed(self):
+        week_ago, fresh = self.event('old', -7 * 24 * 60, about='last week'), self.event('e1', 50)
+        poller, prompt = self.make([week_ago, fresh])
+        self.assertNotIn('last week', prompt)      # the first look here: stale, so never owed
+        self.assertIn('the setlist', prompt)
+        self.assertEqual(json.loads(self.state.read_text())['handed'], {'m26': ['old', 'e1']})
+        # A ledger that knows this Mood: a week-old handoff with no entry is owed, however long it waited.
+        poller, prompt = self.make([week_ago, fresh], state_handed={'m26': ['e1']})
+        self.assertIn('last week', prompt)
+
+    def test_a_dry_run_marks_nothing_shown(self):
+        owed = dict(turn('ask', 'justin', 100, '@magent one more thing'), via='web')
+        events = [self.event('e1', 50)]
+
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                return {'turns': [owed], 'events': events}
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': [],
+                                     'handed': {'m26': []}}))
+        poller = MoodPoller(API([mention('m26', owed)], sessions={'m26': ['s-local']}), FakeWaker(), state_path=state,
+                            now=lambda: T0 + timedelta(minutes=101), consider=False, dry_run=True)
+        poller.poll_once()
+        self.assertEqual(poller.state['handed'], {'m26': []})
+
     def test_a_cut_off_turn_is_shown_its_handoffs_again(self):
         owed = dict(turn('ask', 'justin', 100, '@magent one more thing'), via='web')
         events = [self.event('e1', 50)]
@@ -1019,6 +1044,40 @@ class HandedLedgerTest(TestCase):
                             now=lambda: T0 + timedelta(minutes=101), consider=False)
         poller.poll_once()
         self.assertIn('Salty Dog first.', waker.woken[0][1])
+
+
+class DegradedLineTest(TestCase):
+    """The poller says in the Mood when its agent's bundle degrades: once, and again only on a change or a fix."""
+
+    def test_said_once_per_change_and_kept_in_state(self):
+        class API(FakeAPI):
+            said = []
+
+            def degraded(inner, slug, lines):
+                inner.said.append((slug, list(lines)))
+                return True
+        api = API()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': T0.isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(api, FakeWaker(), state_path=state, now=lambda: T0)
+        wrong = ['standing (GeneralOrders): HTTP 503, since 2026-10-29T12:00Z; the copy read here stands']
+        poller.say_degraded('m26', wrong)
+        poller.say_degraded('m26', wrong)        # the next wake, same trouble: no call
+        poller.say_degraded('m26', wrong + ['moods: HTTP 503, since 2026-10-29T12:10Z; left out'])
+        poller.say_degraded('m26', [])           # fixed
+        poller.say_degraded('m26', [])
+        self.assertEqual([len(l) for _, l in api.said], [1, 2, 0])
+        self.assertEqual(poller.state['degraded'], {'m26': []})
+
+    def test_a_failed_call_is_no_reason_to_stall_and_is_tried_again(self):
+        class API(FakeAPI):
+            def degraded(inner, slug, lines):
+                raise OSError('maybelle away')
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': T0.isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(API(), FakeWaker(), state_path=state, now=lambda: T0)
+        poller.say_degraded('m26', ['x'])
+        self.assertEqual(poller.state['degraded'], {})  # not recorded as said, so the next wake says it
 
 
 class DefaultsTest(TestCase):
@@ -2808,6 +2867,7 @@ class IncorporateTest(TestCase):
         self.assertEqual(waker.options['effort'], 'max')
 
 
+
 class LeadInsTest(TestCase):
     def test_the_wake_transcript_folds_an_emergents_lead_in(self):
         from poller.mood_poller import transcript_of
@@ -2838,4 +2898,97 @@ class LeadInsTest(TestCase):
                                dict(turn('j', 'justin', 3, 'hi'), is_human=True, session='')])
         self.assertEqual([l.split('] ', 1)[1] for l in lines],
                          ['Checking the deploy: (lead-in)', 'gm all', 'hi'])
+
+
+
+class FreshCopiesTest(TestCase):
+    """~/workspace/.fresh: read-only copies of each repo's main, refreshed in the background as a turn starts,
+    at most every ten minutes, a wake line only when a refresh failed (magent, re, blu, 29 Oct)."""
+
+    def make_workspace(self):
+        import subprocess
+        ws = Path(tempfile.mkdtemp())
+        origin = Path(tempfile.mkdtemp()) / 'origin.git'
+        subprocess.run(['git', 'init', '-q', '--bare', str(origin)], check=True)
+        work = Path(tempfile.mkdtemp()) / 'seed'
+        subprocess.run(['git', 'clone', '-q', str(origin), str(work)], check=True, capture_output=True)
+        (work / 'a.txt').write_text('one\n')
+        for args in (['add', '.'], ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'one'], ['push', '-q', 'origin', 'HEAD']):
+            subprocess.run(['git', '-C', str(work)] + args, check=True, capture_output=True)
+        subprocess.run(['git', 'clone', '-q', str(origin), str(ws / 'magenta')], check=True, capture_output=True)
+        subprocess.run(['git', 'clone', '-q', str(origin), str(ws / 'magenta-other')], check=True, capture_output=True)
+        return ws, work
+
+    def test_a_copy_is_made_then_brought_to_main_as_files_and_the_checkout_is_left_alone(self):
+        import subprocess
+        from poller.mood_poller import refresh_fresh
+        ws, seed = self.make_workspace()
+        self.assertEqual(refresh_fresh(ws), [])
+        self.assertEqual((ws / '.fresh' / 'magenta' / 'a.txt').read_text(), 'one\n')
+        (seed / 'a.txt').write_text('two\n')
+        for args in (['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'two'], ['push', '-q', 'origin', 'HEAD']):
+            subprocess.run(['git', '-C', str(seed)] + args, check=True, capture_output=True)
+        self.assertEqual(refresh_fresh(ws), [])
+        self.assertEqual((ws / '.fresh' / 'magenta' / 'a.txt').read_text(), 'two\n')   # the files, not just refs
+        self.assertEqual((ws / 'magenta' / 'a.txt').read_text(), 'one\n')             # our checkout untouched
+        self.assertEqual(sorted(p.name for p in (ws / '.fresh').iterdir()), ['magenta'])  # one copy per origin
+
+    def test_a_refresh_inside_ten_minutes_does_not_fetch_again(self):
+        clock = [T0]
+        poller = MoodPoller(FakeAPI(), FakeWaker(), state_path=Path(tempfile.mkdtemp()) / 's.json',
+                            now=lambda: clock[0], consider=False)
+        poller.workspace = Path(tempfile.mkdtemp())   # empty: nothing to fetch, but the throttle is what's tested
+        calls = []
+        self.assertTrue(poller.refresh_fresh_soon(run=lambda a: calls.append(a)))
+        poller.fresh_thread.join(5)
+        clock[0] += timedelta(minutes=9)
+        self.assertFalse(poller.refresh_fresh_soon())
+        clock[0] += timedelta(minutes=2)
+        self.assertTrue(poller.refresh_fresh_soon(run=lambda a: calls.append(a)))
+        poller.fresh_thread.join(5)
+
+    def test_a_failed_clone_leaves_no_partial_copy_behind(self):
+        # re, 29 Oct: a big repo's first clone can hit the 120s timeout; a partial copy with a .git would make
+        # every later refresh fetch into it and fail. On a failed clone the copy goes, so the next refresh clones
+        # again.
+        import subprocess
+        from poller.mood_poller import refresh_fresh
+        ws, _ = self.make_workspace()
+        calls = []
+        def run(args):
+            calls.append(args)
+            raise subprocess.TimeoutExpired(args, 120)
+        problems = refresh_fresh(ws, run=run)
+        self.assertTrue(any('magenta' in p for p in problems))
+        self.assertFalse((ws / '.fresh' / 'magenta' / '.git').exists())  # no partial copy left
+        calls.clear()
+        self.assertEqual(refresh_fresh(ws, run=run), problems)           # clones fresh again, same outcome
+        self.assertEqual(len([a for a in calls if a[1] == 'clone']), 1)  # a fresh clone, not a fetch into it
+
+    def test_a_credential_in_git_stderr_is_masked_in_the_failure_line(self):
+        # re, 29 Oct: a wake may quote what a refresh said, so a credential in a remote URL never belongs there.
+        from poller.mood_poller import refresh_fresh, _fresh_error
+        ws, _ = self.make_workspace()
+        import subprocess
+        class Done:
+            returncode = 1
+            stderr = "fatal: unable to access 'https://login:sekret@github.com/cryptograss/magenta.git/': died"
+        self.assertNotIn('sekret', _fresh_error(Done()))
+        # and through refresh_fresh itself
+        problems = refresh_fresh(ws, run=lambda args: Done())
+        self.assertTrue(all('sekret' not in p for p in problems))
+        self.assertTrue(any('//***@' in p for p in problems))
+
+    def test_a_failed_refresh_puts_a_line_in_the_next_wake_and_a_good_one_takes_it_out(self):
+        poller = MoodPoller(FakeAPI(), FakeWaker(), state_path=Path(tempfile.mkdtemp()) / 's.json',
+                            now=lambda: T0, consider=False)
+        self.assertIsNone(poller.workspace)                 # off unless main() turns it on: tests touch no real repos
+        self.assertFalse(poller.refresh_fresh_soon())
+        self.assertEqual(poller.fresh_line(), '')
+        poller.fresh_problems, poller.fresh_done_at = ['magenta: fatal: unable to access'], T0
+        line = poller.fresh_line()
+        self.assertIn('could not all be brought up to date at 18:00Z', line)
+        self.assertIn('magenta: fatal: unable to access', line)
+        poller.fresh_problems = []
+        self.assertEqual(poller.fresh_line(), '')
 
