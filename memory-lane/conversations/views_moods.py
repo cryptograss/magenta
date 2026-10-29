@@ -120,14 +120,14 @@ def api_moods(request):
     clock = LookClock()
     archived, pinned = clock('flags', lambda: (knobs.archived_slugs(), knobs.mood_flagged('pinned')))
     moods = list(Mood.objects.all())
-    from .services.tools_ask import open_requests
-    asked = clock('tools', open_requests)  # 🔨: emergents waiting there for their full tools
+    from .services.tools_ask import KINDS, open_requests
+    asked = clock('tools', open_requests)  # 🔨 🔀 🚀: emergents' open asks there
     clock.lap('_')
     each, payloads = [], []
     for m in moods:
         began = clock.now()
         payloads.append({**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned,
-                         **({'tools_asked': asked[m.slug]} if m.slug in asked else {})})
+                         **({'asked': asked[m.slug]} if m.slug in asked else {})})
         each.append((clock.now() - began, m.slug))
     clock.lap('payloads')
     # A Mood nobody has spoken in yet ranks by when it was started: a new one first.
