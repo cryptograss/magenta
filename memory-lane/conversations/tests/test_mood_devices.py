@@ -627,3 +627,25 @@ class RecordingTest(TestCase):
         self.assertEqual(self.client.get('/api/moods/usage/turns/').json()['recording'], [])
         post({'typing': False})
         self.assertEqual(self.client.get('/api/moods/usage/turns/').json()['typing'], [])
+
+
+class EmergentPowersTest(TestCase):
+    """Skyler, 29 Oct: the @ menu says what each emergent is for, from its own page."""
+
+    def test_from_the_trusted_revision_and_shown_short(self):
+        from django.core.cache import cache
+        from conversations.services import emergent_powers
+        cache.clear()
+        ThinkingEntity.objects.get_or_create(name='blu', defaults={'is_biological_human': False})
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        pages = {
+            'Cryptograss:Emergents/Blu': [('Magent', '{{Emergent|colour=blue|for=hacked by a bot}}'),
+                                         ('JMyles', '{{Emergent|colour=blue|for=studies the connectome: who played on which record}}')],
+            'Cryptograss:Emergents/Re': [('Magent', '{{Emergent|for=untrusted}}')],
+        }
+        got = emergent_powers.powers(['blu', 're'], fetch=lambda: pages)
+        self.assertEqual(got, {'blu': {'for': 'studies the connectome: who played on which record', 'short': 'studies the connectome'}})
+        cache.set(emergent_powers.KEY, got, 60)
+        people = {p['name']: p for p in self.client.get('/api/moods/').json()['people']}
+        self.assertEqual(people['blu']['for_short'], 'studies the connectome')
+        self.assertNotIn('for', people['re'])
