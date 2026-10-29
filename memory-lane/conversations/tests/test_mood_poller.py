@@ -2854,6 +2854,38 @@ class FreshCopiesTest(TestCase):
         self.assertTrue(poller.refresh_fresh_soon(run=lambda a: calls.append(a)))
         poller.fresh_thread.join(5)
 
+    def test_a_failed_clone_leaves_no_partial_copy_behind(self):
+        # re, 29 Oct: a big repo's first clone can hit the 120s timeout; a partial copy with a .git would make
+        # every later refresh fetch into it and fail. On a failed clone the copy goes, so the next refresh clones
+        # again.
+        import subprocess
+        from poller.mood_poller import refresh_fresh
+        ws, _ = self.make_workspace()
+        calls = []
+        def run(args):
+            calls.append(args)
+            raise subprocess.TimeoutExpired(args, 120)
+        problems = refresh_fresh(ws, run=run)
+        self.assertTrue(any('magenta' in p for p in problems))
+        self.assertFalse((ws / '.fresh' / 'magenta' / '.git').exists())  # no partial copy left
+        calls.clear()
+        self.assertEqual(refresh_fresh(ws, run=run), problems)           # clones fresh again, same outcome
+        self.assertEqual(len([a for a in calls if a[1] == 'clone']), 1)  # a fresh clone, not a fetch into it
+
+    def test_a_credential_in_git_stderr_is_masked_in_the_failure_line(self):
+        # re, 29 Oct: a wake may quote what a refresh said, so a credential in a remote URL never belongs there.
+        from poller.mood_poller import refresh_fresh, _fresh_error
+        ws, _ = self.make_workspace()
+        import subprocess
+        class Done:
+            returncode = 1
+            stderr = "fatal: unable to access 'https://login:sekret@github.com/cryptograss/magenta.git/': died"
+        self.assertNotIn('sekret', _fresh_error(Done()))
+        # and through refresh_fresh itself
+        problems = refresh_fresh(ws, run=lambda args: Done())
+        self.assertTrue(all('sekret' not in p for p in problems))
+        self.assertTrue(any('//***@' in p for p in problems))
+
     def test_a_failed_refresh_puts_a_line_in_the_next_wake_and_a_good_one_takes_it_out(self):
         poller = MoodPoller(FakeAPI(), FakeWaker(), state_path=Path(tempfile.mkdtemp()) / 's.json',
                             now=lambda: T0, consider=False)

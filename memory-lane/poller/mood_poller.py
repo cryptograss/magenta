@@ -913,14 +913,15 @@ def refresh_fresh(workspace, run=None):
     a fetch alone moves refs, and a look-only turn reads files (Read, Grep), never refs (magent, re, blu, 29 Oct).
     Nobody works in .fresh, so a hard reset there can't lose anything; the agents' own checkouts are never
     touched. Returns [problems], one line per repo that couldn't be refreshed; [] when all were."""
-    import subprocess
+    import shutil, subprocess
     run = run or (lambda args: subprocess.run(args, capture_output=True, text=True, timeout=120))
     fresh = Path(workspace) / FRESH_DIR
     problems = []
     for name, url in fresh_repos(workspace).items():
         copy = fresh / name
+        cloning = not (copy / '.git').exists()
         try:
-            if not (copy / '.git').exists():
+            if cloning:
                 fresh.mkdir(parents=True, exist_ok=True)
                 done = run(['git', 'clone', '-q', '--depth', '1', url, str(copy)])
             else:
@@ -928,10 +929,30 @@ def refresh_fresh(workspace, run=None):
                 if done.returncode == 0:
                     done = run(['git', '-C', str(copy), 'reset', '-q', '--hard', 'FETCH_HEAD'])
             if done.returncode != 0:
-                problems.append(f'{name}: {(done.stderr or "").strip().splitlines()[-1:] or ["failed"]}'[:200])
+                problems.append(f'{name}: {_fresh_error(done)}'[:200])
+                if cloning:
+                    # A failed clone can leave a partial copy with a .git; every later refresh would fetch into
+                    # it and fail, and every wake would carry the stale line. Clear it: next refresh clones again
+                    # (re, 29 Oct: on a failed clone, delete the partial copy).
+                    shutil.rmtree(copy, ignore_errors=True)
         except Exception as e:  # noqa: BLE001 -- a timeout, git missing: said in the next wake, never a stalled turn
-            problems.append(f'{name}: {e}'[:200])
+            problems.append(f'{name}: {_fresh_error(e)}'[:200])
+            if cloning:
+                shutil.rmtree(copy, ignore_errors=True)
     return problems
+
+
+def _fresh_error(done):
+    """The last line of what a refresh reported, with any credential in a remote URL masked: a wake may quote it,
+    and a credential never belongs there (re, 29 Oct)."""
+    if isinstance(done, Exception):
+        text = str(done)
+    else:
+        text = ((done.stderr or '').strip().splitlines() or ['failed'])[-1]
+    return _CRED_IN_URL.sub(r'//***@', text)
+
+
+_CRED_IN_URL = re.compile(r'//[^/@\s]+@')
 
 
 FRESH_FAILED = ('Your read-only copies of the repositories (~/workspace/.fresh/<name>) could not all be brought up to '
