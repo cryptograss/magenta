@@ -1417,7 +1417,9 @@
 </form>
 <form id="renameBox" hidden>
   <input id="renameTitle" maxlength="200" aria-label="Title" placeholder="Title">
-  <textarea id="renameDesc" rows="2" maxlength="2000" aria-label="Description" placeholder="What it's about (optional)"></textarea>
+  <!-- Its description and instructions are one document, on PickiPedia (Justin, re and magent, 29 Oct): its first paragraph is
+       what this page shows, and the whole is what its emergents read -- a trusted editor's revision, never this box. -->
+  <a id="renameDoc" class="hint" target="_blank" rel="noopener">Its description and instructions: one page on PickiPedia →</a>
   <span><button type="submit">Rename</button> <button type="button" id="renameCancel">Cancel</button>
     <button type="button" id="archiveBtn" class="archive" title="Out of the Moods list, into Archived. It stays readable, its sessions and container untouched, and a mention there is still answered.">Archive</button>
     <button type="button" id="pinBtn" class="archive" title="At the top of the Moods list, for everyone">Pin</button></span>
@@ -3792,7 +3794,7 @@
   document.addEventListener('click', async e => {
     if (e.target.closest('#rename')) {
       document.getElementById('renameTitle').value = headMood.title;
-      document.getElementById('renameDesc').value = headMood.description || '';
+      document.getElementById('renameDoc').href = headMood.document || '#';
       document.getElementById('archiveBtn').textContent = isArchived(current) ? 'Unarchive' : 'Archive';
       document.getElementById('pinBtn').textContent = isPinned(current) ? 'Unpin' : 'Pin';
       renameBox.hidden = false;
@@ -3954,8 +3956,7 @@
     e.preventDefault();
     const r = await fetch(`/api/moods/${encodeURIComponent(current)}/rename/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ title: document.getElementById('renameTitle').value,
-                             description: document.getElementById('renameDesc').value }),
+      body: JSON.stringify({ title: document.getElementById('renameTitle').value }),
     });
     if (!r.ok) { showError('rename: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     const named = await r.json();
