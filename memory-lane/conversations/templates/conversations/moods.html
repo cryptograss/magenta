@@ -2935,6 +2935,7 @@
                    : t.poll ? '<div class="body poll"></div>' : `<div class="body">${t.html}</div>`)
       + (cont ? edited : '');
     if (t.deleted) el.classList.add('deleted');
+    markEmoji(el.querySelector('.body'));
     el._text = t.text;
     el._links = t.links || []; el._tidings = t.tidings || [];
     el.dataset.sender = t.sender;
@@ -3022,6 +3023,44 @@
   // --- every emoji Unicode has (/api/emoji/, tools/emoji_data.py; Justin, 25 Oct: "the full unicode gamut"):
   // asked for once, the first time it's wanted. A picker -- search, Unicode's groups, your skin tone, the ones
   // you used lately -- for reactions (＋ after the quick ten) and the composer (🙂); and :name finds them all.
+  // An emoji says its name on hover (Justin, 29 Oct): each in a message marked at drawing (markEmoji), its name
+  // looked up the first time one is pointed at; a reaction's chip says it before who reacted.
+  const EMOJI_RUN = /\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*|[\u{1F1E6}-\u{1F1FF}]{2}/gu;
+  function markEmoji(root) {
+    if (!root) return;
+    const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n =>
+      n.parentElement.closest('pre, code, .emo') ? NodeFilter.FILTER_REJECT : new RegExp(EMOJI_RUN.source, 'u').test(n.data) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP });
+    const found = [];
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) found.push(n);
+    for (const n of found) {
+      const frag = document.createDocumentFragment();
+      let at = 0;
+      n.data.replace(EMOJI_RUN, (e, i) => {
+        frag.append(n.data.slice(at, i));
+        const span = document.createElement('span'); span.className = 'emo'; span.dataset.e = e; span.textContent = e;
+        frag.append(span); at = i + e.length; return e;
+      });
+      frag.append(n.data.slice(at));
+      n.replaceWith(frag);
+    }
+  }
+  function emojiName(e) {
+    const base = e.replace(/[\u{1F3FB}-\u{1F3FF}]/gu, '');
+    return emojiData && emojiData.then(d => {
+      const hit = d.list.find(item => item.e === e || item.e === base || item.e.replace(/\uFE0F/g, '') === base.replace(/\uFE0F/g, ''));
+      return hit ? hit.name : '';
+    });
+  }
+  document.addEventListener('pointerover', async e => {
+    const el = e.target.closest && e.target.closest('.body .emo[data-e], .chip[data-emoji]');
+    if (!el || el.dataset.named) return;
+    el.dataset.named = '1';
+    try { allEmoji(); } catch (err) { return; }
+    const name = await (emojiName(el.dataset.e || el.dataset.emoji) || Promise.resolve(''));
+    if (!name) return;
+    el.title = el.dataset.e ? name : `${name} · ${el.title}`;
+  });
+
   let emojiData = null;
   function allEmoji() {
     if (!emojiData) {
@@ -5955,11 +5994,19 @@
     previewCard.style.top = (r.bottom + 6 + h < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
   }
   function hidePreview() { clearTimeout(previewTimer); previewFor = null; previewCard.hidden = true; }
+  // A name that isn't a link -- a turn's heading, the activity bar, a wait, the people here: its User page too
+  // (Justin, 29 Oct: "hover over an emergent's name anywhere").
+  const NAME_SPOTS = '.ahead b, .runhead b, #activity b, .waitline b, .people .who, #typing b, .quiet .why b';
+  function nameTitleOf(el) {
+    const said = (el.dataset.who || el.textContent || '').trim().replace(/^@/, '');
+    const p = people.find(p => p.name === said || shown(p.name) === said);
+    return p ? 'User:' + (WIKI_NAMES[p.name] || p.name[0].toUpperCase() + p.name.slice(1)) : '';
+  }
   document.addEventListener('pointerover', e => {
     if (e.pointerType !== 'mouse') return;
-    const a = e.target.closest && e.target.closest('a[href]');
+    const a = (e.target.closest && e.target.closest('a[href]')) || (e.target.closest && e.target.closest(NAME_SPOTS));
     if (!a || a === previewFor) return;
-    const title = wikiTitleOf(a);
+    const title = a.matches('a[href]') ? wikiTitleOf(a) : nameTitleOf(a);
     if (!title) return;
     hidePreview();
     previewFor = a;
@@ -5969,7 +6016,7 @@
     }, 350);
   });
   document.addEventListener('pointerout', e => {
-    const a = e.target.closest && e.target.closest('a[href]');
+    const a = e.target.closest && (e.target.closest('a[href]') || e.target.closest(NAME_SPOTS));
     if (a && a === previewFor && !a.contains(e.relatedTarget)) hidePreview();
   });
   addEventListener('scroll', hidePreview, true);
