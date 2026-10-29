@@ -271,7 +271,7 @@ def api_mood_turns(request, slug):
                                **{k: text.get(k) for k in ('type', 'server', 'state', 'commit', 'by', 'note', 'took', 'agent',
                                                    'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at', 'thumb',
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
-                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'into', 'about', 'context',
+                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'into', 'was', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
                                                    'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools')},
                                # A deploy's server, linked to its page; a release, with its player.
@@ -749,15 +749,20 @@ def api_mood_sessions(request, slug):
     """
     mood = Mood.by_slug_or_404(slug)
 
-    def sessions_in(where, before=None):
+    def sessions_in(where, before=None, after=None):
         messages = Message.objects.filter(mood=where, session_id__isnull=False)
+        if after is not None:
+            messages = messages.filter(created_at__gt=after)
         sender = request.GET.get('sender')
         if sender:
             messages = messages.filter(sender_id=sender.lower())
         found = messages.values('session_id').annotate(last_at=Max('created_at')).order_by('-last_at')
         return [s for s in found if before is None or s['last_at'] <= before]
 
-    sessions, came_from = sessions_in(mood), None
+    # A thread forked again (Justin, 29 Oct: "re-copy the mood's contexts into the thread") counts only what was
+    # said here since: what came before stays on the page, out of its emergents' context.
+    forked = mood.forked_at if mood.thread_of_id else None
+    sessions, came_from = sessions_in(mood, after=forked), None
     # A thread forked from another Mood: until an agent has spoken here, it goes on from where it was there
     # when the thread was forked -- its session then, never one from after.
     if not sessions and mood.thread_of_id and mood.forked_at:

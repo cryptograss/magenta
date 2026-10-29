@@ -1290,6 +1290,34 @@ def api_close_thread(request, slug):
 
 
 @require_POST
+def api_refork(request, slug):
+    """Fork a thread again from its Mood (Justin, 29 Oct: "re-copy the mood's contexts into the thread"): each
+    emergent's next wake here goes on from where it is in that Mood now, as a new fork does. What was said here
+    stays on the page, and leaves their context. A line here says who, and when; a fresh thread becomes a fork."""
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device, refused = mood_auth.key_device(request, 'fork a thread again')
+    if refused:
+        return refused
+    mood = Mood.by_slug_or_404(slug)
+    if mood.thread_of_id is None:
+        return JsonResponse({'error': 'not a thread'}, status=400)
+    from django.utils import timezone as tz
+    from .models import ConversationParticipant
+    from .services.mood_view import NEW_MOOD_SOURCE
+    was = 'fork' if mood.forked_at else 'fresh'
+    mood.forked_at = tz.now()
+    mood.save(update_fields=['forked_at'])
+    system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+    Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=NEW_MOOD_SOURCE,
+                           content={'type': 'reforked', 'by': device.entity_id, 'from_mood': mood.thread_of.slug,
+                                    'was': was},
+                           timestamp=int(time.time() * 1000))
+    return JsonResponse({'slug': mood.slug, 'forked_at': mood.forked_at.isoformat()})
+
+
+@require_POST
 def api_pin(request, slug):
     """Pin a Mood to the top of the list, or unpin it: POST {"pinned": true|false}. For everyone."""
     return _mood_flag(request, slug, 'pinned')

@@ -466,7 +466,9 @@ def event_line(content):
     if kind == 'wiki-upload':
         return f"🖼 {by or 'someone'} put {c.get('file', 'a picture')} on PickiPedia"
     if kind == 'incorporated':
-        return f"⑂ {by or 'someone'} closed this thread: handed to #{c.get('into', '')} to incorporate"
+        return f"↩ {by or 'someone'} closed this thread: handed to #{c.get('into', '')} to incorporate"
+    if kind == 'reforked':
+        return f"⑂ {by or 'someone'} forked this thread again from #{c.get('from_mood', '')}"
     if kind in ('handoff', 'handoff-sent'):
         where = c.get('from_mood') if kind == 'handoff' else c.get('to_mood')
         return f"🔀 {by or 'someone'} {'brought this from' if kind == 'handoff' else 'took this to'} #{where}: {c.get('about', '')}"
@@ -1818,7 +1820,11 @@ def mood_payload(mood, light=False):
         'participants': sorted(e.name for e in mood.thinking_entities()),
         # A thread: where it was opened from, and when its emergents went on from there (forked; none: fresh).
         **({'thread_of': Mood.objects.filter(pk=mood.thread_of_id).values_list('slug', flat=True).first(),
-            'forked_at': mood.forked_at.isoformat() if mood.forked_at else None} if mood.thread_of_id else {}),
+            'forked_at': mood.forked_at.isoformat() if mood.forked_at else None,
+            # Handed back to its Mood to incorporate, and not forked again since (Justin, 29 Oct: an arrow).
+            'incorporated': mood.messages.filter(sender_id='system', content__type__in=['incorporated', 'reforked'])
+                            .order_by('-created_at').values_list('content__type', flat=True).first() == 'incorporated'}
+           if mood.thread_of_id else {}),
         # Threads opened from here, newest first (closing one archives it).
         'threads': [{'slug': s, 'title': t or s} for s, t in mood.threads.order_by('-created_at').values_list('slug', 'title')],
     }
