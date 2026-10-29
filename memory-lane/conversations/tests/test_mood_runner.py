@@ -360,7 +360,11 @@ class PulseAndQuietTest(TestCase):
         self.assertNotIn('zq8Fh2kLm0xY', quiet[0]['reason'])
         stored = Message.objects.get(id=quiet[0]['id'])
         self.assertIsNone(stored.session_id)  # never a session anyone would resume
+        self.assertIsNone(stored.cost_usd)
         self.assertIsNone(activity(self.mood))
+        # What the screen's own call cost, when the runner says: spend by kind counts it.
+        posted = post({'reason': 'small talk', 'cost_usd': 0.0021})
+        self.assertEqual(Message.objects.get(id=posted.json()['id']).cost_usd, 0.0021)
 
     def test_a_runner_says_why_a_mention_is_held(self):
         from django.core.cache import cache

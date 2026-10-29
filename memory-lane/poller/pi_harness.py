@@ -152,6 +152,8 @@ class PiTranslator:
         # model per call, and Pi's list prices a router at $0, so its every call read as free while OpenRouter
         # billed it as Fable 5.1 (magent, 28 Oct: $6.11 for one 610k-token call recorded as $0).
         ran = message.get('responseModel') or message.get('model')
+        if message.get('provider'):
+            mine['provider'] = message['provider']  # who billed it: EventsPoster puts it on the rows' harness
         if message.get('provider') == 'openrouter' and message.get('responseId'):
             mine['generation'] = message['responseId']  # EventsPoster asks OpenRouter what it billed
         if not cost and ran != message.get('model'):
@@ -256,6 +258,10 @@ class EventsPoster:
                     except (requests.RequestException, ValueError) as e:
                         logger.warning(f'{self.slug}: OpenRouter would not say what a call cost: {e}')
                     time.sleep(self.pause * (attempt + 1))
+            if usage and usage.get('provider') and self.harness.startswith('pi'):
+                # Which vendor billed the turn, on its rows ('pi 1.1.0 · openrouter'): Pi reaches OpenRouter
+                # and vendors directly alike, and the usage page tabs them by who was paid (re, #237).
+                self.harness = f"{self.harness.split(' · ')[0]} · {usage['provider']}"[:50]
             if usage and isinstance(usage.get('cost'), (int, float)):
                 self.spent += usage['cost']
             if event.get('type') == 'turn_ended' and self.billed:

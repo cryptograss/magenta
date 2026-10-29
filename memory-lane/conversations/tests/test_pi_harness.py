@@ -269,6 +269,7 @@ class EndToEndTest(TestCase):
         self.assertEqual(asked, ['gen-1793193797-x'] * 2)  # not ready at first, then priced
         self.assertEqual((events[0]['usage']['cost'], events[0]['usage']['billed']), (6.10845, True))
         self.assertEqual(events[-1]['cost_usd'], 6.10845)
+        self.assertEqual(poster.harness, 'pi · openrouter')  # who billed it, on the rows that follow
 
         from conversations.services.mood_view import call_usd, model_label
         self.assertEqual(model_label('anthropic/claude-fable-5.1'), 'Fable 5.1')
