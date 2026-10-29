@@ -649,3 +649,15 @@ class EmergentPowersTest(TestCase):
         people = {p['name']: p for p in self.client.get('/api/moods/').json()['people']}
         self.assertEqual(people['blu']['for_short'], 'studies the connectome')
         self.assertNotIn('for', people['re'])
+
+    def test_pronouns_as_each_set_them_and_nothing_guessed(self):
+        from django.core.cache import cache
+        from conversations.services import emergent_powers
+        cache.clear()
+        asked = []
+        def expand(text):
+            asked.append(text)
+            return emergent_powers.PRONOUNS_SEP.join(['it/its', 'she/her'][:text.count('#pronouns')])
+        got = emergent_powers.pronouns([('blu', False), ('nobody', True), ('re', False)], expand=expand)
+        self.assertEqual(got, {'blu': 'it/its', 're': 'she/her'})  # a person not on the wiki is never asked
+        self.assertEqual(asked, ['{{#pronouns:Blu}}' + emergent_powers.PRONOUNS_SEP + '{{#pronouns:Re}}'])

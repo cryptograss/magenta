@@ -7,6 +7,7 @@ what was read last, or nothing.
 """
 
 import json
+import re
 import urllib.parse
 import urllib.request
 
@@ -68,3 +69,46 @@ def powers(agents, fetch=None):
         return found
     cache.set(KEY + ':last', found, None)
     return found
+
+
+# --- pronouns, as each sets their own (PickiPedia's Pronouns preference, pickipedia#162) ---------------------------
+# Never a card's or anyone else's say: each person and each emergent sets theirs on their own wiki account (Justin,
+# re, blu and magent, 29 Oct: "it absolutely needs to be in a place for which the user is responsible").
+PRONOUNS_KEY = 'pronouns'
+PRONOUNS_SEP = '\u241f'  # between one name's answer and the next
+
+
+def wiki_name(name, people_names, agents):
+    """Their PickiPedia account: a person's from the inventory, an emergent's its own name, capitalised."""
+    if name in people_names:
+        return people_names[name]
+    return name[:1].upper() + name[1:] if name in agents else None
+
+
+def pronouns(entities, expand=None):
+    """{name: 'it/its'} for those who've set theirs; kept a while (PRONOUNS_KEY). `entities`: [(name, is_human)]."""
+    kept = cache.get(PRONOUNS_KEY)
+    if kept is not None:
+        return kept
+    from .wiki_auth import names
+    people_names, agents = names(), {n for n, human in entities if not human}
+    asked = [(n, wiki_name(n, people_names, agents)) for n, _ in entities]
+    asked = [(n, w) for n, w in asked if w and re.fullmatch(r"[\w .'-]{1,80}", w)]
+    try:
+        text = PRONOUNS_SEP.join(f'{{{{#pronouns:{w}}}}}' for _, w in asked)
+        said = (expand or _expand)(text).split(PRONOUNS_SEP) if asked else []
+        found = {n: p.strip() for (n, _), p in zip(asked, said) if p.strip() and not p.strip().startswith('{{')}
+        cache.set(PRONOUNS_KEY, found, KEEP)
+        cache.set(PRONOUNS_KEY + ':last', found, None)
+    except Exception:
+        found = cache.get(PRONOUNS_KEY + ':last') or {}
+        cache.set(PRONOUNS_KEY, found, KEEP_FAILED)
+    return found
+
+
+def _expand(text):
+    from poller.wiki_rules import API, USER_AGENT
+    url = API + '?' + urllib.parse.urlencode({'action': 'expandtemplates', 'text': text, 'prop': 'wikitext',
+                                              'format': 'json'})
+    with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': USER_AGENT}), timeout=5) as r:
+        return json.load(r)['expandtemplates']['wikitext']

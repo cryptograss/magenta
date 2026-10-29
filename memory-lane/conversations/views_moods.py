@@ -125,13 +125,15 @@ def api_moods(request):
     people = ThinkingEntity.objects.order_by('name')
     look = knobs.looks()
     from .services.mood_view import GROUPS, group_members
-    from .services.emergent_powers import powers
+    from .services.emergent_powers import powers, pronouns
     people = list(people)
     power = powers([p.name for p in people if not p.is_biological_human])
+    said = pronouns([(p.name, p.is_biological_human) for p in people])
     return JsonResponse({'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
          **(look[p.name] if p.is_biological_human and p.name in look else {}),
-         **({'for': power[p.name]['for'], 'for_short': power[p.name]['short']} if p.name in power else {})}
+         **({'for': power[p.name]['for'], 'for_short': power[p.name]['short']} if p.name in power else {}),
+         **({'pronouns': said[p.name]} if p.name in said else {})}
         for p in people],
         # Tags for a group (@core): what each is, and who it mentions now.
         'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]})

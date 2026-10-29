@@ -1629,6 +1629,7 @@
   let groups = [];          // tags for a group (@core: everyone who signs in with an SSH key)
   let human = {};           // name -> is a person
   const powers = {};        // emergent -> {for, short}: what its own page says it is for
+  const pronounsOf = {};    // name -> their pronouns, as they set them on PickiPedia (none: nothing shown, never a guess)
   let looks = {};           // name -> {art, colour}: a person's name written their way, and their icon's colour
   let act = null;           // what an agent is doing now, from /turns/: the one stop and Esc stop
   let acts = [];            // every agent at work here, longest at it first (mood_view.activities)
@@ -4401,6 +4402,7 @@
     people = body.people || [];
     groups = body.groups || [];
     people.forEach(p => { if (p.for) powers[p.name] = { for: p.for, short: p.for_short || p.for };
+                          if (p.pronouns) pronounsOf[p.name] = p.pronouns;
                           human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
     renderMe();
@@ -5993,7 +5995,7 @@
         .sort((a, b) => (here.has(b) - here.has(a)) || a.localeCompare(b)).slice(0, 8)
         // An emergent says what it's for, from its own page (Skyler, 29 Oct: "which ones do what").
         .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small${powers[n] ? ` title="${esc(powers[n].for)}"` : ''}>${shown(n) !== n ? esc(n) + ' · ' : ''}`
-          + `${human[n] ? 'person' : powers[n] ? esc(powers[n].short) : 'emergent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
+          + `${pronounsOf[n] ? esc(pronounsOf[n]) + ' · ' : ''}${human[n] ? 'person' : powers[n] ? esc(powers[n].short) : 'emergent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
     }
     if (!choices.length) return closeSuggest();
     chosen = Math.min(chosen, choices.length - 1);
