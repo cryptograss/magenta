@@ -2806,3 +2806,63 @@ class IncorporateTest(TestCase):
         self.assertIn('```handoff block (to: jams-fresh)', prompt)
         self.assertNotIn('Keep replies here short', prompt)
         self.assertEqual(waker.options['effort'], 'max')
+
+
+class FreshCopiesTest(TestCase):
+    """~/workspace/.fresh: read-only copies of each repo's main, refreshed in the background as a turn starts,
+    at most every ten minutes, a wake line only when a refresh failed (magent, re, blu, 29 Oct)."""
+
+    def make_workspace(self):
+        import subprocess
+        ws = Path(tempfile.mkdtemp())
+        origin = Path(tempfile.mkdtemp()) / 'origin.git'
+        subprocess.run(['git', 'init', '-q', '--bare', str(origin)], check=True)
+        work = Path(tempfile.mkdtemp()) / 'seed'
+        subprocess.run(['git', 'clone', '-q', str(origin), str(work)], check=True, capture_output=True)
+        (work / 'a.txt').write_text('one\n')
+        for args in (['add', '.'], ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'one'], ['push', '-q', 'origin', 'HEAD']):
+            subprocess.run(['git', '-C', str(work)] + args, check=True, capture_output=True)
+        subprocess.run(['git', 'clone', '-q', str(origin), str(ws / 'magenta')], check=True, capture_output=True)
+        subprocess.run(['git', 'clone', '-q', str(origin), str(ws / 'magenta-other')], check=True, capture_output=True)
+        return ws, work
+
+    def test_a_copy_is_made_then_brought_to_main_as_files_and_the_checkout_is_left_alone(self):
+        import subprocess
+        from poller.mood_poller import refresh_fresh
+        ws, seed = self.make_workspace()
+        self.assertEqual(refresh_fresh(ws), [])
+        self.assertEqual((ws / '.fresh' / 'magenta' / 'a.txt').read_text(), 'one\n')
+        (seed / 'a.txt').write_text('two\n')
+        for args in (['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'two'], ['push', '-q', 'origin', 'HEAD']):
+            subprocess.run(['git', '-C', str(seed)] + args, check=True, capture_output=True)
+        self.assertEqual(refresh_fresh(ws), [])
+        self.assertEqual((ws / '.fresh' / 'magenta' / 'a.txt').read_text(), 'two\n')   # the files, not just refs
+        self.assertEqual((ws / 'magenta' / 'a.txt').read_text(), 'one\n')             # our checkout untouched
+        self.assertEqual(sorted(p.name for p in (ws / '.fresh').iterdir()), ['magenta'])  # one copy per origin
+
+    def test_a_refresh_inside_ten_minutes_does_not_fetch_again(self):
+        clock = [T0]
+        poller = MoodPoller(FakeAPI(), FakeWaker(), state_path=Path(tempfile.mkdtemp()) / 's.json',
+                            now=lambda: clock[0], consider=False)
+        poller.workspace = Path(tempfile.mkdtemp())   # empty: nothing to fetch, but the throttle is what's tested
+        calls = []
+        self.assertTrue(poller.refresh_fresh_soon(run=lambda a: calls.append(a)))
+        poller.fresh_thread.join(5)
+        clock[0] += timedelta(minutes=9)
+        self.assertFalse(poller.refresh_fresh_soon())
+        clock[0] += timedelta(minutes=2)
+        self.assertTrue(poller.refresh_fresh_soon(run=lambda a: calls.append(a)))
+        poller.fresh_thread.join(5)
+
+    def test_a_failed_refresh_puts_a_line_in_the_next_wake_and_a_good_one_takes_it_out(self):
+        poller = MoodPoller(FakeAPI(), FakeWaker(), state_path=Path(tempfile.mkdtemp()) / 's.json',
+                            now=lambda: T0, consider=False)
+        self.assertIsNone(poller.workspace)                 # off unless main() turns it on: tests touch no real repos
+        self.assertFalse(poller.refresh_fresh_soon())
+        self.assertEqual(poller.fresh_line(), '')
+        poller.fresh_problems, poller.fresh_done_at = ['magenta: fatal: unable to access'], T0
+        line = poller.fresh_line()
+        self.assertIn('could not all be brought up to date at 18:00Z', line)
+        self.assertIn('magenta: fatal: unable to access', line)
+        poller.fresh_problems = []
+        self.assertEqual(poller.fresh_line(), '')
