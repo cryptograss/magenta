@@ -21,6 +21,8 @@ class PromptsPageTests(TidingsTests):
         self.assertIn('prompts · magenta', response.content.decode())
         self.assertIn('By each person', response.content.decode())
         self.assertIn('please look at this', response.content.decode())
+        self.assertIn('Spend by kind of turn', response.content.decode())  # the shared kinds block is in (magent, #281)
+        self.assertIn('id="kinds"', response.content.decode())
 
     def test_api_prompts_lists_every_human_even_with_no_prompts(self):
         body = self.client.get('/api/prompts/').json()
