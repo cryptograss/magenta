@@ -974,6 +974,12 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
             return ('compaction', msg, text)
         if is_wrapper(text):
             return None
+        # Only a ```handoff block: it went to another Mood, and its line here (handoff-sent) says so. An empty
+        # turn beside it said nothing (Justin, 29 Oct: blu's and re's handoffs to #emergence, blank posts).
+        if '```handoff' in text or '```settings' in text:  # a ```settings block, too: machinery
+            from .handoff import split as split_handoffs
+            if not split_handoffs(text)[0].strip():
+                return None
         return ('turn', msg, text)
 
     if limit is None:

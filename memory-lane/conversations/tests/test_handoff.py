@@ -47,6 +47,14 @@ class HandoffTest(TestCase):
         self.assertEqual(handoff.from_message(message), [])  # once per message
         self.assertEqual(len(self.events(self.there)), 1)
 
+    def test_a_reply_that_is_only_the_block_is_its_line_not_an_empty_post(self):
+        # Justin, 29 Oct: blu's and re's handoffs to #emergence showed as blank posts beside their lines.
+        self.said(self.magent, BLOCK.split('\n\n', 1)[1])  # only the block
+        self.said(self.magent, BLOCK)                         # words and the block
+        page = self.client.get(f'/api/moods/{self.here.slug}/turns/').json()
+        self.assertEqual([t['text'] for t in page['turns']], ['Taking it over there.'])
+        self.assertEqual([e['type'] for e in page['events']], ['handoff-sent', 'handoff-sent'])
+
     def test_asked_to_look_in_another_mood_what_it_found_lands_here(self):
         message = self.said(self.magent, BLOCK.replace('to: #jams-and-events', 'from: #jams-and-events'))
         [here] = self.events(self.here)
