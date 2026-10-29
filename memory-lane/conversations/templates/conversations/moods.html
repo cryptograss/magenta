@@ -624,16 +624,33 @@
   #search button { cursor: pointer; padding: 0 9px; }
   #search .bar.opts { padding-top: 0; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
   #search .bar.opts select { min-width: 0; padding: 3px 4px; }
+  /* Said by: a list of its own (a <select> can't show a name written its person's way). */
+  #qwho { position: relative; }
+  #qwho .pick { padding: 3px 6px; display: flex; align-items: center; gap: 4px; max-width: 170px; overflow: hidden; white-space: nowrap; }
+  #qwho .list { position: absolute; top: calc(100% + 3px); left: 0; z-index: 5; min-width: 190px; max-height: 50vh; overflow-y: auto;
+                background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.15); padding: 3px 0; }
+  #qwho .list[hidden] { display: none; }
+  #qwho .opt { display: flex; align-items: center; gap: 6px; padding: 4px 10px; cursor: pointer; color: var(--ink); white-space: nowrap; }
+  #qwho .opt:hover, #qwho .opt[aria-selected="true"] { background: var(--hover); }
+  #qwho .opt .ico, #qwho .pick .ico { width: 13px; height: 13px; fill: currentColor; flex: none; }
+  #qwho .opt.agent .ico { color: var(--agent); }
+  #qwho .sep { border-top: 1px solid var(--line); margin: 3px 0; }
+  #qwho .opt .you { color: var(--muted); font-size: 12px; }
   #search .bar.opts label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
   #search .bar.opts input { flex: none; }
   #qresults .more { display: block; margin: 10px auto; padding: 4px 12px; }
-  /* Reaching back to a message not yet drawn: a spinner over the thread until it's there. */
-  #reaching { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px;
-              pointer-events: none; z-index: 30; color: var(--muted); font-size: 14px; }
+  /* Taken to a message not yet on screen: the thread veiled, a spinner over it, until it's there.
+     Placed over the thread itself (reaching(), below), so the header and the Moods stay clear. */
+  #reaching { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+              gap: 14px; z-index: 30; color: var(--muted); font-size: 15px; cursor: progress;
+              background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(2px) grayscale(.4);
+              animation: veil .25s ease-out; }
   #reaching[hidden] { display: none; }
-  #reaching .spin { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent);
+  #reaching .spin { width: 46px; height: 46px; border: 4px solid var(--line); border-top-color: var(--accent);
                     border-radius: 50%; animation: spin .8s linear infinite; }
-  #reaching span { background: var(--panel); padding: 4px 10px; border-radius: 12px; border: 1px solid var(--line); }
+  #reaching span { background: var(--panel); padding: 5px 14px; border-radius: 14px; border: 1px solid var(--line);
+                   box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+  @keyframes veil { from { opacity: 0; } to { opacity: 1; } }
   #qresults { overflow-y: auto; flex: 1; }
   #qresults .hit { display: block; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--muted);
                    text-decoration: none; font-size: 12.5px; }
@@ -1524,7 +1541,7 @@
   </div>
   <div class="bar opts">
     <select id="qscope" aria-label="Where"><option value="here">this Mood</option><option value="threads">this Mood and its threads</option><option value="all">all Moods</option></select>
-    <select id="qwho" aria-label="Said by"><option value="">anyone</option><option value="human">humans</option><option value="emergent">emergents</option></select>
+    <span id="qwho" class="picker"><button type="button" class="pick" aria-haspopup="listbox" aria-label="Said by">anyone ▾</button><div class="list" role="listbox" hidden></div></span>
     <label title="Only where each term is a word of its own"><input type="checkbox" id="qword"> whole words</label>
   </div>
   <div id="qresults"></div>
@@ -4948,6 +4965,7 @@
   const qInput = document.getElementById('q');
   const qScope = document.getElementById('qscope');
   const qWho = document.getElementById('qwho');
+  qWho.value = '';  // who said it: '', 'human', 'emergent' or a name, as the server takes it
   const qWord = document.getElementById('qword');
   const qResults = document.getElementById('qresults');
   let qTimer = null, qSeq = 0, qMore = null;
@@ -4959,14 +4977,29 @@
     if (qInput.value.trim().length >= 2) runSearch();
   }
   function closeSearch() { searchBox.hidden = true; }
-  // Said by: anyone, humans, emergents, or one of them by name.
-  function whoOptions() {
-    const had = qWho.value, names = people.map(p => p.name).sort();
-    if (qWho.options.length === 3 + names.length) return;
-    qWho.innerHTML = '<option value="">anyone</option><option value="human">humans</option><option value="emergent">emergents</option>'
-      + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-    qWho.value = had;
+  // Said by: you first, then anyone, humans or emergents, then each by name, written their way
+  // with their icon (Justin, 29 Oct).
+  const qWhoBtn = qWho.querySelector('.pick'), qWhoList = qWho.querySelector('.list');
+  function whoLabel(v) {
+    return v === '' ? 'anyone' : v === 'human' ? ICONS.human + ' humans' : v === 'emergent' ? ICONS.agent + ' emergents'
+      : icon(v) + ' ' + nameHtml(v);
   }
+  function whoOptions() {
+    const opt = (v, cls = '') => `<div class="opt ${cls}" role="option" data-v="${esc(v)}" aria-selected="${v === qWho.value}">${whoLabel(v)}${v && v === me ? ' <span class="you">(you)</span>' : ''}</div>`;
+    const names = people.map(p => p.name).filter(n => n !== me).sort((a, b) => shown(a).localeCompare(shown(b)));
+    const isHuman = n => !!human[n];
+    qWhoList.innerHTML = (me && people.some(p => p.name === me) ? opt(me, 'human') + '<div class="sep"></div>' : '')
+      + opt('') + opt('human') + opt('emergent', 'agent') + '<div class="sep"></div>'
+      + names.filter(isHuman).map(n => opt(n, 'human')).join('') + names.filter(n => !isHuman(n)).map(n => opt(n, 'agent')).join('');
+    qWhoBtn.innerHTML = whoLabel(qWho.value) + ' ▾';
+  }
+  qWhoBtn.addEventListener('click', () => { whoOptions(); qWhoList.hidden = !qWhoList.hidden; });
+  qWhoList.addEventListener('click', e => {
+    const o = e.target.closest('.opt');
+    if (!o) return;
+    qWho.value = o.dataset.v; qWhoList.hidden = true; whoOptions(); runSearch();
+  });
+  document.addEventListener('click', e => { if (!qWho.contains(e.target)) qWhoList.hidden = true; });
   // Every term the server matched, marked where it is in the snippet.
   function marked(text, terms, whole) {
     const safe = esc(text);
@@ -5003,7 +5036,7 @@
     } catch (e) { if (seq === qSeq) qResults.innerHTML = '<div class="note">Search failed; try again.</div>'; }
   }
   qInput.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(() => runSearch(), 300); });
-  for (const el of [qScope, qWho, qWord]) el.addEventListener('change', () => runSearch());
+  for (const el of [qScope, qWord]) el.addEventListener('change', () => runSearch());
   document.getElementById('searchBtn').addEventListener('click', () => (searchBox.hidden ? openSearch() : closeSearch()));
   document.getElementById('qclose').addEventListener('click', closeSearch);
   document.addEventListener('keydown', e => {
@@ -5017,8 +5050,7 @@
     if (!a) return;
     e.preventDefault();
     if (matchMedia(PHONE).matches) closeSearch();
-    if (a.dataset.slug !== current) await open(a.dataset.slug, true);
-    if (!(await reveal(a.dataset.id))) showError('That message is no longer here.');
+    if (!(await openAndReveal(a.dataset.slug, a.dataset.id))) showError('That message is no longer here.');
   });
 
   function touch(slug) {
@@ -5060,11 +5092,25 @@
     if (!document.hidden) pullSeen().then(() => { if (current) touch(current); refreshBadges(true); });
   });
 
-  // Bring a message into view, reaching back a few pages if need be.
+  // "finding it…" over the thread while a link's message is fetched: its Mood opened, then reached
+  // back to (Justin, 29 Oct: any link to a message, not only a search hit, sat for seconds without it).
+  // Counted, so a reveal inside an openAndReveal doesn't take it away early; shown only past a moment.
+  let reachingN = 0, reachingTimer = null;
+  async function reaching(work) {
+    const box = document.getElementById('reaching');
+    if (!reachingN++) reachingTimer = setTimeout(() => {
+      const r = main.getBoundingClientRect();  // over the thread, not the header or the Moods
+      Object.assign(box.style, { inset: 'auto', top: r.top + 'px', left: r.left + 'px', width: r.width + 'px', height: r.height + 'px' });
+      box.hidden = false;
+    }, 150);
+    try { return await work(); } finally {
+      if (!--reachingN) { clearTimeout(reachingTimer); box.hidden = true; }
+    }
+  }
+  // Bring a message into view, reaching back to it in one ask if need be.
   async function reveal(id) {
     if (!id) return false;
     stopSettling();  // taken to a message: the newest no longer pulls
-    const reaching = document.getElementById('reaching');
     for (let i = 0; i < 2; i++) {
       // A message, or a step (a tool call), shown in its opened group.
       const el = document.getElementById('m-' + id) || document.querySelector(`.step[data-id="${CSS.escape(id)}"]`);
@@ -5081,14 +5127,15 @@
       // Not drawn yet: everything back to it, in one ask, under a spinner.
       const earlier = document.getElementById('earlier');
       if (i || !earlier || earlier.hidden) return false;
-      const spin = setTimeout(() => { reaching.hidden = false; }, 150);
-      try { if (!(await loadEarlier(id))) return false; } finally { clearTimeout(spin); reaching.hidden = true; }
+      if (!(await reaching(() => loadEarlier(id)))) return false;
     }
     return false;
   }
-  async function openAndReveal(slug, id) {
-    if (slug !== current) await open(slug, true);
-    await reveal(id);
+  function openAndReveal(slug, id, push = true) {
+    return reaching(async () => {
+      if (slug !== current) await open(slug, push);
+      return reveal(id);
+    });
   }
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', e => {
@@ -8541,10 +8588,10 @@
     const lastOpened = sharing_ && store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived));
     const slug = initialSlug || lastOpened || (moods[0] && moods[0].slug);
     if (!slug) { inner.innerHTML = '<div class="empty">No Moods yet.</div>'; setStatus('live', 'live'); return; }
-    await open(slug, false);
+    const linked = location.hash.match(/^#m-([0-9a-f-]{36})$/);  // from a notification, or a link
+    if (linked) await openAndReveal(slug, linked[1], false);
+    else await open(slug, false);
     if (sharing_) { history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/'); offerShare(); }
-    const linked = location.hash.match(/^#m-([0-9a-f-]{36})$/);  // from a notification
-    if (linked) await reveal(linked[1]);
     setInterval(() => { poll(false); fetchBadges(); }, POLL_MS);
   })();
 
