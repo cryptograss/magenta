@@ -173,9 +173,13 @@ def usage_state(hours=24, now=None):
 
     top = {h: sorted((t for t in turns.values() if t['harness'] == h), key=lambda t: -t['usd'])[:TOP_TURNS]
            for h in HARNESSES}
+    # What woke each, and who it was for (Justin, #usage, 29 Oct: "who prompted it").
+    from conversations.services.spend_kinds import wakes_of
+    woke = wakes_of([t['turn'] for listed in top.values() for t in listed], day_ago)
     for listed in top.values():
         for t in listed:
             t['usd'] = round(t['usd'], 4)
+            t.update(woke.get(t['turn'], {'kind': 'unknown', 'label': 'wake not recorded', 'by': []}))
 
     def ranked(position):
         weight = defaultdict(int)

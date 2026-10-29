@@ -322,11 +322,17 @@
       b.hidden = b.dataset.tab === 'other' && !(state.top.other || []).length;  // only when some vendor else was paid
     });
     if (!rows.length) { $('u-top').innerHTML = '<p class="none">No turns here in the past 24 hours.</p>'; return; }
-    $('u-top').innerHTML = `<table class="top"><thead><tr><th>when</th><th>who</th><th>Mood</th><th>model</th>
+    // Who prompted it (Justin, 29 Oct): a mention's poster; for a look nobody asked for, what kind, and whose posts.
+    const SHORT = { consider: 'unasked look', crosstalk: 'crosstalk', quiet: 'quiet look', arrival: 'arrival',
+                    'mention-look': 'look-only', other: 'other wake' };
+    const prompted = r => r.kind === 'unknown' ? '<span class="muted">not recorded</span>'
+      : (SHORT[r.kind] && r.kind !== 'mention-look' ? `<span class="muted">${SHORT[r.kind]}</span>${r.by.length ? ' · ' : ''}` : '')
+        + esc(r.by.join(', ')) + (r.kind === 'mention-look' ? ' <span class="muted">(look-only)</span>' : '');
+    $('u-top').innerHTML = `<table class="top"><thead><tr><th>when</th><th>prompted by</th><th>who</th><th>Mood</th><th>model</th>
       <th class="n">calls</th><th class="n">context read</th><th class="n">largest</th><th class="n">cached</th>
       <th class="n">written</th><th class="n">cost</th></tr></thead><tbody>` + rows.map(r => `<tr>
       <td class="n"><a href="/moods/${encodeURIComponent(r.mood)}/#m-${r.first}">${esc(new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</a></td>
-      <td>${esc(r.agent)}</td><td>#${esc(r.mood)}</td><td>${esc(r.models.join(', '))}</td>
+      <td title="${esc(r.label || '')}">${prompted(r)}</td><td>${esc(r.agent)}</td><td>#${esc(r.mood)}</td><td>${esc(r.models.join(', '))}</td>
       <td class="n">${r.calls}</td><td class="n">${tok(r.ctx)}</td><td class="n">${tok(r.max_ctx)}</td>
       <td class="n">${r.ctx ? Math.round(100 * r.cached / r.ctx) + '%' : '–'}</td><td class="n">${tok(r.out)}</td>
       <td class="n" title="${r.paid ? 'what OpenRouter billed' : 'at list price'}${r.unpriced ? `; ${r.unpriced} call(s) with no price` : ''}">${usd(r.usd)}${r.paid ? '' : ' <span class="muted">list</span>'}</td>

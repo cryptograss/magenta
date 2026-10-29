@@ -12,6 +12,8 @@ by those characters; where it didn't (Claude Code keeps only a signature), words
 CHARS_PER_TOKEN and thinking is the rest. Estimates, and labelled so.
 """
 
+import json
+import re
 from collections import defaultdict
 from datetime import timedelta
 
@@ -43,8 +45,39 @@ def kind_of(head, tail):
     return 'mention-look' if wake_said(tail or '') == 'look' else 'mention-full'
 
 
+POSTED_LINE = re.compile(r'^(►\s*)?\[([\w.-]+), \d{4}-', re.M)  # a post as a wake quotes it: [sender, time] text
+ARRIVED = re.compile(r'^([\w.-]+) just signed in', re.M)
+
+
+def plain(text):
+    """A row's content as words: the JSON it's read back as, unwrapped."""
+    try:
+        content = json.loads(text)
+    except (TypeError, ValueError):
+        return text or ''
+    if isinstance(content, list):
+        return '\n'.join(b.get('text', '') for b in content if isinstance(b, dict))
+    return content if isinstance(content, str) else ''
+
+
+def prompted_by(kind, text):
+    """Who a wake was for, as the page names it: a mention's, the post that woke it (the first it quotes); an
+    unasked look's or crosstalk's, whoever posted what it marks new (►); an arrival's, who signed in; a quiet
+    look's, nobody."""
+    body = text[text.find('<mood-wake'):]
+    if kind.startswith('mention'):
+        first = POSTED_LINE.search(body)
+        return [first.group(2)] if first else []
+    if kind in ('consider', 'crosstalk'):
+        return list(dict.fromkeys(m.group(2) for m in POSTED_LINE.finditer(body) if m.group(1)))
+    if kind == 'arrival':
+        arrived = ARRIVED.search(body)
+        return [arrived.group(1)] if arrived else []
+    return []
+
+
 def _wakes(sessions, since):
-    """session id (str) -> [(when, kind)], oldest first. A wake is the poller's prompt in the session: filed as
+    """session id (str) -> [(when, kind, who it was for)], oldest first. A wake is the poller's prompt in the session: filed as
     the poller's (Pi echoes it; the runner posts it for Claude Code), or -- brought in from a transcript whose
     prompt opens with the harness's own reminders -- as the container's person's, but holding a <mood-wake."""
     found = defaultdict(list)
@@ -54,8 +87,17 @@ def _wakes(sessions, since):
     rows = (rows.annotate(text=Cast('content', TextField())).filter(text__contains='<mood-wake')
             .order_by('created_at').values_list('session_id', 'created_at', 'text'))
     for session, at, text in rows.iterator(chunk_size=200):
-        found[str(session)].append((at, kind_of(text[text.find('<mood-wake'):][:300], text[-WAKE_TAIL:])))
+        text = plain(text)
+        kind = kind_of(text[text.find('<mood-wake'):][:300], text[-WAKE_TAIL:])
+        found[str(session)].append((at, kind, prompted_by(kind, text)))
     return found
+
+
+def wakes_of(turns, since):
+    """turn (session id) -> {'kind', 'label', 'by'}: what woke each turn named, by its first wake."""
+    label = dict(KINDS)
+    return {turn: {'kind': kind, 'label': label[kind], 'by': by}
+            for turn, ((_, kind, by), *_) in _wakes(set(turns), since).items()}
 
 
 def split_output(out, chars):
@@ -83,7 +125,7 @@ def spend_by_kind(hours=24, mood=None, now=None):
     rows = {k: {'kind': k, 'label': label, 'turns': set(), 'calls': 0, 'ctx': 0, 'usd': 0.0, 'out': 0,
                 'thinking': 0.0, 'words': 0.0, 'tools': 0.0, 'unpriced': 0} for k, label in KINDS}
     for c in calls:
-        before = [kind for at, kind in wakes.get(c['turn'], ()) if at <= c['at']]
+        before = [kind for at, kind, _ in wakes.get(c['turn'], ()) if at <= c['at']]
         row = rows[before[-1] if before else 'unknown']
         row['turns'].add(c['turn'])
         row['calls'] += 1
