@@ -273,8 +273,9 @@ class NewAndArchivedMoodsTest(SignedInCase):
         made = self.post(client, '/api/moods/new/', {'title': 'Fiddle tunes, in C!', 'description': 'Which and why'})
         self.assertEqual(made.status_code, 201)
         self.assertEqual(made.json()['slug'], 'fiddle-tunes-in-c')
-        again = self.post(client, '/api/moods/new/', {'title': 'Fiddle tunes in C'}).json()
-        self.assertEqual(again['slug'], 'fiddle-tunes-in-c-2')  # never someone else's Mood
+        again = self.post(client, '/api/moods/new/', {'title': 'Fiddle tunes in C'})
+        self.assertEqual((again.status_code, again.json()['taken'], again.json()['closed']), (409, 'fiddle-tunes-in-c', False))
+        self.assertEqual(self.post(client, '/api/moods/new/', {'title': 'Settings'}).status_code, 409)  # a page's
         mood = Mood.objects.get(slug='fiddle-tunes-in-c')
         self.assertEqual((mood.title, mood.description), ('Fiddle tunes, in C!', 'Which and why'))
         line = Message.objects.get(mood=mood)

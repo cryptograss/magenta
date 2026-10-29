@@ -905,6 +905,9 @@ def api_rename(request, slug):
     if len(title) > 200 or (description is not None and len(description) > 2000):
         return JsonResponse({'error': 'at most 200 characters for a title, 2000 for a description'}, status=400)
 
+    taken = name_taken(title, mood)
+    if taken:
+        return taken
     was = {'title': mood.title, 'description': mood.description, 'slug': mood.slug}
     mood.rename(title, description)
     system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
@@ -1193,6 +1196,9 @@ def api_new_mood(request):
         if parent is None:
             return JsonResponse({'error': 'no such Mood to open a thread from'}, status=404)
     fork = bool(parent) and body.get('fork', True) is not False
+    taken = name_taken(title)
+    if taken:
+        return taken
     from django.utils import timezone as tz
     mood = Mood.objects.create(slug=Mood.free_slug(title), title=title, description=description,
                                thread_of=parent, forked_at=tz.now() if fork else None)
@@ -1210,6 +1216,22 @@ def api_new_mood(request):
                                timestamp=int(time.time() * 1000))
     return JsonResponse({'slug': mood.slug, 'title': mood.title, 'description': mood.description,
                          **({'thread_of': parent.slug, 'kind': kind} if parent else {})}, status=201)
+
+
+def name_taken(title, mood=None):
+    """409 when another Mood has (or had) the name `title` makes, or a page of the site's own has it; None when
+    it's free. Saying which, and whether it's closed, so the page can offer to open that one again."""
+    from .services import settings as knobs
+    other = Mood.holder(title, mood)
+    if other is None:
+        return None
+    if other == 'page':
+        return JsonResponse({'error': f'“{title}” is the name of a page here; another name, please'}, status=409)
+    closed = other.slug in knobs.archived_slugs()
+    return JsonResponse({'error': f'#{other.slug} has that name already' + (' (closed)' if closed else '')
+                         + '; another name, please' + (', or open it again' if closed else ''),
+                         'taken': other.slug, 'closed': closed,
+                         'thread_of': other.thread_of.slug if other.thread_of_id else None}, status=409)
 
 
 def _carry_settings(parent, thread, by):

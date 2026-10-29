@@ -150,7 +150,7 @@ class OpenThreadTest(TestCase):
         fresh = Mood.objects.get(slug=self.open(thread_of='jams', fork=False).json()['slug'])
         self.assertIsNone(fresh.forked_at)
         self.assertEqual(self.open(thread_of='nowhere').status_code, 404)
-        plain = self.open().json()
+        plain = self.open(title='Encores').json()  # 'Setlist' is had now
         self.assertNotIn('thread_of', plain)
 
     def test_its_mood_instructions_until_it_has_its_own(self):
