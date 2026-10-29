@@ -512,6 +512,15 @@
   });
 
   load();
+  // The heaps move with every turn: asked again each minute and on coming back to the tab, and only
+  // that list redrawn, never the menus under someone's hand (Justin, 29 Oct: a 66% heap missing).
+  async function refreshHeaps() {
+    if (document.hidden) return;
+    const fresh = await fetch('/api/status/').then(r => r.ok ? r.json() : null).catch(() => null);
+    if (fresh) document.getElementById('fullHeaps').innerHTML = renderFullHeaps(fresh.moods || []);
+  }
+  setInterval(refreshHeaps, 60000);
+  document.addEventListener('visibilitychange', refreshHeaps);
 })();
 </script>
 </body>
