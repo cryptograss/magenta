@@ -65,7 +65,7 @@ def makers_offered():
             for vendor, makers in sorted(found.items()) if vendor}
 
 
-SECTIONS = ('tidings', 'prompts', 'status', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'settings')
 
 
 def section(name):
@@ -183,6 +183,29 @@ def prompts_page(request):
         'prompts': tidings.prompts_state(),
         'prompt_cap': tidings.PROMPTS_PER_HUMAN,
         'embed': True,
+    })
+
+
+@section('polls')
+def polls_page(request):
+    """Polls & Plebiscites: every Mood's polls in one place, open ones first (services/polls.py)."""
+    device = mood_auth.device_for(request)
+    return render(request, 'conversations/mood_polls.html', {
+        'viewer': device.entity_id if device else '', 'embed': True})
+
+
+@require_GET
+def api_polls(request):
+    """Polls in every Mood, as they stand, for Polls & Plebiscites: {"polls", "wiki_names", "humans", "viewer", "admin"}."""
+    from .services import polls, wiki_auth
+    from .services.retract import is_admin
+    device = mood_auth.device_for(request)
+    return JsonResponse({
+        'polls': polls.everywhere(),
+        'wiki_names': wiki_auth.names(),
+        'humans': list(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True)),
+        'viewer': device.entity_id if device else '',
+        'admin': is_admin(device),
     })
 
 

@@ -1,0 +1,96 @@
+<!-- A poll's card (services/polls.py), as a Mood shows it and Polls & Plebiscites does: a button per choice,
+     its bar filled by people (solid) and agents (striped), who chose it, and whether it's open. -->
+<style>
+  .pollcard { border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px 8px; background: var(--panel); max-width: 560px; }
+  .pollcard .pq { font-weight: 600; font-size: 14.5px; }
+  .pollcard .pq p, .pollcard .pdetail p { margin: 0; display: inline; }
+  .pollcard .pdetail { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .pollcard .pwhere { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+  .pollcard ul { list-style: none; margin: 7px 0 0; padding: 0; display: grid; gap: 5px; }
+  .pollcard .pchoice { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; font: inherit; font-size: 13.5px;
+                       text-align: left; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg);
+                       color: var(--ink); cursor: pointer; overflow: hidden; }
+  .pollcard .pchoice:disabled { cursor: default; }
+  .pollcard .pchoice:not(:disabled):hover { border-color: var(--accent); }
+  .pollcard .pc.mine .pchoice { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .pollcard .pfill { position: absolute; inset: 0; display: flex; pointer-events: none; }
+  .pollcard .pfill .ph { background: color-mix(in srgb, var(--accent) 22%, transparent); transition: width .3s; }
+  .pollcard .pfill .pa { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent) 0 5px,
+                         color-mix(in srgb, var(--accent) 8%, transparent) 5px 10px); transition: width .3s; }
+  .pollcard .plabel, .pollcard .pcount { position: relative; }
+  .pollcard .plabel { flex: 1; overflow-wrap: anywhere; }
+  .pollcard .pcount { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pollcard .pc.lead .plabel { font-weight: 700; }
+  .pollcard .pwho { display: flex; flex-wrap: wrap; gap: 3px 6px; font-size: 11.5px; color: var(--muted); padding: 2px 2px 0 9px; }
+  .pollcard .pwho .agent { color: var(--who, var(--muted)); }
+  .pollcard .pwho .agent::before { content: '◆ '; font-size: 9px; }
+  .pollcard .pfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 7px; font-size: 12px; color: var(--muted); }
+  .pollcard .pfoot .pstate.open { color: var(--ok, #2e9e5b); }
+  .pollcard .pfoot button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: none; color: var(--muted);
+                            border-radius: 6px; padding: 0 7px; cursor: pointer; }
+  .pollcard .pfoot button:hover { color: var(--accent); border-color: var(--accent); }
+</style>
+<script>
+  window.pollCards = (() => {
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    // ctx: viewer, human(name), color(name), shown(name), admin, stamp(iso), where (show the Mood and asker).
+    function html(p, ctx) {
+      const all = p.choices.flatMap(c => c.votes);
+      const total = all.length, people = all.filter(ctx.human).length, agents = total - people;
+      const top = Math.max(0, ...p.choices.map(c => c.votes.length));
+      const leaders = p.choices.filter(c => top && c.votes.length === top);
+      const mine = ctx.viewer ? (p.choices.find(c => c.votes.includes(ctx.viewer)) || {}).text : undefined;
+      const open = !p.closed, mayVote = open && !!ctx.viewer;
+      const share = n => total ? (100 * n / total).toFixed(1) : 0;
+      const rows = p.choices.map(c => {
+        const h = c.votes.filter(ctx.human).length, n = c.votes.length;
+        const lead = top && n === top && (p.closed || leaders.length === 1);
+        const who = c.votes.map(v => ctx.human(v) ? `<span>${esc(v === ctx.viewer ? 'you' : ctx.shown(v))}</span>`
+          : `<span class="agent" style="--who:${esc(ctx.color(v))}">${esc(ctx.shown(v))}</span>`).join('');
+        const tip = !open ? 'The poll is closed' : !ctx.viewer ? 'Sign in to vote' : c.text === mine
+          ? 'Your vote: press again to take it back' : mine ? 'Change your vote to this' : 'Vote for this';
+        return `<li class="pc${c.text === mine ? ' mine' : ''}${lead ? ' lead' : ''}">`
+          + `<button type="button" class="pchoice" data-choice="${esc(c.text)}" title="${tip}"${mayVote ? '' : ' disabled'}>`
+          + `<span class="pfill"><span class="ph" style="width:${share(h)}%"></span><span class="pa" style="width:${share(n - h)}%"></span></span>`
+          + `<span class="plabel">${p.closed && lead ? '✓ ' : ''}${esc(c.text)}</span>`
+          + `<span class="pcount">${n}${total ? ` · ${Math.round(100 * n / total)}%` : ''}</span></button>`
+          + (who ? `<div class="pwho">${who}</div>` : '') + '</li>';
+      }).join('');
+      const mayClose = ctx.viewer && (ctx.viewer === p.by || ctx.admin);
+      const counted = !total ? 'no votes yet' : plural(total, 'vote', 'votes')
+        + (agents && people ? ` (${plural(people, 'person', 'people')}, ${plural(agents, 'agent', 'agents')})`
+           : agents ? ` (all agents)` : '');
+      const state = p.closed
+        ? `<span class="pstate">closed by ${esc(p.closed.by === ctx.viewer ? 'you' : ctx.shown(p.closed.by))}${ctx.stamp ? ' · ' + esc(ctx.stamp(p.closed.at)) : ''}</span>`
+          + (leaders.length > 1 ? `<span>a tie</span>` : '')
+        : `<span class="pstate open">open</span>${mayClose ? '' : `<span>${esc(ctx.shown(p.by))} closes it</span>`}`;
+      const button = mayClose ? `<button type="button" class="pclose" title="${p.closed ? 'Open it again, for more votes' : 'Close it: no more votes, the result stands'}">${p.closed ? 'reopen' : 'close the poll'}</button>` : '';
+      const where = ctx.where ? `<div class="pwhere">${esc(ctx.shown(p.by))} asked in <a href="/moods/${esc(p.mood)}/#m-${esc(p.id)}">#${esc(p.mood)}</a>${ctx.stamp ? ' · ' + esc(ctx.stamp(p.created_at)) : ''}</div>` : '';
+      return `<div class="pollcard" data-poll="${esc(p.id)}" data-mood="${esc(p.mood)}">${where}`
+        + `<div class="pq">🗳 ${p.question_html}</div>${p.detail_html ? `<div class="pdetail">${p.detail_html}</div>` : ''}`
+        + `<ul>${rows}</ul><div class="pfoot"><span>${counted}</span>${state}${button}</div></div>`;
+    }
+    async function send(card, what, body, csrf) {
+      const r = await fetch(`/api/moods/${encodeURIComponent(card.dataset.mood)}/messages/${encodeURIComponent(card.dataset.poll)}/${what}/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify(body || {}) });
+      const got = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(got.error || r.status);
+      return got.poll;
+    }
+    // Votes and closes from any card under root; each answer, the poll as it now stands, to took(poll).
+    function bind(root, csrf, took, failed) {
+      root.addEventListener('click', async e => {
+        const card = e.target.closest('.pollcard');
+        if (!card) return;
+        const choice = e.target.closest('.pchoice:not(:disabled)'), close = e.target.closest('.pclose');
+        if (!choice && !close) return;
+        e.preventDefault();
+        try {
+          took(choice ? await send(card, 'vote', { choice: choice.dataset.choice }, csrf) : await send(card, 'close-poll', null, csrf));
+        } catch (err) { failed((choice ? 'vote: ' : 'poll: ') + err.message); }
+      });
+    }
+    return { html, bind };
+  })();
+</script>

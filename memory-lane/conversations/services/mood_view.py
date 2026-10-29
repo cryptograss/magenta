@@ -419,8 +419,15 @@ def reply_to(text):
 def snippet_of(text):
     """A message's first words as a line of plain text: links as their words, an image as 🖼,
     code and voice blocks left out -- for a reply's quote and a linked message's card."""
+    from . import polls
     from .handoff import split as split_handoffs
     from .voice import split_voices
+    try:
+        poll = polls.parse(text) if polls.is_poll(text) else None
+    except polls.Refused:
+        poll = None
+    if poll:  # a poll as its question, not its command
+        text = '🗳 ' + poll['question']
     text, _ = split_voices(text or '')
     text, _ = split_handoffs(text)
     text = re.sub(r'```.*?(```|$)', ' ', text, flags=re.S)
@@ -1270,7 +1277,22 @@ def turn_payload(msg, text, mentionable=()):
         # Its links, which can be put on Tidings, and the one that is (services/tiding_links.py).
         'links': tiding_links.links_in(said),
         'tidings': tiding_links.by_message().get(str(msg.id), []),
+        # A poll (services/polls.py): drawn as its card, its votes from the Mood's 'polls'.
+        'poll': poll_of(said, mentionable),
     }
+
+
+def poll_of(text, mentionable=()):
+    """A poll's question and choices, as its card shows them; None for a message that isn't one."""
+    from . import polls
+    if not polls.is_poll(text):
+        return None
+    try:
+        found = polls.parse(text)
+    except polls.Refused:
+        return None
+    return {'question_html': render_html(found['question'], mentionable), 'choices': found['choices'],
+            'detail_html': render_html(found['detail'], mentionable) if found['detail'] else ''}
 
 
 # --- activity: what an agent is doing right now ------------------------------

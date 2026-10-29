@@ -1300,6 +1300,7 @@
   }
   /* Signed in, you are who you are: no need to choose whose view to see. */
 </style>
+{% include "conversations/poll_card.html" %}
 </head>
 <body{% if initial_section and initial_section != "moods" %} class="in-section"{% endif %}>
 {% include "conversations/install_prompt.html" with nudge_only_asked=True %}
@@ -1311,7 +1312,7 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <span class="block" id="block" title="Ethereum mainnet's block height"></span>
@@ -1347,6 +1348,7 @@
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
       <a class="settings" href="/moods/status/" data-section="status" title="Emergents in every Mood, servers, backups, people, versions">status</a>
       <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
+      <a class="settings" href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
       <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
@@ -2886,7 +2888,7 @@
       // A follow-on message: ↩ 🙂 ⋯ as a toolbar on hover; its (edited) under its words, always in view.
       + (cont && (replyBtn || reactBtn || moreBtn) ? `<span class="acts">${replyBtn}${reactBtn}${moreBtn}</span>` : '')
       + (t.deleted ? `<div class="body gone"${versions}${seeThem ? ` title="${esc(seeThem.slice(2))}"` : ''}>message deleted by ${esc(shown(t.deleted.by))} · ${esc(stamp(t.deleted.at))}</div>`
-                   : `<div class="body">${t.html}</div>`)
+                   : t.poll ? '<div class="body poll"></div>' : `<div class="body">${t.html}</div>`)
       + (cont ? edited : '');
     if (t.deleted) el.classList.add('deleted');
     el._text = t.text;
@@ -2916,6 +2918,11 @@
     if (t.is_human && viewer && t.sender === viewer && !t.deleted && /🎙 \[voice memo[^\]]*\]\([^)]*\)\n\n\(not transcribed: /.test(t.text || '')) {
       el.querySelector('.body').insertAdjacentHTML('beforeend',
         `<button type="button" class="hearagain" data-id="${esc(t.id)}" title="Ask for its words again; they take the place of this note, as an edit (which wakes no one)">↻ hear it again</button>`);
+    }
+    if (t.poll && !t.deleted) {  // its card, with no votes until the Mood's polls say otherwise
+      el.querySelector(':scope > .body.poll')._asked = { id: t.id, mood: current, by: t.sender, closed: null, ...t.poll,
+        choices: t.poll.choices.map(text => ({ text, votes: [] })) };
+      renderPoll(el);
     }
     el.insertAdjacentHTML('beforeend', '<div class="reacts"></div>');
     renderReacts(el, reactionsNow[t.id] || {});
@@ -2947,6 +2954,27 @@
       + `<span class="txt"><b>${esc(c.title)}</b>${c.description ? `<span class="desc">${esc(c.description)}</span>` : ''}`
       + `<small>${esc(c.site)}</small></span></a>`).join('') + '</div>');
   }
+  // --- polls (services/polls.py): a /poll message is drawn as its card (poll_card.html); each look at the
+  // Mood brings every poll's votes, and a vote or a close answers with that poll as it now stands.
+  let pollsNow = {};
+  const pollCtx = { human: n => human[n] !== false, color: n => agentColor(n), shown: n => shown(n), stamp: iso => stamp(iso),
+                    get viewer() { return viewer; }, get admin() { return viewerAdmin; } };
+  function renderPoll(el) {
+    const box = el.querySelector(':scope > .body.poll');
+    if (!box || !box._asked) return;
+    const p = pollsNow[el.dataset.id] || box._asked;
+    const key = JSON.stringify(p);
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.innerHTML = pollCards.html(p, pollCtx);
+  }
+  pollCards.bind(document, csrf, poll => {
+    if (!poll) return;
+    pollsNow[poll.id] = poll;
+    const el = document.getElementById('m-' + poll.id);
+    if (el) renderPoll(el);
+    refreshSection('polls');
+  }, showError);
   // --- every emoji Unicode has (/api/emoji/, tools/emoji_data.py; Justin, 25 Oct: "the full unicode gamut"):
   // asked for once, the first time it's wanted. A picker -- search, Unicode's groups, your skin tone, the ones
   // you used lately -- for reactions (＋ after the quick ten) and the composer (🙂); and :name finds them all.
@@ -4989,6 +5017,8 @@
     renderPins(data.pins || []);
     reactionsNow = data.reactions || {};
     turnsEl.querySelectorAll('.turn[data-id]').forEach(el => renderReacts(el, reactionsNow[el.dataset.id] || {}));
+    pollsNow = data.polls || {};
+    turnsEl.querySelectorAll('.turn[data-id] > .body.poll').forEach(b => renderPoll(b.parentElement));
     const items = itemsOf(data);
     if (full) {
       firstId = items.length ? items[0].v.id : null;
@@ -5913,7 +5943,7 @@
     }
     if (at.kind === 'command') {
       choices = SLASH_COMMANDS.filter(([name]) => name.startsWith(at.prefix))
-        .map(([name, form, what]) => ({ insert: name + ' ', html: `<span class="emo">${name === 'clips' ? '🎬' : '⚙️'}</span><b>${esc(form)}</b><small>${esc(what)}</small>` }));
+        .map(([name, form, what]) => ({ insert: name + ' ', html: `<span class="emo">${name === 'clips' ? '🎬' : name === 'poll' ? '🗳' : '⚙️'}</span><b>${esc(form)}</b><small>${esc(what)}</small>` }));
     } else if (at.kind === 'command-agent') {
       // Which agents it's for: one, or several with commas; then (for /compact) what to keep.
       choices = people.filter(p => !p.is_human && p.name.startsWith(at.prefix)).map(p => p.name).sort()
@@ -7915,7 +7945,7 @@
   // --- one page: the Moods, and tidings, prompts, status and settings beside them -------------------
   // Each section is its own page, loaded into a frame the first time it's shown and kept: going back and
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
-  const SECTIONS = ['tidings', 'prompts', 'status', 'settings'];
+  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
   // A section drawn again behind the scenes when what it shows has changed (a promotion here, a comment or a
   // link from someone else): a fresh frame loads hidden and takes the old one's place once it's in, so

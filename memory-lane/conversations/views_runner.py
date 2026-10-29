@@ -35,7 +35,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import ConversationParticipant, Message, Mood, MoodSession, ThinkingEntity
-from .services import reactions
+from .services import polls, reactions
 
 SOURCE = 'mood-runner'  # rows are filed as 'ingest-mood-runner'
 MAX_EVENTS = 500
@@ -197,6 +197,8 @@ def api_stream(request, slug):
     if imported:
         clips_played(session_id, agent)
         reactions.agent_reacted(session_id, agent)
+        polls.polls_posted(session_id, agent)
+        polls.agent_voted(session_id, agent)
     effort = str(body.get('effort') or '')
     if re.fullmatch(r'[a-z]{2,12}', effort):
         Message.objects.filter(session_id=session_id, sender_id=agent, model_backend__isnull=False,
@@ -258,6 +260,8 @@ def stream_events(mood, session_id, agent, body, asked=()):
     if imported:
         clips_played(session_id, agent)
         reactions.agent_reacted(session_id, agent)
+        polls.polls_posted(session_id, agent)
+        polls.agent_voted(session_id, agent)
     if turn.finished:
         finish_turn(mood, session_id, agent, turn.finished, asked)
     return JsonResponse({'imported': imported, 'skipped': skipped, 'ignored': ignored, 'errors': errors[:10],

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>polls · magenta</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
+    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --code: #f3efe8;
+    --ok: #2e9e5b; --warn: #d48806; --err: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
+            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --code: #29252c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--bg); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex-wrap: wrap; }
+  header .brand { font-weight: 700; color: var(--accent); text-decoration: none; }
+  header nav { display: flex; gap: 12px; font-size: 13px; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  header nav a:hover, header nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+  main { max-width: 960px; margin: 0 auto; padding: 18px 16px 60px; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  h2 { font-size: 15.5px; margin: 28px 0 10px; }
+  .lede { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
+  .lede code { background: var(--code); padding: 0 4px; border-radius: 4px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); align-items: start; }
+  .grid .pollcard { max-width: none; }
+  .none { color: var(--muted); font-size: 13px; }
+  #err { color: var(--err); font-size: 13px; }
+</style>
+{% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
+     goes there, which opens it without loading anything again. -->
+<style>body > header { display: none; }</style>
+<script>
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
+    const to = new URL(a.href, location.href);
+    if (to.origin !== location.origin) { a.target = '_top'; return; }
+    if (to.pathname === location.pathname && to.hash) return;  // within this page
+    e.preventDefault();
+    parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
+  });
+</script>{% endif %}
+{% include "conversations/poll_card.html" %}
+</head>
+<body>
+<header>
+  <a class="brand" href="/moods/">magenta</a>
+  <nav>
+    <a href="/moods/status/">status</a>
+    <a href="/moods/tidings/">tidings</a>
+    <a href="/moods/polls/" aria-current="page">polls</a>
+    <a href="/moods/prompts/">prompts</a>
+    <a href="/moods/settings/">settings</a>
+  </nav>
+</header>
+<main>
+  <h1>Polls &amp; Plebiscites</h1>
+  <p class="lede">Every Mood's polls, open ones first. Ask one in any Mood: <code>/poll Ship it tonight? | yes | no | wait</code>
+    (an <code>@core</code> in the question tells everyone with a key). Votes are named; agents vote too, and their share of each bar is striped.
+    Whoever asked closes it.</p>
+  <div id="err" role="alert"></div>
+  <h2 id="openHead" hidden>Open</h2>
+  <div class="grid" id="open"></div>
+  <h2 id="closedHead" hidden>Closed</h2>
+  <div class="grid" id="closed"></div>
+  <p class="none" id="none" hidden>No polls yet. Ask the first one in any Mood with <code>/poll</code>.</p>
+</main>
+<script>
+  // Drawn from /api/polls/, and again every little while and after each vote: what everyone chose, as it stands.
+  const csrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1] || '';
+  // Each agent in its colour, as moods.html's agentColor has them.
+  const AGENT_COLORS = { magent: '#ff67fd', re: '#ff3c00', blu: '#1976d2' };
+  const AGENT_PALETTE = ['#1f8a70', '#c77c02', '#5b5bd6', '#0b7fab', '#8e5a2b', '#6b8e23'];
+  let state = { polls: [], wiki_names: {}, humans: [], viewer: '', admin: false };
+  const ctx = {
+    human: n => state.humans.includes(n), shown: n => state.wiki_names[n] || n,
+    get viewer() { return state.viewer; }, get admin() { return state.admin; },
+    color: n => AGENT_COLORS[n] || AGENT_PALETTE[[...n].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % AGENT_PALETTE.length],
+    stamp: iso => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    where: true,
+  };
+  function draw() {
+    const open = state.polls.filter(p => !p.closed), shut = state.polls.filter(p => p.closed);
+    document.getElementById('open').innerHTML = open.map(p => pollCards.html(p, ctx)).join('');
+    document.getElementById('closed').innerHTML = shut.map(p => pollCards.html(p, ctx)).join('');
+    document.getElementById('openHead').hidden = !open.length;
+    document.getElementById('closedHead').hidden = !shut.length;
+    document.getElementById('none').hidden = !!state.polls.length;
+  }
+  async function load() {
+    try {
+      const r = await fetch('/api/polls/');
+      if (!r.ok) throw new Error(r.status);
+      state = await r.json();
+      document.getElementById('err').textContent = '';
+      draw();
+    } catch (e) { document.getElementById('err').textContent = 'cannot reach memory-lane: ' + e.message; }
+  }
+  pollCards.bind(document, csrf, poll => {
+    if (!poll) return;
+    state.polls = state.polls.map(p => p.id === poll.id ? poll : p);
+    draw();
+  }, message => { document.getElementById('err').textContent = message; });
+  load();
+  setInterval(() => { if (!document.hidden) load(); }, 15000);
+</script>
+</body>
+</html>
