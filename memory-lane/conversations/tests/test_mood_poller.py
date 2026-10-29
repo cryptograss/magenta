@@ -1021,6 +1021,40 @@ class HandedLedgerTest(TestCase):
         self.assertIn('Salty Dog first.', waker.woken[0][1])
 
 
+class DegradedLineTest(TestCase):
+    """The poller says in the Mood when its agent's bundle degrades: once, and again only on a change or a fix."""
+
+    def test_said_once_per_change_and_kept_in_state(self):
+        class API(FakeAPI):
+            said = []
+
+            def degraded(inner, slug, lines):
+                inner.said.append((slug, list(lines)))
+                return True
+        api = API()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': T0.isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(api, FakeWaker(), state_path=state, now=lambda: T0)
+        wrong = ['standing (GeneralOrders): HTTP 503, since 2026-10-29T12:00Z; the copy read here stands']
+        poller.say_degraded('m26', wrong)
+        poller.say_degraded('m26', wrong)        # the next wake, same trouble: no call
+        poller.say_degraded('m26', wrong + ['moods: HTTP 503, since 2026-10-29T12:10Z; left out'])
+        poller.say_degraded('m26', [])           # fixed
+        poller.say_degraded('m26', [])
+        self.assertEqual([len(l) for _, l in api.said], [1, 2, 0])
+        self.assertEqual(poller.state['degraded'], {'m26': []})
+
+    def test_a_failed_call_is_no_reason_to_stall_and_is_tried_again(self):
+        class API(FakeAPI):
+            def degraded(inner, slug, lines):
+                raise OSError('maybelle away')
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': T0.isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(API(), FakeWaker(), state_path=state, now=lambda: T0)
+        poller.say_degraded('m26', ['x'])
+        self.assertEqual(poller.state['degraded'], {})  # not recorded as said, so the next wake says it
+
+
 class DefaultsTest(TestCase):
 
     def test_eight_turns_at_once_by_default(self):

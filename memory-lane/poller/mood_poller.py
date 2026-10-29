@@ -234,6 +234,14 @@ class MoodAPI:
                                   headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
         return response.status_code == 200
 
+    def degraded(self, slug, lines):
+        """Say how the agent's instructions here stand: degraded, with the bundle's lines, or whole ([])."""
+        if not self.key:
+            return False
+        response = self.http.post(f'{self.base}/api/moods/{slug}/degraded/', json={'lines': list(lines)},
+                                  headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
+        return response.status_code == 200
+
     def held(self, slug, reason, until=None):
         """Say the agent's next turn in `slug` is held, and why; no reason lifts it."""
         if not self.key:
@@ -1592,6 +1600,7 @@ class MoodPoller:
         self.state.setdefault('waited', [])   # mention ids waited on already: waiting again needs one at work
         self.state.setdefault('wait_also', {})  # slug -> agents an answer waited for handed it on to
         self.state.setdefault('handed', {})   # slug -> handoff event ids shown to the agent there (handed_events)
+        self.state.setdefault('degraded', {})  # slug -> the degraded lines last said there (say_degraded)
         self.replies = {}      # flight -> what its turn replied, for after it lands
         self.wait_notes = {}   # slug -> what the next wake there says of the wait that ended
         self.end_orphans = end_orphans
@@ -2113,8 +2122,11 @@ class MoodPoller:
             # carries it instead.
             b = bundle(self.agent, slug, record_id=record_id, others=self.other_agents(), parent=self.thread_of(slug))
             text, record = b.text, b.record()
+            self.say_degraded(slug, b.degraded)
         except Exception as e:  # noqa: BLE001 -- the wiki, the cache, anything: the recovery instructions stand
             logger.error(f'{slug}: instructions not gathered ({e}); the recovery instructions stand in')
+            self.say_degraded(slug, [f'instructions not gathered: {type(e).__name__}: {e}'[:300]
+                                     + '; the recovery instructions stand in'])
             recovery = Path(__file__).with_name('recovery_instructions.md')
             words = recovery.read_text() if recovery.exists() else 'Your instructions could not be gathered.'
             text = (f'<instructions agent="{self.agent}" mood="{slug}">\n<recovery>\n{words}\n'
@@ -2125,6 +2137,18 @@ class MoodPoller:
         record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit,
                       block=block if isinstance(block, int) else None)
         return text, record
+
+    def say_degraded(self, slug, lines):
+        """One plain line in the Mood for the people there when the bundle degrades, said again only when what's
+        wrong changes or it's fixed (the server keeps that rule too; this spares it the call on every wake)."""
+        lines = list(lines)
+        if self.dry_run or self.state['degraded'].get(slug, []) == lines:
+            return
+        try:
+            if self.api.degraded(slug, lines):
+                self.state['degraded'][slug] = lines
+        except Exception as e:  # noqa: BLE001 -- a line for people is never a reason to stall the wake
+            logger.warning(f'{slug}: could not say the instructions are {"degraded" if lines else "whole"}: {e}')
 
     @staticmethod
     def turn_line(record):
