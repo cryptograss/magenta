@@ -1090,9 +1090,39 @@ def notices_for(name, since, limit=NOTICES_MAX, everything=False):
             found.append({'kind': 'said', 'from': by, 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
         if len(found) >= limit:
             break
+    if len(found) >= limit:
+        # Agents' answers can fill the cap in minutes (Justin: 100 in under an hour), and a person's
+        # @mention from before them was cut and never told (29 Oct: Skyler's to Justin). Mentions
+        # are what the bell is for: the rest of the window, only posts that could mention anyone.
+        from django.db.models import Q, TextField
+        from django.db.models.functions import Cast
+        older = (messages.filter(created_at__lt=parse_datetime(found[-1]['turn']['created_at']))
+                 .annotate(t=Cast('content', TextField())).filter(Q(t__contains='@') | Q(t__contains='↩')))
+        mentions = []
+        for msg in older.iterator():
+            if msg.sender_id not in names or msg.sender_id == name:
+                continue
+            text = prose(msg.content)
+            if text and not is_wrapper(text) and not is_summary(msg) and name in addressed_in(text, names, by=msg.sender_id):
+                mentions.append({'kind': 'mention', 'from': 'agent' if msg.sender_id in agents else 'person',
+                                 'mood': msg.mood_slug, 'turn': turn_payload(msg, text, names)})
+                if len(mentions) >= limit:
+                    break
+        # Mentions first, then the newest of the rest, to the cap.
+        kept = [n for n in found if n['kind'] == 'mention'] + mentions
+        rest = [n for n in found if n['kind'] != 'mention']
+        found = kept + rest[:max(0, limit - len(kept))]
     found += talk_page_notices(name, since)
     found.sort(key=lambda n: n['turn']['created_at'], reverse=True)
-    return found[:limit]
+    return found if len(found) <= limit else _mentions_first(found, limit)
+
+
+def _mentions_first(found, limit):
+    """At most `limit`, newest first, keeping every mention and talk-page note there's room for."""
+    told = [n for n in found if n['kind'] in ('mention', 'talk')][:limit]
+    keep = {id(n) for n in told}
+    keep |= {id(n) for n in [n for n in found if id(n) not in keep][:limit - len(told)]}
+    return [n for n in found if id(n) in keep]
 
 
 def talk_page_notices(name, since):
