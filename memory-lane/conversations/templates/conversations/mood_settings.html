@@ -82,6 +82,7 @@
   table.history th { color: var(--muted); font-weight: 600; }
   table.history td.value { font-family: ui-monospace, monospace; word-break: break-word; max-width: 420px; }
   @media (max-width: 720px) { .row { grid-template-columns: 1fr; } .help { margin-left: 0; } }
+  .offered { align-self: start; }
   .offered summary { cursor: pointer; }
   .offered summary h2 { display: inline; }
   .offered .makers { display: flex; flex-wrap: wrap; gap: 4px 12px; }
@@ -111,17 +112,13 @@
   <h1>Settings</h1>
   <p class="lede">The most specific setting wins: one emergent in one Mood, then everyone in that Mood, then the emergent
     everywhere, then the defaults. Grey italic values are inherited. Set a model or effort for an emergent in every Mood at once at the top;
-    dig into one emergent below. Every change is kept at the bottom, with who made it.</p>
+Every change is kept at the bottom, with who made it.</p>
   <div id="scram"></div>
   <h3>Set a model magenta-wide for:</h3>
   <div class="cards" id="models">Loading…</div>
   <h3>Emergent defaults</h3>
   <p class="note">Each emergent in every Mood and thread, new ones included, unless that Mood sets its own.</p>
   <div class="defaults-wrap"><table class="defaults" id="defaults"></table></div>
-  <h3>One emergent</h3>
-  <p class="pick-line"><label for="pickAgent">showing</label> <select id="pickAgent"></select>
-    <label class="note"><input type="checkbox" id="allMoods"> every Mood, not only where it differs</label></p>
-  <div class="defaults-wrap" id="cards">Loading…</div>
   <h3>For all emergents together</h3>
   <div class="cards" id="global"></div>
   <h3 id="voices">Voices: who is read in which</h3>
@@ -282,20 +279,7 @@
     }).join('');
   }
 
-  let picked = null;  // which emergent the Mood cards show, kept across saves
-  // One emergent (Justin, 29 Oct: "too crazy"): a table, a row per Mood, and only the Moods where
-  // something is set for it there (or for everyone there) unless every Mood is asked for.
-  let allMoods = false;
-  function agentView(a) {
-    const keys = Object.keys(state.knobs).filter(k => !IN_THE_MOOD.includes(k)
-      && (a === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k)));
-    const differs = m => keys.some(k => setHere(m.slug, a, k) || setHere(m.slug, null, k));
-    const moods = state.moods.filter(m => allMoods || differs(m));
-    if (!moods.length) return `<p class="note">${esc(a)} is at its emergent defaults in every Mood.</p>`;
-    const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
-    return `<table class="defaults">${head}` + moods.map(m => `<tr><td class="who" title="${esc(m.title)}">#${esc(m.slug)}</td>`
-      + keys.map(k => `<td>${field(k, state.resolved[m.slug][a][k], m.slug, a, true)}</td>`).join('') + '</tr>').join('') + '</table>';
-  }
+
 
 
   function render() {
@@ -306,11 +290,6 @@
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
     document.getElementById('models').innerHTML = modelRows();
     document.getElementById('defaults').innerHTML = defaultsTable();
-    const picker = document.getElementById('pickAgent');
-    if (!picked) picked = state.agents[0] || '';
-    picker.innerHTML = state.agents.map(a => `<option value="${esc(a)}" ${a === picked ? 'selected' : ''}>${esc(a)}</option>`).join('')
-      || '<option value="">nobody</option>';
-    document.getElementById('cards').innerHTML = picked ? agentView(picked) : 'No emergents yet.';
     document.getElementById('global').innerHTML = [`<div class="card"><h2>Budget</h2><div class="sub">for all emergents together</div>`
       + `<div class="row"><label title="${esc(state.global_knobs.consider_usd_per_day.help)}">$ a day</label>`
       + `<span><input type="number" min="0" step="0.5" data-key="consider_usd_per_day" data-mood="" data-agent="" value="${esc(state.global.consider_usd_per_day)}" ${viewer ? '' : 'disabled'}><span class="status"></span></span></div></div>`,
@@ -482,14 +461,6 @@
   });
   document.addEventListener('click', e => { if (e.target.id === 'setWide') setWide(); });
   document.addEventListener('toggle', e => { if (e.target.id === 'offered') offeredOpen = e.target.open; }, true);
-  document.getElementById('allMoods').addEventListener('change', e => {
-    allMoods = e.target.checked;
-    document.getElementById('cards').innerHTML = picked ? agentView(picked) : '';
-  });
-  document.getElementById('pickAgent').addEventListener('change', e => {
-    picked = e.target.value;
-    document.getElementById('cards').innerHTML = picked ? agentView(picked) : '';
-  });
   load();
 })();
 </script>
