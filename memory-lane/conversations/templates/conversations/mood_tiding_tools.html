@@ -22,7 +22,16 @@
   function tidingSays(near, text) {
     const note = document.createElement('span');
     note.className = 'tidingerr';
-    note.textContent = text;
+    if (/^sign in\b/.test(text)) {  // logged out: the refusal itself is the door (Justin, 29 Oct)
+      const rest = text.replace(/^sign in\s*/, '');
+      const a = document.createElement('a');
+      a.href = '/moods/';
+      a.textContent = 'sign in';
+      note.appendChild(a);
+      note.append(rest ? ' ' + rest : ' to vote');
+    } else {
+      note.textContent = text;
+    }
     near.after(note);
     setTimeout(() => note.remove(), 6000);
   }
