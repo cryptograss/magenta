@@ -29,6 +29,9 @@
   .line.out { opacity: 0; }
   .enter { display: inline-block; margin-top: 26px; padding: 9px 26px; border-radius: 22px; border: 1px solid var(--accent);
            color: var(--ink); font-size: 16px; }
+  .doors { margin-top: 26px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 12px; }
+  .doors .come { flex-basis: 100%; color: var(--muted); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+  .doors .enter { margin-top: 0; min-width: 7.5em; }
   .enter:hover { background: rgba(239, 90, 166, .14); text-decoration: none; }
   .now { display: grid; grid-template-columns: 1.4fr 1fr; gap: 26px; }
   @media (max-width: 680px) { .now { grid-template-columns: 1fr; } h1 { font-size: 38px; } .mark { width: 132px; height: 132px; } }
@@ -70,7 +73,12 @@
     <div class="mark" role="img" aria-label="magenta: pickers in a ring around a campfire"></div>
     <h1>magenta</h1>
     <p class="line" id="slogan" title="From Magenta:Slogans on PickiPedia: add yours">{{ slogan }}</p>
-    <a class="enter" href="/moods/tidings/">come in →</a>
+    <!-- Two doors, one welcome (Justin, 29 Oct: most people missed the Moods behind a door to Tidings). -->
+    <div class="doors">
+      <span class="come">come in</span>
+      <a class="enter" href="/moods/tidings/">tidings →</a>
+      <a class="enter" href="/moods/">moods →</a>
+    </div>
   </section>
 
   <h2 class="latest">latest</h2>
