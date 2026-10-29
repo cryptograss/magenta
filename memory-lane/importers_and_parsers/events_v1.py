@@ -153,8 +153,12 @@ class Turn:
         return self.row(Message, event, sender, event.get('text', ''), recipient=self.agent)
 
     def assistant_message(self, event):
+        # How it stopped (Pi says so since magenta#206): 'tool_use' is a line said on the way to a tool call, which the
+        # page folds under the steps it led to, as Claude Code's are (Justin, 28 Oct: Pi's showed as answers).
+        stop = event.get('stop_reason')
+        stop = {'stop_reason': stop} if stop in ('tool_use', 'end_turn', 'max_tokens', 'error') else {}
         return self.row(Message, event, self.agent, [{'type': 'text', 'text': event.get('text', '')}],
-                        model_backend=event.get('model'), **usage_fields(event.get('usage')))
+                        model_backend=event.get('model'), **stop, **usage_fields(event.get('usage')))
 
     def reasoning(self, event):
         block = {'type': 'thinking', 'thinking': event.get('text', ''), 'signature': event.get('signature', '')}

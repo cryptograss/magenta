@@ -208,6 +208,11 @@ class Invalid(ValueError):
     pass
 
 
+# A room's pace, the same for every emergent in it (Justin, 29 Oct): one default, and a Mood's own.
+# Set for one emergent, these are refused, and rows from before are passed over.
+PACE_KEYS = ('consider_after', 'idle_after', 'considers_per_hour')
+
+
 def default(key):
     return (KNOBS.get(key) or GLOBAL_KNOBS.get(key) or MOOD_KEYS.get(key) or PERSON_KEYS.get(key) or (None,))[0]
 
@@ -381,6 +386,8 @@ def resolve(mood, agent, now=None, rows=None):
     for key, (fallback, _) in KNOBS.items():
         value = fallback
         for slot in ((mood_id, agent_id), (mood_id, None), (None, agent_id), (None, None)):
+            if key in PACE_KEYS and slot[1] is not None:
+                continue
             row = current.get((*slot, key))
             if row is not None:
                 value = row.value
@@ -487,6 +494,8 @@ def change(key, value, mood=None, agent=None, by=None, note=''):
         raise Invalid(f'{key} applies everywhere at once')
     if key in MOOD_KEYS and (mood is None or agent is not None):
         raise Invalid(f'{key} is set for one Mood, not for an agent')
+    if key in PACE_KEYS and agent is not None:
+        raise Invalid(f'{key} is a Mood\'s pace, the same for every emergent in it')
     if key in PERSON_KEYS and (agent is None or mood is not None):
         raise Invalid(f'{key} is set for one person or agent, everywhere')
     return Setting.objects.create(mood=mood, agent=agent, key=key, value=clean(key, value), set_by=by,

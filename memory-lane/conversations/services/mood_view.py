@@ -76,6 +76,14 @@ _WAIT = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"(?:\s+to="([^"<>]{0,200
 # An agent taking a question that asked several of them (poller _TAKE_REPLY): a claim, shown as a line ("magent is
 # taking the redeploy question", Justin, 27 Oct), never an answer; its answer follows in its next turn.
 _TAKE = re.compile(r'^\s*<take\s+to="([^"<>]{1,200})"\s*/>\s*$')
+# A look-only turn asking for its full tools (Justin, 28 Oct: "{emergent} requested tools for {purpose}"): a line in
+# the Mood, and 🔨 by its title in the Moods list until a full-tools turn of that emergent there (services/tools_ask.py).
+_TOOLS = re.compile(r'^\s*<tools\s+to="([^"<>]{1,200})"\s*/>\s*$')
+# The same shape, other asks (Justin, 29 Oct): <merge to="…"/> -> a merge asked of a person (🔀),
+# <deploy to="…"/> -> a redeploy (🔄). Both posted as a line in the Mood and an icon by its title,
+# as the tools ask is, until the event lands (a full-tools wake, a merged event, a deploy event).
+_MERGE = re.compile(r'^\s*<merge\s+to="([^"<>]{1,200})"\s*/>\s*$')
+_DEPLOY = re.compile(r'^\s*<deploy\s+to="([^"<>]{1,200})"\s*/>\s*$')
 
 
 def quiet_reason(text):
@@ -86,6 +94,21 @@ def quiet_reason(text):
         tail = _QUIET_TAIL.match(text or '')
         if tail:
             return {'reason': (tail.group(2) or '').strip(), 'by': '', 'thought': tail.group(1).strip()}
+        tools = _TOOLS.match(text or '')
+        if tools:
+            to = tools.group(1).split()
+            return {'reason': 'requested tools for ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10]),
+                    'by': '', 'type': 'tools'}
+        merge = _MERGE.match(text or '')
+        if merge:
+            to = merge.group(1).split()
+            return {'reason': 'requested a merge for ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10]),
+                    'by': '', 'type': 'merge'}
+        deploy = _DEPLOY.match(text or '')
+        if deploy:
+            to = deploy.group(1).split()
+            return {'reason': 'requested a redeploy of ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'of', 'for') else to)[:10]),
+                    'by': '', 'type': 'deploy'}
         take = _TAKE.match(text or '')
         if take:
             to = take.group(1).split()
@@ -419,8 +442,15 @@ def reply_to(text):
 def snippet_of(text):
     """A message's first words as a line of plain text: links as their words, an image as 🖼,
     code and voice blocks left out -- for a reply's quote and a linked message's card."""
+    from . import polls
     from .handoff import split as split_handoffs
     from .voice import split_voices
+    try:
+        poll = polls.parse(text) if polls.is_poll(text) else None
+    except polls.Refused:
+        poll = None
+    if poll:  # a poll as its question, not its command
+        text = '🗳 ' + poll['question']
     text, _ = split_voices(text or '')
     text, _ = split_handoffs(text)
     text = re.sub(r'```.*?(```|$)', ' ', text, flags=re.S)
@@ -967,6 +997,12 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
             return ('compaction', msg, text)
         if is_wrapper(text):
             return None
+        # Only a ```handoff block: it went to another Mood, and its line here (handoff-sent) says so. An empty
+        # turn beside it said nothing (Justin, 29 Oct: blu's and re's handoffs to #emergence, blank posts).
+        if '```handoff' in text or '```settings' in text:  # a ```settings block, too: machinery
+            from .handoff import split as split_handoffs
+            if not split_handoffs(text)[0].strip():
+                return None
         return ('turn', msg, text)
 
     if limit is None:
@@ -1270,7 +1306,22 @@ def turn_payload(msg, text, mentionable=()):
         # Its links, which can be put on Tidings, and the one that is (services/tiding_links.py).
         'links': tiding_links.links_in(said),
         'tidings': tiding_links.by_message().get(str(msg.id), []),
+        # A poll (services/polls.py): drawn as its card, its votes from the Mood's 'polls'.
+        'poll': poll_of(said, mentionable),
     }
+
+
+def poll_of(text, mentionable=()):
+    """A poll's question and choices, as its card shows them; None for a message that isn't one."""
+    from . import polls
+    if not polls.is_poll(text):
+        return None
+    try:
+        found = polls.parse(text)
+    except polls.Refused:
+        return None
+    return {'question_html': render_html(found['question'], mentionable), 'choices': found['choices'],
+            'detail_html': render_html(found['detail'], mentionable) if found['detail'] else ''}
 
 
 # --- activity: what an agent is doing right now ------------------------------
@@ -1415,6 +1466,40 @@ def set_held(slug, agent, reason, until=None, now=None):
     return holds
 
 
+# The runner says, every RUNNING_EVERY seconds, which of its agents' turns is still running in a
+# Mood (mood_poller.MoodPoller.run_turn_once). The record alone can't: a tool call that runs half an
+# hour writes nothing, and past ACTIVITY_WINDOW its streak read as a session that died -- magent's
+# Playwright call on 28 Oct hung 30 minutes and the Mood showed nobody at work (Justin, #usage).
+# Ephemeral, like a hold: it lapses unless renewed, so a runner that dies leaves no ghost at work.
+RUNNING_FOR = 300  # seconds a turn is taken as running after the runner last said so
+
+
+def _running_key(slug):
+    return f'running:{slug}'
+
+
+def running_in(slug, now=None):
+    """agent -> {'since', 'at'} for each turn its runner says is still running here."""
+    from django.core.cache import cache
+    import time
+    now = now or time.time()
+    return {agent: r for agent, r in (cache.get(_running_key(slug)) or {}).items() if now - r['at'] < RUNNING_FOR}
+
+
+def set_running(slug, agent, since=None, now=None):
+    """`agent`'s turn in `slug` is running, since `since` (epoch seconds); None says it has ended."""
+    from django.core.cache import cache
+    import time
+    now = now or time.time()
+    running = running_in(slug, now)
+    if since is not None:
+        running[agent] = {'since': since, 'at': now}
+    else:
+        running.pop(agent, None)
+    cache.set(_running_key(slug), running, RUNNING_FOR)
+    return running
+
+
 def activity(mood, now=None, only=None):
     """What an agent in this Mood is doing now, or None: see _activity.
     Someone stopping the agent since that began ends it at once, without
@@ -1534,13 +1619,21 @@ def _activity(mood, now=None, only=None):
         if hold and hold['at'] >= _when(newest):
             return {'agent': named[0], 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
                     'since': _when(newest)}
+        alive = running_in(mood.slug, now).get(named[0])
+        if alive and alive['since'] <= _when(newest):
+            # Posted while its turn was already running: it's at work on that, not waking for this.
+            return {'agent': named[0], 'doing': 'still at work', 'since': alive['since']}
         if now - _when(newest) > ACTIVITY_WINDOW:
             return None
         # "@magent /compact" runs the command, not a turn: say what's happening.
         return {'agent': named[0], 'doing': command_doing(prose(newest.content), named[0]) or 'waking',
                 'since': _when(newest)}
 
-    if now - _when(newest) > ACTIVITY_WINDOW:
+    # Quiet past the window is a session that died -- unless its runner says the turn is still running
+    # (a tool call that takes half an hour writes nothing while it runs).
+    stale = now - _when(newest) > ACTIVITY_WINDOW
+    alive = running_in(mood.slug, now) if stale else {}
+    if stale and not alive:
         return None
     # A runner writes what a turn came to once it has ended, and nothing of a
     # turn is after that. Most turns end on a line that says so too, but a
@@ -1588,7 +1681,7 @@ def _activity(mood, now=None, only=None):
         # Asked about one agent, lines nobody can say are its are not its turn. (Once, the first agent
         # by name took them: magent, then blu -- and re's wake read as blu thinking, Justin, 21 Oct.)
         agent = owner or (None if only else sorted(agents or {'magent'})[0])
-    if agent is None or (only and agent != only):
+    if agent is None or (only and agent != only) or (stale and agent not in alive):
         return None
     how = next((how_payload(m) for m in streak if m.sender_id in agents and m.model_backend), {'model': '', 'effort': ''})
     start = streak[-1]
@@ -1604,7 +1697,10 @@ def _activity(mood, now=None, only=None):
                     .order_by('-created_at').first())
         if boundary is not None:
             start = mine.filter(created_at__gt=boundary.created_at).order_by('created_at').first() or start
-    return {'agent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v}}
+    # Which tools this turn has, as its wake said (Justin, 29 Oct: 🔨 by a pulsing name in the list).
+    tools = next((said for said in (wake_said(prose(m.content) or '') for m in streak if m.sender_id == WAKE_SENDER) if said), '')
+    return {'agent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v},
+            **({'tools': tools} if tools else {})}
 
 
 # --- background tasks an agent is supervising ------------------------------
@@ -1705,6 +1801,11 @@ def last_said(mood, scan=200):
     return oldest  # nothing said in the latest `scan` rows: as good a guess as any
 
 
+def mood_description(mood):
+    from .mood_doc import description
+    return description(mood)
+
+
 def mood_payload(mood, light=False):
     """A Mood as the page shows it. `light`: its name and description only, for a poll for what's new -- the
     count of everything it ever said, and everyone who ever spoke there, read the whole of a big Mood, and a
@@ -1712,7 +1813,10 @@ def mood_payload(mood, light=False):
     head = {
         'slug': mood.slug,
         'title': mood.title or mood.slug,
-        'description': mood.description,
+        # Its document's first paragraph (services/mood_doc.py), what its emergents read; else the one kept here.
+        'description': mood_description(mood),
+        # Where to change it: the one document, on PickiPedia.
+        'document': f"{pickipedia_url()}/wiki/Cryptograss:Moods/{mood.slug}/Instructions",
         'eth_blockheight': mood.eth_blockheight,
     }
     if light:

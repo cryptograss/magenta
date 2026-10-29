@@ -97,6 +97,18 @@
   header .status.live::before { color: #2e9e5b; }
   header .status.stale::before { color: #d08b00; }
   header .account { position: relative; }
+  header .bellwrap { position: relative; }
+  #bellBtn { position: relative; border: 0; background: none; font-size: 16px; padding: 2px 4px; cursor: pointer; line-height: 1; }
+  #bellBtn.off .ring { opacity: .45; }
+  #bellBtn .badge { position: absolute; top: -5px; right: -7px; min-width: 15px; padding: 0 4px; font-size: 10px; line-height: 15px; }
+  #bellMenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 230px; max-width: 320px; background: var(--panel);
+              border: 1px solid var(--line); border-radius: 10px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 13.5px; }
+  #bellMenu[hidden] { display: none; }
+  #bellList a { display: flex; justify-content: space-between; gap: 10px; padding: 5px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; }
+  #bellList a:hover { background: var(--hover); }
+  #bellList .none { color: var(--muted); padding: 4px 6px; }
+  #bellMenu .belltoggle { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+  #bellMenu #notify { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
   #userBtn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 14px; padding: 1px 10px;
              font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
   #userBtn:hover { border-color: var(--accent); }
@@ -122,16 +134,15 @@
   #userMenu label.only { display: none; }
   body.has-me #userMenu label.only { display: flex; }
   body.writer #userMenu label.me { display: none; }
-  #userMenu #notify { border: 0; background: none; font: inherit; cursor: pointer; }
-  /* Alerts: a sound, and the bell for every message, as this browser's person chose. */
-  #userMenu #alerts { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-                      margin: 4px 0; padding-top: 8px; padding-bottom: 8px; }
-  #userMenu #alerts[hidden] { display: none; }
-  #userMenu #alerts .head { color: var(--ink); font-size: 12px; font-weight: 600; margin-top: 2px; }
-  #userMenu #alerts .hint { color: var(--muted); font-size: 12px; }
-  #userMenu #alerts .hint[hidden] { display: none; }
-  #userMenu #alerts.bell-off [data-tell] { opacity: .5; }  /* chosen, but nothing tells until the bell's on */
-  #userMenu #alerts label[hidden] { display: none; }
+  /* Alerts: a sound, and the bell for every message, as this browser's person chose; in the bell's menu (Justin, 29 Oct). */
+  #bellMenu #alerts { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); margin-top: 6px; padding: 6px 6px 0; }
+  #bellMenu #alerts label { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; font-size: 12.5px; }
+  #bellMenu #alerts[hidden] { display: none; }
+  #bellMenu #alerts .head { color: var(--ink); font-size: 12px; font-weight: 600; margin-top: 2px; }
+  #bellMenu #alerts .hint { color: var(--muted); font-size: 12px; }
+  #bellMenu #alerts .hint[hidden] { display: none; }
+  #bellMenu #alerts.bell-off [data-tell] { opacity: .5; }  /* chosen, but nothing tells until the bell's on */
+  #bellMenu #alerts label[hidden] { display: none; }
   /* The servers: four dots, pulsing while one is being redeployed. */
   .servers { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
   .servers .srv { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
@@ -349,8 +360,13 @@
   nav a.mood .meta { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
   nav a.mood .people-line:empty { display: none; }
   nav a.mood .people-line .hears { font-size: .85em; margin-left: 1px; }  /* listening by voice (services/listening.py) */
+  nav a.mood .people-line .tooled { font-size: .8em; margin-left: 2px; }
+  /* Who asked for tools here: a dot of each one's colour by the 🔨 (Justin, 29 Oct). */
+  nav a.mood .toolsask { display: inline-flex; align-items: center; gap: 2px; }
+  nav a.mood .toolsask .askdot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
   header .block { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
+  nav a.mood .toolsask { font-size: 12px; margin-left: 4px; }
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
 {% include "conversations/name_art_css.html" %}
   #lookBox .paint { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0 4px; user-select: none; touch-action: none; }
@@ -452,6 +468,11 @@
   .mood-head .thread button:hover, .mood-head button.newthread:hover, .mood-head .macts button.closethread:hover { color: var(--accent); border-color: var(--accent); }
   #newBox .forkchoice { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
   #newBox .forkchoice[hidden] { display: none; }
+  /* Its closed threads, to read or open again (Justin, 29 Oct): a new one of the same name is a new Mood. */
+  #closedThreads { margin-top: 4px; color: var(--muted); }
+  #closedThreads[hidden] { display: none; }
+  #closedThreads .ct { display: flex; gap: 6px; align-items: baseline; }
+  #closedThreads .ct button { font-size: 12px; padding: 0 6px; }
 
   /* What was said, at its own size: --text-scale is the reader's choice (the menu's text size), apart from zoom. */
   :root { --text-base: 15px; --text-scale: 1; }
@@ -535,7 +556,9 @@
   header .auth { font-size: 13px; color: var(--muted); }
   header .preview { font-size: 12px; font-weight: 600; color: var(--warn-ink); background: var(--warn-bg); border-radius: 4px; padding: 1px 8px; }
   header .auth a { color: var(--muted); }
-  #footer { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); }
+  /* Above the sticky ▶ and ⏩ (z-index 3 on a touch screen), which otherwise
+     scroll over the message box. Skyler, 2026-10-28. */
+  #footer { position: sticky; bottom: 0; z-index: 4; background: var(--bg); border-top: 1px solid var(--line); }
   /* Up and down a message at a time, at the right of the thread. */
   /* Two pairs: every message (right), people's messages only (left, with a person on them). */
   /* Tight little tabs in the right margin; the thread keeps a gutter clear of them (main, below). */
@@ -581,6 +604,18 @@
   #search select, #search button { font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: 6px;
                                    background: var(--panel); color: var(--ink); }
   #search button { cursor: pointer; padding: 0 9px; }
+  #search .bar.opts { padding-top: 0; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
+  #search .bar.opts select { min-width: 0; padding: 3px 4px; }
+  #search .bar.opts label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  #search .bar.opts input { flex: none; }
+  #qresults .more { display: block; margin: 10px auto; padding: 4px 12px; }
+  /* Reaching back to a message not yet drawn: a spinner over the thread until it's there. */
+  #reaching { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px;
+              pointer-events: none; z-index: 30; color: var(--muted); font-size: 14px; }
+  #reaching[hidden] { display: none; }
+  #reaching .spin { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent);
+                    border-radius: 50%; animation: spin .8s linear infinite; }
+  #reaching span { background: var(--panel); padding: 4px 10px; border-radius: 12px; border: 1px solid var(--line); }
   #qresults { overflow-y: auto; flex: 1; }
   #qresults .hit { display: block; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--muted);
                    text-decoration: none; font-size: 12.5px; }
@@ -922,6 +957,15 @@
   #tasks .task::before { content: '⚙ '; }
   #tasks .task.helper::before { content: '✦ '; }
   #typing { display: none; padding: 2px 16px 0; font-size: 12px; color: var(--muted); }
+  /* A request for tools still open here, at the bottom where it's seen (Justin, 29 Oct), not only where it was said. */
+  #toolsOpen { padding: 2px 16px 0; font-size: 12px; color: var(--muted); }
+  #toolsOpen:empty { display: none; }
+  #toolsOpen a { color: inherit; cursor: pointer; text-decoration: none; }
+  #toolsOpen a:hover b { text-decoration: underline; }
+  /* An ask (<tools/>, <merge/>, <deploy/>): its own message in the thread, not a dim meta-line (Justin, 29 Oct). */
+  .waitline.request { border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; background: var(--panel); color: var(--ink); }
+  .waitline.request .askmark { font-size: 11px; }
+  .waitline.request time { color: var(--muted); }
   #typing.on { display: block; }
 
   /* An agent's tool calls between its words: one line, opened on demand. */
@@ -1177,6 +1221,8 @@
   /* Mode: just its sign, closed; the menu open says the rest (1hr and such) (Justin, 27 Oct). */
   .hush select[data-knob="listening"] { width: 3.2em; }
   .hush .agentgrid .cell { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .hush .pace { flex-basis: 100%; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .hush .pace input { width: 4.5em; font-size: 12px; }
   .hush .agentgrid .heads { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
   .hush .agentgrid .heads .cell[title] { cursor: help; }
   /* Folded, all the agents are one line: each one's pie, model and effort in its colour; ▸ opens their menus. */
@@ -1235,6 +1281,8 @@
   #todoBody .head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   #todoBody .head b { flex: 1; }
   #todoBody .head a { color: var(--muted); font-size: 12px; }
+  #todoBody .head b a { color: inherit; font-size: inherit; text-decoration: none; }
+  #todoBody .head b a:hover { text-decoration: underline; }
   #todoBody .head button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; }
   #todoBody .note { color: var(--muted); font-size: 12.5px; margin: 0 0 8px; }
   #todoBody .note:empty { display: none; }
@@ -1298,6 +1346,7 @@
   }
   /* Signed in, you are who you are: no need to choose whose view to see. */
 </style>
+{% include "conversations/poll_card.html" %}
 </head>
 <body{% if initial_section and initial_section != "moods" %} class="in-section"{% endif %}>
 {% include "conversations/install_prompt.html" with nudge_only_asked=True %}
@@ -1309,7 +1358,7 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <span class="block" id="block" title="Ethereum mainnet's block height"></span>
@@ -1318,6 +1367,22 @@
   <button id="searchBtn" type="button" title="Search what was said (/)">⌕</button>
   <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
   <span class="status" id="status" title="connecting…"></span>
+  <!-- The bell, out front with what's waiting for you (Justin, 29 Oct): mentions of you and answers to you, by Mood. -->
+  <span class="bellwrap" id="bellWrap" hidden>
+    <button id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span></button>
+    <div id="bellMenu" hidden><div id="bellList"></div><div class="belltoggle"><button id="notify" type="button" hidden aria-label="Notifications"></button></div>
+      <div id="alerts" hidden>
+        <span class="head">Sounds</span>
+        <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
+        <label><input type="checkbox" data-sound="agent-mention"> emergents mentioning me</label>
+        <label><input type="checkbox" data-sound="person"> every message from people</label>
+        <label><input type="checkbox" data-sound="agent"> every message from emergents</label>
+        <span class="head" id="tellHead">Notifications</span>
+        <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
+        <label><input type="checkbox" data-tell="person"> every message from people</label>
+        <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
+      </div></div>
+  </span>
   <span class="account">
     <button id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"></button>
     <div id="userMenu" hidden>
@@ -1325,17 +1390,6 @@
       <label class="me">viewing as <select id="me"><option value="">nobody</option></select></label>
       <label class="only"><input type="checkbox" id="onlyMine"> only mentions of me</label>
       <span class="textsize">text size <button type="button" data-step="-1" aria-label="Smaller text">A−</button><span id="textSizeVal">100%</span><button type="button" data-step="1" aria-label="Larger text">A+</button></span>
-      <div id="alerts" hidden>
-        <span class="head">Sounds</span>
-        <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
-        <label><input type="checkbox" data-sound="agent-mention"> emergents mentioning me</label>
-        <label><input type="checkbox" data-sound="person"> every message from people</label>
-        <label><input type="checkbox" data-sound="agent"> every message from emergents</label>
-        <span class="head" id="tellHead">Notifications <button id="notify" type="button" hidden aria-label="Notifications"></button></span>
-        <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
-        <label><input type="checkbox" data-tell="person"> every message from people</label>
-        <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
-      </div>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an emergent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
       <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
       <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: emergents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
@@ -1345,7 +1399,9 @@
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
       <a class="settings" href="/moods/status/" data-section="status" title="Emergents in every Mood, servers, backups, people, versions">status</a>
       <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
+      <a class="settings" href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
       <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
+      <a href="https://pickipedia.xyz/wiki/Magenta:Help" target="_blank" rel="noopener" title="How magenta works: Magenta:Help on PickiPedia">help</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
@@ -1377,7 +1433,9 @@
 </form>
 <form id="renameBox" hidden>
   <input id="renameTitle" maxlength="200" aria-label="Title" placeholder="Title">
-  <textarea id="renameDesc" rows="2" maxlength="2000" aria-label="Description" placeholder="What it's about (optional)"></textarea>
+  <!-- Its description and instructions are one document, on PickiPedia (Justin, re and magent, 29 Oct): its first paragraph is
+       what this page shows, and the whole is what its emergents read -- a trusted editor's revision, never this box. -->
+  <a id="renameDoc" class="hint" target="_blank" rel="noopener">Its description and instructions: one page on PickiPedia →</a>
   <span><button type="submit">Rename</button> <button type="button" id="renameCancel">Cancel</button>
     <button type="button" id="archiveBtn" class="archive" title="Out of the Moods list, into Archived. It stays readable, its sessions and container untouched, and a mention there is still answered.">Archive</button>
     <button type="button" id="pinBtn" class="archive" title="At the top of the Moods list, for everyone">Pin</button></span>
@@ -1424,8 +1482,10 @@
     <span class="hint" id="newThreadOf"></span>
     <label><input type="radio" name="threadKind" value="fork" checked> <span id="forkWords"></span></label>
     <label><input type="radio" name="threadKind" value="fresh"> <span id="freshWords"></span></label>
+    <div id="closedThreads" hidden></div>
   </div>
   <span class="hint" id="newHint"></span>
+  <span class="hint" id="newTaken" hidden></span>
   <span><button type="submit">Start</button> <button type="button" id="newCancel">Cancel</button></span>
 </form>
 <form id="closeBox" hidden>
@@ -1439,11 +1499,16 @@
 <div id="search" hidden role="search">
   <div class="bar">
     <input id="q" type="search" placeholder="Search what was said" aria-label="Search what was said" autocomplete="off">
-    <select id="qscope" aria-label="Where"><option value="here">this Mood</option><option value="all">all Moods</option></select>
     <button type="button" id="qclose" aria-label="Close search">close</button>
+  </div>
+  <div class="bar opts">
+    <select id="qscope" aria-label="Where"><option value="here">this Mood</option><option value="threads">this Mood and its threads</option><option value="all">all Moods</option></select>
+    <select id="qwho" aria-label="Said by"><option value="">anyone</option><option value="human">humans</option><option value="emergent">emergents</option></select>
+    <label title="Only where each term is a word of its own"><input type="checkbox" id="qword"> whole words</label>
   </div>
   <div id="qresults"></div>
 </div>
+<div id="reaching" hidden><div class="spin"></div><span>finding it…</span></div>
 <!-- Tidings, prompts, status and settings: each its own page, loaded once and kept, beside the Moods. -->
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
@@ -1454,6 +1519,7 @@
     <div id="footer">
     <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
+    <div id="toolsOpen"></div>
     <div id="typing"></div>
     <div id="tasks"></div>
     <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button><button type="button" id="voiceModeBtn" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧</button></div>
@@ -1477,7 +1543,7 @@
         <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
         <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
         <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
-        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @agents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
+        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
@@ -1489,7 +1555,7 @@
   <aside id="todo" hidden aria-label="To do">
     <button type="button" id="todoTab" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
     <div id="todoBody">
-      <div class="head"><b>To do</b><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
+      <div class="head"><b><a id="todoPage" target="_blank" rel="noopener" title="The list's page on PickiPedia">To do</a></b><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
       <p class="note" id="todoNote"></p>
       <ul id="todoList"></ul>
       <details id="todoDone"><summary></summary><ul></ul></details>
@@ -1608,6 +1674,12 @@
   // The same, as an attribute for drawn HTML: --who, which the stylesheet's agent names and margins take.
   const whoStyle = name => ` style="--who: ${agentColor(name)}"`;
 
+  // Open asks (services/tools_ask.py): <tools/> 🔨 full tools, <merge/> 🔀 a merge, <deploy/> 🔄 a redeploy.
+  // The word after "requested" and "for/of" sets `line`; the emoji shows by the Mood's name until answered.
+  const ASK_EMOJI = { tools: '🔨', merge: '🔀', deploy: '🔄' };
+  const askLine = t => `${esc(shown(t.agent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
+    : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
+
   // How long an ask of the server may take before it's given up (and asked again
   // at the next tick), and when a poll still out counts as hung (poll).
   const POLL_WAIT_MS = 20000, POLL_STALE_MS = 30000;
@@ -1624,10 +1696,13 @@
   let people = [];          // everyone who can be named, for @-completion
   let groups = [];          // tags for a group (@core: everyone who signs in with an SSH key)
   let human = {};           // name -> is a person
+  const powers = {};        // emergent -> {for, short}: what its own page says it is for
+  const pronounsOf = {};    // name -> their pronouns, as they set them on PickiPedia (none: nothing shown, never a guess)
   let looks = {};           // name -> {art, colour}: a person's name written their way, and their icon's colour
   let act = null;           // what an agent is doing now, from /turns/: the one stop and Esc stop
   let acts = [];            // every agent at work here, longest at it first (mood_view.activities)
   let typingNow = [];       // who else is typing here, from /turns/
+  let recordingNow = [];    // of them, who's recording a voice memo
 
   const ICONS = {
     human: '<svg class="ico" viewBox="0 0 16 16" aria-label="person"><circle cx="8" cy="4.6" r="3"/><path d="M2.2 15c0-3.4 2.6-5.6 5.8-5.6s5.8 2.2 5.8 5.6z"/></svg>',
@@ -1714,7 +1789,9 @@
   function renderNav() {
     const item = ([m, depth]) => `
       <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && !m.forked_at ? ' fresh' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
-        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
+        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.asked || []).length
+          ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${m.asked.map(t => ASK_EMOJI[t.kind] || '🔨').join('')}${
+              m.asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
@@ -1760,13 +1837,16 @@
     const listening = new Map((d.listening || []).map(who => [who.name, who.everywhere]));
     const names = [...new Set([...busy, ...typing, ...d.speakers,
                                ...[...listening].filter(([, everywhere]) => !everywhere).map(([name]) => name)])];
-    return { names, active: new Set([...typing, ...busy]), listening };
+    // A turn with its full tools: 🔨 by the pulsing name (Justin, 29 Oct).
+    const tooled = new Set((slug === current ? acts : (d.activities || [])).filter(a => a.doing !== 'held' && a.tools === 'full').map(a => a.agent));
+    return { names, active: new Set([...typing, ...busy]), listening, tooled };
   }
   function peopleLine(slug) {
-    const { names, active, listening } = aroundIn(slug);
+    const { names, active, listening, tooled } = aroundIn(slug);
     // At work, an agent pulses in its own colour (Justin, 21 Oct); a person, typing, as written their way.
     return names.map(n => `<span class="nm${active.has(n) ? ' live' : ''}" data-who="${esc(n)}"`
       + `${active.has(n) && human[n] === false ? ` style="color: ${agentColor(n)}"` : ''}>${nameHtml(n)}</span>`
+      + (tooled.has(n) ? `<span class="tooled" title="${esc(shown(n))} is at work with its full tools">🔨</span>` : '')
       + (listening.has(n) ? `<span class="hears" title="${esc(shown(n))} is listening by voice, ${listening.get(n) ? 'to every Mood' : 'to this Mood'}">🎧</span>` : '')).join(', ')
       + watchingIn(slug);
   }
@@ -1776,12 +1856,13 @@
   // and who signed in from it lately.
   let watchersNow = null;
   function watchingIn(slug) {
-    const here = slug === current && watchersNow;
+    const here = slug === current && watchersNow && watchersNow.slug === slug;  // never the Mood just left's (Justin, 29 Oct)
     const n = here ? watchersNow.here : ((liveData[slug] || {}).watching || 0);
     if (!n) return '';
     const who = here && watchersNow.who ? watchersNow.who.filter(x => x.mood === slug) : [];
     const title = `${n} reading without signing in, in the last minute or so`
-      + (who.length ? '\n\n' + who.map(x => [x.ip, x.place, x.browser, `for ${elapsed(x.since)}`].filter(Boolean).join(' · ')
+      // In whole minutes: a title that changed every second was redrawn under the pointer, and its hover never showed.
+      + (who.length ? '\n\n' + who.map(x => [x.ip, x.place, x.browser, `for ${Math.max(1, Math.round((Date.now() / 1000 - x.since) / 60))}m`].filter(Boolean).join(' · ')
            + ((x.known || []).length ? `\n    signed in from there lately: ${x.known.join(', ')}` : '')).join('\n')
            + (who.some(x => x.place) ? '\n\nPlaces: IP Geolocation by DB-IP (db-ip.com), roughly' : '') : '');
     return ` <span class="watching" title="${esc(title)}">👁 ${n}</span>`;
@@ -1790,7 +1871,16 @@
     nav.querySelectorAll('a.mood').forEach(a => {
       const line = a.querySelector('.people-line');
       const html = peopleLine(a.dataset.slug);
-      if (line && line.innerHTML !== html) line.innerHTML = html;
+      if (!line || line._html === html) return;  // what was drawn, not innerHTML: the browser writes some of it back differently
+      // Only the 👁's count or hover changed: that, in place, so a hover under way isn't torn down.
+      const eye = /<span class="watching"[^>]*>[^<]*<\/span>/, was = line.querySelector('.watching');
+      if (was && line._html && eye.test(html) && line._html.replace(eye, '') === html.replace(eye, '')) {
+        const t = document.createElement('div'); t.innerHTML = html;
+        const now = t.querySelector('.watching');
+        if (was.title !== now.title) was.title = now.title;
+        if (was.textContent !== now.textContent) was.textContent = now.textContent;
+      } else line.innerHTML = html;
+      line._html = html;
     });
   }
   async function refreshLive() {
@@ -1898,6 +1988,7 @@
     todoEl.querySelector('#todoTab .n').textContent = open.length || '';
     todoEl.querySelector('#todoTab').setAttribute('aria-label', `To do: ${open.length} open`);
     document.getElementById('todoEdit').href = t.edit;
+    document.getElementById('todoPage').href = t.exists ? t.page : t.edit;  // its page, in one click (Justin, 29 Oct)
     document.getElementById('todoNote').textContent = t.error ? `The list couldn't be read: ${t.error}.`
       : !t.exists ? 'No list here yet: "edit" starts one on PickiPedia, as YAML between <todo> tags ("- task: ...").'
       : !t.items.length ? 'Nothing to do.' : '';
@@ -1957,7 +2048,8 @@
   if (store.get('todoOpen', false) && !matchMedia(PHONE).matches) todoEl.classList.add('open');
   document.getElementById('todoTab').addEventListener('click', () => openTodo(true));
   document.getElementById('todoClose').addEventListener('click', () => openTodo(false));
-  document.getElementById('todoEdit').addEventListener('click', () => { todoShown = null; });  // back from editing: ask afresh
+  document.getElementById('todoEdit').addEventListener('click', () => { todoShown = null; });
+  document.getElementById('todoPage').addEventListener('click', () => { todoShown = null; });  // back from editing: ask afresh
   setInterval(() => loadTodo(), 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadTodo(todoShown === null); });
 
@@ -2211,7 +2303,9 @@
   // be read -- by ▶, ⏩, or reading as they come -- and a falling one when reading aloud has read all
   // there is and is still listening for more. Made here as WAV, and played through the reader itself,
   // so they sound wherever reading does, a locked phone too.
-  const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]] };
+  const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]],
+                        tick: [[1760, .035]] };  // "still coming": the tiniest sound (Justin, 28 Oct)
+  const CHIME_GAIN = { tick: .07 };
   const chimeUrls = {};
   function chimeUrl(kind) {
     if (chimeUrls[kind]) return chimeUrls[kind];
@@ -2222,7 +2316,7 @@
       const n = Math.floor(rate * len);
       for (let i = 0; i < n && at + i < pcm.length; i++) {
         const swell = Math.min(1, i / (rate * .005)) * Math.exp(-4 * i / n);  // a soft start, a bell's fall
-        pcm[at + i] = Math.round(Math.sin(2 * Math.PI * freq * i / rate) * swell * .35 * 32767);
+        pcm[at + i] = Math.round(Math.sin(2 * Math.PI * freq * i / rate) * swell * (CHIME_GAIN[kind] || .35) * 32767);
       }
       at += n;
     }
@@ -2881,9 +2975,10 @@
       // A follow-on message: ↩ 🙂 ⋯ as a toolbar on hover; its (edited) under its words, always in view.
       + (cont && (replyBtn || reactBtn || moreBtn) ? `<span class="acts">${replyBtn}${reactBtn}${moreBtn}</span>` : '')
       + (t.deleted ? `<div class="body gone"${versions}${seeThem ? ` title="${esc(seeThem.slice(2))}"` : ''}>message deleted by ${esc(shown(t.deleted.by))} · ${esc(stamp(t.deleted.at))}</div>`
-                   : `<div class="body">${t.html}</div>`)
+                   : t.poll ? '<div class="body poll"></div>' : `<div class="body">${t.html}</div>`)
       + (cont ? edited : '');
     if (t.deleted) el.classList.add('deleted');
+    markEmoji(el.querySelector('.body'));
     el._text = t.text;
     el._links = t.links || []; el._tidings = t.tidings || [];
     el.dataset.sender = t.sender;
@@ -2911,6 +3006,11 @@
     if (t.is_human && viewer && t.sender === viewer && !t.deleted && /🎙 \[voice memo[^\]]*\]\([^)]*\)\n\n\(not transcribed: /.test(t.text || '')) {
       el.querySelector('.body').insertAdjacentHTML('beforeend',
         `<button type="button" class="hearagain" data-id="${esc(t.id)}" title="Ask for its words again; they take the place of this note, as an edit (which wakes no one)">↻ hear it again</button>`);
+    }
+    if (t.poll && !t.deleted) {  // its card, with no votes until the Mood's polls say otherwise
+      el.querySelector(':scope > .body.poll')._asked = { id: t.id, mood: current, by: t.sender, closed: null, ...t.poll,
+        choices: t.poll.choices.map(text => ({ text, votes: [] })) };
+      renderPoll(el);
     }
     el.insertAdjacentHTML('beforeend', '<div class="reacts"></div>');
     renderReacts(el, reactionsNow[t.id] || {});
@@ -2942,9 +3042,68 @@
       + `<span class="txt"><b>${esc(c.title)}</b>${c.description ? `<span class="desc">${esc(c.description)}</span>` : ''}`
       + `<small>${esc(c.site)}</small></span></a>`).join('') + '</div>');
   }
+  // --- polls (services/polls.py): a /poll message is drawn as its card (poll_card.html); each look at the
+  // Mood brings every poll's votes, and a vote or a close answers with that poll as it now stands.
+  let pollsNow = {};
+  const pollCtx = { human: n => human[n] !== false, color: n => agentColor(n), shown: n => shown(n), stamp: iso => stamp(iso),
+                    get viewer() { return viewer; }, get admin() { return viewerAdmin; } };
+  function renderPoll(el) {
+    const box = el.querySelector(':scope > .body.poll');
+    if (!box || !box._asked) return;
+    const p = pollsNow[el.dataset.id] || box._asked;
+    const key = JSON.stringify(p);
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.innerHTML = pollCards.html(p, pollCtx);
+  }
+  pollCards.bind(document, csrf, poll => {
+    if (!poll) return;
+    pollsNow[poll.id] = poll;
+    const el = document.getElementById('m-' + poll.id);
+    if (el) renderPoll(el);
+    refreshSection('polls');
+  }, showError);
   // --- every emoji Unicode has (/api/emoji/, tools/emoji_data.py; Justin, 25 Oct: "the full unicode gamut"):
   // asked for once, the first time it's wanted. A picker -- search, Unicode's groups, your skin tone, the ones
   // you used lately -- for reactions (＋ after the quick ten) and the composer (🙂); and :name finds them all.
+  // An emoji says its name on hover (Justin, 29 Oct): each in a message marked at drawing (markEmoji), its name
+  // looked up the first time one is pointed at; a reaction's chip says it before who reacted.
+  const EMOJI_RUN = /\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*|[\u{1F1E6}-\u{1F1FF}]{2}/gu;
+  function markEmoji(root) {
+    if (!root) return;
+    const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n =>
+      n.parentElement.closest('pre, code, .emo') ? NodeFilter.FILTER_REJECT : new RegExp(EMOJI_RUN.source, 'u').test(n.data) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP });
+    const found = [];
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) found.push(n);
+    for (const n of found) {
+      const frag = document.createDocumentFragment();
+      let at = 0;
+      n.data.replace(EMOJI_RUN, (e, i) => {
+        frag.append(n.data.slice(at, i));
+        const span = document.createElement('span'); span.className = 'emo'; span.dataset.e = e; span.textContent = e;
+        frag.append(span); at = i + e.length; return e;
+      });
+      frag.append(n.data.slice(at));
+      n.replaceWith(frag);
+    }
+  }
+  function emojiName(e) {
+    const base = e.replace(/[\u{1F3FB}-\u{1F3FF}]/gu, '');
+    return emojiData && emojiData.then(d => {
+      const hit = d.list.find(item => item.e === e || item.e === base || item.e.replace(/\uFE0F/g, '') === base.replace(/\uFE0F/g, ''));
+      return hit ? hit.name : '';
+    });
+  }
+  document.addEventListener('pointerover', async e => {
+    const el = e.target.closest && e.target.closest('.body .emo[data-e], .chip[data-emoji]');
+    if (!el || el.dataset.named) return;
+    el.dataset.named = '1';
+    try { allEmoji(); } catch (err) { return; }
+    const name = await (emojiName(el.dataset.e || el.dataset.emoji) || Promise.resolve(''));
+    if (!name) return;
+    el.title = el.dataset.e ? name : `${name} · ${el.title}`;
+  });
+
   let emojiData = null;
   function allEmoji() {
     if (!emojiData) {
@@ -3715,7 +3874,7 @@
   document.addEventListener('click', async e => {
     if (e.target.closest('#rename')) {
       document.getElementById('renameTitle').value = headMood.title;
-      document.getElementById('renameDesc').value = headMood.description || '';
+      document.getElementById('renameDoc').href = headMood.document || '#';
       document.getElementById('archiveBtn').textContent = isArchived(current) ? 'Unarchive' : 'Archive';
       document.getElementById('pinBtn').textContent = isPinned(current) ? 'Unpin' : 'Pin';
       renameBox.hidden = false;
@@ -3745,12 +3904,30 @@
       document.getElementById('newHint').hidden = !!newBox._threadOf;
       document.getElementById('newThreadOf').innerHTML = newBox._threadOf ? said('thread-of', { mood: `<b>#${esc(newBox._threadOf)}</b>` }) : '';
       newBox.querySelector('input[name=threadKind][value=fork]').checked = true;
+      const closed = newBox._threadOf ? ((headMood || {}).threads || []).filter(t => isArchived(t.slug)) : [];
+      const ct = document.getElementById('closedThreads');
+      ct.hidden = !closed.length;
+      ct.innerHTML = closed.length ? 'Or open again one closed here, as it was:'
+        + closed.map(t => `<div class="ct"><a href="/moods/${encodeURIComponent(t.slug)}/">#${esc(t.slug)}</a>`
+          + `<span>${esc(t.title && t.title !== t.slug ? t.title : '')}</span>`
+          + `<button type="button" class="reopenthread" data-slug="${esc(t.slug)}">reopen</button></div>`).join('') : '';
       document.getElementById('newTitle').placeholder = newBox._threadOf ? 'What the thread is about' : 'What the new Mood is about';
       newBox.querySelector('button[type=submit]').textContent = newBox._threadOf ? 'Open the thread' : 'Start';
       document.getElementById('newTitle').value = '';
       document.getElementById('newDesc').value = '';
+      document.getElementById('newTaken').hidden = true;
       newBox.hidden = false;
       document.getElementById('newTitle').focus();
+    } else if (e.target.closest('#newBox .reopenthread')) {
+      const slug = e.target.closest('.reopenthread').dataset.slug;
+      const r = await fetch(`/api/moods/${encodeURIComponent(slug)}/archive/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ archived: false }),
+      });
+      if (!r.ok) { showError('reopen: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+      newBox.hidden = true;
+      await loadMoods();
+      open(slug, true);
     } else if (e.target.closest('.mood-head .closethread') && !isArchived(current)) {
       // Closing: optionally handed to the Mood it came from, to incorporate -- "/incorporate #<it>" posted there,
       // and the handoff agent writes the one full account (Justin, 27 Oct: one agent, not each of them).
@@ -3843,13 +4020,27 @@
   });
   newBox.addEventListener('submit', async e => {
     e.preventDefault();
+    // Once: a second click while the first is on its way opened a twin (#how_i_speak-2, 27 Oct).
+    const go = newBox.querySelector('button[type=submit]');
+    if (go.disabled) return;
+    go.disabled = true;
     const r = await fetch('/api/moods/new/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ title: document.getElementById('newTitle').value,
                              description: document.getElementById('newDesc').value,
                              ...(newBox._threadOf ? { thread_of: newBox._threadOf,
                                  fork: newBox.querySelector('input[name=threadKind]:checked').value === 'fork' } : {}) }),
-    });
+    }).finally(() => { go.disabled = false; });
+    if (r.status === 409) {
+      // A name is had once, open or closed (Justin, 29 Oct): say whose, and offer a closed one back.
+      const j = await r.json().catch(() => ({}));
+      const taken = document.getElementById('newTaken');
+      taken.innerHTML = esc(j.error || 'that name is taken') + (j.closed && j.taken
+        ? ` <button type="button" class="reopenthread" data-slug="${esc(j.taken)}">reopen #${esc(j.taken)}</button>` : '');
+      taken.hidden = false;
+      document.getElementById('newTitle').focus();
+      return;
+    }
     if (!r.ok) { showError((newBox._threadOf ? 'thread: ' : 'new Mood: ') + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     const made = await r.json();
     newBox.hidden = true;
@@ -3860,8 +4051,7 @@
     e.preventDefault();
     const r = await fetch(`/api/moods/${encodeURIComponent(current)}/rename/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ title: document.getElementById('renameTitle').value,
-                             description: document.getElementById('renameDesc').value }),
+      body: JSON.stringify({ title: document.getElementById('renameTitle').value }),
     });
     if (!r.ok) { showError('rename: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     const named = await r.json();
@@ -3874,6 +4064,24 @@
   });
 
   function addQuiet(q, container) {
+    // An ask (<tools/>, <merge/>, <deploy/>, Justin, 28 Oct-29 Oct): its own visible message in the thread --
+    // "re requested tools for push the fix" at its place, a link by its name in the list until someone does it.
+    // It carries the row's own id, so the notice under the composer can link straight to it (Justin, 29 Oct).
+    if (q.by !== 'screen' && (q.type === 'tools' || q.type === 'merge' || q.type === 'deploy'
+                              || /^requested (?:tools for|a merge for|a redeploy of) /.test(q.reason || ''))) {
+      if (container._held) delete container._held[q.sender];
+      const line = document.createElement('div');
+      line.className = 'waitline request';
+      line.id = 'm-' + q.id;
+      line.style.setProperty('--who', agentColor(q.sender));
+      line.innerHTML = `<span class="askmark">${ASK_EMOJI[q.type] || '🔨'}</span>${icon(q.sender, false)}<b>${esc(q.sender)}</b> `
+        + `<span class="wait-verb">${esc(q.reason)}</span>`
+        + ` · <a class="msglink" href="#m-${esc(q.id)}" data-mood="${esc(current)}" data-reveal="${esc(q.id)}"`
+        + ` title="Link to this ask">#m-${esc(String(q.id).slice(0, 8))}</a>`
+        + ` <time title="${esc(stamp(q.created_at))}">${esc(new Date(q.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</time>`;
+      container.appendChild(line);
+      return;
+    }
     // Taking a question that asked several (the poller's <take/>): a line, "magent is taking the redeploy
     // question", that reads "took" once its answer lands (resolveTakes).
     if (q.by !== 'screen' && (q.type === 'take' || /^taking /.test(q.reason || ''))) {
@@ -4366,9 +4574,11 @@
     moods = body.moods;
     people = body.people || [];
     groups = body.groups || [];
-    people.forEach(p => { human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
+    people.forEach(p => { if (p.for) powers[p.name] = { for: p.for, short: p.for_short || p.for };
+                          if (p.pronouns) pronounsOf[p.name] = p.pronouns;
+                          human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
-    renderMe();
+    renderMe(); renderAsksOpen();
     renderNav();
   }
 
@@ -4386,7 +4596,37 @@
   function countBadges() {
     badges = {};
     for (const [slug, ids] of Object.entries(unread)) if (ids.size) badges[slug] = ids.size;
+    renderBellCount();
   }
+  // The bell's number: everything waiting for you, every Mood; its menu, which Moods.
+  const bellBtn = document.getElementById('bellBtn'), bellMenu = document.getElementById('bellMenu');
+  function renderBellCount() {  // called early (renderBell, at load): its elements by id, not the consts below
+    const bellBtn = document.getElementById('bellBtn'), bellMenu = document.getElementById('bellMenu');
+    document.getElementById('bellWrap').hidden = !me;
+    const total = Object.values(badges).reduce((a, b) => a + b, 0);
+    const count = document.getElementById('bellCount');
+    count.hidden = !total; count.textContent = total > 99 ? '99+' : total;
+    bellBtn.classList.toggle('off', typeof notifying === 'function' && !notifying());
+    bellBtn.title = total ? `${total} for you: mentions and answers` : 'Nothing new for you';
+    if (!bellMenu.hidden) renderBellList();
+  }
+  function renderBellList() {
+    const rows = Object.entries(badges).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
+    document.getElementById('bellList').innerHTML = rows.length
+      ? rows.map(([slug, n]) => `<a href="/moods/${encodeURIComponent(slug)}/" data-mood="${esc(slug)}"><span>#${esc((moods.find(m => m.slug === slug) || {}).title || slug)}</span><span class="badge">${n}</span></a>`).join('')
+      : '<div class="none">Nothing new for you.</div>';
+  }
+  bellBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    bellMenu.hidden = !bellMenu.hidden;
+    bellBtn.setAttribute('aria-expanded', String(!bellMenu.hidden));
+    if (!bellMenu.hidden) renderBellList();
+  });
+  bellMenu.addEventListener('click', e => {
+    const a = e.target.closest('a[data-mood]');
+    if (a) { e.preventDefault(); bellMenu.hidden = true; open(a.dataset.mood, true); }
+  });
+  document.addEventListener('click', e => { if (!bellMenu.hidden && !e.target.closest('#bellWrap')) bellMenu.hidden = true; });
   async function refreshBadges(force) {
     if (!me) { badges = {}; renderNav(); setTitle(); return; }
     // Asked for sooner while a sound or the bell waits on every message: 15 s late is too late to chime.
@@ -4439,7 +4679,8 @@
   }
   function renderBell() {
     bell.hidden = !me || !('Notification' in window);
-    bell.textContent = notifying() ? '🔔 on' : '🔕 off';
+    bell.textContent = notifying() ? '🔔 notifications on: turn off' : '🔕 notifications off: turn on';
+    renderBellCount();
     document.getElementById('alerts').classList.toggle('bell-off', !notifying());
     const closed = pushable() ? ', even with magenta closed' : '';
     bell.title = notifying() ? `Notifying you of mentions and answers${closed} (click to stop)`
@@ -4487,13 +4728,31 @@
     } catch (e) {}
   }
   if (notifying() && pushable()) pushOn();
+  // A message's words alone, for a notification: no markup, no links' addresses, one line.
+  function plainText(text) {
+    return (text || '').replace(/```[^\n]*\n?/g, '').replace(/<\/?[a-z][^>]*>/gi, '')
+      .replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, '$2').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[*_`~]+/g, '').replace(/^\s*(#+|>|[-*]|\d+\.)\s+/gm, '').replace(/\s+/g, ' ').trim();
+  }
+  // Messages read aloud here: a notification of one goes (Justin, 29 Oct), and one that comes after isn't shown.
+  const heardAloud = new Set();
+  async function unnotify(id) {
+    heardAloud.add(id);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration('/moods/');
+      if (reg) (await reg.getNotifications({ tag: id })).forEach(x => x.close());
+    } catch (e) {}
+  }
   async function notify(n) {
     if (!notifying()) return;
     const mood = moods.find(m => m.slug === n.mood);
-    const title = n.kind === 'answer' ? `${n.turn.sender} answered you` : n.kind === 'talk' ? `${n.turn.sender} edited your talk page`
-      : n.kind === 'mention' ? `${n.turn.sender} mentioned you`
-      : `${n.turn.sender} in ${mood ? mood.title || mood.slug : n.mood}`;
-    const options = { body: (mood && n.kind !== 'said' ? mood.title + ': ' : '') + n.turn.text.slice(0, 160), tag: n.turn.id,
+    // Who and where in the title; the body, only what they said (Justin, 29 Oct: a phone's fill up fast).
+    const where = mood ? mood.title || mood.slug : n.mood;
+    const title = n.kind === 'answer' ? `${n.turn.sender} answered you in ${where}` : n.kind === 'talk' ? `${n.turn.sender} edited your talk page`
+      : n.kind === 'mention' ? `${n.turn.sender} mentioned you in ${where}`
+      : `${n.turn.sender} in ${where}`;
+    if (heardAloud.has(n.turn.id)) return;  // read to them already
+    const options = { body: plainText(n.turn.text).slice(0, 160), tag: n.turn.id,
                       icon: '/moods/icon-192.png', badge: '/moods/mark-96.png', data: { slug: n.mood, id: n.turn.id } };
     try {
       // Through the service worker: Android allows no other way.
@@ -4564,36 +4823,63 @@
   const searchBox = document.getElementById('search');
   const qInput = document.getElementById('q');
   const qScope = document.getElementById('qscope');
+  const qWho = document.getElementById('qwho');
+  const qWord = document.getElementById('qword');
   const qResults = document.getElementById('qresults');
-  let qTimer = null, qSeq = 0;
+  let qTimer = null, qSeq = 0, qMore = null;
   function openSearch() {
     searchBox.style.top = document.querySelector('header').getBoundingClientRect().bottom + 'px';  // just below it
     searchBox.hidden = false;
+    whoOptions();
     qInput.focus(); qInput.select();
     if (qInput.value.trim().length >= 2) runSearch();
   }
   function closeSearch() { searchBox.hidden = true; }
-  function marked(text, q) {
-    const safe = esc(text), needle = esc(q);
-    const at = safe.toLowerCase().indexOf(needle.toLowerCase());
-    return at < 0 ? safe : safe.slice(0, at) + '<mark>' + safe.slice(at, at + needle.length) + '</mark>' + safe.slice(at + needle.length);
+  // Said by: anyone, humans, emergents, or one of them by name.
+  function whoOptions() {
+    const had = qWho.value, names = people.map(p => p.name).sort();
+    if (qWho.options.length === 3 + names.length) return;
+    qWho.innerHTML = '<option value="">anyone</option><option value="human">humans</option><option value="emergent">emergents</option>'
+      + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    qWho.value = had;
   }
-  async function runSearch() {
-    const q = qInput.value.trim(), seq = ++qSeq;
-    if (q.length < 2) { qResults.innerHTML = '<div class="note">Two letters at least.</div>'; return; }
-    qResults.innerHTML = '<div class="note">Searching…</div>';
-    const here = qScope.value === 'here' && current;
+  // Every term the server matched, marked where it is in the snippet.
+  function marked(text, terms, whole) {
+    const safe = esc(text);
+    const alts = terms.map(t => t.split(/\s+/).map(w => esc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'));
+    if (!alts.length) return safe;
+    const re = new RegExp((whole ? '(^|[^\\w])' : '()') + '(' + alts.join('|') + ')' + (whole ? '(?=[^\\w]|$)' : ''), 'gi');
+    return safe.replace(re, (m, pre, hit) => pre + '<mark>' + hit + '</mark>');
+  }
+  async function runSearch(more) {
+    const q = qInput.value.trim(), seq = more ? qSeq : ++qSeq;
+    if (q.replace(/"/g, '').trim().length < 2) { qResults.innerHTML = '<div class="note">Two letters at least.</div>'; return; }
+    const scope = current ? qScope.value : 'all', here = scope !== 'all';
+    const params = new URLSearchParams({ q });
+    if (here) params.set('mood', current);
+    if (scope === 'threads') params.set('threads', '1');
+    if (qWho.value) params.set('who', qWho.value);
+    if (qWord.checked) params.set('word', '1');
+    if (more && qMore) params.set('before', qMore);
+    const moreBtn = qResults.querySelector('.more');
+    if (more && moreBtn) { moreBtn.disabled = true; moreBtn.textContent = 'Searching…'; }
+    else qResults.innerHTML = '<div class="note">Searching…</div>';
     try {
-      const r = await fetch('/api/search/?q=' + encodeURIComponent(q) + (here ? '&mood=' + encodeURIComponent(current) : ''));
-      const { hits } = await r.json();
+      const r = await fetch('/api/search/?' + params);
+      const { hits, more: next, terms = [q] } = await r.json();
       if (seq !== qSeq) return;  // a newer search is under way
-      qResults.innerHTML = hits.map(h => `<a class="hit" href="/moods/${encodeURIComponent(h.mood)}/#m-${esc(h.id)}" data-slug="${esc(h.mood)}" data-id="${esc(h.id)}">`
-        + `<b>${esc(h.sender)}</b>${here ? '' : ' in ' + esc(h.title)} · ${esc(stamp(h.created_at))}<span class="txt">${marked(h.text, q)}</span></a>`).join('')
-        || `<div class="note">Nothing said ${here ? 'in this Mood' : 'in any Mood'} contains “${esc(q)}”.</div>`;
+      qMore = next;
+      const where = scope === 'threads' ? 'in this Mood or its threads' : here ? 'in this Mood' : 'in any Mood';
+      const html = hits.map(h => `<a class="hit" href="/moods/${encodeURIComponent(h.mood)}/#m-${esc(h.id)}" data-slug="${esc(h.mood)}" data-id="${esc(h.id)}">`
+        + `<b>${esc(h.sender)}</b>${h.mood === current ? '' : ' in ' + esc(h.title)} · ${esc(stamp(h.created_at))}<span class="txt">${marked(h.text, terms, qWord.checked)}</span></a>`).join('');
+      if (moreBtn) moreBtn.remove();
+      if (!more) qResults.innerHTML = html || (next ? '' : `<div class="note">Nothing said ${where} has “${esc(q)}”.</div>`);
+      else qResults.insertAdjacentHTML('beforeend', html);
+      if (next) qResults.insertAdjacentHTML('beforeend', `<button type="button" class="more">${hits.length ? 'Further back' : 'Nothing yet; look further back'}</button>`);
     } catch (e) { if (seq === qSeq) qResults.innerHTML = '<div class="note">Search failed; try again.</div>'; }
   }
-  qInput.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(runSearch, 300); });
-  qScope.addEventListener('change', runSearch);
+  qInput.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(() => runSearch(), 300); });
+  for (const el of [qScope, qWho, qWord]) el.addEventListener('change', () => runSearch());
   document.getElementById('searchBtn').addEventListener('click', () => (searchBox.hidden ? openSearch() : closeSearch()));
   document.getElementById('qclose').addEventListener('click', closeSearch);
   document.addEventListener('keydown', e => {
@@ -4602,12 +4888,13 @@
     else if (e.key === 'Escape' && !searchBox.hidden) closeSearch();
   });
   qResults.addEventListener('click', async e => {
+    if (e.target.closest('.more')) return runSearch(true);
     const a = e.target.closest('a.hit');
     if (!a) return;
     e.preventDefault();
     if (matchMedia(PHONE).matches) closeSearch();
     if (a.dataset.slug !== current) await open(a.dataset.slug, true);
-    if (!(await reveal(a.dataset.id))) showError('That message is further back than this page reaches.');
+    if (!(await reveal(a.dataset.id))) showError('That message is no longer here.');
   });
 
   function touch(slug) {
@@ -4653,7 +4940,8 @@
   async function reveal(id) {
     if (!id) return false;
     stopSettling();  // taken to a message: the newest no longer pulls
-    for (let i = 0; i < 12; i++) {
+    const reaching = document.getElementById('reaching');
+    for (let i = 0; i < 2; i++) {
       // A message, or a step (a tool call), shown in its opened group.
       const el = document.getElementById('m-' + id) || document.querySelector(`.step[data-id="${CSS.escape(id)}"]`);
       if (el) {
@@ -4666,9 +4954,11 @@
         el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
         return true;
       }
+      // Not drawn yet: everything back to it, in one ask, under a spinner.
       const earlier = document.getElementById('earlier');
-      if (!earlier || earlier.hidden) return false;
-      await loadEarlier();
+      if (i || !earlier || earlier.hidden) return false;
+      const spin = setTimeout(() => { reaching.hidden = false; }, 150);
+      try { if (!(await loadEarlier(id))) return false; } finally { clearTimeout(spin); reaching.hidden = true; }
     }
     return false;
   }
@@ -4678,6 +4968,7 @@
   }
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data && e.data.shown && heardAloud.has(e.data.shown)) unnotify(e.data.shown);  // pushed after it was read
       if (!e.data || !e.data.open) return;
       if (e.ports && e.ports[0]) e.ports[0].postMessage('opening');  // heard: the service worker needn't send us there
       openAndReveal(e.data.open, e.data.id);
@@ -4727,7 +5018,7 @@
     drawMoodbar(null);  // the last Mood's head goes with it
     renderPins([]);  // the last Mood's pins aren't this one's; its own come with its first look
     tasks = []; renderTasks();
-    typingNow = []; renderTyping();
+    typingNow = []; renderTyping(); renderAsksOpen();
     agentsNow = {};  // nothing to compare with: a first drawing never glows
     renderAgents(agentsFor[slug] || {});
     loadTodo();
@@ -4831,15 +5122,18 @@
   function stopSettling() { if (settling) { settling.abort(); settling = null; } }
 
   let firstId = null;      // the oldest item shown, for ?before=
-  async function loadEarlier() {
+  // A page further back; or, given `to`, everything back to that message, in one ask.
+  async function loadEarlier(to) {
     const button = document.getElementById('earlier');
-    if (!firstId || !button) return;
+    if (!firstId || !button) return false;
     button.disabled = true; button.textContent = 'loading…';
     const mine = gen;
     try {
-      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/turns/?before=' + firstId);
+      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/turns/?before=' + firstId
+                            + (to ? '&from=' + encodeURIComponent(to) : ''));
+      if (!r.ok) return false;
       const data = await r.json();
-      if (mine !== gen) return;  // switched away meanwhile
+      if (mine !== gen) return false;  // switched away meanwhile
       const items = itemsOf(data);
       const box = document.createElement('div');
       const saved = prev; prev = null;
@@ -4853,6 +5147,7 @@
       main.scrollTop += main.scrollHeight - height;
       if (items.length) firstId = items[0].v.id;
       button.hidden = !data.has_earlier;
+      return true;
     } finally { button.disabled = false; button.textContent = 'Load earlier'; }
   }
   document.addEventListener('click', e => { if (e.target.id === 'earlier') loadEarlier(); });
@@ -4969,6 +5264,7 @@
     noteAgents(current, data.agents);
     renderLocked(data.scram || null);
     typingNow = (data.typing || []).filter(n => n !== viewer);
+    recordingNow = data.recording || [];
     renderTyping();
     renderWatchers(data.watchers);
     const turnsEl = document.getElementById('turns');
@@ -4983,6 +5279,8 @@
     renderPins(data.pins || []);
     reactionsNow = data.reactions || {};
     turnsEl.querySelectorAll('.turn[data-id]').forEach(el => renderReacts(el, reactionsNow[el.dataset.id] || {}));
+    pollsNow = data.polls || {};
+    turnsEl.querySelectorAll('.turn[data-id] > .body.poll').forEach(b => renderPoll(b.parentElement));
     const items = itemsOf(data);
     if (full) {
       firstId = items.length ? items[0].v.id : null;
@@ -5432,7 +5730,7 @@
     const box = document.getElementById('hush');
     // Redraw the menus only when a setting changed: never under someone's open menu.
     const key = JSON.stringify(Object.entries(agents).map(([n, a]) => [n, a.listening, a.model, a.effort, a.ultracode, a.reads,
-                                                                       a.discretion, a.verbosity, viewer]).concat(agentsWhole()));
+                                                                       a.discretion, a.verbosity, a.pace, viewer]).concat(agentsWhole()));
     if (box && (key !== agentsShown || !box.childElementCount)) {
       agentsShown = key;
       box.innerHTML = agentRows(agents);
@@ -5537,8 +5835,31 @@
       // A cell each, in the grid every agent's row shares: listening, then model and effort, then the rest.
       return [listen, `<span class="cell">${model}</span>`, effort, discretion, verbosity, reads, ultra || '<span></span>']
         .reduce((out, cell) => out + cell, row) + '</span>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' + paceLine(agents);
   }
+  // This Mood's pace, the same for every emergent here (Justin, 29 Oct): under the open rows, for a key-holder.
+  const PACE = [['consider_after', 'wait', 's', 1, 'seconds of quiet (and nobody typing) before an emergent considers new posts'],
+                ['idle_after', 'first unasked look', 'min', 60, 'minutes of silence before the first unprompted look; doubles after each one it stays quiet'],
+                ['considers_per_hour', 'looks', '/hr', 1, 'at most this many full considerations an hour, here']];
+  function paceLine(agents) {
+    const pace = (Object.values(agents)[0] || {}).pace;
+    if (!pace || !keyHolder) return '';
+    return '<div class="pace" title="the pace here, for every emergent">pace here: ' + PACE.map(([k, label, unit, scale, what]) =>
+      `<label title="${esc(what)}">${esc(label)} <input type="number" min="0" data-pace="${k}" data-scale="${scale}"`
+      + ` value="${Math.round((pace[k] || 0) / scale)}">${esc(unit)}</label>`).join(' · ') + '</div>';
+  }
+  document.addEventListener('change', async e => {
+    const input = e.target.closest('#hush input[data-pace]');
+    if (!input) return;
+    const key = input.dataset.pace, value = Number(input.value) * Number(input.dataset.scale);
+    const r = await fetch('/api/settings/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ key, value, mood: current, agent: null, note: 'from the Mood' }),
+    });
+    if (!r.ok) showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status));
+    agentsShown = '';
+    poll(false);
+  });
   document.addEventListener('change', async e => {
     const select = e.target.closest('#hush select, #hush input[type=checkbox]');
     if (!select) return;
@@ -5630,16 +5951,30 @@
   setInterval(renderTasks, 1000);
 
   function renderWatchers(w) {
-    watchersNow = w || null;
+    watchersNow = w ? { ...w, slug: current } : null;  // whose they are: a Mood opened next isn't shown the last one's
     markLive();
   }
 
   const typingEl = document.getElementById('typing');
+  // Open asks here (/api/moods/ asked): each a link to its own message in the thread (Justin, 29 Oct:
+  // "the notice at the bottom needs to be a link to that message"). Until the event lands -- a full-tools
+  // wake, a merged event, a deploy event -- they stay, with 🔨/🔀/🔄 by the Mood's name.
+  function renderAsksOpen() {
+    const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
+    box.innerHTML = ((m && m.asked) || []).map(t =>
+      `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
+        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b>`
+        + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
+        + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
+  }
   function renderTyping() {
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('typing', typingNow.includes(el.dataset.who)));
     typingEl.classList.toggle('on', typingNow.length > 0);
-    typingEl.innerHTML = typingNow.map(n => `${icon(n, true)}<b>${esc(shown(n))}</b>`).join(', ')
-      + (typingNow.length ? (typingNow.length > 1 ? ' are typing…' : ' is typing…') : '');
+    const rec = typingNow.filter(n => recordingNow.includes(n)), keys = typingNow.filter(n => !recordingNow.includes(n));
+    const who = ns => ns.map(n => `${icon(n, true)}<b>${esc(shown(n))}</b>`).join(', ');
+    typingEl.innerHTML = [keys.length ? who(keys) + (keys.length > 1 ? ' are typing…' : ' is typing…') : '',
+      rec.length ? '🎙 ' + who(rec) + (rec.length > 1 ? ' are recording a voice memo…' : ' is recording a voice memo…') : '']
+      .filter(Boolean).join(' · ');
     markLive();
   }
 
@@ -5716,7 +6051,7 @@
     ['heart_eyes', '😍'], ['sunglasses', '😎'], ['cry', '😢'], ['sob', '😭'], ['scream', '😱'], ['zany', '🤪'],
     ['upside_down', '🙃'], ['shrug', '🤷'], ['facepalm', '🤦'], ['raised_hands', '🙌'], ['muscle', '💪'],
     ['thumbsdown', '👎'], ['point_up', '☝️'], ['point_right', '👉'], ['handshake', '🤝'], ['v', '✌️'],
-    ['rocket', '🚀'], ['star', '⭐'], ['sparkles', '✨'], ['zap', '⚡'], ['rainbow', '🌈'], ['moon', '🌙'],
+    ['rocket', '🔄'], ['star', '⭐'], ['sparkles', '✨'], ['zap', '⚡'], ['rainbow', '🌈'], ['moon', '🌙'],
     ['earth', '🌎'], ['seedling', '🌱'], ['sunflower', '🌻'], ['rose', '🌹'], ['tree', '🌲'], ['cactus', '🌵'],
     ['check', '✅'], ['x', '❌'], ['warning', '⚠️'], ['question', '❓'], ['exclamation', '❗'], ['bulb', '💡'],
     ['memo', '📝'], ['books', '📚'], ['link', '🔗'], ['lock', '🔒'], ['key', '🔑'], ['bell', '🔔'],
@@ -5764,11 +6099,19 @@
     previewCard.style.top = (r.bottom + 6 + h < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
   }
   function hidePreview() { clearTimeout(previewTimer); previewFor = null; previewCard.hidden = true; }
+  // A name that isn't a link -- a turn's heading, the activity bar, a wait, the people here: its User page too
+  // (Justin, 29 Oct: "hover over an emergent's name anywhere").
+  const NAME_SPOTS = '.ahead b, .runhead b, #activity b, .waitline b, .people .who, #typing b, .quiet .why b';
+  function nameTitleOf(el) {
+    const said = (el.dataset.who || el.textContent || '').trim().replace(/^@/, '');
+    const p = people.find(p => p.name === said || shown(p.name) === said);
+    return p ? 'User:' + (WIKI_NAMES[p.name] || p.name[0].toUpperCase() + p.name.slice(1)) : '';
+  }
   document.addEventListener('pointerover', e => {
     if (e.pointerType !== 'mouse') return;
-    const a = e.target.closest && e.target.closest('a[href]');
+    const a = (e.target.closest && e.target.closest('a[href]')) || (e.target.closest && e.target.closest(NAME_SPOTS));
     if (!a || a === previewFor) return;
-    const title = wikiTitleOf(a);
+    const title = a.matches('a[href]') ? wikiTitleOf(a) : nameTitleOf(a);
     if (!title) return;
     hidePreview();
     previewFor = a;
@@ -5778,7 +6121,7 @@
     }, 350);
   });
   document.addEventListener('pointerout', e => {
-    const a = e.target.closest && e.target.closest('a[href]');
+    const a = e.target.closest && (e.target.closest('a[href]') || e.target.closest(NAME_SPOTS));
     if (a && a === previewFor && !a.contains(e.relatedTarget)) hidePreview();
   });
   addEventListener('scroll', hidePreview, true);
@@ -5904,7 +6247,7 @@
     }
     if (at.kind === 'command') {
       choices = SLASH_COMMANDS.filter(([name]) => name.startsWith(at.prefix))
-        .map(([name, form, what]) => ({ insert: name + ' ', html: `<span class="emo">${name === 'clips' ? '🎬' : '⚙️'}</span><b>${esc(form)}</b><small>${esc(what)}</small>` }));
+        .map(([name, form, what]) => ({ insert: name + ' ', html: `<span class="emo">${name === 'clips' ? '🎬' : name === 'poll' ? '🗳' : '⚙️'}</span><b>${esc(form)}</b><small>${esc(what)}</small>` }));
     } else if (at.kind === 'command-agent') {
       // Which agents it's for: one, or several with commas; then (for /compact) what to keep.
       choices = people.filter(p => !p.is_human && p.name.startsWith(at.prefix)).map(p => p.name).sort()
@@ -5950,7 +6293,9 @@
           + `${g.members.length ? g.members.map(n => esc(shown(n))).join(', ') : 'nobody yet'}</small>` }))
         .concat(people.map(p => p.name).filter(n => n.startsWith(typed) || shown(n).toLowerCase().startsWith(typed))
         .sort((a, b) => (here.has(b) - here.has(a)) || a.localeCompare(b)).slice(0, 8)
-        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small>${shown(n) !== n ? esc(n) + ' · ' : ''}${human[n] ? 'person' : 'emergent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
+        // An emergent says what it's for, from its own page (Skyler, 29 Oct: "which ones do what").
+        .map(n => ({ insert: shown(n) + ' ', html: `${icon(n)}@${esc(shown(n))}<small${powers[n] ? ` title="${esc(powers[n].for)}"` : ''}>${shown(n) !== n ? esc(n) + ' · ' : ''}`
+          + `${pronounsOf[n] ? esc(pronounsOf[n]) + ' · ' : ''}${human[n] ? 'person' : powers[n] ? esc(powers[n].short) : 'emergent'}${here.has(n) ? '' : ' · not here yet'}</small>` })));
     }
     if (!choices.length) return closeSuggest();
     chosen = Math.min(chosen, choices.length - 1);
@@ -6045,12 +6390,12 @@
   // Tell the Mood this person is typing: at most every 3s while there is
   // text, and once when it is cleared or sent.
   let typingSent = 0;
-  function sendTyping(on) {
+  function sendTyping(on, how) {
     if (!viewer || !current) return;
     hereAt = Date.now();  // typing, or stopped: three minutes here from now (services/presence)
     fetch('/api/moods/' + encodeURIComponent(current) + '/typing/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ typing: on }),
+      body: JSON.stringify({ typing: on, ...(how ? { how } : {}) }),
     }).catch(() => {});
   }
   sayBox.addEventListener('input', () => {
@@ -6568,6 +6913,7 @@
     recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
     recorder.addEventListener('stop', async () => {
       clearInterval(memoTimer);
+      sendTyping(false);
       recordingHold(false);
       mic.close();
       stream.getTracks().forEach(t => t.stop());
@@ -6635,8 +6981,11 @@
     composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Recording: ■ stops it to add words; Send sends it as it is.</span>');
     memoBtn.classList.add('recording');
     memoBtn.textContent = '■ 0:00';
+    sendTyping(true, 'recording');  // others see it, as they see typing (Justin, 28 Oct)
+    let recordingSaid = Date.now();
     memoTimer = setInterval(() => {
       const s = (Date.now() - started) / 1000;
+      if (Date.now() - recordingSaid > 3000) { recordingSaid = Date.now(); sendTyping(true, 'recording'); }
       memoBtn.textContent = '■ ' + clock(s);
       if (s >= MEMO_MAX_S && recorder) recorder.stop();
       const since = recorder ? mic.quietSince() : null;
@@ -6862,6 +7211,7 @@
     const fresh = events.filter(e => (said(e) || redeployed(e)) && e.id && !readHeard.has(e.id))
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     for (const e of fresh) { readHeard.add(e.id); readQueue.push(e); }
+    if (readRecording) prefetchNext();  // came while recording: ready for when it stops
     if (fresh.length) saveReadPlace();
     // Next time from a minute before the newest: a clock a little off misses nothing, and ids keep it once.
     // A full page (reading a stretch through from a message): on from its last, or it would ask the same again.
@@ -6976,7 +7326,7 @@
   // recording's done; a message's own ▶ stops. Messages that come meanwhile are queued.
   function recordingHold(on) {
     readRecording = on;
-    if (on) { reader.pause(); if (speaking) stopSpeaking(); }
+    if (on) { reader.pause(); if (speaking) stopSpeaking(); prefetchNext(); }
     else if (clipDone && reader.paused && !readHeld) atSpeed(reader).play().catch(() => {});
     if (!on) readNext();
     renderReadBar();
@@ -7007,10 +7357,45 @@
   // What the reader did with each clip, told to the server (a voice row in the
   // record): a phone's player can't be watched from here otherwise.
   function readReport(item, clip, outcome) {
+    if (clip === 'message' && outcome === 'ended') unnotify(item.id);
     fetch('/api/voice/heard/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ mood: item.mood, message: item.id, clip, outcome, error: clipError, hidden: document.hidden,
                              // how fast it was played, and the pace it was taken to have: what the listener heard
                              rate: Math.round(reader.playbackRate * 100) / 100, pace: Math.round(paceOf(reader) || 0) }) }).catch(() => {});
+  }
+
+  // Who's said to speak, for an item read next: the narrator names them when the Mood or the speaker changes.
+  function introFor(item) {
+    const newMood = !readLast || readLast.mood !== item.mood;
+    return newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
+  }
+  // A message's clip (speak/), its audio brought into this browser too, so it plays without the network.
+  function speakFetch(item, ask, keep) {
+    const url = `/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${new URLSearchParams(ask)}`;
+    const asked = fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+    if (!keep) return asked;
+    return asked.then(async r => {
+      if (!r.ok) return r;
+      const body = await r.json();
+      for (const k of ['url', 'intro']) {
+        if (body[k] && body[k].startsWith('/')) {
+          try { body[k] = URL.createObjectURL(await (await fetch(body[k])).blob()); } catch (e) {}
+        }
+      }
+      return new Response(JSON.stringify(body), { status: r.status, headers: { 'Content-Type': 'application/json' } });
+    });
+  }
+  // While a memo is recorded, what's next is fetched -- its words and its narrator line, audio and all -- so it's
+  // heard the moment the recording stops, not after the upload has had the connection (Justin, 28 Oct, in the woods).
+  const prefetched = new Map();  // item id -> {intro, said, words}
+  function prefetchNext() {
+    const item = readQueue[0];
+    if (!item || prefetched.has(item.id) || item.kind === 'thinking' || item.kind === 'deploy'
+        || (item.text || '').match(MEMO_AUDIO)) return;
+    const intro = introFor(item);
+    prefetched.set(item.id, { intro, words: speakFetch(item, {}, true),
+                              said: intro ? speakFetch(item, { intro, only: 'intro' }, true) : null });
+    while (prefetched.size > 4) prefetched.delete(prefetched.keys().next().value);
   }
 
   async function readNext() {
@@ -7026,9 +7411,29 @@
     // A message about to be read says so at once, while its words are fetched (a memo's may still be heard).
     const chimed = item.kind !== 'thinking' && item.kind !== 'deploy' ? playClip(chimeUrl('in')) : null;
     const memo = (item.text || '').match(MEMO_AUDIO);  // heard as recorded: only who's speaking needs saying
-    const newMood = !readLast || readLast.mood !== item.mood;
-    const intro = newMood && readMode === 'everywhere' ? 'where' : newMood || readLast.who !== item.who ? '1' : '';
+    const intro = introFor(item);
+    const early = prefetched.get(item.id);  // fetched while a memo was recorded
+    prefetched.delete(item.id);
     const clips = [];
+    // Who and where, said at once after the chime, while the message's own words are still being made (Justin,
+    // 28 Oct: "chime, then narrator, immediately"); a tick every 3 s after it until they're ready.
+    let words = null;
+    if (!memo && item.kind !== 'thinking' && item.kind !== 'deploy') {
+      words = early ? early.words : speakFetch(item, {});
+      if (intro) try {
+        const said = await (early && early.intro === intro ? early.said : speakFetch(item, { intro, only: 'intro' }))
+          .then(r => r.ok ? r.json() : {});
+        if (said.intro && readNow === now && !now.skipped) {
+          if (chimed) await chimed;
+          await playClip(said.intro);
+        }
+      } catch (e) {}
+      else if (chimed) await chimed;
+      let ticks = null;
+      const settled = words.finally(() => clearInterval(ticks));
+      ticks = setInterval(() => { if (readNow === now && !readHeld) atSpeed(new Audio(chimeUrl('tick'))).play().catch(() => {}); }, 3000);
+      words = settled;
+    }
     try {
       if (item.kind === 'thinking' || item.kind === 'deploy') {
         const r = await fetch('/api/voice/narrate/', { method: 'POST',
@@ -7040,10 +7445,10 @@
         if (!r.ok) throw new Error(body.error || r.status);
         clips.push([item.kind, body.url]);
       } else if (intro || !memo) {
-        const ask = new URLSearchParams(intro ? { intro } : {});
+        const ask = new URLSearchParams(intro && !words ? { intro } : {});
         if (memo) ask.set('only', 'intro');
-        const r = await fetch(`/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${ask}`,
-                              { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+        const r = words ? await words : await fetch(`/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${ask}`,
+                                                    { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
         const body = await r.json().catch(() => ({}));
         if (r.status === 429 && !/spent/.test(body.error || '')) {  // asked too fast: this one again in a moment
           readQueue.unshift(item); readNow = null;
@@ -7847,16 +8252,20 @@
   // --- one page: the Moods, and tidings, prompts, status and settings beside them -------------------
   // Each section is its own page, loaded into a frame the first time it's shown and kept: going back and
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
-  const SECTIONS = ['tidings', 'prompts', 'status', 'settings'];
+  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
   // A section drawn again behind the scenes when what it shows has changed (a promotion here, a comment or a
   // link from someone else): a fresh frame loads hidden and takes the old one's place once it's in, so
   // nobody waits on it (Justin, 21 Oct). Never under the reader's eyes: open, it's done when they leave.
   const sectionPending = {};
-  function refreshSection(name) {
+  // A data section's kept copy rots while you're away (Justin, 29 Oct: the prompts were "way outta date"):
+  // one shown again after STALE_MS is redrawn behind the scenes and takes its place when it's in, seen or not.
+  const DATA_SECTIONS = new Set(['prompts', 'status']);
+  const STALE_MS = 60000;
+  function refreshSection(name, swapOpen) {
     const old = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
     if (!old || sectionFrames.querySelector(`iframe[data-section="${name}"][data-fresh]`)) return;  // its first load is fresh; or one's on its way
-    if (sectionNow === name) { sectionPending[name] = true; return; }
+    if (sectionNow === name && !swapOpen) { sectionPending[name] = true; return; }  // under the reader: done when they leave, unless it's a data section
     let at = `/moods/${name}/?embed=1`;  // where they were in it -- a link's discussion, say -- drawn again there
     try { const l = old.contentWindow.location; if (l.pathname.startsWith(`/moods/${name}/`)) at = l.pathname + l.search; } catch (e) {}
     const fresh = document.createElement('iframe');
@@ -7869,8 +8278,10 @@
       try { there = fresh.contentWindow.location.pathname === new URL(at, location.origin).pathname; } catch (e) { there = true; }
       if (!there) return;
       fresh.removeEventListener('load', arrived);
-      if (sectionNow === name) { fresh.remove(); sectionPending[name] = true; return; }  // opened meanwhile: theirs stays
+      if (sectionNow === name && !swapOpen) { fresh.remove(); sectionPending[name] = true; return; }  // opened meanwhile: theirs stays
+      if (sectionNow === name) fresh.hidden = false;  // read it now: fresh takes its place
       old.remove();
+      fresh.dataset.loaded = Date.now();  // so the next stale check counts from this copy
       delete fresh.dataset.fresh;
     });
     fresh.src = at;
@@ -7895,6 +8306,7 @@
       let there = false;
       try { there = frame.contentWindow.location.pathname.startsWith(`/moods/${name}/`); } catch (e) { there = true; }
       if (!there) return;
+      frame.dataset.loaded = Date.now();  // when this copy of the section was made, against STALE_MS
       loading.remove();
       frame.removeEventListener('load', arrived);
     });
@@ -7916,6 +8328,11 @@
       frame.hidden = false;
       sectionFrames.querySelectorAll('iframe').forEach(f => { f.hidden = f !== frame; });
       sectionFrames.querySelectorAll('.loading').forEach(l => { l.hidden = l.dataset.section !== name; });
+      // Stale while away (Justin, 29 Oct): a data section shown again is redrawn out of sight; its
+      // fresh copy takes its place the moment it's in, so the numbers are never yesterday's.
+      if (DATA_SECTIONS.has(name) && frame.dataset.loaded && Date.now() - +frame.dataset.loaded > STALE_MS) {
+        refreshSection(name, true);
+      }
     }
     document.querySelectorAll('header [data-section]').forEach(a => {
       if (a.dataset.section === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -8153,7 +8570,9 @@
       + `<button type="button" data-v="skip">⏭<small>skip</small></button>`
       + `<button type="button" data-v="go"${goBtn.classList.contains('listening') ? ' class="hot"' : ''}>🧭<small>go to…</small></button>`
       + `<button type="button" data-v="memo"${recording ? ' class="hot"' : ''}${saving ? ' disabled' : ''}>🎙<small>${recording ? 'stop' : saving ? 'saving' : 'record'}</small></button>`
-      + `<button type="button" data-v="send"${sayBox.value.trim() && !saving ? '' : ' disabled'}>➤<small>send</small></button>`
+      // Send while recording or saving sends the memo once it's in (say: memoThenSend), as the composer's does
+      // (Justin, 28 Oct: greyed out while recording, so a memo could only be sent from outside voice mode).
+      + `<button type="button" data-v="send"${sayBox.value.trim() || recording || saving ? '' : ' disabled'}>➤<small>${recording || saving ? 'send it' : 'send'}</small></button>`
       + `<button type="button" data-v="where">${readMode === 'everywhere' ? '🌐' : '📍'}<small>${readMode === 'everywhere' ? 'every Mood' : 'this Mood'}</small></button>`
       + '</div><button type="button" class="leave" data-v="leave">leave voice mode</button>';
     if (voiceMode.innerHTML !== html) voiceMode.innerHTML = html;

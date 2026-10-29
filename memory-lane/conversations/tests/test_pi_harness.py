@@ -269,6 +269,7 @@ class EndToEndTest(TestCase):
         self.assertEqual(asked, ['gen-1793193797-x'] * 2)  # not ready at first, then priced
         self.assertEqual((events[0]['usage']['cost'], events[0]['usage']['billed']), (6.10845, True))
         self.assertEqual(events[-1]['cost_usd'], 6.10845)
+        self.assertEqual(poster.harness, 'pi · openrouter')  # who billed it, on the rows that follow
 
         from conversations.services.mood_view import call_usd, model_label
         self.assertEqual(model_label('anthropic/claude-fable-5.1'), 'Fable 5.1')
@@ -285,6 +286,19 @@ class EndToEndTest(TestCase):
         poster.bill(said)
         poster.close()
         self.assertEqual(said[0]['usage']['cost'], 0.002)
+
+    def test_a_router_is_neither_offered_nor_run(self):
+        """OpenRouter's routers pick any model at its price: pareto-code picked Fable 5.1, $265 (28 Oct)."""
+        from poller.pi_harness import is_router
+        for model in ('openrouter/auto', 'openrouter/openrouter/pareto-code', 'auto', 'openrouter/openrouter/auto-beta'):
+            self.assertTrue(is_router(model), model)
+        for model in ('openrouter/deepseek/deepseek-v4-pro', 'anthropic/claude-opus-5-5', 'opus', '',
+                      'openrouter/~deepseek/deepseek-pro-latest'):
+            self.assertFalse(is_router(model), model)
+        waker = PiWaker(pi='pi', session_dir=tempfile.mkdtemp())
+        with self.assertRaisesRegex(RuntimeError, 'router'):
+            waker.command(None, 's1', 'hi', model='openrouter/openrouter/pareto-code')
+        self.assertIn('--model', waker.command(None, 's1', 'hi', model='openrouter/deepseek/deepseek-v4-pro'))
 
     def test_a_wake_that_failed_closes_its_turn(self):
         client, posted = self.client, []

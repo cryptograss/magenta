@@ -117,7 +117,10 @@ def api_moods(request):
     from .services import settings as knobs
     archived, pinned = knobs.archived_slugs(), knobs.mood_flagged('pinned')
     moods = list(Mood.objects.all())
-    payloads = [{**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned} for m in moods]
+    from .services.tools_ask import KINDS, open_requests
+    asked = open_requests()  # 🔨 🔀 🚀: emergents' open asks there
+    payloads = [{**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned,
+                 **({'asked': asked[m.slug]} if m.slug in asked else {})} for m in moods]
     # A Mood nobody has spoken in yet ranks by when it was started: a new one first.
     started = {m.slug: m.created_at.isoformat() for m in moods}
     payloads.sort(key=lambda p: p['last_at'] or started[p['slug']], reverse=True)
@@ -125,12 +128,27 @@ def api_moods(request):
     people = ThinkingEntity.objects.order_by('name')
     look = knobs.looks()
     from .services.mood_view import GROUPS, group_members
+    from .services.emergent_powers import powers, pronouns
+    people = list(people)
+    power = powers([p.name for p in people if not p.is_biological_human])
+    said = pronouns([(p.name, p.is_biological_human) for p in people])
     return JsonResponse({'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
-         **(look[p.name] if p.is_biological_human and p.name in look else {})}
+         **(look[p.name] if p.is_biological_human and p.name in look else {}),
+         **({'for': power[p.name]['for'], 'for_short': power[p.name]['short']} if p.name in power else {}),
+         **({'pronouns': said[p.name]} if p.name in said else {})}
         for p in people],
         # Tags for a group (@core): what each is, and who it mentions now.
         'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]})
+
+
+def pronouns_here(mood):
+    """{name: pronouns} for the emergents and the people who've spoken here, those who've set theirs."""
+    from .services.emergent_powers import pronouns
+    everyone = list(ThinkingEntity.objects.values_list('name', 'is_biological_human'))
+    here = {e.name for e in mood.thinking_entities()}
+    said = pronouns(everyone)
+    return {n: p for n, p in said.items() if n in here or any(n == m and not h for m, h in everyone)}
 
 
 @require_GET
@@ -218,7 +236,8 @@ def api_mood_turns(request, slug):
     if request.GET.get('before'):
         before = _message_or_none(request.GET['before'])
     # ?from=<id>: that message and everything since -- what a runner reads
-    # when a post links a message to read from.
+    # when a post links a message to read from. With ?before=, only up to
+    # there: the page reaching back to a message it hasn't drawn, in one ask.
     start = _message_or_none(request.GET['from']) if request.GET.get('from') else None
     if request.GET.get('from') and (start is None or start.mood_id != mood.id):
         # Never this Mood read from another's moment: the message must be here.
@@ -310,12 +329,14 @@ def api_mood_turns(request, slug):
             changes.append({**c, 'turn': retract.mark(turn_payload(msg, text, names), retract.change_of(msg))
                             if msg and text else None})
     clock.lap('changes')
-    from .services import announce, pins, reactions
+    from .services import announce, pins, polls, reactions
     return clock.report(JsonResponse({
         # A poll for what's new: its name only (a rename shows at once); the rest is a first look's.
         'mood': clock('mood', mood_payload, mood, light=after is not None),
         # Every message here that has reactions, as they now stand (services/reactions.py).
         'reactions': clock('reactions', reactions.in_mood, mood),
+        # Every poll here, its votes and whether it's closed (services/polls.py).
+        'polls': clock('polls', polls.in_mood, mood),
         # What's pinned to this Mood's top, newest first (services/pins.py).
         'pins': clock('pins', pins.in_mood, mood),
         # /announce from other Moods, for the runner's next wake here; never drawn (services/announce.py).
@@ -337,7 +358,8 @@ def api_mood_turns(request, slug):
         'compactions': compactions_out,
         # Things that happened around the conversation: a server redeployed.
         'events': events_out,
-        'has_earlier': clock('earlier', lambda: bool(limit) and first is not None and mood.messages.filter(
+        # (Reaching back to a message, ?from= with ?before=, can still have more before it.)
+        'has_earlier': clock('earlier', lambda: bool(limit or (start and before)) and first is not None and mood.messages.filter(
             is_sidechain=False, created_at__lt=first).exists()),
         'activity': clock('activity', activity, mood),
         # Every agent at work here, each with its own line on the page.
@@ -352,6 +374,10 @@ def api_mood_turns(request, slug):
         'agents': agents,
         'scram': clock('scram', settings_scram),
         'typing': clock('typing', typing_in, mood.slug),
+        # Each one's own pronouns, as set on their own account: the emergents and the people here. The runner
+        # checks every word against its allowlist before a wake says them (services/emergent_powers.pronouns).
+        'pronouns': clock('pronouns', pronouns_here, mood),
+        'recording': recording_in(mood.slug),  # of those typing, who's speaking a memo
     }), f'look at #{mood.slug}' + (' (what is new)' if after is not None else ''))
 
 
@@ -393,6 +419,8 @@ def agents_in(mood):
                      'reads': resolved['catch_up_tokens'],
                      'discretion': resolved['discretion'], 'verbosity': resolved['verbosity'],
                      'handoff_effort': resolved['handoff_effort'],
+                     # The room's pace, the same for every emergent here (knobs.PACE_KEYS).
+                     'pace': {k: resolved[k] for k in knobs.PACE_KEYS},
                      # Who set each as it stands, and when: the page says so, and flashes one that just changed.
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
                      'context': context, 'runs': runs,
@@ -651,6 +679,14 @@ def typing_in(slug):
     return sorted(name for name, at in (cache.get(_typing_key(slug)) or {}).items() if now - at < TYPING_FOR)
 
 
+def recording_in(slug):
+    """Who of those typing is recording a voice memo, not typing (Justin, 28 Oct: nobody could see it)."""
+    from django.core.cache import cache
+    import time
+    now = time.time()
+    return sorted(name for name, at in (cache.get(_typing_key(slug) + ':rec') or {}).items() if now - at < TYPING_FOR)
+
+
 @require_POST
 def api_typing(request, slug):
     """Say this device's person is (or stopped) typing in a Mood."""
@@ -665,9 +701,11 @@ def api_typing(request, slug):
         return JsonResponse({'error': 'sign in to write'}, status=401)
     Mood.by_slug_or_404(slug)
     try:
-        typing = bool(json.loads(request.body or b'{}').get('typing', True))
+        body = json.loads(request.body or b'{}')
+        typing = bool(body.get('typing', True))
+        recording = body.get('how') == 'recording'  # a voice memo, as its 🎙 says: typing, out loud
     except (ValueError, AttributeError):
-        return JsonResponse({'error': 'expected {"typing": true|false}'}, status=400)
+        return JsonResponse({'error': 'expected {"typing": true|false, "how"?: "recording"}'}, status=400)
     now = time.time()
     state = {n: at for n, at in (cache.get(_typing_key(slug)) or {}).items() if now - at < TYPING_FOR}
     if typing:
@@ -675,6 +713,12 @@ def api_typing(request, slug):
     else:
         state.pop(device.entity_id, None)
     cache.set(_typing_key(slug), state, TYPING_FOR * 2)
+    rec = {n: at for n, at in (cache.get(_typing_key(slug) + ':rec') or {}).items() if now - at < TYPING_FOR}
+    if typing and recording:
+        rec[device.entity_id] = now
+    else:
+        rec.pop(device.entity_id, None)
+    cache.set(_typing_key(slug) + ':rec', rec, TYPING_FOR * 2)
     from .services import presence
     presence.note(device.entity_id, slug, now)  # typing, or stopped: shown here, three minutes from now
     return JsonResponse({'typing': sorted(state)})
@@ -775,55 +819,108 @@ def api_wikilinks(request):
 
 
 SEARCH_MAX = 40
-SEARCH_SCAN = 300  # candidates read, newest first, before keeping only what people and agents said
+SEARCH_SCAN = 300    # candidates read at a time, newest first, before keeping only what people and agents said
+SEARCH_READS = 10    # batches read for one page of hits; then "more" picks up where it stopped
 
 
-def snippet(text, q, width=160):
-    """`text` around the first place `q` occurs, with its ends marked if cut."""
-    at = text.lower().find(q.lower())
-    if at < 0:
+def search_terms(q):
+    """`q` as what must all be there: "quoted words" as one phrase, the rest a word each."""
+    terms = [a or b for a, b in re.findall(r'"([^"]+)"|(\S+)', q)]
+    return [t.strip() for t in terms if t.strip().strip('"')][:12]
+
+
+def term_pattern(term, whole):
+    """A term as a Python pattern: as it is, or only where it stands as a word (or words) of its own."""
+    body = r'\s+'.join(re.escape(w) for w in term.split())
+    return re.compile(r'(?:^|\W)' + body + r'(?:\W|$)' if whole else body, re.IGNORECASE)
+
+
+def snippet(text, pattern, width=160):
+    """`text` around the first place `pattern` matches, with its ends marked if cut."""
+    found = pattern.search(text)
+    if not found:
         return text[:width]
-    start = max(0, at - width // 3)
+    start = max(0, found.start() - width // 3)
     end = min(len(text), start + width)
     return ('…' if start else '') + text[start:end] + ('…' if end < len(text) else '')
 
 
+def mood_and_threads(mood):
+    """A Mood's id and those of its threads, and theirs, all the way down."""
+    ids, frontier = {mood.id}, [mood.id]
+    while frontier:
+        frontier = [i for i in Mood.objects.filter(thread_of_id__in=frontier).values_list('id', flat=True) if i not in ids]
+        ids.update(frontier)
+    return ids
+
+
 @require_GET
 def api_search(request):
-    """What was said, in one Mood (?mood=<slug>) or all of them, that contains ?q=.
+    """What was said, in one Mood (?mood=<slug>; &threads=1 with its threads) or all
+    of them, that has every term of ?q= in it.
 
-    Newest first, at most SEARCH_MAX. Only what people and agents said --
-    not tool calls, their results or the harness's wrappers. A plain
-    case-insensitive match on the stored text: about 0.15 s in one Mood,
-    1.2 s across all of them, at 25k messages.
+    Terms are words, or "a phrase" in quotes; ?word=1 matches each only as a
+    whole word (or words). ?who=<name>, or ?who=human / ?who=emergent, for
+    who said it. Newest first, SEARCH_MAX at a time: `more` is where the next
+    page starts (pass it back as ?before=), null when there is nothing older.
+    Only what people and agents said -- not tool calls, their results or the
+    harness's wrappers. Case-insensitive.
     """
     from django.db.models import TextField
     from django.db.models.functions import Cast
 
-    q = (request.GET.get('q') or '').strip()
-    if len(q) < 2:
+    q = (request.GET.get('q') or '').strip()[:200]
+    terms = search_terms(q)
+    if len(q.replace('"', '').strip()) < 2 or not terms:
         return JsonResponse({'error': 'two characters at least'}, status=400)
-    q = q[:200]
+    whole = request.GET.get('word') == '1'
+    patterns = [term_pattern(t, whole) for t in terms]
     names = known_names()
     rows = (Message.objects.filter(mood__isnull=False, is_sidechain=False)
             .exclude(sender_id__in=MACHINERY_SENDERS)
-            .annotate(text=Cast('content', TextField())).filter(text__icontains=q))
+            .annotate(text=Cast('content', TextField())))
+    for term in terms:  # narrowed in the database; the prose itself is checked below
+        words = term.split()
+        rows = rows.filter(text__icontains=words[0]) if len(words) > 1 else rows.filter(text__icontains=term)
     mood = request.GET.get('mood')
     if mood:
-        rows = rows.filter(mood__slug=mood)
+        found = Mood.by_slug(mood)
+        if found is None:
+            return JsonResponse({'q': q, 'mood': mood, 'hits': [], 'more': None})
+        rows = rows.filter(mood_id__in=mood_and_threads(found)) if request.GET.get('threads') == '1' else rows.filter(mood=found)
+    who = (request.GET.get('who') or '').strip()
+    if who in ('human', 'emergent', 'agent'):
+        rows = rows.filter(sender_id__in=ThinkingEntity.objects.filter(
+            is_biological_human=who == 'human').values_list('name', flat=True))
+    elif who:
+        rows = rows.filter(sender_id=who)
+    before = parse_datetime(request.GET.get('before') or '')
+    if before:
+        rows = rows.filter(created_at__lt=before)
     titles = dict(Mood.objects.values_list('slug', 'title'))
-    hits = []
-    for msg in rows.select_related('sender').order_by('-created_at')[:SEARCH_SCAN]:
-        if msg.sender_id not in names:
-            continue
-        text = prose(msg.content)
-        if not text or is_wrapper(text) or is_summary(msg) or q.lower() not in text.lower():
-            continue
-        hits.append({'id': str(msg.id), 'mood': msg.mood_slug, 'title': titles.get(msg.mood_slug, msg.mood_slug),
-                     'sender': msg.sender_id, 'created_at': msg.created_at.isoformat(), 'text': snippet(text, q)})
+    hits, last, done = [], None, False
+    rows = rows.select_related('sender').order_by('-created_at')
+    for _ in range(SEARCH_READS):
+        batch = list((rows.filter(created_at__lt=last) if last else rows)[:SEARCH_SCAN])
+        for msg in batch:
+            last = msg.created_at
+            if msg.sender_id not in names:
+                continue
+            text = prose(msg.content)
+            if not text or is_wrapper(text) or is_summary(msg) or not all(p.search(text) for p in patterns):
+                continue
+            hits.append({'id': str(msg.id), 'mood': msg.mood_slug, 'title': titles.get(msg.mood_slug, msg.mood_slug),
+                         'sender': msg.sender_id, 'created_at': msg.created_at.isoformat(),
+                         'text': snippet(text, patterns[0])})
+            if len(hits) >= SEARCH_MAX:
+                break
+        if len(batch) < SEARCH_SCAN and len(hits) < SEARCH_MAX:
+            done = True
+            break
         if len(hits) >= SEARCH_MAX:
             break
-    return JsonResponse({'q': q, 'mood': mood, 'hits': hits})
+    more = None if done or last is None else last.isoformat()
+    return JsonResponse({'q': q, 'mood': mood, 'terms': terms, 'hits': hits, 'more': more})
 
 
 RECENT_MAX = 30
@@ -1302,7 +1399,9 @@ self.addEventListener('push', e => {
     // timestamp: when it was said, so one held while the phone slept doesn't say "now".
     return self.registration.showNotification(n.title, { body: n.body || '', tag: n.tag, icon: '/moods/icon-192.png',
                                                          badge: '/moods/mark-96.png', data: n.data || {},
-                                                         ...(n.timestamp ? { timestamp: n.timestamp } : {}) });
+                                                         ...(n.timestamp ? { timestamp: n.timestamp } : {}) })
+      // An open page that already read it aloud takes it back.
+      .then(() => list.forEach(c => c.postMessage({ shown: n.tag })));
   }));
 });
 // A notification (a mention, an answer) opens its Mood at that message: in a

@@ -35,7 +35,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import ConversationParticipant, Message, Mood, MoodSession, ThinkingEntity
-from .services import reactions
+from .services import polls, reactions
 
 SOURCE = 'mood-runner'  # rows are filed as 'ingest-mood-runner'
 MAX_EVENTS = 500
@@ -197,6 +197,8 @@ def api_stream(request, slug):
     if imported:
         clips_played(session_id, agent)
         reactions.agent_reacted(session_id, agent)
+        polls.polls_posted(session_id, agent)
+        polls.agent_voted(session_id, agent)
     effort = str(body.get('effort') or '')
     if re.fullmatch(r'[a-z]{2,12}', effort):
         Message.objects.filter(session_id=session_id, sender_id=agent, model_backend__isnull=False,
@@ -258,6 +260,8 @@ def stream_events(mood, session_id, agent, body, asked=()):
     if imported:
         clips_played(session_id, agent)
         reactions.agent_reacted(session_id, agent)
+        polls.polls_posted(session_id, agent)
+        polls.agent_voted(session_id, agent)
     if turn.finished:
         finish_turn(mood, session_id, agent, turn.finished, asked)
     return JsonResponse({'imported': imported, 'skipped': skipped, 'ignored': ignored, 'errors': errors[:10],
@@ -269,7 +273,7 @@ def stream_events(mood, session_id, agent, body, asked=()):
 def api_quiet(request, slug):
     """Record that the runner's screen let a moment pass for its agent.
 
-    Body: {"reason": "a few words", "by": "screen"}. Shown as a dot, like the
+    Body: {"reason": "a few words", "by": "screen", "cost_usd": what the screen cost, if known}. Shown as a dot, like the
     agent's own silences, but marked as the screen's: the record never
     passes a reflex off as the agent's considered judgment. No session: a
     screen is not a turn anyone could resume.
@@ -288,6 +292,9 @@ def api_quiet(request, slug):
         body = json.loads(request.body)
         reason = str(body.get('reason', ''))
         by = str(body.get('by', 'screen'))
+        # What the screen's own call cost, when the runner says: the status page's spend by kind counts it.
+        cost = body.get('cost_usd')
+        cost = float(cost) if isinstance(cost, (int, float)) and cost >= 0 else None
     except (ValueError, AttributeError):
         return JsonResponse({'error': 'expected {"reason": ..., "by": "screen"}'}, status=400)
     if not re.fullmatch(r'\w{1,20}', by):
@@ -299,7 +306,7 @@ def api_quiet(request, slug):
         return JsonResponse({'error': f'no entity {agent}'}, status=400)
     message = Message.objects.create(
         id=uuid.uuid4(), sender=sender, mood=mood, content=f'<silent by="{by}">{reason}</silent>',
-        timestamp=int(time.time() * 1000), source_file=f'ingest-{SOURCE}', stop_reason='end_turn')
+        timestamp=int(time.time() * 1000), source_file=f'ingest-{SOURCE}', stop_reason='end_turn', cost_usd=cost)
     return JsonResponse({'id': str(message.id)}, status=201)
 
 
@@ -332,6 +339,54 @@ def api_held(request, slug):
         return JsonResponse({'error': 'expected {"reason": ..., "until": <iso> or null}'}, status=400)
     holds = set_held(slug, agent, reason, until)
     return JsonResponse({'held': holds.get(agent)})
+
+
+@csrf_exempt  # authenticated by the runner's key
+@require_POST
+def api_running(request, slug):
+    """The runner's agent has a turn running here, since when -- or no longer.
+
+    Body: {"since": <epoch seconds>} while it runs, renewed every couple of minutes; {"since": null}
+    when it ends. Not in the record: how things stand, like a hold (services/mood_view.py,
+    RUNNING_FOR), so the Mood shows an agent at work through a tool call that writes nothing.
+    """
+    from .services.mood_view import set_running
+
+    if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
+        return JsonResponse({'error': 'no runners are configured'}, status=503)
+    agent = runner_agent(request)
+    if agent is None:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    Mood.by_slug_or_404(slug)
+    try:
+        since = json.loads(request.body).get('since')
+        since = None if since is None else float(since)
+    except (ValueError, AttributeError, TypeError):
+        return JsonResponse({'error': 'expected {"since": <epoch seconds> or null}'}, status=400)
+    return JsonResponse({'running': set_running(slug, agent, since).get(agent)})
+
+
+@csrf_exempt  # authenticated by the runner's key
+@require_POST
+def api_plan(request):
+    """How much of the Claude plan's rolling windows a turn found used (services/plan.py).
+
+    Body: {"rate_limit_info": {...}}, as Claude Code's rate_limit_event carried it.
+    """
+    from .services import plan
+
+    if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
+        return JsonResponse({'error': 'no runners are configured'}, status=503)
+    agent = runner_agent(request)
+    if agent is None:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    try:
+        info = json.loads(request.body).get('rate_limit_info')
+    except (ValueError, AttributeError):
+        info = None
+    if not isinstance(info, dict):
+        return JsonResponse({'error': 'expected {"rate_limit_info": {...}}'}, status=400)
+    return JsonResponse({'kept': [w.window for w in plan.record(info, agent)]})
 
 
 # --- servers: whether each answers, and their redeploys -------------------------

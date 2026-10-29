@@ -65,7 +65,7 @@ def makers_offered():
             for vendor, makers in sorted(found.items()) if vendor}
 
 
-SECTIONS = ('tidings', 'prompts', 'status', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'settings')
 
 
 def section(name):
@@ -186,6 +186,29 @@ def prompts_page(request):
     })
 
 
+@section('polls')
+def polls_page(request):
+    """Polls & Plebiscites: every Mood's polls in one place, open ones first (services/polls.py)."""
+    device = mood_auth.device_for(request)
+    return render(request, 'conversations/mood_polls.html', {
+        'viewer': device.entity_id if device else '', 'embed': True})
+
+
+@require_GET
+def api_polls(request):
+    """Polls in every Mood, as they stand, for Polls & Plebiscites: {"polls", "wiki_names", "humans", "viewer", "admin"}."""
+    from .services import polls, wiki_auth
+    from .services.retract import is_admin
+    device = mood_auth.device_for(request)
+    return JsonResponse({
+        'polls': polls.everywhere(),
+        'wiki_names': wiki_auth.names(),
+        'humans': list(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True)),
+        'viewer': device.entity_id if device else '',
+        'admin': is_admin(device),
+    })
+
+
 @require_GET
 def api_emoji(request):
     """Every emoji Unicode has, grouped and named (conversations/data/emoji.json, from tools/emoji_data.py): the
@@ -217,6 +240,28 @@ def api_tidings_find(request):
         found = found.filter(Q(title__icontains=word) | Q(url__icontains=word))
     return JsonResponse({'links': [{'id': str(t.id), 'title': t.title or t.url, 'host': urlsplit(t.url).hostname or '',
                                     'at': t.at.isoformat()} for t in found.order_by('-at')[:8]]})
+
+
+@require_GET
+def api_usage(request):
+    """What the agents spent (services/usage.py): ?hours= 24, 72, 168 or 720."""
+    from .services import usage
+    try:
+        hours = int(request.GET.get('hours', 24))
+    except ValueError:
+        hours = 24
+    return JsonResponse(usage.usage_state(hours))
+
+
+@require_GET
+def api_usage_kinds(request):
+    """Spend by kind of turn (services/spend_kinds.py): ?hours= (24 unless 1 to 168), ?mood= a slug or nothing."""
+    from .services import spend_kinds
+    try:
+        hours = min(168, max(1, int(request.GET.get('hours', 24))))
+    except ValueError:
+        hours = 24
+    return JsonResponse(spend_kinds.spend_by_kind(hours, request.GET.get('mood') or None))
 
 
 @require_GET

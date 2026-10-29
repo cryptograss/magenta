@@ -43,6 +43,47 @@
   .prompt .then .said { color: var(--accent); font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
   .prompt .cost { margin-top: 6px; }
   .none { color: var(--muted); font-size: 13px; }
+  .viz-root {
+    --surface-1: var(--panel); --grid: var(--line); --other: #9b968f;
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+    --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root { --other: #77726c;
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+      --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767; }
+  }
+  .filters { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 13px; margin-bottom: 10px; }
+  .filters select { font: inherit; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+                    border-radius: 6px; padding: 2px 4px; }
+  .tiles { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 150px; }
+  .tile .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .tile .k { color: var(--muted); font-size: 12px; }
+  .chart, .multiples > div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .multiples { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+  .multiples h4 { margin: 0 0 4px; font-size: 13px; display: flex; justify-content: space-between; }
+  .multiples h4 span { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+  svg.bars { display: block; width: 100%; height: auto; overflow: visible; }
+  svg.bars text { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  svg.bars line.grid { stroke: var(--grid); stroke-width: 1; }
+  svg.bars rect.seg { stroke: var(--surface-1); stroke-width: 1; }
+  svg.bars rect.hit { fill: transparent; }
+  svg.bars g.col:hover rect.seg { opacity: .85; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  .tip { position: fixed; z-index: 10; pointer-events: none; background: var(--panel); color: var(--ink);
+         border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12px;
+         box-shadow: 0 4px 14px rgba(0,0,0,.15); max-width: 300px; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .tip .row { display: flex; justify-content: space-between; gap: 12px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .tabs button { font: inherit; font-size: 13px; background: none; color: var(--muted); border: 1px solid var(--line);
+                 border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+  .tabs button[aria-selected="true"] { color: var(--ink); background: var(--accent-soft); border-color: var(--accent); }
+  table.top { width: 100%; border-collapse: collapse; font-size: 12.5px; background: var(--panel); }
+  table.top th, table.top td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  table.top td.n, table.top th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -72,10 +113,57 @@
 <main>
   <h1>Prompts</h1>
 
+  <!-- What the agents spent (services/usage.py, /api/usage/): Justin, #usage, 28 Oct. Drawn here from
+       slices the API sums once; changing the range asks again, changing a colouring or measure doesn't. -->
+  <section id="usage" class="viz-root">
+    <h2>Usage</h2>
+    <div class="filters" role="group" aria-label="usage filters">
+      <label>Range <select id="u-hours">
+        <option value="24">24 hours</option><option value="72">3 days</option>
+        <option value="168">7 days</option><option value="720">30 days</option></select></label>
+      <label>Measure <select id="u-measure">
+        <option value="ctx">context read</option><option value="out">tokens written</option>
+        <option value="usd">dollars paid (OpenRouter and others)</option></select></label>
+      <label>Each emergent, coloured by <select id="u-by">
+        <option value="model">model</option><option value="mood">Mood</option>
+        <option value="harness">who was paid</option></select></label>
+      <span class="muted" id="u-status">loading…</span>
+    </div>
+    <div class="tiles" id="u-tiles"></div>
+    <p class="muted">Two ways of paying, so two units (Justin, 29 Oct). OpenRouter is paid in dollars: what it
+      billed, from magenta#235 on (before it, a router model, <code>auto</code> or <code>pareto-code</code>, was
+      recorded at $0). Claude Code is paid by the plan, in a share of its rolling windows: tokens here, and the
+      windows below as Claude Code reports them. "Dollars paid" leaves Claude Code out.</p>
+    <h3>The Claude plan's windows</h3>
+    <div class="chart" id="u-plan"></div>
+    <h3>Overall, by who was paid</h3>
+    <div class="chart" id="u-overall"></div>
+    <h3>Each emergent</h3>
+    <div class="multiples" id="u-agents"></div>
+    <h3>Each Mood, by emergent</h3>
+    <div class="multiples" id="u-moods"></div>
+    <h3>Most expensive turns, past 24 hours</h3>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="anthropic" aria-selected="true">Anthropic</button>
+      <button role="tab" data-tab="openrouter" aria-selected="false">OpenRouter</button>
+      <button role="tab" data-tab="other" aria-selected="false" hidden>other vendors</button>
+    </div>
+    <div id="u-top"></div>
+    <div class="tip" id="u-tip" role="tooltip" hidden></div>
+  </section>
+
+  {% include "conversations/_spend_kinds.html" %}
+
   <h2>By each person (last {{ prompt_cap }} each)</h2>
+  {# One person at a time (Justin, 29 Oct: everyone's at once was too long): a tab each. #}
+  <div class="tabs" role="tablist" id="people">
+  {% for human in prompts.prompts %}{% if human.prompts %}
+    <button role="tab" data-person="{{ forloop.counter0 }}" aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">{% if human.wiki_name %}{{ human.wiki_name }}{% else %}{{ human.name }}{% endif %} <span class="muted">{{ human.prompts|length }}</span></button>
+  {% endif %}{% endfor %}
+  </div>
   {% for human in prompts.prompts %}
+    <div class="person" data-person="{{ forloop.counter0 }}" role="tabpanel"{% if not forloop.first %} hidden{% endif %}>
     <h3>{% if human.wiki_name %}{{ human.wiki_name }} <span class="local">({{ human.name }})</span>{% else %}{{ human.name }}{% endif %}</h3>
-    <div>
     {% for prompt in human.prompts %}
       <div class="prompt">
         <div class="head at">
@@ -108,5 +196,220 @@
     </div>
   {% endfor %}
 </main>
+<script>
+  // The per-person tabs: one person's prompts shown at a time.
+  const showPerson = b => {
+    document.querySelectorAll('#people button').forEach(o => o.setAttribute('aria-selected', String(o === b)));
+    document.querySelectorAll('.person').forEach(p => { p.hidden = p.dataset.person !== b.dataset.person; });
+  };
+  document.querySelectorAll('#people button').forEach(b => b.addEventListener('click', () => showPerson(b)));
+  // Only people with prompts have a tab: the first of them is shown.
+  if (document.querySelector('#people button')) showPerson(document.querySelector('#people button'));
+</script>
+<script>
+(() => {
+  const AGENT_COLORS = { magent: '#ff67fd', re: '#ff3c00', blu: '#1976d2' };  // as the Moods draw them
+  const HARNESS = { anthropic: 'Anthropic', openrouter: 'OpenRouter', other: 'other vendors' };  // who was paid
+  const HARNESSES = Object.keys(HARNESS);
+  const SLOTS = 7;  // categorical slots before the rest fold into "other"
+  const $ = id => document.getElementById(id);
+  const tip = $('u-tip');
+  let state = null, tab = 'anthropic';
+
+  const usd = v => v >= 100 ? '$' + Math.round(v) : v >= 1 ? '$' + v.toFixed(2) : v > 0 ? '$' + v.toFixed(3) : '$0';
+  const tok = n => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M'
+                 : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n));
+  const fmt = (m, v) => m === 'usd' ? usd(v) : tok(v);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // A slice: [bucket, agent, mood, model, harness, calls, ctx, cached, out, usd, unpriced]
+  const COL = { agent: 1, mood: 2, model: 3, harness: 4 }, VAL = { calls: 5, ctx: 6, cached: 7, out: 8, usd: 9 };
+
+  function colours(names, dim) {
+    // Colour follows the entity: an emergent its own colour, the rest by their rank in the whole range,
+    // so a chart showing fewer of them doesn't repaint the ones it keeps.
+    const out = {};
+    if (dim === 'agent') { names.forEach(n => out[n] = AGENT_COLORS[n] || 'var(--other)'); return out; }
+    if (dim === 'harness') { HARNESSES.forEach((h, i) => out[h] = `var(--series-${i + 1})`); return out; }
+    const order = state[dim + 's'] || names;
+    names.forEach(n => { const i = order.indexOf(n); out[n] = i >= 0 && i < SLOTS ? `var(--series-${i + 1})` : 'var(--other)'; });
+    return out;
+  }
+  const label = (dim, n) => dim === 'harness' ? HARNESS[n] || n : n || '(none)';
+
+  function series(slices, dim, measure) {
+    // [{name, values[bucket]}], the first SLOTS by the range's own order, the rest as one "other".
+    const order = dim === 'agent' ? state.agents : dim === 'harness' ? HARNESSES : state[dim + 's'];
+    const keep = new Set(dim === 'agent' || dim === 'harness' ? order : order.slice(0, SLOTS));
+    const by = new Map();
+    for (const s of slices) {
+      const name = keep.has(s[COL[dim]]) ? s[COL[dim]] : '__other';
+      if (!by.has(name)) by.set(name, { values: new Array(state.buckets.length).fill(0), calls: new Array(state.buckets.length).fill(0) });
+      by.get(name).values[s[0]] += s[VAL[measure]];
+      by.get(name).calls[s[0]] += s[5];
+    }
+    const named = order.filter(n => by.has(n)).map(n => ({ name: n, ...by.get(n) }));
+    if (by.has('__other')) named.push({ name: '__other', ...by.get('__other') });
+    return named;
+  }
+
+  function when(i) {
+    const d = new Date(state.buckets[i]);
+    return state.unit === 'day' ? d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+      : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric' });
+  }
+
+  function bars(el, list, dim, measure, height = 150) {
+    const n = state.buckets.length, W = Math.max(240, el.clientWidth - 4 || 600), H = height, L = 40, B = 16, T = 6;  // drawn at its own width: its text stays 10px
+    const totals = state.buckets.map((_, i) => list.reduce((a, s) => a + s.values[i], 0));
+    const max = Math.max(...totals, 0) || 1;
+    const nice = (() => { const p = Math.pow(10, Math.floor(Math.log10(max))); return [1, 2, 2.5, 5, 10].map(m => m * p).find(v => v >= max); })();
+    const bw = (W - L) / n, gap = Math.min(2, bw * 0.2), y = v => T + (H - T - B) * (1 - v / nice);
+    const cols = colours(list.map(s => s.name), dim);
+    let svg = `<svg class="bars" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(measure)} per ${state.unit}">`;
+    for (const f of [0, 0.5, 1]) svg += `<line class="grid" x1="${L}" x2="${W}" y1="${y(nice * f)}" y2="${y(nice * f)}"/>` +
+      `<text x="${L - 4}" y="${y(nice * f) + 3}" text-anchor="end">${fmt(measure, nice * f)}</text>`;
+    const every = Math.ceil(n / Math.max(2, Math.floor(W / 110)));  // a time label every ~110px
+    for (let i = 0; i < n; i++) {
+      const x = L + i * bw + gap / 2, w = Math.max(1, bw - gap);
+      let base = 0, segs = '';
+      list.forEach((s, k) => {
+        const v = s.values[i]; if (!v) return;
+        const top = y(base + v), bottom = y(base);
+        segs += `<rect class="seg" x="${x}" y="${top}" width="${w}" height="${Math.max(0.5, bottom - top)}" rx="${Math.min(2, w / 3)}" fill="${s.name === '__other' ? 'var(--other)' : cols[s.name]}"/>`;
+        base += v;
+      });
+      svg += `<g class="col" data-i="${i}">${segs}<rect class="hit" x="${L + i * bw}" y="${T}" width="${bw}" height="${H - T - B}"/></g>`;
+      if (i % every === 0) svg += `<text x="${x + w / 2}" y="${H - 3}" text-anchor="middle">${esc(when(i))}</text>`;
+    }
+    svg += '</svg>';
+    const legend = list.length > 1 ? '<div class="legend">' + list.map(s =>
+      `<span><i style="background:${s.name === '__other' ? 'var(--other)' : cols[s.name]}"></i>${esc(s.name === '__other' ? 'other' : label(dim, s.name))}</span>`).join('') + '</div>' : '';
+    el.innerHTML = svg + legend;
+    el.querySelectorAll('g.col').forEach(g => {
+      const i = +g.dataset.i;
+      g.addEventListener('mousemove', e => {
+        const rows = list.filter(s => s.values[i]).map(s => `<div class="row"><span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${s.name === '__other' ? 'var(--other)' : cols[s.name]}"></i> ${esc(s.name === '__other' ? 'other' : label(dim, s.name))}</span><b>${fmt(measure, s.values[i])}</b></div>`).join('');
+        tip.innerHTML = `<div class="muted">${esc(when(i))}</div>${rows || '<div class="muted">nothing</div>'}` +
+          (rows ? `<div class="row" style="border-top:1px solid var(--line);margin-top:3px"><span>total</span><b>${fmt(measure, totals[i])}</b></div>` : '');
+        tip.hidden = false;
+        tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px';
+        tip.style.top = (e.clientY + 14) + 'px';
+      });
+      g.addEventListener('mouseleave', () => { tip.hidden = true; });
+    });
+  }
+
+  function planLines(el, plan) {
+    // Each window's share used, over the range: a level, held from one reading to the next, so a step line on
+    // one axis of percent (never summed with anything).
+    const names = Object.keys(plan);
+    if (!names.length) { el.innerHTML = '<p class="none">No readings yet: Claude Code reports them as turns run.</p>'; return; }
+    const W = Math.max(240, el.clientWidth - 4 || 600), H = 150, L = 40, B = 16, T = 8;
+    const x0 = new Date(state.buckets[0]).getTime(), x1 = new Date(state.now).getTime();
+    const top = Math.max(1, ...names.flatMap(n => plan[n].points.map(p => p[1])));
+    const x = t => L + (W - L) * Math.min(1, Math.max(0, (t - x0) / (x1 - x0 || 1))), y = v => T + (H - T - B) * (1 - v / top);
+    let svg = `<svg class="bars" viewBox="0 0 ${W} ${H}" role="img" aria-label="the plan's windows, share used">`;
+    for (const f of [0, 0.5, 1]) svg += `<line class="grid" x1="${L}" x2="${W}" y1="${y(top * f)}" y2="${y(top * f)}"/>`
+      + `<text x="${L - 4}" y="${y(top * f) + 3}" text-anchor="end">${Math.round(100 * top * f)}%</text>`;
+    names.forEach((n, i) => {
+      const pts = plan[n].points.map(([at, v]) => [new Date(at).getTime(), v]).sort((a, b) => a[0] - b[0]);
+      if (!pts.length) return;
+      let d = '';
+      pts.forEach(([t, v], k) => { d += (k ? ` H${x(t)} V${y(v)}` : `M${x(t)} ${y(v)}`); });
+      d += ` H${x(x1)}`;
+      svg += `<path d="${d}" fill="none" stroke="var(--series-${i + 1})" stroke-width="2"/>`;
+    });
+    const labels = [0, 0.25, 0.5, 0.75, 1].map(f => x0 + f * (x1 - x0));
+    labels.forEach(t => { svg += `<text x="${x(t)}" y="${H - 3}" text-anchor="middle">${esc(new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric' }))}</text>`; });
+    el.innerHTML = svg + '</svg><div class="legend">' + names.map((n, i) =>
+      `<span><i style="background:var(--series-${i + 1})"></i>${esc(plan[n].label)} · ${Math.round(100 * plan[n].now.utilization)}% now</span>`).join('') + '</div>';
+  }
+
+  function sum(slices, key) { return slices.reduce((a, s) => a + s[VAL[key]], 0); }
+
+  function draw() {
+    if (!state) return;
+    const measure = $('u-measure').value, by = $('u-by').value;
+    const t = state.totals, add = k => HARNESSES.reduce((a, h) => a + t[h][k], 0), all = add('ctx');
+    // The plan's windows, each as used now: a share, not dollars (services/plan.py).
+    const windows = Object.values(state.plan || {});
+    const when = iso => new Date(iso).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    const tiles = [
+      [usd(t.openrouter.paid_usd), 'OpenRouter, billed'],
+      ...(windows.length ? windows.map(w => [Math.round(100 * w.now.utilization) + '%',
+          `of the plan's ${esc(w.label)}` + (w.now.resets_at && w.now.status !== 'reset' ? ` · resets ${when(w.now.resets_at)}` : '')])
+        : [['–', "the plan's windows: none reported yet"]]),
+      [tok(t.anthropic.ctx), 'Claude Code, context read'],
+      [tok(all), 'context read, all'],
+      [all ? Math.round(100 * add('cached') / all) + '%' : '–', 'of it from the cache'],
+      [String(add('calls')), 'model calls'],
+    ];
+    if (t.other.calls) tiles.splice(2, 0, [usd(t.other.usd), 'other vendors']);
+    const unpriced = t.openrouter.unpriced + t.other.unpriced;  // the plan's calls carry no dollars to miss
+    if (unpriced) tiles.push([String(unpriced), 'calls with no price']);
+    $('u-tiles').innerHTML = tiles.map(([v, k]) => `<div class="tile"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
+
+    planLines($('u-plan'), state.plan || {});
+    // Dollars are what was paid: the plan's calls have none (it is paid in its windows, drawn above).
+    const paid = measure === 'usd' ? state.slices.filter(s => s[4] !== 'anthropic') : state.slices;
+    bars($('u-overall'), series(paid, 'harness', measure), 'harness', measure, 170);
+
+    $('u-agents').innerHTML = state.agents.map(a => `<div><h4>${esc(a)} <span></span></h4><div data-agent="${esc(a)}"></div></div>`).join('');
+    for (const a of state.agents) {
+      const mine = paid.filter(s => s[1] === a), box = $('u-agents').querySelector(`[data-agent="${CSS.escape(a)}"]`);
+      box.previousElementSibling.querySelector('span').textContent = fmt(measure, sum(mine, measure));
+      bars(box, series(mine, by, measure), by, measure);
+    }
+
+    const moods = state.moods.slice(0, 9);
+    $('u-moods').innerHTML = moods.map(m => `<div><h4><a href="/moods/${encodeURIComponent(m)}/">#${esc(m)}</a> <span></span></h4><div data-mood="${esc(m)}"></div></div>`).join('');
+    for (const m of moods) {
+      const here = paid.filter(s => s[2] === m), box = $('u-moods').querySelector(`[data-mood="${CSS.escape(m)}"]`);
+      box.previousElementSibling.querySelector('span').textContent = fmt(measure, sum(here, measure));
+      bars(box, series(here, 'agent', measure), 'agent', measure, 120);
+    }
+    drawTop();
+  }
+
+  function drawTop() {
+    const rows = (state.top[tab] || []);
+    document.querySelectorAll('#usage .tabs button').forEach(b => {
+      b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+      b.hidden = b.dataset.tab === 'other' && !(state.top.other || []).length;  // only when some vendor else was paid
+    });
+    if (!rows.length) { $('u-top').innerHTML = '<p class="none">No turns here in the past 24 hours.</p>'; return; }
+    // Who prompted it (Justin, 29 Oct): a mention's poster; for a look nobody asked for, what kind, and whose posts.
+    const SHORT = { consider: 'unasked look', crosstalk: 'crosstalk', quiet: 'quiet look', arrival: 'arrival',
+                    'mention-look': 'look-only', other: 'other wake' };
+    const prompted = r => r.kind === 'unknown' ? '<span class="muted">not recorded</span>'
+      : (SHORT[r.kind] && r.kind !== 'mention-look' ? `<span class="muted">${SHORT[r.kind]}</span>${r.by.length ? ' · ' : ''}` : '')
+        + esc(r.by.join(', ')) + (r.kind === 'mention-look' ? ' <span class="muted">(look-only)</span>' : '');
+    $('u-top').innerHTML = `<table class="top"><thead><tr><th>when</th><th>prompted by</th><th>who</th><th>Mood</th><th>model</th>
+      <th class="n">calls</th><th class="n">context read</th><th class="n">largest</th><th class="n">cached</th>
+      <th class="n">written</th><th class="n">cost</th></tr></thead><tbody>` + rows.map(r => `<tr>
+      <td class="n"><a href="/moods/${encodeURIComponent(r.mood)}/#m-${r.first}">${esc(new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</a></td>
+      <td title="${esc(r.label || '')}">${prompted(r)}</td><td>${esc(r.agent)}</td><td>#${esc(r.mood)}</td><td>${esc(r.models.join(', '))}</td>
+      <td class="n">${r.calls}</td><td class="n">${tok(r.ctx)}</td><td class="n">${tok(r.max_ctx)}</td>
+      <td class="n">${r.ctx ? Math.round(100 * r.cached / r.ctx) + '%' : '–'}</td><td class="n">${tok(r.out)}</td>
+      <td class="n" title="${r.harness === 'anthropic' ? "the plan's: paid in its windows, not dollars" : r.paid ? 'what was billed' : 'at list price'}${r.unpriced ? `; ${r.unpriced} call(s) with no price` : ''}">${r.harness === 'anthropic' ? '<span class="muted">plan</span>' : usd(r.usd) + (r.paid ? '' : ' <span class="muted">list</span>')}</td>
+      </tr>`).join('') + '</tbody></table>';
+  }
+
+  async function load() {
+    $('u-status').textContent = 'loading…';
+    try {
+      const r = await fetch('/api/usage/?hours=' + $('u-hours').value);
+      state = await r.json();
+      $('u-status').textContent = '';
+      draw();
+    } catch (e) { $('u-status').textContent = 'could not load usage: ' + e; }
+  }
+  $('u-hours').addEventListener('change', load);
+  $('u-measure').addEventListener('change', draw);
+  $('u-by').addEventListener('change', draw);
+  document.querySelectorAll('#usage .tabs button').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; drawTop(); }));
+  load();
+})();
+</script>
 </body>
 </html>

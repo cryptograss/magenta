@@ -111,6 +111,48 @@ class NoticesTest(TestCase):
         self.assertEqual([h['text'] for h in here], ['Who has the CAPO tonight?'])
         self.assertEqual(self.client.get('/api/search/?q=c').status_code, 400)
 
+    def test_search_takes_words_phrases_whole_words_and_who_said_it(self):
+        self.add(self.justin, 'The banjo player is tuning the capo', seconds=1)
+        self.add(self.magent, 'banjos and a capotasto, for the record', seconds=2)
+        self.add(self.skyler, 'the capo player tuning', seconds=3)
+        hits = lambda **p: [h['text'] for h in self.client.get('/api/search/', p).json()['hits']]
+        self.assertEqual(hits(q='capo banjo'), ['banjos and a capotasto, for the record', 'The banjo player is tuning the capo'])
+        self.assertEqual(hits(q='capo banjo', word='1'), ['The banjo player is tuning the capo'])
+        self.assertEqual(hits(q='"player is tuning"'), ['The banjo player is tuning the capo'])
+        self.assertEqual(hits(q='capo', who='human'), ['the capo player tuning', 'The banjo player is tuning the capo'])
+        self.assertEqual(hits(q='capo', who='emergent'), ['banjos and a capotasto, for the record'])
+        self.assertEqual(hits(q='capo', who='skyler'), ['the capo player tuning'])
+
+    def test_search_in_a_mood_and_its_threads(self):
+        thread = Mood.objects.create(slug='m26-setlist', title='setlist', thread_of=self.m26)
+        inner = Mood.objects.create(slug='m26-setlist-encore', title='encore', thread_of=thread)
+        self.add(self.justin, 'fiddle in the main room', seconds=1)
+        self.add(self.justin, 'fiddle on the setlist', mood=thread, seconds=2)
+        self.add(self.justin, 'fiddle for the encore', mood=inner, seconds=3)
+        self.add(self.justin, 'fiddle elsewhere', mood=self.dk, seconds=4)
+        moods = lambda **p: sorted(h['mood'] for h in self.client.get('/api/search/', {'q': 'fiddle', **p}).json()['hits'])
+        self.assertEqual(moods(mood='m26'), ['m26'])
+        self.assertEqual(moods(mood='m26', threads='1'), ['m26', 'm26-setlist', 'm26-setlist-encore'])
+
+    def test_search_pages_further_back(self):
+        from conversations import views_moods
+        for i in range(5):
+            self.add(self.justin, f'mandolin {i}', seconds=i)
+        with mock.patch.object(views_moods, 'SEARCH_MAX', 2):
+            first = self.client.get('/api/search/', {'q': 'mandolin'}).json()
+            self.assertEqual([h['text'] for h in first['hits']], ['mandolin 4', 'mandolin 3'])
+            second = self.client.get('/api/search/', {'q': 'mandolin', 'before': first['more']}).json()
+            self.assertEqual([h['text'] for h in second['hits']], ['mandolin 2', 'mandolin 1'])
+            last = self.client.get('/api/search/', {'q': 'mandolin', 'before': second['more']}).json()
+        self.assertEqual([h['text'] for h in last['hits']], ['mandolin 0'])
+        self.assertIsNone(last['more'])
+
+    def test_reaching_back_to_a_message_is_one_ask(self):
+        said = [self.add(self.justin, f'verse {i}', seconds=i) for i in range(6)]
+        data = self.client.get(f'/api/moods/m26/turns/?before={said[5].id}&from={said[1].id}').json()
+        self.assertEqual([t['text'] for t in data['turns']], ['verse 1', 'verse 2', 'verse 3', 'verse 4'])
+        self.assertTrue(data['has_earlier'])
+
     def test_the_instructions_page_shows_them_and_what_each_wake_says(self):
         found = {'text': '<instructions agent="magent" mood="m26">Keep it short after midnight.</instructions>',
                  'layers': [{'page': 'Cryptograss:Moods/m26/Instructions', 'url': 'https://pickipedia.xyz/wiki/x',

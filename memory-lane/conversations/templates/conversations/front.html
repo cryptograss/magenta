@@ -29,6 +29,12 @@
   .line.out { opacity: 0; }
   .enter { display: inline-block; margin-top: 26px; padding: 9px 26px; border-radius: 22px; border: 1px solid var(--accent);
            color: var(--ink); font-size: 16px; }
+  .doors { margin-top: 26px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 12px; }
+  .doors .come { flex-basis: 100%; color: var(--muted); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+  /* The name and what it is, centred together; the arrow at the side, out of the way (Justin, 29 Oct). */
+  .doors .enter { margin-top: 0; min-width: 7.5em; line-height: 1.25; position: relative; padding: 9px 34px; text-align: center; }
+  .doors .enter i { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); font-style: normal; }
+  .doors .enter small { display: block; font-size: 11.5px; color: var(--muted); letter-spacing: .03em; }
   .enter:hover { background: rgba(239, 90, 166, .14); text-decoration: none; }
   .now { display: grid; grid-template-columns: 1.4fr 1fr; gap: 26px; }
   @media (max-width: 680px) { .now { grid-template-columns: 1fr; } h1 { font-size: 38px; } .mark { width: 132px; height: 132px; } }
@@ -61,6 +67,8 @@
   /* At the foot, the page's own address as a QR code (Justin, 23 Oct): held up for a phone across the table. */
   footer.here { text-align: center; padding: 6vh 0 34px; color: var(--muted); font-size: 12.5px; }
   footer.here .qr { display: block; width: 132px; height: 132px; margin: 0 auto 8px; border-radius: 8px; }
+  .helpline { text-align: center; margin: 10px 0 0; font-size: 13px; }
+  .helpline a { color: var(--muted, #888); }
 </style>
 </head>
 <body>
@@ -70,7 +78,13 @@
     <div class="mark" role="img" aria-label="magenta: pickers in a ring around a campfire"></div>
     <h1>magenta</h1>
     <p class="line" id="slogan" title="From Magenta:Slogans on PickiPedia: add yours">{{ slogan }}</p>
-    <a class="enter" href="/moods/tidings/">come in →</a>
+    <!-- Two doors, one welcome (Justin, 29 Oct: most people missed the Moods behind a door to Tidings). -->
+    <div class="doors">
+      <span class="come">come in</span>
+      <a class="enter" href="/moods/tidings/">tidings<i>→</i><small>(link share)</small></a>
+      <a class="enter" href="/moods/">moods<i>→</i><small>(chat)</small></a>
+    </div>
+    <p class="helpline"><a href="https://pickipedia.xyz/wiki/Magenta:Help" title="How magenta works: Magenta:Help on PickiPedia">new here? help</a></p>
   </section>
 
   <h2 class="latest">latest</h2>

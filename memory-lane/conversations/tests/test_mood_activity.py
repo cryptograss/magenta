@@ -10,7 +10,7 @@ from conversations.models import (
 )
 from django.core.cache import cache
 
-from conversations.services.mood_view import HELD_FOR, activity, held_in, set_held
+from conversations.services.mood_view import HELD_FOR, RUNNING_FOR, activity, held_in, running_in, set_held, set_running
 
 NOW = 1_790_000_000.0
 
@@ -26,6 +26,7 @@ class ActivityTest(TestCase):
 
     def setUp(self):
         cache.delete('held:m26')  # the cache is shared, not rolled back with the test
+        cache.delete('running:m26')
 
     def add(self, sender, seconds_ago, content='x', model=Message, **fields):
         return model.objects.create(id=uuid.uuid4(), sender=sender, mood=self.mood, content=content,
@@ -231,6 +232,23 @@ class ActivityTest(TestCase):
         self.add(self.magent, 800, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use')
         self.assertIsNone(self.now())
 
+    def test_a_tool_call_that_runs_past_the_window_is_at_work_while_its_runner_says_so(self):
+        """magent's Playwright call, 28 Oct: it hung 30 minutes, wrote nothing, and the Mood showed
+        nobody at work (Justin, #usage). The runner's word keeps it there; a dead runner's lapses."""
+        self.add(self.justin, 1900, 'go')
+        self.add(self.magent, 1800, {}, model=ToolUse, tool_name='mcp__playwright__browser_evaluate', tool_id='t1',
+                 stop_reason='tool_use')
+        self.assertIsNone(self.now())
+        set_running('m26', 'magent', since=NOW - 1900, now=NOW - 60)
+        self.assertEqual(self.now()['agent'], 'magent')
+        self.assertEqual(self.now()['since'], NOW - 1900)
+        # A person asking after it meanwhile: it's still at work on that turn, not waking for this.
+        self.add(self.justin, 30, '@magent are you there?', source_file='mood-web')
+        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'still at work', 'since': NOW - 1900})
+        self.assertEqual(running_in('m26', now=NOW - 60 + RUNNING_FOR + 1), {})
+        set_running('m26', 'magent', None, now=NOW - 1)  # the turn ended
+        self.assertEqual(self.now()['doing'], 'waking')
+
     def test_older_rows_without_stop_reason_end_on_a_quiet_reply(self):
         self.add(self.justin, 90, 'go')
         self.add(self.magent, 60, [{'type': 'text', 'text': 'here'}])
@@ -308,6 +326,20 @@ class SeveralAtOnceTest(TestCase):
         from conversations.services.mood_view import activities
         [(agent, since)] = [(a['agent'], a['since']) for a in activities(self.mood, now=NOW)]
         self.assertEqual((agent, since), ('magent', NOW - 120))
+
+    def test_a_turn_says_which_tools_its_wake_gave(self):
+        # Justin, 29 Oct: 🔨 by a pulsing name in the list, for a turn with its full tools.
+        poller, _ = ConversationParticipant.objects.get_or_create(name='mood-poller')
+        from conversations.services.mood_view import activities
+        for wake, tools in (('This turn has your full tools, as in your terminal', 'full'),
+                            ('This turn can look but not touch', 'look')):
+            session = uuid.uuid4()
+            self.add(self.justin, 100, '@magent look', source_file='mood-web')
+            self.add(poller, 95, f'<mood-wake mood="m26">... {wake} ...</mood-wake>', session_id=session)
+            self.add(self.magent, 90, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use', session_id=session)
+            [now] = activities(self.mood, now=NOW)
+            self.assertEqual(now.get('tools'), tools)
+            self.add(self.magent, 80, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn', session_id=session)
 
     def test_a_wake_prompt_is_its_agents_before_the_agent_has_said_anything(self):
         # Justin, 21 Oct 09:40: re woken (on deepseek, ~90 s to its first line), and the page said blu

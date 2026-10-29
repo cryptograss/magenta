@@ -82,6 +82,9 @@
   table.history th { color: var(--muted); font-weight: 600; }
   table.history td.value { font-family: ui-monospace, monospace; word-break: break-word; max-width: 420px; }
   @media (max-width: 720px) { .row { grid-template-columns: 1fr; } .help { margin-left: 0; } }
+  .offered { align-self: start; }
+  .offered summary { cursor: pointer; }
+  .offered summary h2 { display: inline; }
   .offered .makers { display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .offered .makers label { font-size: 13px; white-space: nowrap; }
 </style>
@@ -109,16 +112,13 @@
   <h1>Settings</h1>
   <p class="lede">The most specific setting wins: one emergent in one Mood, then everyone in that Mood, then the emergent
     everywhere, then the defaults. Grey italic values are inherited. Set a model or effort for an emergent in every Mood at once at the top;
-    dig into one emergent below. Every change is kept at the bottom, with who made it.</p>
+Every change is kept at the bottom, with who made it.</p>
   <div id="scram"></div>
   <h3>Set a model magenta-wide for:</h3>
   <div class="cards" id="models">Loading…</div>
   <h3>Emergent defaults</h3>
   <p class="note">Each emergent in every Mood and thread, new ones included, unless that Mood sets its own.</p>
   <div class="defaults-wrap"><table class="defaults" id="defaults"></table></div>
-  <h3>One emergent</h3>
-  <p class="pick-line"><label for="pickAgent">showing</label> <select id="pickAgent"></select></p>
-  <div class="cards" id="cards">Loading…</div>
   <h3>For all emergents together</h3>
   <div class="cards" id="global"></div>
   <h3 id="voices">Voices: who is read in which</h3>
@@ -269,8 +269,15 @@
   // Emergent defaults: one emergent everywhere (agent, no Mood). The Mood's bar has listening, discretion and
   // verbosity; the model is here too (Justin, 28 Oct: the defaults had no way to pick it -- the row above writes
   // a model into every Mood, which is a different thing from the default a new Mood starts from).
+  // A room's pace: one default here, for every emergent; a Mood sets its own in its bar (Justin, 29 Oct).
+  const PACE_KEYS = ['consider_after', 'idle_after', 'considers_per_hour'];
+  function paceCard() {
+    const value = k => { const row = state.set.find(s => s.key === k && !s.mood && !s.agent); return row ? row.value : state.knobs[k].default; };
+    return `<div class="card"><h2>Pace</h2><div class="sub">every emergent, in every Mood that doesn't set its own (in its bar)</div>`
+      + PACE_KEYS.map(k => field(k, value(k), null, null)).join('') + '</div>';
+  }
   function defaultsTable() {
-    const keys = Object.keys(state.knobs).filter(k => k === 'model' || !IN_THE_MOOD.includes(k));
+    const keys = Object.keys(state.knobs).filter(k => (k === 'model' || !IN_THE_MOOD.includes(k)) && !PACE_KEYS.includes(k));
     const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
     return head + state.agents.map(a => {
       const v = everywhere(a);
@@ -279,12 +286,8 @@
     }).join('');
   }
 
-  let picked = null;  // which emergent the Mood cards show, kept across saves
-  function agentView(a) {
-    const cards = [];
-    for (const m of state.moods) cards.push(card(m.title, `${a} in #${m.slug}`, state.resolved[m.slug][a], m.slug, a));
-    return cards.join('') || 'No Moods yet.';
-  }
+
+
 
   function render() {
     document.getElementById('who').innerHTML = viewer ? `changing as <b>${esc(viewer)}</b>`
@@ -294,15 +297,10 @@
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
     document.getElementById('models').innerHTML = modelRows();
     document.getElementById('defaults').innerHTML = defaultsTable();
-    const picker = document.getElementById('pickAgent');
-    if (!picked) picked = state.agents[0] || '';
-    picker.innerHTML = state.agents.map(a => `<option value="${esc(a)}" ${a === picked ? 'selected' : ''}>${esc(a)}</option>`).join('')
-      || '<option value="">nobody</option>';
-    document.getElementById('cards').innerHTML = picked ? agentView(picked) : 'No emergents yet.';
     document.getElementById('global').innerHTML = [`<div class="card"><h2>Budget</h2><div class="sub">for all emergents together</div>`
       + `<div class="row"><label title="${esc(state.global_knobs.consider_usd_per_day.help)}">$ a day</label>`
       + `<span><input type="number" min="0" step="0.5" data-key="consider_usd_per_day" data-mood="" data-agent="" value="${esc(state.global.consider_usd_per_day)}" ${viewer ? '' : 'disabled'}><span class="status"></span></span></div></div>`,
-      offeredCard()].join('');
+      paceCard(), offeredCard()].join('');
     document.getElementById('history').innerHTML = state.history.map(h =>
       `<tr><td>${esc(when(h.at))}</td><td>${esc(h.set_by || '')}</td><td>${esc(h.mood ? '#' + h.mood : 'everywhere')}${h.agent ? ' · ' + esc(h.agent) : ''}</td>`
       + `<td>${esc(h.key)}</td><td class="value">${esc(JSON.stringify(h.value))}</td><td>${esc(h.note)}</td></tr>`).join('')
@@ -410,16 +408,18 @@
     loadVoices();
   }
 
-  // Models offered (models_off): per vendor, each maker's models ticked on or off (Justin, 28 Oct: "disable
+  let offeredOpen = false;  // folded unless opened (Justin, 29 Oct), and kept open across saves
+  // Models available (models_off): per vendor, each maker's models ticked on or off (Justin, 28 Oct: "disable
   // anthropic models through openrouter"). Off: not in any model menu, and refused as a setting.
   function offeredCard() {
     const off = state.global.models_off || {}, vendors = Object.entries(state.makers || {});
     if (!vendors.length) return '';
-    return `<div class="card offered"><h2>Models offered</h2><div class="sub">per vendor: untick a maker to take its models out of every menu</div>`
+    return `<details class="card offered" id="offered"${offeredOpen ? ' open' : ''}><summary><h2>Models available</h2></summary>`
+      + `<div class="sub">per vendor: untick a maker to take its models out of every menu</div>`
       + vendors.map(([vendor, makers]) => `<div class="row"><label>${esc(vendor)}</label><span class="makers">`
         + makers.map(m => `<label title="${m.models} model${m.models === 1 ? '' : 's'}"><input type="checkbox" data-offer="${esc(vendor)}" data-maker="${esc(m.name)}"`
           + `${(off[vendor] || []).includes(m.name || '*') ? '' : ' checked'}${viewer ? '' : ' disabled'}> ${esc(m.name || 'its own')}</label>`).join(' ')
-        + `<span class="status"></span></span></div>`).join('') + '</div>';
+        + `<span class="status"></span></span></div>`).join('') + '</details>';
   }
   async function saveOffered(el) {
     const off = {};
@@ -467,10 +467,7 @@
     if (e.target.dataset && e.target.dataset.key) save(e.target);
   });
   document.addEventListener('click', e => { if (e.target.id === 'setWide') setWide(); });
-  document.getElementById('pickAgent').addEventListener('change', e => {
-    picked = e.target.value;
-    document.getElementById('cards').innerHTML = picked ? agentView(picked) : '';
-  });
+  document.addEventListener('toggle', e => { if (e.target.id === 'offered') offeredOpen = e.target.open; }, true);
   load();
 })();
 </script>

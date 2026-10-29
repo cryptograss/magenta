@@ -357,6 +357,21 @@ class Mood(models.Model):
             slug, n = f'{base}-{n}', n + 1
         return slug
 
+    @classmethod
+    def holder(cls, title, mood=None):
+        """Who already goes by `title`'s slug, other than `mood`: a Mood (by its name now or one from before a
+        rename), 'page' for a page of the site's own, or None when it's free. A name is had once, open or closed
+        (Justin, 29 Oct: "you can't open two threads with the same name; current or historical")."""
+        from django.utils.text import slugify
+        slug = slugify(title)[:60].strip('-') or 'mood'
+        if slug in PAGE_SLUGS:
+            return 'page'
+        other = cls.objects.filter(slug=slug).exclude(pk=getattr(mood, 'pk', None)).first()
+        if other is None:
+            alias = MoodAlias.objects.filter(slug=slug).exclude(mood=mood).select_related('mood').first()
+            other = alias.mood if alias else None
+        return other
+
     def rename(self, title, description=None):
         """A new title, and the slug that goes with it; the old slug becomes an alias."""
         self.title = title
@@ -1708,6 +1723,28 @@ class HarnessModels(models.Model):
 
     def __str__(self):
         return f"{self.agent_id}: {self.harness}, {len(self.vendors)} vendors"
+
+class PlanWindow(models.Model):
+    """
+    How much of one of the Claude plan's rolling windows was used, as Claude Code said with a turn's
+    rate_limit_event: the 5-hour and the weekly, each a fraction of its cap (Justin, #usage, 28 Oct: "every
+    anthropic use is a percentage of our rolling limits, whereas the openrouter usage is literally metered in
+    dollars"). One row per window per change, so the prompts page can draw the meter over time. The plan is
+    the account's, not one agent's: `agent` says whose turn reported it.
+    """
+
+    window = models.CharField(max_length=40)          # 'five_hour', 'seven_day', ... as Claude Code names it
+    utilization = models.FloatField()                 # 0-1, past 1 when usage runs past the cap
+    resets_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=40, blank=True, default='')
+    agent = models.CharField(max_length=60, blank=True, default='')
+    info = models.JSONField(default=dict)             # what Claude Code said, whole
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'plan_windows'
+        indexes = [models.Index(fields=['window', 'at'])]
+
 
 class BundleRecord(models.Model):
     """

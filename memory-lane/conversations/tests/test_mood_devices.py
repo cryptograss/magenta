@@ -273,8 +273,9 @@ class NewAndArchivedMoodsTest(SignedInCase):
         made = self.post(client, '/api/moods/new/', {'title': 'Fiddle tunes, in C!', 'description': 'Which and why'})
         self.assertEqual(made.status_code, 201)
         self.assertEqual(made.json()['slug'], 'fiddle-tunes-in-c')
-        again = self.post(client, '/api/moods/new/', {'title': 'Fiddle tunes in C'}).json()
-        self.assertEqual(again['slug'], 'fiddle-tunes-in-c-2')  # never someone else's Mood
+        again = self.post(client, '/api/moods/new/', {'title': 'Fiddle tunes in C'})
+        self.assertEqual((again.status_code, again.json()['taken'], again.json()['closed']), (409, 'fiddle-tunes-in-c', False))
+        self.assertEqual(self.post(client, '/api/moods/new/', {'title': 'Settings'}).status_code, 409)  # a page's
         mood = Mood.objects.get(slug='fiddle-tunes-in-c')
         self.assertEqual((mood.title, mood.description), ('Fiddle tunes, in C!', 'Which and why'))
         line = Message.objects.get(mood=mood)
@@ -605,3 +606,59 @@ class AnnounceTest(TestCase):
         turn = self.client.get('/api/moods/jams/turns/').json()['turns'][0]
         self.assertEqual(turn['heard'], [{'by': 'justin', 'from': 'general', 'message': '0123abcd-0000-4000-8000-000000000000',
                                           'text': 'Beta is "tonight" at 8 🎻'}])
+
+
+class RecordingTest(TestCase):
+    """Justin, 28 Oct: nobody could see a person recording a voice memo, as they see one typing."""
+
+    def test_recording_is_typing_out_loud(self):
+        from conversations.services import mood_auth
+        from django.core.cache import cache
+        cache.clear()
+        justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        Mood.objects.create(slug='usage', title='usage')
+        _, token = mood_auth.enrol_device(justin, 'phone', tier='key')
+        self.client.cookies[mood_auth.COOKIE] = token
+        post = lambda body: self.client.post('/api/moods/usage/typing/', json.dumps(body), content_type='application/json')
+        post({'typing': True, 'how': 'recording'})
+        page = self.client.get('/api/moods/usage/turns/').json()
+        self.assertEqual((page['typing'], page['recording']), (['justin'], ['justin']))
+        self.assertEqual(self.client.get('/api/moods/pulse/').json()['moods'][0]['typing'], ['justin'])  # the consider waits
+        post({'typing': True})
+        self.assertEqual(self.client.get('/api/moods/usage/turns/').json()['recording'], [])
+        post({'typing': False})
+        self.assertEqual(self.client.get('/api/moods/usage/turns/').json()['typing'], [])
+
+
+class EmergentPowersTest(TestCase):
+    """Skyler, 29 Oct: the @ menu says what each emergent is for, from its own page."""
+
+    def test_from_the_trusted_revision_and_shown_short(self):
+        from django.core.cache import cache
+        from conversations.services import emergent_powers
+        cache.clear()
+        ThinkingEntity.objects.get_or_create(name='blu', defaults={'is_biological_human': False})
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        pages = {
+            'Cryptograss:Emergents/Blu': [('Magent', '{{Emergent|colour=blue|for=hacked by a bot}}'),
+                                         ('JMyles', '{{Emergent|colour=blue|for=studies the connectome: who played on which record}}')],
+            'Cryptograss:Emergents/Re': [('Magent', '{{Emergent|for=untrusted}}')],
+        }
+        got = emergent_powers.powers(['blu', 're'], fetch=lambda: pages)
+        self.assertEqual(got, {'blu': {'for': 'studies the connectome: who played on which record', 'short': 'studies the connectome'}})
+        cache.set(emergent_powers.KEY, got, 60)
+        people = {p['name']: p for p in self.client.get('/api/moods/').json()['people']}
+        self.assertEqual(people['blu']['for_short'], 'studies the connectome')
+        self.assertNotIn('for', people['re'])
+
+    def test_pronouns_as_each_set_them_and_nothing_guessed(self):
+        from django.core.cache import cache
+        from conversations.services import emergent_powers
+        cache.clear()
+        asked = []
+        def expand(text):
+            asked.append(text)
+            return emergent_powers.PRONOUNS_SEP.join(['it/its', 'she/her'][:text.count('#pronouns')])
+        got = emergent_powers.pronouns([('blu', False), ('nobody', True), ('re', False)], expand=expand)
+        self.assertEqual(got, {'blu': 'it/its', 're': 'she/her'})  # a person not on the wiki is never asked
+        self.assertEqual(asked, ['{{#pronouns:Blu}}' + emergent_powers.PRONOUNS_SEP + '{{#pronouns:Re}}'])

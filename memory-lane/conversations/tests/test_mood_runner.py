@@ -360,7 +360,11 @@ class PulseAndQuietTest(TestCase):
         self.assertNotIn('zq8Fh2kLm0xY', quiet[0]['reason'])
         stored = Message.objects.get(id=quiet[0]['id'])
         self.assertIsNone(stored.session_id)  # never a session anyone would resume
+        self.assertIsNone(stored.cost_usd)
         self.assertIsNone(activity(self.mood))
+        # What the screen's own call cost, when the runner says: spend by kind counts it.
+        posted = post({'reason': 'small talk', 'cost_usd': 0.0021})
+        self.assertEqual(Message.objects.get(id=posted.json()['id']).cost_usd, 0.0021)
 
     def test_a_runner_says_why_a_mention_is_held(self):
         from django.core.cache import cache
@@ -379,6 +383,24 @@ class PulseAndQuietTest(TestCase):
         self.assertEqual((shown['doing'], shown['why'], shown['until']),
                          ('held', '30 wakes this hour already', '2026-10-02T23:15:00+00:00'))
         self.assertEqual(post({'reason': ''}).status_code, 200)  # lifted
+        self.assertEqual(activity(self.mood)['doing'], 'waking')
+
+    def test_a_runner_says_its_turn_is_still_running(self):
+        """A tool call can run half an hour and write nothing (Justin, #usage, 28 Oct)."""
+        import time
+        from django.core.cache import cache
+        cache.delete('running:m26')
+
+        def post(body, auth=AUTH):
+            return self.client.post('/api/moods/m26/running/', json.dumps(body),
+                                    content_type='application/json', **auth)
+        self.assertEqual(post({'since': time.time()}, auth={}).status_code, 401)
+        self.assertEqual(post({'since': 'a while'}).status_code, 400)
+        self.assertEqual(post({'since': time.time() - 60}).status_code, 200)
+        Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, content='@magent you there?',
+                               source_file='mood-web')
+        self.assertEqual(activity(self.mood)['doing'], 'still at work')
+        self.assertEqual(post({'since': None}).status_code, 200)  # it ended
         self.assertEqual(activity(self.mood)['doing'], 'waking')
 
     def test_waiting_for_another_agent_shows_as_such(self):
