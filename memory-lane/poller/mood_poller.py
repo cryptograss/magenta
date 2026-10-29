@@ -2141,10 +2141,10 @@ class MoodPoller:
     def say_degraded(self, slug, lines):
         """One plain line in the Mood for the people there when the bundle degrades, said again only when what's
         wrong changes or it's fixed (the server keeps that rule too; this spares it the call on every wake)."""
-        lines = list(lines)
-        if self.dry_run or self.state['degraded'].get(slug, []) == lines:
-            return
         try:
+            lines = [str(l) for l in lines]
+            if self.dry_run or self.state.setdefault('degraded', {}).get(slug, []) == lines:
+                return
             if self.api.degraded(slug, lines):
                 self.state['degraded'][slug] = lines
         except Exception as e:  # noqa: BLE001 -- a line for people is never a reason to stall the wake
