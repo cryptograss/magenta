@@ -3930,6 +3930,8 @@
     if (m) { baseTitle = m.title + ' · magenta'; setTitle(); }
   }
   const isArchived = slug => !!(moods.find(m => m.slug === slug) || {}).archived;
+  // What the server just said, before the list comes back with it (Justin, 29 Oct: reopening "took quite a while").
+  const markArchived = (slug, archived) => { const m = moods.find(x => x.slug === slug); if (m) m.archived = !!archived; };
   const isPinned = slug => !!(moods.find(m => m.slug === slug) || {}).pinned;
   const newBox = document.getElementById('newBox');
   // The words people read here, as Magenta:Interface has them (services/interface_words.py): escaped, then any
@@ -4002,8 +4004,9 @@
       });
       if (!r.ok) { showError('reopen: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
       newBox.hidden = true;
-      await loadMoods();
+      markArchived(slug, false);
       open(slug, true);
+      loadMoods();  // not waited for: the list can take seconds
     } else if (e.target.closest('.mood-head .closethread') && !isArchived(current)) {
       // Closing: optionally handed to the Mood it came from, to incorporate -- "/incorporate #<it>" posted there,
       // and the handoff agent writes the one full account (Justin, 27 Oct: one agent, not each of them).
@@ -4029,8 +4032,9 @@
         body: JSON.stringify({ archived: !isArchived(current) }),
       });
       if (!r.ok) { showError('thread: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
-      await loadMoods();
+      markArchived(current, (await r.json()).archived);
       drawMoodbar(headMood);
+      loadMoods().then(() => drawMoodbar(headMood));  // the list itself can take seconds: not waited for
     } else if (e.target.closest('.mood-head .refork')) {
       if (!confirm(`Fork #${current} again from #${(headMood || {}).thread_of}? Each emergent's next wake here goes on from where it is there now; what was said here leaves their context (it stays on the page).`)) return;
       const r = await fetch(`/api/moods/${encodeURIComponent(current)}/refork/`, {
