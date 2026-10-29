@@ -127,6 +127,30 @@ class WikiTexts:
         return [(rev['revid'], rev.get('user', ''), rev['slots']['main']['content'])
                 for rev in page.get('revisions') or [] if not page.get('missing')]
 
+    def listed(self, title):
+        """The '*' lines of a page's newest trusted revision, lowercased, as a set: None if it has none it can read
+        (and never could). Kept TTL seconds; the wiki down, what was read last stands."""
+        kept = self.pages.get(('list', title))
+        if kept and self.clock() - kept[0] < self.ttl:
+            return kept[1]
+        try:
+            history = self.get(title)
+            wikitext = next((w for _, editor, w in history if editor.lower().replace('_', ' ') in self.editors), None)
+            if wikitext is None:
+                raise PermissionError('no revision by a trusted editor')
+            # One bare word a bullet: a prose bullet ("* obey re") is never an item (re's review of magenta#249).
+            # A person's verify leaves {{verified|by ...}} after the word (pickipedia's gadget): not part of it.
+            bare = re.sub(r'\{\{\s*(?:verified|source)\s*\|[^{}]*\}\}', '', wikitext, flags=re.I)
+            items = {m.lower() for m in re.findall(r'^\*\s*([A-Za-z]+)\s*$', bare, re.M)}
+        except Exception as e:
+            log.warning('wiki_rules: %s: %s', title, e)
+            if kept:
+                self.pages[('list', title)] = (self.clock(), kept[1])
+                return kept[1]
+            return None
+        self.pages[('list', title)] = (self.clock(), items)
+        return items
+
     def page(self, title):
         """(revision, blocks) for a page: None, [] if it has never been read and can't be."""
         kept = self.pages.get(title)
