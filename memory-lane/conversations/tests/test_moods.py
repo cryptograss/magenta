@@ -167,6 +167,13 @@ class MoodAssignCommandTest(TestCase):
 class RenamingTest(TestCase):
     """Renamed, a Mood gets the slug its title calls for; the old one still finds it."""
 
+    def test_the_moods_list_says_where_its_time_went(self):
+        from conversations.models import Mood
+        Mood.objects.create(slug='jams', title='jams')
+        timing = self.client.get('/api/moods/')['Server-Timing']
+        for part in ('flags;', 'tools;', 'payloads;', 'powers;', 'pronouns;', 'people;', 'slowest;desc="jams"', 'total;'):
+            self.assertIn(part, timing)
+
     def test_a_new_title_a_new_slug_and_the_old_one_an_alias(self):
         from conversations.models import Mood, MoodAlias
         mood = Mood.objects.create(slug='delivery-kid', title='delivery-kid')

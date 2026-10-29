@@ -115,12 +115,21 @@ def page_version():
 def api_moods(request):
     """Every Mood, most recently active first; archived ones flagged (the page lists them apart)."""
     from .services import settings as knobs
-    archived, pinned = knobs.archived_slugs(), knobs.mood_flagged('pinned')
+    # Timed (Justin, 29 Oct: reopening #search "took quite a while"; this list took 5-20s then): Server-Timing
+    # says which part, and the slowest Mood's own payload; logged when slow.
+    clock = LookClock()
+    archived, pinned = clock('flags', lambda: (knobs.archived_slugs(), knobs.mood_flagged('pinned')))
     moods = list(Mood.objects.all())
     from .services.tools_ask import open_requests
-    asked = open_requests()  # 🔨: emergents waiting there for their full tools
-    payloads = [{**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned,
-                 **({'tools_asked': asked[m.slug]} if m.slug in asked else {})} for m in moods]
+    asked = clock('tools', open_requests)  # 🔨: emergents waiting there for their full tools
+    clock.lap('_')
+    each, payloads = [], []
+    for m in moods:
+        began = clock.now()
+        payloads.append({**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned,
+                         **({'tools_asked': asked[m.slug]} if m.slug in asked else {})})
+        each.append((clock.now() - began, m.slug))
+    clock.lap('payloads')
     # A Mood nobody has spoken in yet ranks by when it was started: a new one first.
     started = {m.slug: m.created_at.isoformat() for m in moods}
     payloads.sort(key=lambda p: p['last_at'] or started[p['slug']], reverse=True)
@@ -130,9 +139,9 @@ def api_moods(request):
     from .services.mood_view import GROUPS, group_members
     from .services.emergent_powers import powers, pronouns
     people = list(people)
-    power = powers([p.name for p in people if not p.is_biological_human])
-    said = pronouns([(p.name, p.is_biological_human) for p in people])
-    return JsonResponse({'moods': payloads, 'people': [
+    power = clock('powers', powers, [p.name for p in people if not p.is_biological_human])
+    said = clock('pronouns', pronouns, [(p.name, p.is_biological_human) for p in people])
+    response = JsonResponse({'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
          **(look[p.name] if p.is_biological_human and p.name in look else {}),
          **({'for': power[p.name]['for'], 'for_short': power[p.name]['short']} if p.name in power else {}),
@@ -140,6 +149,11 @@ def api_moods(request):
         for p in people],
         # Tags for a group (@core): what each is, and who it mentions now.
         'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]})
+    clock.lap('people')
+    if each:
+        took, slug = max(each)
+        clock.laps.append((f'slowest;desc="{slug}"', took))
+    return clock.report(response, 'Moods list')
 
 
 def pronouns_here(mood):
