@@ -1002,6 +1002,31 @@ class HandedLedgerTest(TestCase):
         poller, prompt = self.make([self.event('e1', 50)], state_handed={'m26': ['e1']})
         self.assertNotIn('Salty Dog first.', prompt)
 
+    def test_a_fresh_ledger_starts_with_the_stale_ones_and_an_old_ledger_keeps_the_old_ones_owed(self):
+        week_ago, fresh = self.event('old', -7 * 24 * 60, about='last week'), self.event('e1', 50)
+        poller, prompt = self.make([week_ago, fresh])
+        self.assertNotIn('last week', prompt)      # the first look here: stale, so never owed
+        self.assertIn('the setlist', prompt)
+        self.assertEqual(json.loads(self.state.read_text())['handed'], {'m26': ['old', 'e1']})
+        # A ledger that knows this Mood: a week-old handoff with no entry is owed, however long it waited.
+        poller, prompt = self.make([week_ago, fresh], state_handed={'m26': ['e1']})
+        self.assertIn('last week', prompt)
+
+    def test_a_dry_run_marks_nothing_shown(self):
+        owed = dict(turn('ask', 'justin', 100, '@magent one more thing'), via='web')
+        events = [self.event('e1', 50)]
+
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                return {'turns': [owed], 'events': events}
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': [],
+                                     'handed': {'m26': []}}))
+        poller = MoodPoller(API([mention('m26', owed)], sessions={'m26': ['s-local']}), FakeWaker(), state_path=state,
+                            now=lambda: T0 + timedelta(minutes=101), consider=False, dry_run=True)
+        poller.poll_once()
+        self.assertEqual(poller.state['handed'], {'m26': []})
+
     def test_a_cut_off_turn_is_shown_its_handoffs_again(self):
         owed = dict(turn('ask', 'justin', 100, '@magent one more thing'), via='web')
         events = [self.event('e1', 50)]
