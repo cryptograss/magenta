@@ -132,5 +132,8 @@ class WhatIsMachineryTest(TestCase):
         from conversations.services.mood_view import is_wrapper
         for text in ('<code>is_wrapper</code> matched a bare <', '<nowiki>[[x]]</nowiki> is literal',
                      '<react emoji="👍" to="magent"/> blu, here is how.', '<silent>x</silent> and then words',
-                     '<b>bold</b> start', 'An ordinary post.'):
+                     '<b>bold</b> start', 'An ordinary post.',
+                     # Bare control tags, no attributes: their names alone are no reply, so they are posts
+                     # (re, 29 Oct: _CONTROL_REPLY needs whitespace after the tag name).
+                     '<tools/>', '<take/>', '<wait/>', '<react/>'):
             self.assertFalse(is_wrapper(text), text)

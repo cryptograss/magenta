@@ -1287,6 +1287,9 @@ def turn_payload(msg, text, mentionable=()):
         'is_human': bool(getattr(getattr(msg.sender, 'thinkingentity', None),
                                  'is_biological_human', False)),
         'created_at': msg.created_at.isoformat(),
+        # Which turn it was in: the poller folds a lead-in (stop tool_use) only into its own session's
+        # later reply, not a later turn that belongs to a new session (re, 29 Oct).
+        'session': str(msg.session_id or ''),
         # Typed into the web composer rather than a runtime session: nobody
         # live is listening for it, so the poller need not wait.
         'via': 'web' if msg.source_file in POSTED else 'session',

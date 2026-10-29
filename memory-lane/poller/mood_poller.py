@@ -1414,9 +1414,15 @@ def handoffs_for(page, agent, limit=12_000, shown=(), now=None):
 def transcript_of(turns, new_ids=(), limit=20_000, each=1500):
     """Turns as prompt lines, newest last; ► marks the new ones. Clipped to fit."""
     lines = []
-    for turn in turns:
-        if turn.get('stop') == 'tool_use' and not turn.get('is_human', True):
-            continue  # a lead-in on the way to a tool call: folded, as on the page (#210)
+    # A lead-in said on the way to a tool call (stop: tool_use) folds, as on the page (#210) -- but only
+    # when the same sender has a later reply in the same turn. A turn that ended after its tool call with
+    # only a <silent> left the lead-in as all it said: keep it, marked (re, 29 Oct: that post would vanish).
+    folded = {i for i, t in enumerate(turns)
+              if t.get('stop') == 'tool_use' and not t.get('is_human', True) and (t.get('session') or '')
+              and any((u.get('session') or '') == (t.get('session') or '') for u in turns[i + 1:])}
+    for i, turn in enumerate(turns):
+        if i in folded:
+            continue
         text = _WRAPPER_TAG.sub(r'‹\1\2', turn.get('text', ''))
         # A reply says what it answers, a message or an event (a redeploy, a merge), not just its link.
         reply = turn.get('reply')
@@ -1425,6 +1431,8 @@ def transcript_of(turns, new_ids=(), limit=20_000, each=1500):
             text = re.sub(r'^↩ #m-[0-9a-f-]+\s*', f"(↩ to {to}“{reply.get('snippet', '')}”, #m-{reply.get('id', '')}) ", text)
         if len(text) > each:
             text = text[:each] + ' […]'
+        if (turn.get('stop') == 'tool_use' and not turn.get('is_human', True) and (turn.get('session') or '')):
+            text += ' (lead-in)'  # its session had no later reply: the turn's whole words
         mark = '► ' if turn['id'] in new_ids else ''
         lines.append(f"{mark}[{turn['sender']}, {turn['created_at'][:16]}Z] {text}")
     while lines and sum(len(line) for line in lines) > limit:
