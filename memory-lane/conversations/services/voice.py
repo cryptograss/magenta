@@ -172,7 +172,7 @@ def plain(text):
     text = _MOOD_LINK.sub(r' a message in \1 ', text)
     text = re.sub(r'https?://[^\s)>\]]+', _spoken_link, text)
     text = _UUID.sub(lambda m: ' a message link ' if m.group(0).startswith('#m-') else ' an ID ', text)
-    text = re.sub(r'`([^`]*)`', r'\1', text)
+    text = re.sub(r'`([^`]*)`', lambda m: re.sub(r'(?<!\[)\[([^\[\]\n]+)\](?!\])', r'\1', m.group(1)), text)
     text = _HASH.sub(' a hash ', text)
     text = _PATH.sub(lambda m: m.group(1), text)
     text = _LONG_TOKEN.sub(' a long string ', text)
