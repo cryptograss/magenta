@@ -1,6 +1,6 @@
 """Which emergents asked for their full tools where (Justin, 28 Oct: a hammer by the Mood's title "so that we know
 you're waiting for that"): a look-only turn's reply of only <tools to="…"/> (mood_view._TOOLS), still open until a
-full-tools wake of that emergent in any Mood (its wake says "This turn has your full tools").
+full-tools wake of that emergent in that Mood (its wake says "This turn has your full tools").
 """
 
 from datetime import timedelta
@@ -34,9 +34,8 @@ def open_requests():
             latest[(m.mood.slug, m.sender_id)] = (m, said['reason'][len('requested tools for '):])
     found = {}
     for (slug, agent), (m, purpose) in latest.items():
-        # Tools are the emergent's, not the Mood's (re, 29 Oct): a full-tools wake in any Mood answers it.
-        sessions = Message.objects.filter(sender_id=agent).values('session_id').distinct()
-        answered = (Message.objects.filter(sender_id='mood-poller', session_id__in=sessions,
+        sessions = set(Message.objects.filter(mood=m.mood, sender_id=agent).values_list('session_id', flat=True))
+        answered = (Message.objects.filter(mood=m.mood, sender_id='mood-poller', session_id__in=sessions,
                                            created_at__gt=m.created_at)
                     .annotate(t=Cast('content', TextField())).filter(t__contains=FULL).exists())
         if not answered:
