@@ -1775,6 +1775,11 @@ def last_said(mood, scan=200):
     return oldest  # nothing said in the latest `scan` rows: as good a guess as any
 
 
+def mood_description(mood):
+    from .mood_doc import description
+    return description(mood)
+
+
 def mood_payload(mood, light=False):
     """A Mood as the page shows it. `light`: its name and description only, for a poll for what's new -- the
     count of everything it ever said, and everyone who ever spoke there, read the whole of a big Mood, and a
@@ -1782,7 +1787,10 @@ def mood_payload(mood, light=False):
     head = {
         'slug': mood.slug,
         'title': mood.title or mood.slug,
-        'description': mood.description,
+        # Its document's first paragraph (services/mood_doc.py), what its emergents read; else the one kept here.
+        'description': mood_description(mood),
+        # Where to change it: the one document, on PickiPedia.
+        'document': f"{pickipedia_url()}/wiki/Cryptograss:Moods/{mood.slug}/Instructions",
         'eth_blockheight': mood.eth_blockheight,
     }
     if light:
