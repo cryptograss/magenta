@@ -1144,6 +1144,24 @@ def settings_changed(agent, page, texts=None):
     return ['', wake_line(texts, 'settings-changed', SETTINGS_CHANGED, said=said, who=who, why=why)]
 
 
+# Pronouns in a wake (Justin, re, blu and magent, 29 Oct): each one's own, as set on their own account -- shown only if
+# every word of it is a pronoun on the allowlist (Cryptograss:Pronouns, trusted revisions only; this list when the wiki
+# can't be read), so an account's preference can't carry a sentence into a prompt. Anything else: nothing, and the
+# they/them default holds. In the wake (content, weighed), never in the bundle's roster (obeyed).
+PRONOUNS_PAGE = 'Cryptograss:Pronouns'
+PRONOUNS_KNOWN = {'he', 'him', 'his', 'she', 'her', 'hers', 'it', 'its', 'they', 'them', 'their', 'theirs',
+                  'xe', 'xem', 'xyr', 'ze', 'zir', 'hir', 'any', 'all'}
+PRONOUNS_NOTE = 'Pronouns here, as each set their own: {said}. Anyone not named: they/them.'
+
+
+def pronouns_shown(said, known):
+    """`said` (an account's own preference) if every word of it is a known pronoun, split on , and /; else None."""
+    words = [w.strip().lower() for w in re.split(r'[,/]', said or '')]
+    if not said or len(said) > 40 or not words or not all(w in known for w in words):
+        return None
+    return ', '.join(dict.fromkeys(words)) if ',' in said else '/'.join(words)
+
+
 TYPING_NOTE = ('Right now, here: {said}. More may be coming. If what you would say depends on the rest of it, '
                'you may reply with only <wait for="{first}" to="a few words"/> to be woken once they have posted or '
                'stopped; if it stands on its own, or the talk is lively, say it now.')
@@ -2537,11 +2555,22 @@ class MoodPoller:
             page = self.api.recent(slug, limit=200)
         except Exception:
             page = None
-        return (self.typing_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
+        return (self.typing_lines(page) + self.pronoun_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
                 + self.nearmiss_lines(slug, page)
                 # Open polls, on every kind of wake: a quiet look too (re's review of #157).
                 + (open_polls(self.agent, page) if page else [])
                 + (wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts) if length else []))
+
+    def pronoun_lines(self, page):
+        """Who's here (the Mood's emergents and people) and their pronouns, those that pass the allowlist."""
+        said = (page or {}).get('pronouns') or {}
+        if not said:
+            return []
+        listed = self.texts.listed(PRONOUNS_PAGE) if self.texts is not None and hasattr(self.texts, 'listed') else None
+        known = listed or PRONOUNS_KNOWN
+        shown = [(n, pronouns_shown(p, known)) for n, p in sorted(said.items()) if n != self.agent]
+        shown = [f'{n} ({p})' for n, p in shown if p]
+        return ['', PRONOUNS_NOTE.format(said='; '.join(shown))] if shown else []
 
     def typing_lines(self, page):
         """Who is typing or recording here right now (Justin, 28 Oct: "the emergents are able to see both and

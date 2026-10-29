@@ -139,6 +139,15 @@ def api_moods(request):
         'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]})
 
 
+def pronouns_here(mood):
+    """{name: pronouns} for the emergents and the people who've spoken here, those who've set theirs."""
+    from .services.emergent_powers import pronouns
+    everyone = list(ThinkingEntity.objects.values_list('name', 'is_biological_human'))
+    here = {e.name for e in mood.thinking_entities()}
+    said = pronouns(everyone)
+    return {n: p for n, p in said.items() if n in here or any(n == m and not h for m, h in everyone)}
+
+
 @require_GET
 def api_tokens(request):
     """Tokens to show beside people's names: {"blue_railroad": {name: count}}
@@ -360,6 +369,9 @@ def api_mood_turns(request, slug):
         'agents': agents,
         'scram': clock('scram', settings_scram),
         'typing': clock('typing', typing_in, mood.slug),
+        # Each one's own pronouns, as set on their own account: the emergents and the people here. The runner
+        # checks every word against its allowlist before a wake says them (services/emergent_powers.pronouns).
+        'pronouns': clock('pronouns', pronouns_here, mood),
         'recording': recording_in(mood.slug),  # of those typing, who's speaking a memo
     }), f'look at #{mood.slug}' + (' (what is new)' if after is not None else ''))
 
