@@ -101,13 +101,27 @@
   #bellBtn { position: relative; border: 0; background: none; font-size: 16px; padding: 2px 4px; cursor: pointer; line-height: 1; }
   #bellBtn.off .ring { opacity: .45; }
   #bellBtn .badge { position: absolute; top: -5px; right: -7px; min-width: 15px; padding: 0 4px; font-size: 10px; line-height: 15px; }
+  #bellBtn .badge.bot { top: auto; bottom: -6px; background: var(--panel); }
   #bellMenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 230px; max-width: 320px; background: var(--panel);
               border: 1px solid var(--line); border-radius: 10px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 13.5px; }
   #bellMenu[hidden] { display: none; }
   #bellList a { display: flex; justify-content: space-between; gap: 10px; padding: 5px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; }
   #bellList a:hover { background: var(--hover); }
   #bellList .none { color: var(--muted); padding: 4px 6px; }
-  #bellMenu .belltoggle { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+  #bellMenu { width: 360px; max-width: calc(100vw - 20px); }
+  #bellMenu .belltabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -2px 0 6px; }
+  #bellMenu .belltabs button { font: inherit; font-size: 12.5px; border: 0; background: none; color: var(--muted); padding: 3px 8px 5px; cursor: pointer; border-bottom: 2px solid transparent; }
+  #bellMenu .belltabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  #bellMenu .bellpane[hidden] { display: none; }
+  #bellMenu label.replies { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; margin: 0 6px 4px; cursor: pointer; }
+  /* The stream: what's for you, people first, then emergents; under it, the latest already seen (Justin, 29 Oct). */
+  #bellList a.note { display: block; padding: 5px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; }
+  #bellList a.note .who { font-size: 12.5px; }
+  #bellList a.note .where { color: var(--muted); font-size: 11.5px; }
+  #bellList a.note .said { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #bellList a.note.seen { opacity: .6; }
+  #bellList .sep { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 6px 6px 2px; }
+  #bellMenu .belltoggle { padding: 2px 6px; }
   #bellMenu #notify { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
   #userBtn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 14px; padding: 1px 10px;
              font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
@@ -135,7 +149,7 @@
   body.has-me #userMenu label.only { display: flex; }
   body.writer #userMenu label.me { display: none; }
   /* Alerts: a sound, and the bell for every message, as this browser's person chose; in the bell's menu (Justin, 29 Oct). */
-  #bellMenu #alerts { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); margin-top: 6px; padding: 6px 6px 0; }
+  #bellMenu #alerts { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; padding: 0 6px; }
   #bellMenu #alerts label { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; font-size: 12.5px; }
   #bellMenu #alerts[hidden] { display: none; }
   #bellMenu #alerts .head { color: var(--ink); font-size: 12px; font-weight: 600; margin-top: 2px; }
@@ -424,6 +438,8 @@
     background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
     line-height: 18px; text-align: center;
   }
+  /* From emergents: hollow, so a person's solid badge stands out from it (Justin, 29 Oct). */
+  .badge.bot, header .badge.bot { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
 
   main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 0 0; container-type: inline-size; }  /* no bottom padding: it would hold the sticky footer off the bottom */
   /* --gutter: what the jump strip takes at the right (25px + margins). When the
@@ -1371,8 +1387,11 @@
   <span class="status" id="status" title="connecting…"></span>
   <!-- The bell, out front with what's waiting for you (Justin, 29 Oct): mentions of you and answers to you, by Mood. -->
   <span class="bellwrap" id="bellWrap" hidden>
-    <button id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span></button>
-    <div id="bellMenu" hidden><div id="bellList"></div><div class="belltoggle"><button id="notify" type="button" hidden aria-label="Notifications"></button></div>
+    <button id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span><span class="badge bot" id="bellCountBot" hidden></span></button>
+    <div id="bellMenu" hidden>
+      <div class="belltabs" role="tablist"><button type="button" role="tab" data-tab="for" aria-selected="true">For you</button><button type="button" role="tab" data-tab="set" aria-selected="false">Settings</button></div>
+      <div class="bellpane" data-pane="for"><label class="replies"><input type="checkbox" id="bellReplies"> include replies</label><div id="bellList"></div></div>
+      <div class="bellpane" data-pane="set" hidden><div class="belltoggle"><button id="notify" type="button" hidden aria-label="Notifications"></button></div>
       <div id="alerts" hidden>
         <span class="head">Sounds</span>
         <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
@@ -1383,7 +1402,7 @@
         <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
         <label><input type="checkbox" data-tell="person"> every message from people</label>
         <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
-      </div></div>
+      </div></div></div>
   </span>
   <span class="account">
     <button id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"></button>
@@ -1693,6 +1712,8 @@
   let me = viewer || store.get('me', '') || '';
   let lastSeen = store.get('lastSeen', {});   // slug -> iso
   let badges = {};          // slug -> count of my mentions since lastSeen
+  let badgesBy = {};        // slug -> {person, agent}: a person's and an emergent's, apart (Justin, 29 Oct)
+  let withReplies = store.get('bellReplies', false);  // agents' answers to you: counted and listed only if asked for
   let baseTitle = 'magenta';
   let sectionNow = 'moods';  // or tidings, prompts, status, settings (showSection)
   let people = [];          // everyone who can be named, for @-completion
@@ -1793,7 +1814,7 @@
       <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && (!m.forked_at || m.compacted) ? ' fresh' : depth && m.incorporated ? ' back' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
         <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.asked || []).length
           ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${m.asked.map(t => ASK_EMOJI[t.kind] || '🔨').join('')}${
-              m.asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badges[m.slug] ? `<span class="badge">${badges[m.slug]}</span>` : ''}</div>
+              m.asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badgeHtml(m.slug)}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
@@ -4614,12 +4635,24 @@
   const pageOpened = new Date().toISOString();
   let badgeCursor = null, badgeAt = 0;
   const counted = new Set();  // notices already seen, by turn id
-  let unread = {};            // slug -> Map(turn id -> created_at)
-  function resetBadges() { badges = {}; unread = {}; badgeCursor = null; badgeAt = 0; counted.clear(); }
+  let unread = {};            // slug -> Map(turn id -> notice)
+  const known = new Map();    // every notice for you this page has heard of, seen or not: the bell's list
+  function resetBadges() { badges = {}; badgesBy = {}; unread = {}; badgeCursor = null; badgeAt = 0; counted.clear(); known.clear(); }
+  function counts(n) { return withReplies || n.kind !== 'answer'; }
   function countBadges() {
-    badges = {};
-    for (const [slug, ids] of Object.entries(unread)) if (ids.size) badges[slug] = ids.size;
+    badges = {}; badgesBy = {};
+    for (const [slug, ids] of Object.entries(unread)) {
+      const by = { person: 0, agent: 0 };
+      for (const n of ids.values()) if (counts(n)) by[n.from === 'agent' ? 'agent' : 'person']++;
+      if (by.person + by.agent) { badges[slug] = by.person + by.agent; badgesBy[slug] = by; }
+    }
     renderBellCount();
+  }
+  function badgeHtml(slug) {
+    const by = badgesBy[slug];
+    if (!by) return '';
+    return (by.person ? `<span class="badge" title="${by.person} from people">${by.person}</span>` : '')
+      + (by.agent ? `<span class="badge bot" title="${by.agent} from emergents">${by.agent}</span>` : '');
   }
   // The bell's number: everything waiting for you, every Mood; its menu, which Moods.
   const bellBtn = document.getElementById('bellBtn'), bellMenu = document.getElementById('bellMenu');
@@ -4627,27 +4660,69 @@
     const bellBtn = document.getElementById('bellBtn'), bellMenu = document.getElementById('bellMenu');
     document.getElementById('bellWrap').hidden = !me;
     const total = Object.values(badges).reduce((a, b) => a + b, 0);
-    const count = document.getElementById('bellCount');
-    count.hidden = !total; count.textContent = total > 99 ? '99+' : total;
+    const sum = k => Object.values(badgesBy).reduce((a, b) => a + b[k], 0), people = sum('person'), bots = sum('agent');
+    const count = document.getElementById('bellCount'), countBot = document.getElementById('bellCountBot');
+    count.hidden = !people; count.textContent = people > 99 ? '99+' : people;
+    countBot.hidden = !bots; countBot.textContent = bots > 99 ? '99+' : bots;
     bellBtn.classList.toggle('off', typeof notifying === 'function' && !notifying());
-    bellBtn.title = total ? `${total} for you: mentions and answers` : 'Nothing new for you';
+    bellBtn.title = total ? `For you: ${people} from people, ${bots} from emergents` : 'Nothing new for you';
     if (!bellMenu.hidden) renderBellList();
   }
+  // People's first, then emergents' (with replies, if asked for, among them by time); then the latest you've
+  // already seen, so there are never fewer than BELL_ROWS.
+  const BELL_ROWS = 8;
   function renderBellList() {
-    const rows = Object.entries(badges).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
-    document.getElementById('bellList').innerHTML = rows.length
-      ? rows.map(([slug, n]) => `<a href="/moods/${encodeURIComponent(slug)}/" data-mood="${esc(slug)}"><span>#${esc((moods.find(m => m.slug === slug) || {}).title || slug)}</span><span class="badge">${n}</span></a>`).join('')
-      : '<div class="none">Nothing new for you.</div>';
+    const isNew = n => unread[n.mood] && unread[n.mood].has(n.turn.id);
+    const newest = (a, b) => (a.turn.created_at < b.turn.created_at ? 1 : -1);
+    const all = [...known.values()].filter(counts);
+    const fresh = all.filter(isNew);
+    const rows = [...fresh.filter(n => n.from !== 'agent').sort(newest), ...fresh.filter(n => n.from === 'agent').sort(newest)];
+    const seen = all.filter(n => !isNew(n)).sort(newest).slice(0, Math.max(0, BELL_ROWS - rows.length));
+    const row = (n, old) => {
+      const title = (moods.find(m => m.slug === n.mood) || {}).title || n.mood;
+      const what = n.kind === 'answer' ? 'answered you' : n.kind === 'talk' ? 'on your talk page' : '';
+      return `<a class="note${old ? ' seen' : ''}" href="/moods/${encodeURIComponent(n.mood)}/#m-${esc(n.turn.id)}" data-mood="${esc(n.mood)}" data-id="${esc(n.turn.id)}">`
+        + `<span class="who">${icon(n.turn.sender, n.from !== 'agent')}<b>${esc(shown(n.turn.sender))}</b>${what ? ' ' + what : ''}</span>`
+        + ` <span class="where">#${esc(title)} · ${esc(ago(n.turn.created_at))}</span>`
+        + `<span class="said">${esc(plainText(n.turn.text).slice(0, 120))}</span></a>`;
+    };
+    document.getElementById('bellList').innerHTML = (rows.length ? rows.map(n => row(n, false)).join('') : '<div class="none">Nothing new for you.</div>')
+      + (seen.length ? '<div class="sep">seen</div>' + seen.map(n => row(n, true)).join('') : '');
   }
+  // Opened: what you've already seen, too, from a few days back (the 15 s look asks only for what's new).
+  let bellBackAt = 0;
+  async function bellBackfill() {
+    if (!me || Date.now() - bellBackAt < 60000) return;
+    bellBackAt = Date.now();
+    try {
+      const since = new Date(Date.now() - 3 * 86400 * 1000).toISOString();
+      const r = await fetch('/api/notices/' + encodeURIComponent(me) + '/?since=' + encodeURIComponent(since));
+      if (!r.ok) return;
+      for (const n of (await r.json()).notices) if (n.kind !== 'said' && !known.has(n.turn.id)) known.set(n.turn.id, n);
+      if (!bellMenu.hidden) renderBellList();
+    } catch (e) {}
+  }
+  document.getElementById('bellReplies').checked = withReplies;
+  document.getElementById('bellReplies').addEventListener('change', e => {
+    withReplies = e.target.checked; store.set('bellReplies', withReplies);
+    countBadges(); renderNav(); setTitle();
+  });
+  document.querySelector('#bellMenu .belltabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-tab]');
+    if (!b) return;
+    e.stopPropagation();
+    bellMenu.querySelectorAll('.belltabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+    bellMenu.querySelectorAll('.bellpane').forEach(p => { p.hidden = p.dataset.pane !== b.dataset.tab; });
+  });
   bellBtn.addEventListener('click', e => {
     e.stopPropagation();
     bellMenu.hidden = !bellMenu.hidden;
     bellBtn.setAttribute('aria-expanded', String(!bellMenu.hidden));
-    if (!bellMenu.hidden) renderBellList();
+    if (!bellMenu.hidden) { renderBellList(); bellBackfill(); }
   });
   bellMenu.addEventListener('click', e => {
     const a = e.target.closest('a[data-mood]');
-    if (a) { e.preventDefault(); bellMenu.hidden = true; open(a.dataset.mood, true); }
+    if (a) { e.preventDefault(); bellMenu.hidden = true; a.dataset.id ? openAndReveal(a.dataset.mood, a.dataset.id) : open(a.dataset.mood, true); }
   });
   document.addEventListener('click', e => { if (!bellMenu.hidden && !e.target.closest('#bellWrap')) bellMenu.hidden = true; });
   async function refreshBadges(force) {
@@ -4682,11 +4757,12 @@
           if (n.kind === 'said' && tellAll[by]) notify(n);
         }
         if (n.kind === 'said') continue;  // not a badge: badges count what's for you
+        known.set(n.turn.id, n);
         const floor = lastSeen[n.mood];
         if (floor && n.turn.created_at <= floor) continue;  // seen already
         const looking = n.mood === current && !document.hidden;
-        if (!looking) (unread[n.mood] = unread[n.mood] || new Map()).set(n.turn.id, n.turn.created_at);
-        if (!looking && n.turn.created_at > pageOpened) notify(n);
+        if (!looking) (unread[n.mood] = unread[n.mood] || new Map()).set(n.turn.id, n);
+        if (!looking && n.turn.created_at > pageOpened && counts(n)) notify(n);
       }
       if (ding) chime(ding === 'mention');
       badgeCursor = next;
@@ -4924,7 +5000,7 @@
     lastSeen[slug] = new Date().toISOString();
     store.set('lastSeen', lastSeen);
     if (unread[slug]) delete unread[slug];
-    if (badges[slug]) { delete badges[slug]; renderNav(); setTitle(); }
+    if (badges[slug]) { delete badges[slug]; delete badgesBy[slug]; renderBellCount(); renderNav(); setTitle(); }
     pushSeen(slug);
   }
   // Where you've read up to is kept on the server too (POST/GET /api/seen/), so
@@ -4949,7 +5025,7 @@
     for (const [slug, at] of Object.entries(marks)) {
       if (!lastSeen[slug] || at > lastSeen[slug]) { lastSeen[slug] = at; changed = true; }
       const ids = unread[slug];  // read elsewhere since these were counted: not unread any more
-      if (ids) for (const [id, created] of ids) if (created <= lastSeen[slug]) ids.delete(id);
+      if (ids) for (const [id, n] of ids) if (n.turn.created_at <= lastSeen[slug]) ids.delete(id);
     }
     if (changed) store.set('lastSeen', lastSeen);
     countBadges(); renderNav(); setTitle();
