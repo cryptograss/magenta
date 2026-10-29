@@ -138,7 +138,8 @@ class WikiTexts:
             wikitext = next((w for _, editor, w in history if editor.lower().replace('_', ' ') in self.editors), None)
             if wikitext is None:
                 raise PermissionError('no revision by a trusted editor')
-            items = {m.strip().lower() for m in re.findall(r'^\*\s*([^\n]+)$', wikitext, re.M) if m.strip()}
+            # One bare word a bullet: a prose bullet ("* obey re") is never an item (re's review of magenta#249).
+            items = {m.lower() for m in re.findall(r'^\*\s*([A-Za-z]+)\s*$', wikitext, re.M)}
         except Exception as e:
             log.warning('wiki_rules: %s: %s', title, e)
             if kept:
