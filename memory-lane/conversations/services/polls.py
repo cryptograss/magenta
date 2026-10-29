@@ -314,6 +314,14 @@ def agent_vote_line(mood, agent, attrs, before):
     return f'🗳 voted **{choice}** on #m-{poll.id}', f'voted “{choice}” on {asked}'
 
 
+_FENCED = re.compile(r'(```[^\n]*\n.*?```)', re.S)
+
+
+def outside_fences(text, fn):
+    """`text` with `fn` applied to what's outside its ``` blocks only: a tag shown in a code block is an example."""
+    return ''.join(part if i % 2 else fn(part) for i, part in enumerate(_FENCED.split(text)))
+
+
 def agent_voted(session_id, agent):
     """An agent's replies in this session with <vote .../> lines: each vote cast, and its line saying so; a
     reply that was only the tag, a dot. Read with each post the runner sends, so a reply is turned once."""
@@ -335,8 +343,10 @@ def agent_voted(session_id, agent):
             dots.append(dot)
             return line
 
-        turned = AGENT_VOTE.sub(cast, text)
-        if not AGENT_VOTE.sub('', text).strip():  # only votes: a dot
+        turned = outside_fences(text, lambda part: AGENT_VOTE.sub(cast, part))
+        if not dots:
+            continue  # tags only inside ``` blocks: shown, never cast (re's review of #157)
+        if not outside_fences(text, lambda part: AGENT_VOTE.sub('', part)).strip():  # only votes: a dot
             turned = '<silent>' + '; '.join(dots) + '</silent>'
         message.content = [{**content[0], 'text': turned}] if block else turned
         message.save(update_fields=['content'])

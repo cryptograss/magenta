@@ -2453,7 +2453,6 @@ class MoodPoller:
             lines[owed_end:owed_end] = also_asked(owed, self.agent, info, may_wait=not waited, texts=self.texts) + (
                 ['', self.wait_notes.pop(slug)] if slug in self.wait_notes else [])
             lines += settings_changed(self.agent, info, texts=self.texts)
-            lines += open_polls(self.agent, info)
         except Exception:
             pass
         # Taken here from another Mood for this agent, since it last spoke here.
@@ -2540,6 +2539,8 @@ class MoodPoller:
             page = None
         return (self.typing_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
                 + self.nearmiss_lines(slug, page)
+                # Open polls, on every kind of wake: a quiet look too (re's review of #157).
+                + (open_polls(self.agent, page) if page else [])
                 + (wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts) if length else []))
 
     def typing_lines(self, page):

@@ -152,6 +152,16 @@ class PollsTest(TestCase):
         self.assertEqual(said.content[0]['text'], f'Tonight works for me.\n🗳 voted **yes** on #m-{poll}\nThe tests are green.')
         self.assertEqual(self.tally(polls.in_mood(self.mood)[poll])['yes'], ['re'])
 
+    def test_a_tag_in_a_code_block_is_an_example_not_a_vote(self):
+        # re's review of #157: explaining the syntax mustn't cast a vote.
+        poll = self.ask(self.client_for(self.skyler)).json()['id']
+        text = 'To vote, reply with:\n```\n<vote choice="yes"/>\n```\nlike that.'
+        said = self.agent_says(self.re, text)
+        polls.agent_voted(said.session_id, 're')
+        said.refresh_from_db()
+        self.assertEqual(said.content[0]['text'], text)
+        self.assertEqual(sum(len(c['votes']) for c in polls.in_mood(self.mood)[poll]['choices']), 0)
+
     def test_only_a_vote_is_a_dot_and_a_number_names_the_choice(self):
         poll = self.ask(self.client_for(self.skyler)).json()['id']
         said = self.agent_says(self.magent, '<vote choice="3"/>')

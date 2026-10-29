@@ -1262,6 +1262,20 @@ class ConsiderLoopTest(TestCase):
         poller.consider_once()
         self.assertNotIn('Beta is tonight', self.waker.woken[1][1])  # once
 
+    def test_a_quiet_look_hears_of_open_polls(self):
+        # re's review of #157: a poll posted without an @mention reached a quiet look as a bare /poll line.
+        class Polled(ConsiderAPI):
+            def recent(inner, slug, limit=40):
+                return {**super().recent(slug, limit), 'polls': {'p1': {
+                    'id': 'p1', 'question': 'Salt Creek first?', 'by': 'skyler', 'created_at': T0.isoformat(),
+                    'closed': None, 'choices': [{'text': 'yes', 'votes': []}, {'text': 'no', 'votes': ['re']}]}}}
+        api = Polled()
+        poller = self.make(api, FakeScreen('pass'))
+        api.add(post('a', 1, text='/poll Salt Creek first?'))
+        self.at(minutes=2)
+        poller.consider_once()
+        self.assertIn('#m-p1 "Salt Creek first?", asked by skyler -- yes: nobody yet; no: re', self.waker.woken[0][1])
+
     def test_never_its_own(self):
         api = ConsiderAPI()
         poller = self.make(api, FakeScreen('pass'))
