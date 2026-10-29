@@ -4875,8 +4875,7 @@
     if (!a) return;
     e.preventDefault();
     if (matchMedia(PHONE).matches) closeSearch();
-    if (a.dataset.slug !== current) await open(a.dataset.slug, true);
-    if (!(await reveal(a.dataset.id))) showError('That message is no longer here.');
+    if (!(await openAndReveal(a.dataset.slug, a.dataset.id))) showError('That message is no longer here.');
   });
 
   function touch(slug) {
@@ -4918,11 +4917,21 @@
     if (!document.hidden) pullSeen().then(() => { if (current) touch(current); refreshBadges(true); });
   });
 
-  // Bring a message into view, reaching back a few pages if need be.
+  // "finding it…" over the thread while a link's message is fetched: its Mood opened, then reached
+  // back to (Justin, 29 Oct: any link to a message, not only a search hit, sat for seconds without it).
+  // Counted, so a reveal inside an openAndReveal doesn't take it away early; shown only past a moment.
+  let reachingN = 0, reachingTimer = null;
+  async function reaching(work) {
+    const box = document.getElementById('reaching');
+    if (!reachingN++) reachingTimer = setTimeout(() => { box.hidden = false; }, 150);
+    try { return await work(); } finally {
+      if (!--reachingN) { clearTimeout(reachingTimer); box.hidden = true; }
+    }
+  }
+  // Bring a message into view, reaching back to it in one ask if need be.
   async function reveal(id) {
     if (!id) return false;
     stopSettling();  // taken to a message: the newest no longer pulls
-    const reaching = document.getElementById('reaching');
     for (let i = 0; i < 2; i++) {
       // A message, or a step (a tool call), shown in its opened group.
       const el = document.getElementById('m-' + id) || document.querySelector(`.step[data-id="${CSS.escape(id)}"]`);
@@ -4939,14 +4948,15 @@
       // Not drawn yet: everything back to it, in one ask, under a spinner.
       const earlier = document.getElementById('earlier');
       if (i || !earlier || earlier.hidden) return false;
-      const spin = setTimeout(() => { reaching.hidden = false; }, 150);
-      try { if (!(await loadEarlier(id))) return false; } finally { clearTimeout(spin); reaching.hidden = true; }
+      if (!(await reaching(() => loadEarlier(id)))) return false;
     }
     return false;
   }
-  async function openAndReveal(slug, id) {
-    if (slug !== current) await open(slug, true);
-    await reveal(id);
+  function openAndReveal(slug, id, push = true) {
+    return reaching(async () => {
+      if (slug !== current) await open(slug, push);
+      return reveal(id);
+    });
   }
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', e => {
@@ -8387,10 +8397,10 @@
     const lastOpened = sharing_ && store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived));
     const slug = initialSlug || lastOpened || (moods[0] && moods[0].slug);
     if (!slug) { inner.innerHTML = '<div class="empty">No Moods yet.</div>'; setStatus('live', 'live'); return; }
-    await open(slug, false);
+    const linked = location.hash.match(/^#m-([0-9a-f-]{36})$/);  // from a notification, or a link
+    if (linked) await openAndReveal(slug, linked[1], false);
+    else await open(slug, false);
     if (sharing_) { history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/'); offerShare(); }
-    const linked = location.hash.match(/^#m-([0-9a-f-]{36})$/);  // from a notification
-    if (linked) await reveal(linked[1]);
     setInterval(() => { poll(false); fetchBadges(); }, POLL_MS);
   })();
 
