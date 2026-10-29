@@ -80,7 +80,7 @@ SILENT = '<silent/>'
 # A silent reply, with or without a reason: <silent/> or <silent>why</silent>; and a reaction instead of a
 # reply, <react emoji="🎻" to="re"/> (memory-lane services/reactions.py), which says nothing either; nor does a
 # reply that is only a vote, <vote choice="yes"/> (services/polls.py).
-_SILENT_REPLY = re.compile(r'^\s*<silent\s*/>\s*$|^\s*<silent>.*</silent>\s*$|^\s*<react\s[^<>]*/>\s*$|^\s*<tools\s[^<>]*/>\s*$'
+_SILENT_REPLY = re.compile(r'^\s*<silent\s*/>\s*$|^\s*<silent>.*</silent>\s*$|^\s*<react\s[^<>]*/>\s*$|^\s*<(?:tools|merge|deploy)\s[^<>]*/>\s*$'
                            r'|^\s*(?:<vote\s[^<>]*/>\s*)+$', re.S)
 # Waiting for another agent asked the same thing (Justin and re, 24 Oct): a reply that is only this. The poller
 # takes it -- it's a state shown in the Mood (a hold), never a mention or a post that wakes anyone -- and checks
@@ -909,7 +909,11 @@ LOOK_ONLY = ('This turn can look but not touch: read and search files under ~/wo
 
 # On a look-only wake, how to ask for more (Justin, 28 Oct): the Mood shows it, and someone trusted wakes it with them.
 TOOLS_OFFER = ('If answering needs your full tools, reply with only <tools to="a few words on what for"/>: the Mood '
-               'shows "you requested tools for …" and 🔨 by its name, and someone trusted can wake you with them.')
+               'shows "you requested tools for …" and 🔨 by its name, and someone trusted can wake you with them. '
+               'The same ask, other things you cannot do on a look-only turn (Justin, 29 Oct): '
+               '<merge to="a few words on which PR"/> for a merge (🔀), <deploy to="a few words on which server"/> '
+               "for a redeploy (🔄). Each posts a visible line here, and an icon sits by the Mood's name until "
+               'a person does it.')
 
 
 def wake_footer(full=False, texts=None):
@@ -1218,6 +1222,9 @@ _CONTROL_TAGS = (
     ('wait', re.compile(r'<wait\s+for="[^"]{1,100}"(?:\s+to="[^"<>]{0,200}")?\s*/>')),
     ('react', re.compile(r'<react\s+[^<>]*/>')),
     ('take', re.compile(r'<take\s+[^<>]*/>')),
+    ('tools', re.compile(r'<tools\s+[^<>]*/>')),
+    ('merge', re.compile(r'<merge\s+[^<>]*/>')),
+    ('deploy', re.compile(r'<deploy\s+[^<>]*/>')),
 )
 
 
