@@ -77,7 +77,7 @@
          box-shadow: 0 4px 14px rgba(0,0,0,.15); max-width: 300px; }
   .tip b { font-variant-numeric: tabular-nums; }
   .tip .row { display: flex; justify-content: space-between; gap: 12px; }
-  .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
   .tabs button { font: inherit; font-size: 13px; background: none; color: var(--muted); border: 1px solid var(--line);
                  border-radius: 6px; padding: 2px 10px; cursor: pointer; }
   .tabs button[aria-selected="true"] { color: var(--ink); background: var(--accent-soft); border-color: var(--accent); }
@@ -150,9 +150,15 @@
   </section>
 
   <h2>By each person (last {{ prompt_cap }} each)</h2>
+  {# One person at a time (Justin, 29 Oct: everyone's at once was too long): a tab each. #}
+  <div class="tabs" role="tablist" id="people">
+  {% for human in prompts.prompts %}{% if human.prompts %}
+    <button role="tab" data-person="{{ forloop.counter0 }}" aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">{% if human.wiki_name %}{{ human.wiki_name }}{% else %}{{ human.name }}{% endif %} <span class="muted">{{ human.prompts|length }}</span></button>
+  {% endif %}{% endfor %}
+  </div>
   {% for human in prompts.prompts %}
+    <div class="person" data-person="{{ forloop.counter0 }}" role="tabpanel"{% if not forloop.first %} hidden{% endif %}>
     <h3>{% if human.wiki_name %}{{ human.wiki_name }} <span class="local">({{ human.name }})</span>{% else %}{{ human.name }}{% endif %}</h3>
-    <div>
     {% for prompt in human.prompts %}
       <div class="prompt">
         <div class="head at">
@@ -185,6 +191,16 @@
     </div>
   {% endfor %}
 </main>
+<script>
+  // The per-person tabs: one person's prompts shown at a time.
+  const showPerson = b => {
+    document.querySelectorAll('#people button').forEach(o => o.setAttribute('aria-selected', String(o === b)));
+    document.querySelectorAll('.person').forEach(p => { p.hidden = p.dataset.person !== b.dataset.person; });
+  };
+  document.querySelectorAll('#people button').forEach(b => b.addEventListener('click', () => showPerson(b)));
+  // Only people with prompts have a tab: the first of them is shown.
+  if (document.querySelector('#people button')) showPerson(document.querySelector('#people button'));
+</script>
 <script>
 (() => {
   const AGENT_COLORS = { magent: '#ff67fd', re: '#ff3c00', blu: '#1976d2' };  // as the Moods draw them
@@ -317,7 +333,7 @@
 
   function drawTop() {
     const rows = (state.top[tab] || []);
-    document.querySelectorAll('.tabs button').forEach(b => {
+    document.querySelectorAll('#usage .tabs button').forEach(b => {
       b.setAttribute('aria-selected', String(b.dataset.tab === tab));
       b.hidden = b.dataset.tab === 'other' && !(state.top.other || []).length;  // only when some vendor else was paid
     });
@@ -345,7 +361,7 @@
   $('u-hours').addEventListener('change', load);
   $('u-measure').addEventListener('change', draw);
   $('u-by').addEventListener('change', draw);
-  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; drawTop(); }));
+  document.querySelectorAll('#usage .tabs button').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; drawTop(); }));
   load();
 })();
 </script>
