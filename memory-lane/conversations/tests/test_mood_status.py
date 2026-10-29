@@ -44,6 +44,8 @@ class StatusPageTests(TestCase):
         anon = self.client.get('/moods/status/?embed=1')
         self.assertEqual(anon.status_code, 200)
         self.assertIn('status · magenta', anon.content.decode())
+        self.assertIn('Spend by kind of turn', anon.content.decode())  # the shared kinds block is in (magent, #281)
+        self.assertIn('id="kinds"', anon.content.decode())
 
         _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
         signed = Client()
