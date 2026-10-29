@@ -1837,12 +1837,13 @@
   // and who signed in from it lately.
   let watchersNow = null;
   function watchingIn(slug) {
-    const here = slug === current && watchersNow;
+    const here = slug === current && watchersNow && watchersNow.slug === slug;  // never the Mood just left's (Justin, 29 Oct)
     const n = here ? watchersNow.here : ((liveData[slug] || {}).watching || 0);
     if (!n) return '';
     const who = here && watchersNow.who ? watchersNow.who.filter(x => x.mood === slug) : [];
     const title = `${n} reading without signing in, in the last minute or so`
-      + (who.length ? '\n\n' + who.map(x => [x.ip, x.place, x.browser, `for ${elapsed(x.since)}`].filter(Boolean).join(' · ')
+      // In whole minutes: a title that changed every second was redrawn under the pointer, and its hover never showed.
+      + (who.length ? '\n\n' + who.map(x => [x.ip, x.place, x.browser, `for ${Math.max(1, Math.round((Date.now() / 1000 - x.since) / 60))}m`].filter(Boolean).join(' · ')
            + ((x.known || []).length ? `\n    signed in from there lately: ${x.known.join(', ')}` : '')).join('\n')
            + (who.some(x => x.place) ? '\n\nPlaces: IP Geolocation by DB-IP (db-ip.com), roughly' : '') : '');
     return ` <span class="watching" title="${esc(title)}">👁 ${n}</span>`;
@@ -1851,7 +1852,16 @@
     nav.querySelectorAll('a.mood').forEach(a => {
       const line = a.querySelector('.people-line');
       const html = peopleLine(a.dataset.slug);
-      if (line && line.innerHTML !== html) line.innerHTML = html;
+      if (!line || line._html === html) return;  // what was drawn, not innerHTML: the browser writes some of it back differently
+      // Only the 👁's count or hover changed: that, in place, so a hover under way isn't torn down.
+      const eye = /<span class="watching"[^>]*>[^<]*<\/span>/, was = line.querySelector('.watching');
+      if (was && line._html && eye.test(html) && line._html.replace(eye, '') === html.replace(eye, '')) {
+        const t = document.createElement('div'); t.innerHTML = html;
+        const now = t.querySelector('.watching');
+        if (was.title !== now.title) was.title = now.title;
+        if (was.textContent !== now.textContent) was.textContent = now.textContent;
+      } else line.innerHTML = html;
+      line._html = html;
     });
   }
   async function refreshLive() {
@@ -5879,7 +5889,7 @@
   setInterval(renderTasks, 1000);
 
   function renderWatchers(w) {
-    watchersNow = w || null;
+    watchersNow = w ? { ...w, slug: current } : null;  // whose they are: a Mood opened next isn't shown the last one's
     markLive();
   }
 
