@@ -1836,6 +1836,20 @@
     const fold = document.getElementById('archived');
     if (fold) fold.addEventListener('toggle', () => { archivedOpen = fold.open; });
     markLive();
+    if (navReveal === current) revealInNav();
+  }
+  // A Mood or thread arrived at (a link, a notification, the list itself) sits no lower than third from the
+  // bottom of the list's view, the two after it showing (Justin, 29 Oct); one above the view comes down into it.
+  let navReveal = null;
+  function revealInNav() {
+    const items = [...nav.querySelectorAll('a.mood')].filter(a => a.offsetParent);
+    const i = items.findIndex(a => a.dataset.slug === current);
+    if (i < 0) return;  // not drawn yet: tried again when the list is
+    navReveal = null;
+    const box = nav.getBoundingClientRect(), here = items[i].getBoundingClientRect();
+    const last = items[Math.min(i + 2, items.length - 1)].getBoundingClientRect();
+    if (here.top < box.top) nav.scrollTop -= box.top - here.top + 6;
+    else if (last.bottom > box.bottom) nav.scrollTop += Math.min(last.bottom - box.bottom + 6, here.top - box.top);
   }
 
   // Who's around in each Mood: each person in the one they last opened, typed or spoke in, for three
@@ -1913,6 +1927,7 @@
         const before = liveData;
         liveData = (await r.json()).moods || {};
         markLive();
+        if (asksChanged()) { renderNav(); renderToolsOpen(); }
         noticeThinking(before);
         preload();
         warmAgents();
@@ -5116,6 +5131,7 @@
     if (push) history.pushState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/');
     newBelow = 0;
     touch(slug);
+    navReveal = slug;
     renderNav();
     // Nothing of the Mood just left may linger: not its agent's work, its
     // tasks, who was typing there, or its agents' settings.
