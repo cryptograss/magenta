@@ -139,9 +139,14 @@ class PushTest(TestCase):
         self.assertEqual(sent['headers']['content-encoding'], 'aes128gcm')
         self.assertIn(f"k={push.public_key()}", sent['headers']['authorization'])  # signed with our key
         told = self.phone.read(sent['data'])
-        self.assertEqual((told['title'], told['body']), ('skyler mentioned you', 'general: @justin the bus leaves at nine'))
+        self.assertEqual((told['title'], told['body']), ('skyler mentioned you in general', '@justin the bus leaves at nine'))  # the body: only what was said
         self.assertEqual(told['data']['slug'], 'general')
         self.assertIsNotNone(PushSubscription.objects.get().last_sent_at)
+
+    def test_a_notification_body_is_the_words_alone(self):
+        self.assertEqual(push.plain_text('**Done**: see [#259](https://github.com/x/259) and [[Cryptograss:Pronouns|the list]].\n\n- one\n- `two`'),
+                         'Done: see #259 and the list. one two')
+        self.assertEqual(push.plain_text('<react emoji="👍" to="re"/>yes'), 'yes')
 
     def test_an_agents_answer_is_pushed_too(self):
         self.subscribe(self.justin, self.phone)
@@ -150,7 +155,7 @@ class PushTest(TestCase):
         service = PushService()
         with mock.patch('requests.post', service.post):
             push.sweep()
-        self.assertEqual(self.phone.read(service.sent[-1][1]['data'])['title'], 'magent answered you')
+        self.assertEqual(self.phone.read(service.sent[-1][1]['data'])['title'], 'magent answered you in general')
 
     def test_every_message_from_people_or_agents_reaches_only_the_browsers_that_asked(self):
         laptop = Browser()
@@ -252,7 +257,7 @@ class PushTest(TestCase):
             push.sweep()
         told = [(self.phone.read(kw['data']), kw['headers'].get('Urgency') or kw['headers'].get('urgency'))
                 for _, kw in service.sent]
-        mention = next(t for t in told if t[0]['title'] == 'skyler mentioned you')
+        mention = next(t for t in told if t[0]['title'] == 'skyler mentioned you in general')
         self.assertEqual(mention[1], 'high')  # a sleeping phone is woken for it
         said.refresh_from_db()
         self.assertEqual(mention[0]['timestamp'], int(said.created_at.timestamp() * 1000))  # not "now"

@@ -4666,13 +4666,31 @@
     } catch (e) {}
   }
   if (notifying() && pushable()) pushOn();
+  // A message's words alone, for a notification: no markup, no links' addresses, one line.
+  function plainText(text) {
+    return (text || '').replace(/```[^\n]*\n?/g, '').replace(/<\/?[a-z][^>]*>/gi, '')
+      .replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, '$2').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[*_`~]+/g, '').replace(/^\s*(#+|>|[-*]|\d+\.)\s+/gm, '').replace(/\s+/g, ' ').trim();
+  }
+  // Messages read aloud here: a notification of one goes (Justin, 29 Oct), and one that comes after isn't shown.
+  const heardAloud = new Set();
+  async function unnotify(id) {
+    heardAloud.add(id);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration('/moods/');
+      if (reg) (await reg.getNotifications({ tag: id })).forEach(x => x.close());
+    } catch (e) {}
+  }
   async function notify(n) {
     if (!notifying()) return;
     const mood = moods.find(m => m.slug === n.mood);
-    const title = n.kind === 'answer' ? `${n.turn.sender} answered you` : n.kind === 'talk' ? `${n.turn.sender} edited your talk page`
-      : n.kind === 'mention' ? `${n.turn.sender} mentioned you`
-      : `${n.turn.sender} in ${mood ? mood.title || mood.slug : n.mood}`;
-    const options = { body: (mood && n.kind !== 'said' ? mood.title + ': ' : '') + n.turn.text.slice(0, 160), tag: n.turn.id,
+    // Who and where in the title; the body, only what they said (Justin, 29 Oct: a phone's fill up fast).
+    const where = mood ? mood.title || mood.slug : n.mood;
+    const title = n.kind === 'answer' ? `${n.turn.sender} answered you in ${where}` : n.kind === 'talk' ? `${n.turn.sender} edited your talk page`
+      : n.kind === 'mention' ? `${n.turn.sender} mentioned you in ${where}`
+      : `${n.turn.sender} in ${where}`;
+    if (heardAloud.has(n.turn.id)) return;  // read to them already
+    const options = { body: plainText(n.turn.text).slice(0, 160), tag: n.turn.id,
                       icon: '/moods/icon-192.png', badge: '/moods/mark-96.png', data: { slug: n.mood, id: n.turn.id } };
     try {
       // Through the service worker: Android allows no other way.
@@ -4888,6 +4906,7 @@
   }
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data && e.data.shown && heardAloud.has(e.data.shown)) unnotify(e.data.shown);  // pushed after it was read
       if (!e.data || !e.data.open) return;
       if (e.ports && e.ports[0]) e.ports[0].postMessage('opening');  // heard: the service worker needn't send us there
       openAndReveal(e.data.open, e.data.id);
@@ -7265,6 +7284,7 @@
   // What the reader did with each clip, told to the server (a voice row in the
   // record): a phone's player can't be watched from here otherwise.
   function readReport(item, clip, outcome) {
+    if (clip === 'message' && outcome === 'ended') unnotify(item.id);
     fetch('/api/voice/heard/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify({ mood: item.mood, message: item.id, clip, outcome, error: clipError, hidden: document.hidden,
                              // how fast it was played, and the pace it was taken to have: what the listener heard
