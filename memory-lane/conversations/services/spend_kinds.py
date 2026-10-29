@@ -6,7 +6,9 @@ full tools, or one that may only look; or a look nobody asked for -- at new post
 own talk (crosstalk), at a long quiet (quiet), at someone signing in (arrival). A screened moment never woke
 the agent at all: the runner's small screen let it pass, and left a dot (by="screen") with what that cost.
 
-Each model response is counted as the prompts page counts it (usage.calls, helpers' calls included), and its output is split three ways -- thinking, words,
+Dollars are what was paid by the call -- OpenRouter's, and any vendor's but the Claude plan's, which is
+paid in a share of its rolling windows instead (services/plan.py). Each model response is counted as the
+prompts page counts it (usage.calls, helpers' calls included), and its output is split three ways -- thinking, words,
 tool calls -- by the characters each of its rows holds. Where the harness kept its thinking (Pi), the split is
 by those characters; where it didn't (Claude Code keeps only a signature), words and tool calls are taken at
 CHARS_PER_TOKEN and thinking is the rest. Estimates, and labelled so.
@@ -89,7 +91,9 @@ def spend_by_kind(hours=24, mood=None, now=None):
         row['calls'] += 1
         row['ctx'] += c['ctx']
         row['out'] += c['out']
-        if c['usd'] is None:
+        if c['harness'] == 'anthropic':
+            pass  # the plan's, paid in a share of its windows, not dollars (Justin, 28 Oct; services/plan.py)
+        elif c['usd'] is None:
             row['unpriced'] += 1
         else:
             row['usd'] += c['usd']

@@ -366,6 +366,29 @@ def api_running(request, slug):
     return JsonResponse({'running': set_running(slug, agent, since).get(agent)})
 
 
+@csrf_exempt  # authenticated by the runner's key
+@require_POST
+def api_plan(request):
+    """How much of the Claude plan's rolling windows a turn found used (services/plan.py).
+
+    Body: {"rate_limit_info": {...}}, as Claude Code's rate_limit_event carried it.
+    """
+    from .services import plan
+
+    if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
+        return JsonResponse({'error': 'no runners are configured'}, status=503)
+    agent = runner_agent(request)
+    if agent is None:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    try:
+        info = json.loads(request.body).get('rate_limit_info')
+    except (ValueError, AttributeError):
+        info = None
+    if not isinstance(info, dict):
+        return JsonResponse({'error': 'expected {"rate_limit_info": {...}}'}, status=400)
+    return JsonResponse({'kept': [w.window for w in plan.record(info, agent)]})
+
+
 # --- servers: whether each answers, and their redeploys -------------------------
 
 @csrf_exempt  # authenticated by the deploy key, not a browser session

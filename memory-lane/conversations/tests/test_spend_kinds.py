@@ -22,7 +22,8 @@ class SpendKindsTest(TidingsTests):
         message = self.post(sender or self.poller, mood, f'{opening}\nsomething said\n{ending}\n</mood-wake>')
         Message.objects.filter(id=message.id).update(session_id=session)
 
-    def response(self, session, mood, *rows, fresh=1_000_000, out=1000, cost=None, agent=None, helper=False):
+    def response(self, session, mood, *rows, fresh=1_000_000, out=1000, cost=None, agent=None, helper=False,
+                 client=None):
         """One model response: `rows` of (kind, characters), each repeating the response's usage."""
         for kind, chars in rows:
             content = {'thinking': [{'type': 'thinking', 'thinking': 'x' * chars}],
@@ -34,7 +35,7 @@ class SpendKindsTest(TidingsTests):
                                        session_id=session, model_backend='claude-opus-5-5', input_tokens=fresh,
                                        output_tokens=out, cache_read_input_tokens=0, cache_creation_input_tokens=0,
                                        cost_usd=cost, timestamp=int(self.clock.timestamp() * 1000),
-                                       is_sidechain=helper, **extra)
+                                       is_sidechain=helper, client_version=client, **extra)
             Message.objects.filter(id=row.id).update(created_at=self.clock)
 
     def kinds(self, **kw):
@@ -47,10 +48,11 @@ class SpendKindsTest(TidingsTests):
         self.wake(b, self.mood_a, '<mood-wake mood="magenta-interface">', LOOK)
         self.response(b, self.mood_a, ('words', 40))
         self.wake(c, self.mood_b, '<mood-wake mood="docs-tests-qa" reason="consider">', LOOK)
-        self.response(c, self.mood_b, ('words', 40), cost=0.25)
+        self.response(c, self.mood_b, ('words', 40), cost=0.25, client='pi 1.1.0')
         got = self.kinds()
         full = got['mention-full']
-        self.assertEqual((full['turns'], full['calls'], full['ctx'], full['usd']), (1, 1, 1_000_000, 4.02))
+        # Claude Code's: the plan's, paid in its windows, so no dollars (Justin, 29 Oct).
+        self.assertEqual((full['turns'], full['calls'], full['ctx'], full['usd']), (1, 1, 1_000_000, 0.0))
         # Claude Code keeps no thinking text: words and tools at 4 characters a token, thinking the rest.
         self.assertEqual(full['words'], 100)
         self.assertAlmostEqual(full['tools'], 103, delta=2)  # the call's whole input, its keys too
@@ -98,12 +100,12 @@ class SpendKindsTest(TidingsTests):
         from conversations.services import usage
         s = uuid.uuid4()
         self.wake(s, self.mood_a, '<mood-wake mood="magenta-interface">', FULL)
-        self.response(s, self.mood_a, ('words', 40))
-        self.response(s, self.mood_a, ('words', 40), fresh=2_000_000, helper=True)
+        self.response(s, self.mood_a, ('words', 40), cost=4.0, client='pi 1.1.0')
+        self.response(s, self.mood_a, ('words', 40), fresh=2_000_000, helper=True, cost=8.0, client='pi 1.1.0')
         here = spend_kinds.spend_by_kind()['total']
         there = usage.usage_state(24)['totals']
-        self.assertEqual((here['calls'], here['usd']), (2, 12.04))
-        self.assertEqual(here['usd'], round(sum(t['usd'] for t in there.values()), 2))
+        self.assertEqual((here['calls'], here['ctx'], here['usd']), (2, 3_000_000, 12.0))
+        self.assertEqual(here['usd'], there['openrouter']['paid_usd'])
 
     def test_a_pi_response_is_its_blocks_together(self):
         """Pi puts a response's usage on its last block: the thinking before it is the same response's."""

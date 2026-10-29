@@ -218,6 +218,14 @@ class MoodAPI:
         time someone stopped `agent` in `slug` ({'by', 'at', ...} or None)."""
         return self._get(f'/api/moods/{slug}/interrupt/', agent=agent)
 
+    def plan(self, info):
+        """Say how much of the Claude plan's rolling windows a turn found used (Claude Code's rate_limit_info)."""
+        if not self.key:
+            return False
+        response = self.http.post(f'{self.base}/api/usage/plan/', json={'rate_limit_info': info},
+                                  headers={'Authorization': f'Bearer {self.key}'}, timeout=30)
+        return response.status_code == 200
+
     def running(self, slug, since):
         """Say the agent's turn in `slug` is still running, since `since` (epoch seconds); None, that it ended."""
         if not self.key:
@@ -2338,12 +2346,23 @@ class MoodPoller:
                         'message': {'role': 'user', 'content': prompt}})
         stop = self.stop_check(slug, options.pop('since', None))
         heard = {}  # when the harness first spoke: it had started, with its instructions in hand
+        limits = {}  # the newest of the Claude plan's windows the turn heard of, each by its name
         on_event = poster.put if poster else None
         if bundled is not None:
             def on_event(event, put=on_event):
                 heard.setdefault('at', utc_seconds())
                 if put:
                     put(event)
+
+        def on_event(event, put=on_event):
+            # Claude Code says, as it goes, how much of the plan's rolling windows is used: kept, and said once
+            # the turn is over (memory-lane services/plan.py), since the plan is paid in shares, not dollars.
+            if isinstance(event, dict) and event.get('type') == 'rate_limit_event' \
+                    and isinstance(event.get('rate_limit_info'), dict):
+                info = event['rate_limit_info']
+                limits[info.get('rateLimitType') or ''] = info
+            if put:
+                put(event)
         beating = self.heartbeat(slug)
         try:
             new_session, reply = self.waker.wake(session_id, prompt, new_session_id=new_session,
@@ -2361,6 +2380,11 @@ class MoodPoller:
                                          'retry': False}
         finally:
             beating.set()
+            for info in (limits.values() if not self.dry_run else ()):
+                try:
+                    self.api.plan(info)
+                except Exception as e:  # the meter missing a reading is no reason to fail the turn
+                    logger.warning(f'{slug}: could not say how much of the plan is used: {e}')
         if poster:
             poster.close()
         if bundled is not None:

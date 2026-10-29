@@ -126,7 +126,8 @@
   <p class="meta">What woke each turn, as its wake said. Each model call is counted once; "read" is its whole context,
     cached or not. What it wrote is split by what each row of the call holds, an estimate: words and tool calls at
     four characters a token, thinking the rest where the harness kept no thinking (Claude Code), by characters where
-    it did (Pi). A screened moment never woke the agent; its cost is the screen's own call, recorded from this
+    it did (Pi). Dollars are what OpenRouter and other vendors billed: Claude Code's turns are the plan's, paid in a
+    share of its rolling windows, which the prompts page draws. A screened moment never woke the agent; its cost is the screen's own call, recorded from this
     change on. "Wake not recorded" is re's and blu's Claude Code turns before the runner posted their wakes.</p>
 
   <h2>Database backups (magenta_memory on maybelle)</h2>
@@ -457,7 +458,7 @@
       <td>${esc(total ? 'every kind' : r.label)}</td><td>${r.turns}</td><td>${r.calls}</td><td>${tok(r.ctx)}</td>
       <td>${total ? '' : `<span class="pie" style="--p:${Math.round(100 * r.usd / most)}%"></span>`}${usd(r.usd)}${r.unpriced ? ` <span class="meta" title="calls with no price">+${r.unpriced}?</span>` : ''}</td>
       <td>${tok(r.out)}</td><td>${tok(r.thinking)}</td><td>${tok(r.words)}</td><td>${tok(r.tools)}</td></tr>`;
-    box.innerHTML = `<table class="tbl"><thead><tr><th>woken by</th><th>turns</th><th>calls</th><th>read</th><th>cost</th>
+    box.innerHTML = `<table class="tbl"><thead><tr><th>woken by</th><th>turns</th><th>calls</th><th>read</th><th>dollars paid</th>
       <th>written</th><th>thinking</th><th>words</th><th>tool calls</th></tr></thead><tbody>`
       + k.kinds.map(r => row(r)).join('') + row(k.total, true) + '</tbody></table>';
   }

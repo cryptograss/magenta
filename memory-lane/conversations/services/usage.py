@@ -28,6 +28,7 @@ from django.utils import timezone
 
 from conversations.models import Message
 from conversations.services.mood_view import call_usd, model_label
+from conversations.services.plan import plan_state
 
 HARNESSES = ('anthropic', 'openrouter', 'other')  # who was paid: one tab each
 RANGES = {24: 'hour', 72: 'hour', 168: 'day', 720: 'day'}  # hours looked back: what one bar is
@@ -192,4 +193,6 @@ def usage_state(hours=24, now=None):
         'totals': {h: {**t, 'usd': round(t['usd'], 2), 'paid_usd': round(t['paid_usd'], 2)}
                    for h, t in totals.items()},
         'top': top,
+        # The Claude plan's windows, used up as a share, not dollars (services/plan.py).
+        'plan': plan_state(since, now)['windows'],
     }
