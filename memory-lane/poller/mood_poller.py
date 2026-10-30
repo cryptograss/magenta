@@ -1574,10 +1574,10 @@ def linked_message(posts):
 # wakes run in (/status, /rewind, /btw, /memory, /help), are knobs already
 # (/model, /effort), or would throw the session away (/clear).
 COMMANDS = {
-    'compact': True,   # what to keep (required)
-    'context': False,  # what fills the context, by kind
-    'usage': False,    # the subscription's limits, used so far
-    'cost': False,     # the same as /usage
+    'compact': 'optional',  # what to keep (optional)
+    'context': False,       # what fills the context, by kind
+    'usage': False,         # the subscription's limits, used so far
+    'cost': False,          # the same as /usage
 }
 
 
@@ -1593,8 +1593,11 @@ def command_request(text, agent):
     name, words = match.group(1).lower(), (match.group(3) or '').strip()
     if agent.lower() not in [n.strip().lstrip('@').lower() for n in match.group(2).split(',')]:
         return None
-    if bool(words) != COMMANDS[name]:
-        return None  # /compact without what to keep, or words after /usage: not the form (the server refuses both)
+    takes_words = COMMANDS[name]
+    if takes_words is True and not words:
+        return None
+    if not takes_words and words:
+        return None
     return f'/{name} {words}'.strip()
 
 

@@ -65,7 +65,7 @@ def makers_offered():
             for vendor, makers in sorted(found.items()) if vendor}
 
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'settings')
 
 
 def section(name):
@@ -85,6 +85,27 @@ def section(name):
         view.__name__ = page.__name__
         return view
     return wrap
+
+
+@section('todo')
+def todo_page(request):
+    """Every Mood's to-do items combined in reverse chronological order (services/todo.py).
+    Justin, 30 Oct: another page combining all to-dos across all Moods."""
+    device = mood_auth.device_for(request)
+    from .services import todo
+    state = todo.all_todos()
+    return render(request, 'conversations/mood_todo.html', {
+        'todos': state,
+        'viewer': device.entity_id if device else '',
+        'embed': True,
+    })
+
+
+@require_GET
+def api_todo(request):
+    """All to-dos across all Moods, reverse chronologically: {"items", "total", "open", "done", "moods"}."""
+    from .services import todo
+    return JsonResponse(todo.all_todos())
 
 
 @section('settings')

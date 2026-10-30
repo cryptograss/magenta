@@ -29,14 +29,14 @@ emergents aren't asked.
 import re
 
 # Each command: what it's for (the composer's suggestions say so), and whether it
-# takes words after its agents (required, for /compact).
+# takes words after its agents (True: required, 'optional': allowed but optional, False: none).
 COMMANDS = {
-    'compact': ('compact an agent: shorten its memory of this Mood, keeping what you say', True),
+    'compact': ('compact an agent: shorten its memory of this Mood (optionally saying what to keep)', 'optional'),
     'context': ("what fills an agent's context here, by kind", False),
     'usage': ("the subscription's limits, used so far", False),
     'cost': ('the same as /usage', False),
 }
-FORM = {name: f'/{name} <agent>[,<agent>…]' + (' <what to keep>' if words else '')
+FORM = {name: f'/{name} <agent>[,<agent>…]' + (' [what to keep]' if words == 'optional' else ' <what to keep>' if words else '')
         for name, (_, words) in COMMANDS.items()}
 HANDOFF_AGENT = 'magent'
 INCORPORATE_FORM = '/incorporate #<thread> [what to be sure to carry back]'
@@ -84,9 +84,9 @@ def parse(text, agents):
     named = list(dict.fromkeys(named))
     words = rest[listed.end():].strip()
     takes_words = COMMANDS[name][1]
-    if takes_words and not words:
+    if takes_words is True and not words:
         raise Invalid(f'say what the compaction should keep: {FORM[name]}')
-    if words and not takes_words:
+    if not takes_words and words:
         raise Invalid(f'/{name} takes nothing after its agents: {FORM[name]}')
     return name, named, words
 

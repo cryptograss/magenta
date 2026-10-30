@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use', 'error': 'error',
                 'aborted': 'aborted'}
 LOOK_ONLY_TOOLS = 'read,grep,find,ls'
-COMPACT = re.compile(r'/compact\s+(.+)\Z', re.S)  # what the runner sends for "/compact re <what to keep>"
+COMPACT = re.compile(r'/compact(?:\s+(.+))?\Z', re.S)  # what the runner sends for "/compact re [what to keep]"
 EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # The names the model menu has always offered, as Pi should read them. Left
 # to Pi, a bare 'opus' is fuzzy-matched across every vendor it knows, and
@@ -425,8 +425,11 @@ class PiWaker:
                                 text=True, start_new_session=True)
         done = self._watch(proc, stop)
         answer = None
+        payload = {'id': 'compact', 'type': 'compact'}
+        if keep:
+            payload['customInstructions'] = keep
         try:
-            proc.stdin.write(json.dumps({'id': 'compact', 'type': 'compact', 'customInstructions': keep}) + '\n')
+            proc.stdin.write(json.dumps(payload) + '\n')
             proc.stdin.flush()
             for line in proc.stdout:
                 done.heard = time.monotonic()
@@ -507,7 +510,8 @@ class PiWaker:
         """Run one turn; (new session id, its reply). '/compact <what to keep>' compacts instead."""
         keep = COMPACT.match(prompt or '')
         if keep and session_id:
-            return self.compact(session_id, keep.group(1).strip(), new_session_id=new_session_id, on_event=on_event,
+            instructions = keep.group(1).strip() if (keep and keep.group(1)) else ''
+            return self.compact(session_id, instructions, new_session_id=new_session_id, on_event=on_event,
                                 model=model, stop=stop)
         if session_id is None:
             cwd = str(Path(self.new_cwd).expanduser())
