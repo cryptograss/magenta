@@ -54,6 +54,13 @@ class StatusPageTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn('justin', resp.content.decode())
 
+    def test_status_page_has_green_pie_and_grouped_heaps(self):
+        html = self.client.get('/moods/status/?embed=1').content.decode()
+        self.assertIn('.pie.ok', html)
+        self.assertIn('var(--ok)', html)
+        self.assertIn('table.heaps td.mood-cell', html)
+        self.assertIn('renderFullHeaps', html)
+
     def test_api_status_returns_agent_settings_in_every_mood_and_vendors(self):
         Setting.objects.create(key='discretion', mood=self.mood_a, agent=self.re, value='reserved', set_by=self.justin)
         HarnessModels.objects.create(
