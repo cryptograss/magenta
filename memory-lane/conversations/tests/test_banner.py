@@ -102,3 +102,18 @@ class BannerMiddlewareTest(SimpleTestCase):
             middleware2 = BannerMiddleware(lambda r: HttpResponse('<html><body>No banner</body></html>', content_type='text/html'))
             resp2 = middleware2(req2)
             self.assertNotIn('class="banner"', resp2.content.decode('utf-8'))
+
+    def test_middleware_does_not_inject_duplicate_if_banner_already_in_content(self):
+        with mock.patch.dict(os.environ, {'MAGENTA_BANNER_PATH': self.banner_path}):
+            banner.set_banner('Emergency Alert', 'red', 'white')
+
+            req = self.rf.get('/')
+            # Case 1: Template rendered with id="magenta-banner"
+            resp1 = BannerMiddleware(lambda r: HttpResponse('<html><body><div id="magenta-banner" class="banner">Existing</div></body></html>', content_type='text/html'))(req)
+            self.assertEqual(resp1.content.decode('utf-8').count('id="magenta-banner"'), 1)
+            self.assertNotIn('Emergency Alert', resp1.content.decode('utf-8'))
+
+            # Case 2: Template rendered with class="banner"
+            resp2 = BannerMiddleware(lambda r: HttpResponse('<html><body><div class="banner">Existing</div></body></html>', content_type='text/html'))(req)
+            self.assertEqual(resp2.content.decode('utf-8').count('class="banner"'), 1)
+            self.assertNotIn('Emergency Alert', resp2.content.decode('utf-8'))

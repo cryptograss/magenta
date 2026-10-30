@@ -34,7 +34,7 @@ class BannerMiddleware:
         banner_html = banner.render_banner_html(b)
         try:
             content = response.content.decode('utf-8')
-            if 'id="magenta-banner"' in content:
+            if 'id="magenta-banner"' in content or 'class="banner"' in content:
                 return response
             match = BODY_OPEN_RE.search(content)
             if match:
