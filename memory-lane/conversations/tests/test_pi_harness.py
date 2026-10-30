@@ -102,7 +102,10 @@ class CommandTest(TestCase):
         self.assertEqual(cmd[:2], ['pi', '--mode'])
         self.assertIn('--fork', cmd)
         self.assertEqual(cmd[cmd.index('--session-id') + 1], 'new')
-        self.assertEqual(cmd[cmd.index('--tools') + 1], 'read,grep,find,ls')
+        tools = cmd[cmd.index('--tools') + 1]
+        for wanted in ('codemode', 'mcp__magenta_memory_v2__*', 'mcp__pickipedia__get_*',
+                       'mcp__pickipedia__search_*', 'mcp__pickipedia__smw_*'):
+            self.assertIn(wanted, tools)  # the look-only allowlist: codemode + the MCP read tools
         self.assertEqual(cmd[cmd.index('--thinking') + 1], 'xhigh')
         self.assertNotIn('--tools', waker.command(None, 'new', 'hi', full=True))
         self.assertEqual(cmd[-1], 'hi')

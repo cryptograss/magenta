@@ -39,7 +39,26 @@ logger = logging.getLogger(__name__)
 
 STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use', 'error': 'error',
                 'aborted': 'aborted'}
-LOOK_ONLY_TOOLS = 'read,grep,find,ls'
+# What a look-only Pi turn may call. --tools with plain names is a strict
+# allowlist that replaces the whole selection (docs/cli.md), so codemode must
+# be named here: MCP servers use the default 'codemode' exposure (docs/mcp.md),
+# so their tools are reachable only through codemode scripts, and without it a
+# look-only turn has no way to reach its memory or the wiki at all. Once any
+# entry starts with mcp__, --tools filters the MCP tools callable from
+# codemode too (docs/cli.md), so the entries below are the read-only set:
+# every magenta-memory-v2 tool (all queries — no writes; hyphens become
+# underscores in MCP names) and pickipedia's read/SMW tools. A new pickipedia
+# write tool stays blocked by default. Claude Code's look-only list
+# (mood_poller.ALLOWED) deliberately has no SMW tools, so the two harnesses
+# differ here by decision, not by drift: Pi look-only turns can SMW-query,
+# Claude Code look-only turns cannot.
+LOOK_ONLY_TOOLS = (
+    'read,grep,find,ls,codemode,'
+    'mcp__magenta_memory_v2__*,'
+    'mcp__pickipedia__get_*,'
+    'mcp__pickipedia__search_*,'
+    'mcp__pickipedia__smw_*'
+)
 COMPACT = re.compile(r'/compact\s+(.+)\Z', re.S)  # what the runner sends for "/compact re <what to keep>"
 EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # The names the model menu has always offered, as Pi should read them. Left
@@ -497,7 +516,7 @@ class PiWaker:
         if effort:
             cmd += ['--thinking', EFFORTS.get(effort, effort)]
         if not full:
-            cmd += ['--tools', LOOK_ONLY_TOOLS]  # reading only; MCP tools stay
+            cmd += ['--tools', LOOK_ONLY_TOOLS]  # look-only: strict allowlist, including which MCP tools codemode may call
         if system:  # its instructions (mood_poller.MoodPoller.instructions_for): after Pi's own, never in the session
             cmd += ['--append-system-prompt', system]
         return cmd + [prompt]
