@@ -992,16 +992,28 @@ LOOK_ONLY = ('This turn can look but not touch: read and search files under ~/wo
 # On a look-only wake, how to ask for more (Justin, 28 Oct): the Mood shows it, and someone trusted wakes it with them.
 TOOLS_OFFER = ('If answering needs your full tools, reply with only <tools to="a few words on what for"/>: the Mood '
                'shows "you requested tools for …" and 🔨 by its name, and someone trusted can wake you with them. '
+               'To grant a <tools> request, mention the agent whose request it is and it is woken with its tools. '
                'The same ask, other things you cannot do on a look-only turn (Justin, 29 Oct): '
                '<merge to="a few words on which PR"/> for a merge (🔀), <deploy to="a few words on which server"/> '
                "for a redeploy (🔄). Each posts a visible line here, and an icon sits by the Mood's name until "
                'a person does it.')
 
 
+# On a full-tools wake there is no <tools> to ask for -- you already have them -- but the standing orders still
+# forbid merging and redeploying, so a turn against that wall needs the same visible asks (re, 30 Oct, in #ops).
+FULL_TOOLS_OFFER = ('What the standing orders won\'t let you do alone: '
+                    '<merge to="a few words on which PR"/> for a merge (🔀), '
+                    '<deploy to="a few words on which server"/> for a redeploy (🔄). '
+                    'Each posts a visible line here, and an icon sits by the Mood\'s name until a person does it.')
+
+
 def wake_footer(full=False, texts=None):
     """What this turn may do, and the wake's close: the end of every wake prompt."""
-    tools = wake_line(texts, 'full-tools', FULL_TOOLS) if full else (
-        wake_line(texts, 'look-only', LOOK_ONLY) + ' ' + wake_line(texts, 'tools-offer', TOOLS_OFFER))
+    if full:
+        tools = wake_line(texts, 'full-tools', FULL_TOOLS) + ' ' + wake_line(
+            texts, 'full-tools-offer', FULL_TOOLS_OFFER)
+    else:
+        tools = wake_line(texts, 'look-only', LOOK_ONLY) + ' ' + wake_line(texts, 'tools-offer', TOOLS_OFFER)
     # What holds in every Mood (etiquette, silence, greeting, handoffs, settings, to-do lists) is in its
     # instructions, Cryptograss:Moods/Instructions (poller/instructions.py); the wake says only what this
     # turn is (Justin, magent-self, 2026-10-24: "let's move that stuff out of the python and into the wiki").
