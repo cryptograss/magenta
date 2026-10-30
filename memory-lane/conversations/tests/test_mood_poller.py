@@ -1867,9 +1867,11 @@ class CompactTest(TestCase):
     def test_the_old_ways_are_not_the_command(self):
         # The server refuses these before they're posted; were one to arrive, it's a mention, not the command.
         for line in ('@magent /compact', '@magent /compact keep the list', 'hey @magent /compact - keep it',
-                     '/compact magent', '@magent should we /compact soon?', '@magent /clear'):
+                     '@magent should we /compact soon?', '@magent /clear'):
             with self.subTest(line=line):
                 self.assertTrue(self.run_for(('justin', line))[0].startswith('<mood-wake'))
+        # With no words, /compact runs its harness's own summarizer (Justin, 30 Oct)
+        self.assertEqual(self.run_for(('justin', '/compact magent')), ['/compact'])
 
     def test_sent_as_a_reply(self):
         said = '↩ #m-0b9c2a51-1111-4c3e-9d2f-6a7b8c9d0e1f\n/compact magent keep what this answers'

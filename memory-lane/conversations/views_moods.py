@@ -8,6 +8,7 @@ the conversation.
 import functools
 import json
 import hashlib
+import os
 import re
 
 from django.conf import settings
@@ -70,6 +71,7 @@ def moods_page(request, slug=None, section=''):
         # Notifications with magenta closed (services/push.py): what browsers subscribe with. '' if off.
         'push_key': push_key(),
         'page_version': page_version(),
+        'git_commit': git_commit() or page_version()[:10],
         # The slash commands, for the composer to offer as one is typed (services/agent_commands).
         'slash_commands': json.dumps(agent_commands.suggestions()),
         # The words people read where they're settable on PickiPedia (Magenta:Interface; services/interface_words.py).
@@ -112,6 +114,24 @@ def push_key():
     except Exception:
         import logging
         logging.getLogger(__name__).exception('push key unusable; push off for this page')
+        return ''
+
+
+@functools.cache
+def git_commit():
+    """The magenta git commit this runs from (Justin, 30 Oct: click the live dot to see/copy version):
+    MAGENTA_COMMIT, else git rev-parse short HEAD; '' if neither says."""
+    found = os.environ.get('MAGENTA_COMMIT', '').strip()
+    if found:
+        return found[:10]
+    try:
+        import subprocess
+        return subprocess.run(
+            ['git', 'rev-parse', '--short=10', 'HEAD'],
+            capture_output=True, text=True, timeout=2,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ).stdout.strip()
+    except Exception:
         return ''
 
 

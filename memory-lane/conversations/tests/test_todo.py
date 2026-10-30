@@ -182,3 +182,46 @@ class TodoTextTest(SimpleTestCase):
         # A task with a link: the page's todoItem asks for no links inside it (a link in a link).
         self.assertEqual(todo_text('move [[Cryptograss:Emergents/GeneralOrders]]', links=False),
                          'move [[Cryptograss:Emergents/GeneralOrders]]')
+
+
+class AllTodosTest(TestCase):
+
+    def setUp(self):
+        cache.clear()
+        self.m1 = Mood.objects.create(slug='m1', title='Mood One')
+        self.m2 = Mood.objects.create(slug='m2', title='Mood Two')
+
+    def test_combines_all_moods_reverse_chronological(self):
+        page1 = """<todo>
+- task: Old task from Oct 10
+  who: justin
+  done: true
+- task: Newer task from Oct 28
+  who: magent
+</todo>"""
+        page2 = """<todo>
+- task: Mid task from Oct 20
+  who: re
+- task: Newest task from Oct 30
+  who: blu
+</todo>"""
+        wiki = FakeWiki({'Cryptograss:Moods/m1/todo': page1, 'Cryptograss:Moods/m2/todo': page2})
+        data = todo.all_todos(http=wiki)
+        self.assertEqual(data['total'], 4)
+        self.assertEqual(data['open'], 3)
+        self.assertEqual(data['done'], 1)
+        # Verify reverse chronological ordering (Oct 30 -> Oct 28 -> Oct 20 -> Oct 10)
+        tasks = [it['task'] for it in data['items']]
+        self.assertEqual(tasks, [
+            'Newest task from Oct 30',
+            'Newer task from Oct 28',
+            'Mid task from Oct 20',
+            'Old task from Oct 10',
+        ])
+        # Test endpoints
+        res = self.client.get('/api/todo/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()['total'], 4)
+        page_res = self.client.get('/moods/todo/?embed=1')
+        self.assertEqual(page_res.status_code, 200)
+        self.assertIn('Newest task from Oct 30', page_res.content.decode())

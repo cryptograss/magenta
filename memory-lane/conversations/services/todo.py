@@ -136,6 +136,98 @@ def for_mood(mood, http=None):
     return found
 
 
+MONTHS = {'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+          'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12}
+_DATE_ISO = re.compile(r'\b(202\d)-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?')
+_DATE_DM = re.compile(r'\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*(?:\s+(\d{4}))?', re.I)
+_DATE_MD = re.compile(r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:,?\s+(\d{4}))?', re.I)
+_PULL_NUM = re.compile(r'(?:pull/|#)(\d{2,4})')
+_TIME_HM = re.compile(r'(\d{2}):(\d{2})Z?')
+
+
+def parse_item_date(text):
+    m = _DATE_ISO.search(text)
+    if m:
+        return (int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                int(m.group(4) or 0), int(m.group(5) or 0))
+    m = _DATE_DM.search(text)
+    if m:
+        d, mo = int(m.group(1)), MONTHS[m.group(2)[:3].lower()]
+        y = int(m.group(3) or 2026)
+        tm = _TIME_HM.search(text)
+        return (y, mo, d, int(tm.group(1)) if tm else 0, int(tm.group(2)) if tm else 0)
+    m = _DATE_MD.search(text)
+    if m:
+        mo, d = MONTHS[m.group(1)[:3].lower()], int(m.group(2))
+        y = int(m.group(3) or 2026)
+        tm = _TIME_HM.search(text)
+        return (y, mo, d, int(tm.group(1)) if tm else 0, int(tm.group(2)) if tm else 0)
+    m = _PULL_NUM.search(text)
+    if m:
+        pr = int(m.group(1))
+        day = min(30, max(1, 10 + (pr - 50) // 12))
+        return (2026, 10, day, 12, 0)
+    return None
+
+
+def all_todos(http=None):
+    """Every Mood's to-do items combined in reverse chronological order:
+    {'items': [...], 'total': N, 'open': N, 'done': N, 'moods': [...]}.
+    Justin, 30 Oct: another page combining all to-dos across all Moods."""
+    key = 'todo:all_moods'
+    found = cache.get(key)
+    if found is not None:
+        return found
+    from conversations.models import Mood
+    from . import settings as knobs
+    archived = set(knobs.archived_slugs())
+    moods = list(Mood.objects.all().order_by('slug'))
+    all_items = []
+    mood_summaries = []
+
+    for m in moods:
+        res = for_mood(m, http=http)
+        items = res.get('items') or []
+        if not items:
+            continue
+        parsed_dates = []
+        for it in items:
+            s = f"{it.get('task') or ''} {it.get('note') or ''} {it.get('link') or ''}"
+            parsed_dates.append(parse_item_date(s))
+        curr = (2026, 10, 1, 0, 0)
+        for idx in range(len(parsed_dates)):
+            if parsed_dates[idx]:
+                curr = parsed_dates[idx]
+            else:
+                parsed_dates[idx] = curr
+
+        m_open = sum(1 for it in items if not it.get('done') and not it.get('merged'))
+        mood_summaries.append({'slug': m.slug, 'title': m.title or m.slug, 'count': len(items), 'open': m_open})
+
+        for idx, it in enumerate(items):
+            all_items.append({
+                **it,
+                'mood': m.slug,
+                'mood_title': m.title or m.slug,
+                'archived': m.slug in archived,
+                '_sort_key': (*parsed_dates[idx], idx),
+            })
+
+    all_items.sort(key=lambda x: x['_sort_key'], reverse=True)
+    open_count = sum(1 for it in all_items if not it.get('done') and not it.get('merged'))
+    done_count = sum(1 for it in all_items if it.get('done') or it.get('merged'))
+
+    result = {
+        'items': all_items,
+        'total': len(all_items),
+        'open': open_count,
+        'done': done_count,
+        'moods': mood_summaries,
+    }
+    cache.set(key, result, 30)
+    return result
+
+
 # --- merges, from GitHub ------------------------------------------------------------
 
 _PULL = re.compile(r'^https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?:[/#?].*)?$', re.I)
@@ -196,6 +288,7 @@ def with_merges(items, http):
 
 def forget(mood):
     cache.delete(f'todo:{mood.slug}')
+    cache.delete('todo:all_moods')
     changed()
 
 
@@ -229,6 +322,7 @@ def merged_now(owner, repo, number, title='', by='', commit=''):
     if isinstance(recent, set):
         cache.set(f'todo:merged:{repository}', recent | {number}, CLOSED_FOR)
     cache.delete_many([f'todo:{slug}' for slug in Mood.objects.values_list('slug', flat=True)])
+    cache.delete('todo:all_moods')
     changed()
     _in_background(announce_merge, owner, repo, number, title, by, commit)
 

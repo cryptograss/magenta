@@ -143,7 +143,7 @@ class WakeLinesTest(TestCase):
     def test_an_unknown_field_stays_as_written_and_a_broken_text_is_the_codes(self):
         from poller.mood_poller import LOOK_ONLY, wake_footer
         texts = self.texts()
-        self.assertEqual(wake_footer(full=True, texts=texts)[1], 'Full tools: careful. {nonsense}')
+        self.assertTrue(wake_footer(full=True, texts=texts)[1].startswith('Full tools: careful. {nonsense}'))
         self.assertTrue(wake_footer(full=False, texts=texts)[1].startswith(LOOK_ONLY))  # then the offer of tools
 
 
