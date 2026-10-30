@@ -18,7 +18,7 @@ services:
     networks:
       - magenta-net
     restart: unless-stopped
-    command: gunicorn --bind 0.0.0.0:3000 --workers 2 --access-logfile - memory_viewer.wsgi:application
+    command: gunicorn --bind 0.0.0.0:3000 --workers 4 --threads 8 --timeout 120 --access-logfile - memory_viewer.wsgi:application
 
   watcher:
     build:

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>todo · magenta</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
+    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --code: #f3efe8;
+    --ok: #2e9e5b; --warn: #d48806; --err: #c0392b; --hover: rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
+            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --code: #29252c;
+            --hover: rgba(255,255,255,.05); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--bg); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex-wrap: wrap; }
+  header .brand { font-weight: 700; color: var(--accent); text-decoration: none; }
+  header nav { display: flex; gap: 12px; font-size: 13px; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  header nav a:hover, header nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+  main { max-width: 960px; margin: 0 auto; padding: 18px 16px 60px; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+  .controls input[type="search"] { flex: 1; min-width: 200px; font: inherit; font-size: 13px; padding: 5px 8px;
+                                   border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+  .controls select { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line);
+                     border-radius: 6px; background: var(--panel); color: var(--ink); }
+  .filters { display: flex; gap: 4px; }
+  .filters button { font: inherit; font-size: 12.5px; padding: 4px 10px; border: 1px solid var(--line);
+                    border-radius: 6px; background: var(--panel); color: var(--muted); cursor: pointer; }
+  .filters button:hover { color: var(--ink); border-color: var(--accent); }
+  .filters button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .stats { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
+  .todolist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .todoitem { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line);
+              border-radius: 8px; background: var(--panel); font-size: 13.5px; }
+  .todoitem.done { opacity: .7; }
+  .todoitem .statusicon { flex: none; font-size: 15px; line-height: 1.2; width: 20px; text-align: center; }
+  .todoitem .statusicon.is-done { color: var(--ok); }
+  .todoitem .statusicon.is-merged { color: var(--accent); }
+  .todoitem .statusicon.is-open { color: var(--muted); opacity: .45; }
+  .todoitem .content { flex: 1; min-width: 0; }
+  .todoitem .taskline { font-weight: 500; }
+  .todoitem.done .taskline { text-decoration: line-through; }
+  .todoitem .chips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: middle; }
+  .chip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+          border: 1px solid var(--line); background: var(--bg); color: var(--muted); line-height: 1.2; }
+  .chip.moodchip { font-weight: 600; color: var(--ink); text-decoration: none; }
+  .chip.moodchip:hover { border-color: var(--accent); color: var(--accent); }
+  .chip.whochip { color: var(--accent); }
+  .chip.kindchip { font-style: italic; }
+  .todoitem .noteline { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .todoitem .linkline { font-size: 12px; margin-top: 3px; }
+  .none { color: var(--muted); font-size: 13px; text-align: center; padding: 30px 0; }
+</style>
+{% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
+     goes there, which opens it without loading anything again. -->
+<style>body > header { display: none; }</style>
+<script>
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
+    const to = new URL(a.href, location.href);
+    if (to.origin !== location.origin) { a.target = '_top'; return; }
+    if (to.pathname === location.pathname && to.hash) return;  // within this page
+    e.preventDefault();
+    parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
+  });
+</script>{% endif %}
+</head>
+<body>
+<header>
+  <a class="brand" href="/moods/">magenta</a>
+  <nav>
+    <a href="/moods/status/">status</a>
+    <a href="/moods/tidings/">tidings</a>
+    <a href="/moods/polls/">polls</a>
+    <a href="/moods/prompts/">prompts</a>
+    <a href="/moods/todo/" aria-current="page">todo</a>
+    <a href="/moods/settings/">settings</a>
+  </nav>
+</header>
+<main>
+  <h1>To-do</h1>
+  <p class="lede">Every Mood's to-do items combined in reverse chronological order. Merged PRs tick themselves.</p>
+
+  <div class="controls">
+    <input type="search" id="todoSearch" placeholder="Filter by task, person, or note…" aria-label="Filter tasks">
+    <select id="todoMoodFilter" aria-label="Filter by Mood">
+      <option value="">All Moods ({{ todos.moods|length }})</option>
+      {% for m in todos.moods %}
+      <option value="{{ m.slug }}">{{ m.title }} ({{ m.count }})</option>
+      {% endfor %}
+    </select>
+    <div class="filters" role="group" aria-label="Status filter">
+      <button type="button" class="f-btn active" data-filter="all">All ({{ todos.total }})</button>
+      <button type="button" class="f-btn" data-filter="open">Open ({{ todos.open }})</button>
+      <button type="button" class="f-btn" data-filter="done">Done ({{ todos.done }})</button>
+    </div>
+  </div>
+
+  <div class="stats" id="todoStats">Showing {{ todos.total }} tasks</div>
+
+  <ul class="todolist" id="todoList">
+    {% for item in todos.items %}
+    <li class="todoitem{% if item.done or item.merged %} done{% endif %}"
+        data-mood="{{ item.mood }}"
+        data-status="{% if item.done or item.merged %}done{% else %}open{% endif %}"
+        data-search="{{ item.task|lower }} {{ item.note|lower }} {% for w in item.who %}{{ w|lower }} {% endfor %}#{{ item.mood }}">
+      <span class="statusicon {% if item.merged %}is-merged{% elif item.done %}is-done{% else %}is-open{% endif %}"
+            title="{% if item.merged %}Merged pull request{% elif item.done %}Done{% else %}Open{% endif %}">
+        {% if item.merged %}🔀{% elif item.done %}✓{% else %}○{% endif %}
+      </span>
+      <div class="content">
+        <div>
+          <span class="taskline">{{ item.task }}</span>
+          <span class="chips">
+            <a class="chip moodchip" href="/moods/{{ item.mood }}/">#{{ item.mood_title }}</a>
+            {% for w in item.who %}<span class="chip whochip">{{ w }}</span>{% endfor %}
+            {% if item.kind %}<span class="chip kindchip">{{ item.kind }}</span>{% endif %}
+          </span>
+        </div>
+        {% if item.note %}<div class="noteline">{{ item.note }}</div>{% endif %}
+        {% if item.link %}<div class="linkline"><a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.link }}</a></div>{% endif %}
+      </div>
+    </li>
+    {% empty %}
+    <li class="none">No to-do items found on PickiPedia.</li>
+    {% endfor %}
+  </ul>
+</main>
+<script>
+(() => {
+  const searchInput = document.getElementById('todoSearch');
+  const moodFilter = document.getElementById('todoMoodFilter');
+  const filterBtns = document.querySelectorAll('.f-btn');
+  const items = document.querySelectorAll('.todoitem');
+  const stats = document.getElementById('todoStats');
+  let currentFilter = 'all';
+
+  function applyFilters() {
+    const q = (searchInput.value || '').trim().toLowerCase();
+    const mood = moodFilter.value;
+    let visible = 0;
+
+    items.forEach(el => {
+      const matchSearch = !q || el.dataset.search.includes(q);
+      const matchMood = !mood || el.dataset.mood === mood;
+      const matchStatus = currentFilter === 'all' || el.dataset.status === currentFilter;
+      const show = matchSearch && matchMood && matchStatus;
+      el.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    stats.textContent = `Showing ${visible} of ${items.length} tasks`;
+  }
+
+  searchInput.addEventListener('input', applyFilters);
+  moodFilter.addEventListener('change', applyFilters);
+
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      applyFilters();
+    });
+  });
+})();
+</script>
+</body>
+</html>

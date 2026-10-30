@@ -513,8 +513,12 @@ def change(key, value, mood=None, agent=None, by=None, note=''):
         raise Invalid(f'{key} is a Mood\'s pace, the same for every emergent in it')
     if key in PERSON_KEYS and (agent is None or mood is not None):
         raise Invalid(f'{key} is set for one person or agent, everywhere')
-    return Setting.objects.create(mood=mood, agent=agent, key=key, value=clean(key, value), set_by=by,
-                                  note=str(note or '')[:200])
+    row = Setting.objects.create(mood=mood, agent=agent, key=key, value=clean(key, value), set_by=by,
+                                 note=str(note or '')[:200])
+    if key in ('archived', 'pinned'):
+        from .mood_cache import bust_moods_cache
+        bust_moods_cache()
+    return row
 
 
 def change_every_mood(key, value, agent, by=None, note=''):

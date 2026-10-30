@@ -8,6 +8,7 @@ the conversation.
 import functools
 import json
 import hashlib
+import os
 import re
 
 from django.conf import settings
@@ -70,6 +71,7 @@ def moods_page(request, slug=None, section=''):
         # Notifications with magenta closed (services/push.py): what browsers subscribe with. '' if off.
         'push_key': push_key(),
         'page_version': page_version(),
+        'git_commit': git_commit() or page_version()[:10],
         # The slash commands, for the composer to offer as one is typed (services/agent_commands).
         'slash_commands': json.dumps(agent_commands.suggestions()),
         # The words people read where they're settable on PickiPedia (Magenta:Interface; services/interface_words.py).
@@ -116,6 +118,24 @@ def push_key():
 
 
 @functools.cache
+def git_commit():
+    """The magenta git commit this runs from (Justin, 30 Oct: click the live dot to see/copy version):
+    MAGENTA_COMMIT, else git rev-parse short HEAD; '' if neither says."""
+    found = os.environ.get('MAGENTA_COMMIT', '').strip()
+    if found:
+        return found[:10]
+    try:
+        import subprocess
+        return subprocess.run(
+            ['git', 'rev-parse', '--short=10', 'HEAD'],
+            capture_output=True, text=True, timeout=2,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ).stdout.strip()
+    except Exception:
+        return ''
+
+
+@functools.cache
 def page_version():
     """This page's code as served now, and the code that renders what it shows (a message's HTML is
     made on the server). A page left open compares it (api/servers) and offers a reload; a browser's
@@ -134,6 +154,14 @@ def page_version():
 @require_GET
 def api_moods(request):
     """Every Mood, most recently active first; archived ones flagged (the page lists them apart)."""
+    from django.core.cache import cache
+    from .services.mood_cache import API_MOODS_CACHE_KEY, API_MOODS_CACHE_TTL
+    cached = cache.get(API_MOODS_CACHE_KEY)
+    if cached is not None:
+        response = JsonResponse(cached['body'])
+        response['Server-Timing'] = f'hit;dur=0, {cached["timing"]}'
+        return response
+
     from .services import settings as knobs
     # Timed (Justin, 29 Oct: reopening #search "took quite a while"; this list took 5-20s then): Server-Timing
     # says which part, and the slowest Mood's own payload; logged when slow.
@@ -161,18 +189,20 @@ def api_moods(request):
     people = list(people)
     power = clock('powers', powers, [p.name for p in people if not p.is_biological_human])
     said = clock('pronouns', pronouns, [(p.name, p.is_biological_human) for p in people])
-    response = JsonResponse({'moods': payloads, 'people': [
+    body = {'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
          **(look[p.name] if p.is_biological_human and p.name in look else {}),
          **({'for': power[p.name]['for'], 'for_short': power[p.name]['short']} if p.name in power else {}),
          **({'pronouns': said[p.name]} if p.name in said else {})}
         for p in people],
         # Tags for a group (@core): what each is, and who it mentions now.
-        'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]})
+        'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]}
+    response = JsonResponse(body)
     clock.lap('people')
     if each:
         took, slug = max(each)
         clock.laps.append((f'slowest;desc="{slug}"', took))
+    cache.set(API_MOODS_CACHE_KEY, {'body': body, 'timing': clock.header()}, API_MOODS_CACHE_TTL)
     return clock.report(response, 'Moods list')
 
 

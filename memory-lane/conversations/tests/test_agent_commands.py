@@ -31,10 +31,9 @@ class ParseTest(TestCase):
     def test_refused_with_the_form_it_should_take(self):
         cases = {
             '/compact': 'which agent?',
-            '/compact magent': 'say what the compaction should keep',
             '/compact skyler keep it': 'skyler: not an agent here',
             '/usage magent of the word banjo': 'takes nothing after its agents',
-            '@magent /compact keep the list': '/compact magent <what to keep>',
+            '@magent /compact keep the list': '/compact magent [what to keep]',
             'hey @magent /compact - heres what i want': 'commands for agents start the message now',  # Skyler, 17 Oct
         }
         for text, said in cases.items():
@@ -55,8 +54,9 @@ class AddressedTest(TestCase):
         names = {'justin', 'magent', 're'}
         self.assertEqual(addressed_in('/compact magent,re keep it', names), ['magent', 're'])
         self.assertEqual(addressed_in('↩ #m-0b9c2a51-1111-4c3e-9d2f-6a7b8c9d0e1f\n/compact re keep it', names), ['re'])
-        self.assertEqual(addressed_in('/compact magent', names), [])  # not well formed: addresses nobody
+        self.assertEqual(addressed_in('/compact magent', names), ['magent'])  # what to keep is optional (Justin, 30 Oct)
         self.assertEqual(command_doing('/compact magent keep it', 'magent'), 'compacting')
+        self.assertEqual(command_doing('/compact magent', 'magent'), 'compacting')
         self.assertIsNone(command_doing('/compact re keep it', 'magent'))
 
 
@@ -80,9 +80,10 @@ class SayTest(TestCase):
         self.assertEqual(self.say('/compact magent keep the setlist').status_code, 201)
         refused = self.say('hey @magent /compact - heres what i want to tackle')
         self.assertEqual(refused.status_code, 400)
-        self.assertIn('/compact magent <what to keep>', refused.json()['error'])
-        self.assertEqual(self.say('/compact magent').status_code, 400)
-        self.assertEqual(Message.objects.filter(mood__slug='m26').count(), 1)
+        self.assertIn('/compact magent [what to keep]', refused.json()['error'])
+        # Words are optional (Justin, 30 Oct: "times when I don't really have anything to say in compact")
+        self.assertEqual(self.say('/compact magent').status_code, 201)
+        self.assertEqual(Message.objects.filter(mood__slug='m26').count(), 2)
         self.assertEqual(self.say('should we /compact soon, @magent?').status_code, 201)  # talk about one
 
     def test_an_agent_on_pi_compacts_and_has_none_of_the_others(self):

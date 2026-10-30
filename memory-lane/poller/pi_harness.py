@@ -47,7 +47,7 @@ STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use
 # wiki: `--tools` with plain names replaces the whole selection, so MCP tools
 # left at their default `codemode` exposure are registered but unreachable.
 LOOK_ONLY_TOOLS = 'read,grep,find,ls,codemode'
-COMPACT = re.compile(r'/compact\s+(.+)\Z', re.S)  # what the runner sends for "/compact re <what to keep>"
+COMPACT = re.compile(r'/compact(?:\s+(.+))?\Z', re.S)  # what the runner sends for "/compact re [what to keep]"
 # A tool loop tripwire: a machine attractor repeats the exact same call, and by the third time
 # (even with text between the repeats — the 28 Oct specimen had escape text every 3–4s) the run
 # is a runaway, not a retry. Only a *different* call breaks the streak; then the turn is killed.
@@ -486,8 +486,11 @@ class PiWaker:
                                 text=True, start_new_session=True)
         done = self._watch(proc, stop)
         answer = None
+        payload = {'id': 'compact', 'type': 'compact'}
+        if keep:
+            payload['customInstructions'] = keep
         try:
-            proc.stdin.write(json.dumps({'id': 'compact', 'type': 'compact', 'customInstructions': keep}) + '\n')
+            proc.stdin.write(json.dumps(payload) + '\n')
             proc.stdin.flush()
             for line in proc.stdout:
                 done.heard = time.monotonic()
@@ -568,7 +571,8 @@ class PiWaker:
         """Run one turn; (new session id, its reply). '/compact <what to keep>' compacts instead."""
         keep = COMPACT.match(prompt or '')
         if keep and session_id:
-            return self.compact(session_id, keep.group(1).strip(), new_session_id=new_session_id, on_event=on_event,
+            instructions = keep.group(1).strip() if (keep and keep.group(1)) else ''
+            return self.compact(session_id, instructions, new_session_id=new_session_id, on_event=on_event,
                                 model=model, stop=stop)
         if session_id is None:
             cwd = str(Path(self.new_cwd).expanduser())

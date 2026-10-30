@@ -55,10 +55,19 @@
   /* magenta › moods › the Mood ✎, then the page's other sections beside it (Justin, 21 Oct). */
   header .crumb.moods { flex: none; overflow: visible; color: var(--ink); text-decoration: none; font-weight: 600; }
   header .crumb.moods:hover { color: var(--accent); }
-  header .sections { display: flex; gap: 14px; margin-left: 10px; flex: none; font-size: 14px; }
+  header .sections { display: flex; gap: 14px; margin-left: 10px; flex: none; font-size: 14px; align-items: center; }
   header .sections a { color: var(--muted); text-decoration: none; }
   header .sections a:hover { color: var(--ink); }
   header .sections a[aria-current], header .crumb.moods[aria-current] { color: var(--ink); font-weight: 700; }
+  header .sections .morewrap { position: relative; display: inline-flex; align-items: center; }
+  header .sections .morebtn { border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted); cursor: pointer; padding: 2px 4px; line-height: 1; border-radius: 4px; }
+  header .sections .morebtn:hover, header .sections .morebtn.active { color: var(--ink); font-weight: 700; }
+  header .sections .moremenu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 35; min-width: 120px; background: var(--panel);
+                               border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.2); padding: 4px 0; display: flex; flex-direction: column; font-size: 13.5px; }
+  header .sections .moremenu[hidden] { display: none; }
+  header .sections .moremenu a { padding: 6px 14px; color: var(--ink); text-decoration: none; }
+  header .sections .moremenu a:hover { background: var(--hover, rgba(128,128,128,.1)); color: var(--accent); }
+  header .sections .moremenu a[aria-current] { font-weight: 700; color: var(--accent); }
   header .brand { padding-right: 2px; }
   header .gear { flex: none; color: var(--muted); text-decoration: none; font-size: 18px; line-height: 1; padding: 2px; }
   header .gear:hover, header .gear[aria-current] { color: var(--ink); }
@@ -95,10 +104,20 @@
   #reloadNudge { white-space: nowrap; }
   header .grow { flex: 1; }
   header select { font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); }
-  header .status { font-size: 0; }
+  header .statuswrap { position: relative; display: inline-flex; align-items: center; }
+  header button.status { border: 0; background: none; font-size: 0; padding: 2px 4px; cursor: pointer; line-height: 1; border-radius: 4px; }
+  header button.status:hover { background: var(--hover, rgba(128,128,128,.1)); }
   header .status::before { content: "●"; font-size: 11px; color: var(--muted); }
   header .status.live::before { color: #2e9e5b; }
   header .status.stale::before { color: #d08b00; }
+  #statusPop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 35; background: var(--panel);
+               border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+               white-space: nowrap; font-size: 12px; }
+  #statusPop[hidden] { display: none; }
+  #statusPop .statusrow { display: flex; align-items: center; gap: 8px; }
+  #statusPop code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  #statusPop button { font: inherit; font-size: 11.5px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); cursor: pointer; }
+  #statusPop button:hover { border-color: var(--accent); color: var(--accent); }
   header .account { position: relative; }
   header .bellwrap { position: relative; }
   #bellBtn { position: relative; border: 0; background: none; font-size: 16px; padding: 2px 4px; cursor: pointer; line-height: 1; }
@@ -355,6 +374,16 @@
   nav .label #newMood { margin-left: auto; font: inherit; font-size: 15px; line-height: 1; border: 0; background: none;
                         color: var(--muted); cursor: pointer; padding: 0 2px; }
   nav .label #newMood:hover { color: var(--accent); }
+  nav .label #foldAllThreads {
+    margin-left: auto; margin-right: 4px; font: inherit; font-size: 10px; border: 0; background: none;
+    color: var(--muted); cursor: pointer; padding: 0 3px; text-transform: lowercase; letter-spacing: 0;
+  }
+  nav .label #foldAllThreads:hover { color: var(--accent); }
+  nav .label:has(#foldAllThreads) #newMood { margin-left: 0; }
+  nav a.mood .foldthreads {
+    margin-left: 5px; font-size: 10px; color: var(--muted); cursor: pointer; padding: 0 3px; border-radius: 3px; line-height: 1; display: inline-block;
+  }
+  nav a.mood .foldthreads:hover { color: var(--accent); background: var(--hover, rgba(128,128,128,.1)); }
   /* Archived Moods: folded under the list, still readable. */
   nav #archived { margin-top: 8px; }
   nav #archived summary { padding: 4px 16px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
@@ -1399,7 +1428,7 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls">polls</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a><a href="/moods/todo/" data-section="todo">todo</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <span class="block" id="block" title="Ethereum mainnet's block height"></span>
@@ -1407,7 +1436,12 @@
   <button id="reloadNudge" type="button" title="This page changed since you opened it: reload for the new one" hidden>↻ new version</button>
   <button id="searchBtn" type="button" title="Search what was said (/)">⌕</button>
   <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
-  <span class="status" id="status" title="connecting…"></span>
+  <span class="statuswrap">
+    <button type="button" class="status" id="status" title="connecting…" aria-label="Status: online. Click for version"></button>
+    <div id="statusPop" class="statuspop" hidden>
+      <div class="statusrow"><code>{{ git_commit }}</code> <button type="button" id="copyVersion" title="Copy version">copy</button></div>
+    </div>
+  </span>
   <!-- The bell, out front with what's waiting for you (Justin, 29 Oct): mentions of you and answers to you, by Mood. -->
   <span class="bellwrap" id="bellWrap" hidden>
     <button id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span><span class="badge bot" id="bellCountBot" hidden></span></button>
@@ -1811,7 +1845,13 @@
     return bits.length ? `<span class="how" title="model · effort">${esc(bits.join(' · '))}</span>` : '';
   }
 
-  function setStatus(text, cls) { status.textContent = text; status.title = text; status.className = 'status ' + (cls || ''); }
+  const statusEl = document.getElementById('status');
+  function setStatus(text, cls) {
+    if (statusEl) {
+      statusEl.title = text + ' · click for version';
+      statusEl.className = 'status ' + (cls || '');
+    }
+  }
   function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function ago(iso) {
     if (!iso) return 'never';
@@ -1831,16 +1871,40 @@
     try { if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()); } catch (e) {}
   }
 
+  const foldedThreads = new Set(store.get('foldedThreads', []));
   let archivedOpen = false;
   function renderNav() {
-    const item = ([m, depth]) => `
+    const threadsByParent = {};
+    for (const m of moods) {
+      if (m.thread_of) threadsByParent[m.thread_of] = (threadsByParent[m.thread_of] || 0) + 1;
+    }
+    const cur = moods.find(x => x.slug === current);
+    if (cur && cur.thread_of && foldedThreads.has(cur.thread_of)) {
+      foldedThreads.delete(cur.thread_of);
+      store.set('foldedThreads', [...foldedThreads]);
+    }
+    const parentSlugs = Object.keys(threadsByParent);
+    const hasAnyThreads = parentSlugs.length > 0;
+    const allFolded = hasAnyThreads && parentSlugs.every(slug => foldedThreads.has(slug));
+
+    const item = ([m, depth]) => {
+      if (depth > 0 && m.thread_of && foldedThreads.has(m.thread_of)) {
+        return '';
+      }
+      const threadCount = depth === 0 ? (threadsByParent[m.slug] || 0) : 0;
+      const isFolded = threadCount && foldedThreads.has(m.slug);
+      const foldBtn = threadCount
+        ? `<span role="button" tabindex="0" class="foldthreads" data-parent="${esc(m.slug)}" title="${isFolded ? 'Show threads' : 'Fold threads'}" aria-label="${isFolded ? 'Show threads' : 'Fold threads'}">${isFolded ? '▸' : '▾'}</span>`
+        : '';
+      return `
       <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && (!m.forked_at || m.compacted) ? ' fresh' : depth && m.incorporated ? ' back' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
-        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${(m.asked || []).length
+        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${foldBtn}${(m.asked || []).length
           ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${m.asked.map(t => ASK_EMOJI[t.kind] || '🔨').join('')}${
               m.asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badgeHtml(m.slug)}</div>
         <div class="meta">${m.message_count.toLocaleString()} · ${ago(m.last_at)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
+    };
     // A thread under the Mood it came from, indented (Justin, 27 Oct); one whose Mood isn't in the same list stands alone.
     const nest = list => {
       const here = new Set(list.map(m => m.slug)), out = [];
@@ -1852,7 +1916,7 @@
     // The one open stays in view: an archived Mood opened shows its fold open.
     const open = archivedOpen || archived.some(([m]) => m.slug === current);
     document.getElementById('moodList').innerHTML =
-      `<div class="label">Moods${keyHolder ? '<button type="button" id="newMood" title="Start a Mood" aria-label="Start a Mood">＋</button>' : ''}</div>`
+      `<div class="label">Moods${hasAnyThreads ? `<button type="button" id="foldAllThreads" title="${allFolded ? 'Unfold all threads' : 'Fold all threads'}">${allFolded ? 'unfold all' : 'fold all'}</button>` : ''}${keyHolder ? '<button type="button" id="newMood" title="Start a Mood" aria-label="Start a Mood">＋</button>' : ''}</div>`
       + live.map(item).join('')
       + (archived.length ? `<details id="archived"${open ? ' open' : ''}><summary>Archived (${archived.length})</summary>`
          + archived.map(item).join('') + '</details>' : '');
@@ -4805,7 +4869,7 @@
       const notices = (await r.json()).notices;
       // A Mood opened since this page loaded: list it first, so its badge
       // has somewhere to go and its notification its title.
-      if (notices.some(n => !moods.some(m => m.slug === n.mood))) await loadMoods();
+      if (notices.some(n => !moods.some(m => m.slug === n.mood))) loadMoods();
       let ding = null;  // one chime per look, however many came: a mention's, if any was one
       for (const n of notices) {
         if (counted.has(n.turn.id)) continue;
@@ -5524,7 +5588,7 @@
       // Seen only if someone's looking: an answer that lands while this page is
       // hidden is still news, and is told as a notice.
       if (!document.hidden) touch(current);
-      if (!full && data.turns.length) { await loadMoods(); }
+      if (!full && data.turns.length) { loadMoods(); }
     }
     // An agent just finished here: ask now, not in 15 s, whether it answered me.
     const finished = wasBusy && !act;
@@ -8508,13 +8572,40 @@
   });
 
   nav.addEventListener('click', e => {
+    const foldBtn = e.target.closest('.foldthreads');
+    if (foldBtn) {
+      e.preventDefault(); e.stopPropagation();
+      const p = foldBtn.dataset.parent;
+      if (foldedThreads.has(p)) foldedThreads.delete(p); else foldedThreads.add(p);
+      store.set('foldedThreads', [...foldedThreads]);
+      renderNav();
+      return;
+    }
+    const allBtn = e.target.closest('#foldAllThreads');
+    if (allBtn) {
+      e.preventDefault(); e.stopPropagation();
+      const threadsByParent = {};
+      for (const m of moods) if (m.thread_of) threadsByParent[m.thread_of] = true;
+      const parentSlugs = Object.keys(threadsByParent);
+      const nowAllFolded = parentSlugs.length > 0 && parentSlugs.every(s => foldedThreads.has(s));
+      if (nowAllFolded) {
+        foldedThreads.clear();
+      } else {
+        parentSlugs.forEach(s => foldedThreads.add(s));
+        const cur = moods.find(x => x.slug === current);
+        if (cur && cur.thread_of) foldedThreads.delete(cur.thread_of);
+      }
+      store.set('foldedThreads', [...foldedThreads]);
+      renderNav();
+      return;
+    }
     const a = e.target.closest('a.mood'); if (!a) return;
     e.preventDefault(); open(a.dataset.slug, true);
-  });
+  }, true);
   // --- one page: the Moods, and tidings, prompts, status and settings beside them -------------------
   // Each section is its own page, loaded into a frame the first time it's shown and kept: going back and
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
-  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'settings'];
+  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'todo', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
   // A section drawn again behind the scenes when what it shows has changed (a promotion here, a comment or a
   // link from someone else): a fresh frame loads hidden and takes the old one's place once it's in, so
@@ -8522,7 +8613,7 @@
   const sectionPending = {};
   // A data section's kept copy rots while you're away (Justin, 29 Oct: the prompts were "way outta date"):
   // one shown again after STALE_MS is redrawn behind the scenes and takes its place when it's in, seen or not.
-  const DATA_SECTIONS = new Set(['prompts', 'status']);
+  const DATA_SECTIONS = new Set(['prompts', 'status', 'todo']);
   const STALE_MS = 60000;
   function refreshSection(name, swapOpen) {
     const old = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
@@ -8601,6 +8692,8 @@
     });
     const url = name === 'moods' ? (current ? '/moods/' + encodeURIComponent(current) + '/' : '/moods/') : `/moods/${name}/`;
     if (push && location.pathname !== url) history.pushState({ section: name, slug: current }, '', url);
+    const moreBtn = document.getElementById('sectionsMoreBtn');
+    if (moreBtn) moreBtn.classList.toggle('active', ['prompts', 'status', 'todo'].includes(name));
     setTitle();
     fitHeader();
   }
@@ -8609,8 +8702,53 @@
     if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
     e.preventDefault();
     if (!userMenu.hidden) userBtn.click();  // from the account menu: it closes
+    const mm = document.getElementById('sectionsMoreMenu');
+    if (mm) { mm.hidden = true; const mb = document.getElementById('sectionsMoreBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
     showSection(a.dataset.section, true);
   });
+
+  const statusPop = document.getElementById('statusPop');
+  const copyVersion = document.getElementById('copyVersion');
+  if (statusEl && statusPop) {
+    statusEl.addEventListener('click', e => {
+      e.stopPropagation();
+      statusPop.hidden = !statusPop.hidden;
+    });
+    if (copyVersion) {
+      copyVersion.addEventListener('click', async e => {
+        e.stopPropagation();
+        const code = statusPop.querySelector('code');
+        const txt = code ? code.textContent.trim() : '';
+        if (!txt) return;
+        try {
+          await navigator.clipboard.writeText(txt);
+          copyVersion.textContent = 'copied!';
+          setTimeout(() => { copyVersion.textContent = 'copy'; }, 1500);
+        } catch (err) {
+          prompt('Copy version:', txt);
+        }
+      });
+    }
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.statuswrap')) statusPop.hidden = true;
+    });
+  }
+
+  const moreBtn = document.getElementById('sectionsMoreBtn');
+  const moreMenu = document.getElementById('sectionsMoreMenu');
+  if (moreBtn && moreMenu) {
+    moreBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      moreMenu.hidden = !moreMenu.hidden;
+      moreBtn.setAttribute('aria-expanded', String(!moreMenu.hidden));
+    });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.morewrap')) {
+        moreMenu.hidden = true;
+        moreBtn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
   // A picture on Tidings: opened here, in the lightbox, and sent to PickiPedia from here (mood_tiding_tools.html).
   window.addEventListener('message', e => {
     if (e.origin !== location.origin || !e.data) return;
