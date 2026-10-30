@@ -151,7 +151,7 @@ class BannerTest(TestCase):
         knobs.change('banner_bg', '', by=self.justin)
         knobs.change('banner_fg', '', by=self.justin)
         only_text = self.client.get('/moods/')
-        self.assertContains(only_text, '<div class="banner">degraded performance, but the music goes on</div>')
+        self.assertContains(only_text, 'class="banner" role="alert">degraded performance, but the music goes on</div>')
 
     def test_the_settings_state_and_api_carry_it(self):
         knobs.change('banner', 'slow today', by=self.justin)
