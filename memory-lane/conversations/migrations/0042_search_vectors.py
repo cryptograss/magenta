@@ -36,7 +36,7 @@ def seed_vectors(apps, schema_editor):
         )
         cursor.execute(
             'CREATE INDEX IF NOT EXISTS conversations_message_search_vector_gin'
-            ' ON conversations_message USING gin (search_vector)'
+            ' ON conversations_message USING gin (CAST(search_vector AS tsvector))'
         )
         cursor.execute(
             'CREATE INDEX IF NOT EXISTS conversations_message_content_lower_trgm'
