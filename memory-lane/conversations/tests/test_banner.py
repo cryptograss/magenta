@@ -117,3 +117,18 @@ class BannerMiddlewareTest(SimpleTestCase):
             resp2 = BannerMiddleware(lambda r: HttpResponse('<html><body><div class="banner">Existing</div></body></html>', content_type='text/html'))(req)
             self.assertEqual(resp2.content.decode('utf-8').count('class="banner"'), 1)
             self.assertNotIn('Emergency Alert', resp2.content.decode('utf-8'))
+
+    def test_middleware_does_not_inject_into_embedded_frames(self):
+        with mock.patch.dict(os.environ, {'MAGENTA_BANNER_PATH': self.banner_path}):
+            banner.set_banner('Emergency Alert', 'red', 'white')
+
+            # ?embed=1 is used by section iframes (settings, prompts, status, etc.)
+            req_embed = self.rf.get('/moods/settings/?embed=1')
+            resp_embed = BannerMiddleware(lambda r: HttpResponse('<html><body><main>Settings</main></body></html>', content_type='text/html'))(req_embed)
+            self.assertNotIn('class="banner"', resp_embed.content.decode('utf-8'))
+            self.assertNotIn('id="magenta-banner"', resp_embed.content.decode('utf-8'))
+
+            # Sec-Fetch-Dest: iframe
+            req_iframe = self.rf.get('/moods/settings/', HTTP_SEC_FETCH_DEST='iframe')
+            resp_iframe = BannerMiddleware(lambda r: HttpResponse('<html><body><main>Settings</main></body></html>', content_type='text/html'))(req_iframe)
+            self.assertNotIn('class="banner"', resp_iframe.content.decode('utf-8'))

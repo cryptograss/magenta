@@ -27,6 +27,11 @@ class BannerMiddleware:
         if not content_type.startswith('text/html'):
             return response
 
+        # Embedded section frames (inside the main page's iframes via ?embed=1)
+        # must not duplicate the banner that the outer page already displays.
+        if request.GET.get('embed') or request.headers.get('Sec-Fetch-Dest') == 'iframe':
+            return response
+
         b = banner.get_banner()
         if not b:
             return response
