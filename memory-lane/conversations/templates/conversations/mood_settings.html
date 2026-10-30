@@ -68,6 +68,9 @@
   .pick-line label { font-size: 12.5px; color: var(--muted); }
   .pick-line select { padding: 4px 8px; min-width: 140px; }
   .row .inherited select, .row .inherited input, .row .inherited textarea { color: var(--muted); font-style: italic; }
+  /* Banner: what someone will see across the top; empty colours show the page's warning ones (light). */
+  .banner-preview .shown { padding: 6px 12px; font-size: 13px; text-align: center; border-radius: 6px;
+                           background: #ffe9b0; color: #7a4b00; }
   select, input, textarea { font: inherit; font-size: 13px; padding: 3px 6px; border: 1px solid var(--line);
                             border-radius: 5px; background: var(--panel); color: var(--ink); max-width: 100%; }
   textarea { width: 100%; min-height: 54px; resize: vertical; }
@@ -276,6 +279,28 @@ Every change is kept at the bottom, with who made it.</p>
     return `<div class="card"><h2>Pace</h2><div class="sub">every emergent, in every Mood that doesn't set its own (in its bar)</div>`
       + PACE_KEYS.map(k => field(k, value(k), null, null)).join('') + '</div>';
   }
+  // A message across the top of magenta (Justin, 30 Oct): its text, and its own background and ink;
+  // empty colours mean the page's own warning ones. Wherever in magenta: the one page, the front too.
+  function bannerCard() {
+    const dis = viewer ? '' : 'disabled';
+    const bg = state.global.banner_bg || '#ffe9b0', fg = state.global.banner_fg || '#7a4b00';
+    return `<div class="card"><h2>Banner</h2><div class="sub">a message across the top of magenta; empty: none</div>`
+      + `<div class="row"><label title="${esc(state.global_knobs.banner.help)}">message</label><span><textarea data-key="banner" data-mood="" data-agent="" rows="1" maxlength="300" ${dis}>${esc(state.global.banner)}</textarea><span class="status"></span></span></div>`
+      + `<div class="row"><label title="${esc(state.global_knobs.banner_bg.help)}">background</label><span><input type="color" data-key="banner_bg" data-mood="" data-agent="" value="${esc(bg)}" ${dis}><span class="status"></span></span></div>`
+      + `<div class="row"><label title="${esc(state.global_knobs.banner_fg.help)}">foreground</label><span><input type="color" data-key="banner_fg" data-mood="" data-agent="" value="${esc(fg)}" ${dis}><span class="status"></span></span></div>`
+      + `<div class="row"><label></label><span id="bannerPreview" class="banner-preview"></span></div></div>`;
+  }
+  // What the banner will look like, as the fields stand now (empty colours: the page's warning ones, light).
+  function bannerPreview() {
+    const report = document.getElementById('bannerPreview');
+    if (!report) return;
+    const gr = k => document.querySelector(`[data-key="${k}"]`)?.value || '';
+    const text = gr('banner');
+    const style = [gr('banner_bg') ? `background:${gr('banner_bg')}` : '',
+                   gr('banner_fg') ? `color:${gr('banner_fg')}` : ''].filter(Boolean).join(';');
+    report.innerHTML = text ? `<div class="shown"${style ? ` style="${esc(style)}"` : ''}>${esc(text)}</div>`
+                            : '<span class="note">no message: nothing shows</span>';
+  }
   function defaultsTable() {
     const keys = Object.keys(state.knobs).filter(k => (k === 'model' || !IN_THE_MOOD.includes(k)) && !PACE_KEYS.includes(k));
     const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
@@ -297,10 +322,12 @@ Every change is kept at the bottom, with who made it.</p>
       ? `<div class="scram"><b>Locked.</b> AZ5 by ${esc(scram.by)} at ${esc(when(scram.at))}: nobody can post or sign in, and every runner is still, until it's lifted.</div>` : '';
     document.getElementById('models').innerHTML = modelRows();
     document.getElementById('defaults').innerHTML = defaultsTable();
-    document.getElementById('global').innerHTML = [`<div class="card"><h2>Budget</h2><div class="sub">for all emergents together</div>`
+    document.getElementById('global').innerHTML = [bannerCard(),
+      `<div class="card"><h2>Budget</h2><div class="sub">for all emergents together</div>`
       + `<div class="row"><label title="${esc(state.global_knobs.consider_usd_per_day.help)}">$ a day</label>`
       + `<span><input type="number" min="0" step="0.5" data-key="consider_usd_per_day" data-mood="" data-agent="" value="${esc(state.global.consider_usd_per_day)}" ${viewer ? '' : 'disabled'}><span class="status"></span></span></div></div>`,
       paceCard(), offeredCard()].join('');
+    bannerPreview();
     document.getElementById('history').innerHTML = state.history.map(h =>
       `<tr><td>${esc(when(h.at))}</td><td>${esc(h.set_by || '')}</td><td>${esc(h.mood ? '#' + h.mood : 'everywhere')}${h.agent ? ' · ' + esc(h.agent) : ''}</td>`
       + `<td>${esc(h.key)}</td><td class="value">${esc(JSON.stringify(h.value))}</td><td>${esc(h.note)}</td></tr>`).join('')
@@ -455,6 +482,7 @@ Every change is kept at the bottom, with who made it.</p>
     status.className = 'status saved'; status.textContent = 'saved';
     setTimeout(load, 600);
   }
+  document.addEventListener('input', e => { if (e.target.dataset && e.target.dataset.key) bannerPreview(); });
   document.addEventListener('change', e => {
     if (e.target.dataset && e.target.dataset.role === 'vendor') { vendorPicked[e.target.dataset.for] = e.target.value; render(); return; }
     if (e.target.dataset && e.target.dataset.wide) {

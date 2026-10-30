@@ -36,6 +36,8 @@
   .doors .enter i { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); font-style: normal; }
   .doors .enter small { display: block; font-size: 11.5px; color: var(--muted); letter-spacing: .03em; }
   .enter:hover { background: rgba(239, 90, 166, .14); text-decoration: none; }
+  /* A message across the top (settings: banner): a warning amber; its own colours, given inline. */
+  .banner { padding: 8px 22px; font-size: 13px; line-height: 1.35; text-align: center; background: #f0b13f; color: #2b1400; }
   .now { display: grid; grid-template-columns: 1.4fr 1fr; gap: 26px; }
   @media (max-width: 680px) { .now { grid-template-columns: 1fr; } h1 { font-size: 38px; } .mark { width: 132px; height: 132px; } }
   /* "latest" over both, then each column's own: tidings, moods (Justin, 23 Oct). */
@@ -72,6 +74,7 @@
 </style>
 </head>
 <body>
+{% if banner.text %}<div class="banner"{% if banner.style %} style="{{ banner.style }}"{% endif %}>{{ banner.text }}</div>{% endif %}
 {% include "conversations/install_prompt.html" %}
 <main>
   <section class="hero">

@@ -43,6 +43,7 @@ def moods_page(request, slug=None, section=''):
             return redirect(f'/moods/{found.slug}/', permanent=False)
     device = mood_auth.device_for(request)
     return render(request, 'conversations/moods.html', {
+        'banner': banner_context(),
         'initial_slug': slug or '',
         'initial_section': section,
         # A preview can pretend to be someone, to show the composer; its
@@ -74,6 +75,16 @@ def moods_page(request, slug=None, section=''):
         # The words people read where they're settable on PickiPedia (Magenta:Interface; services/interface_words.py).
         'interface_words': json.dumps(interface_words()),
     })
+
+
+def banner_context():
+    """The message across the top (settings: banner), as the template writes it: its text, and an inline
+    style for the colours it was given; empty colours fall back to the page's own warning ones."""
+    from .services import settings as knobs
+    at = knobs.global_values(['banner', 'banner_bg', 'banner_fg'])
+    style = ';'.join(p for p in (f"background:{at['banner_bg']}" if at['banner_bg'] else '',
+                                 f"color:{at['banner_fg']}" if at['banner_fg'] else '') if p)
+    return {'text': at['banner'], 'style': style}
 
 
 def interface_words():
@@ -574,6 +585,7 @@ def front_page(request):
                                                         # The page's first line first, always; the rest after
                                                         # it, in turns (Justin, 27 Oct).
                                                         'slogan': slogans[0],
+                                                        'banner': banner_context(),
                                                         'here': here, 'qr': front.qr_svg(here)})
 
 

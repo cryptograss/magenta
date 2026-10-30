@@ -41,6 +41,9 @@
   }
   header .brand { font-weight: 700; color: var(--accent); letter-spacing: .02em; text-decoration: none; white-space: nowrap;
                   display: inline-flex; align-items: center; gap: 6px; }
+  /* A message across the top (settings: banner): the warning colours, or its own, given inline. */
+  .banner { padding: 5px 14px; font-size: 13px; line-height: 1.35; background: var(--warn-bg); color: var(--warn-ink);
+            border-bottom: 1px solid currentcolor; }
   /* The mark (services/app_icon.py) as a mask: it takes the theme's magenta, light or dark. */
   header .brand .logo { width: 22px; height: 22px; flex: none; background: var(--accent);
                         -webkit-mask: url(/moods/mark-96.png) center / contain no-repeat; mask: url(/moods/mark-96.png) center / contain no-repeat; }
@@ -1384,6 +1387,7 @@
 {% include "conversations/poll_card.html" %}
 </head>
 <body{% if initial_section and initial_section != "moods" %} class="in-section"{% endif %}>
+{% if banner.text %}<div class="banner"{% if banner.style %} style="{{ banner.style }}"{% endif %}>{{ banner.text }}</div>{% endif %}
 {% include "conversations/install_prompt.html" with nudge_only_asked=True %}
 <header>
   <button id="menu" type="button" aria-label="Moods" aria-expanded="false">☰</button>
