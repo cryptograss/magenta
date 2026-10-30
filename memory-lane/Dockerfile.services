@@ -24,4 +24,4 @@ RUN useradd -m -u 1000 magent && chown -R magent:magent /app
 USER magent
 
 # Default command (overridden by docker-compose)
-CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--workers", "2", "memory_viewer.wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--workers", "4", "--threads", "8", "--timeout", "120", "memory_viewer.wsgi:application"]

@@ -4805,7 +4805,7 @@
       const notices = (await r.json()).notices;
       // A Mood opened since this page loaded: list it first, so its badge
       // has somewhere to go and its notification its title.
-      if (notices.some(n => !moods.some(m => m.slug === n.mood))) await loadMoods();
+      if (notices.some(n => !moods.some(m => m.slug === n.mood))) loadMoods();
       let ding = null;  // one chime per look, however many came: a mention's, if any was one
       for (const n of notices) {
         if (counted.has(n.turn.id)) continue;
@@ -5524,7 +5524,7 @@
       // Seen only if someone's looking: an answer that lands while this page is
       // hidden is still news, and is told as a notice.
       if (!document.hidden) touch(current);
-      if (!full && data.turns.length) { await loadMoods(); }
+      if (!full && data.turns.length) { loadMoods(); }
     }
     // An agent just finished here: ask now, not in 15 s, whether it answered me.
     const finished = wasBusy && !act;

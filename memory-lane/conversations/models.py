@@ -344,6 +344,13 @@ class Mood(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         _slugs['at'] = 0.0  # a new or renamed Mood: ids are looked up afresh
+        from .services.mood_cache import bust_moods_cache
+        bust_moods_cache()
+
+    def delete(self, *args, **kwargs):
+        from .services.mood_cache import bust_moods_cache
+        bust_moods_cache()
+        super().delete(*args, **kwargs)
 
     @classmethod
     def free_slug(cls, title, mood=None):
@@ -413,6 +420,16 @@ class MoodAlias(models.Model):
     slug = models.SlugField(max_length=100, unique=True)
     mood = models.ForeignKey(Mood, models.CASCADE, related_name='aliases')
     retired_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from .services.mood_cache import bust_moods_cache
+        bust_moods_cache()
+
+    def delete(self, *args, **kwargs):
+        from .services.mood_cache import bust_moods_cache
+        bust_moods_cache()
+        super().delete(*args, **kwargs)
 
     class Meta:
         db_table = 'mood_aliases'
