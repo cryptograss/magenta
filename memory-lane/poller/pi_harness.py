@@ -19,6 +19,7 @@ pi-1.1.0-turn.jsonl). What that run showed, and the translation leans on:
   - Every assistant message carries its own usage and cost.
 """
 
+import collections
 import json
 import logging
 import os
@@ -30,6 +31,7 @@ import subprocess
 import threading
 import time
 import uuid
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,8 +41,80 @@ logger = logging.getLogger(__name__)
 
 STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use', 'error': 'error',
                 'aborted': 'aborted'}
-LOOK_ONLY_TOOLS = 'read,grep,find,ls'
+# Codemode is a look-only tool: its scripts may call other tools (the MCP ones
+# included) but may not touch the filesystem, and only their output reaches the
+# model. Without it, a look-only Pi turn can read neither its memory nor the
+# wiki: `--tools` with plain names replaces the whole selection, so MCP tools
+# left at their default `codemode` exposure are registered but unreachable.
+#
+# But an entry starting with `mcp__` switches `--tools` from "keep every MCP
+# tool" to "only these" (pi --help), and without it codemode was a doorway to
+# every MCP tool there is: the wiki's write tools (create-page, update-page,
+# delete-page, a full-rights bot account), and playwright, which acts on the
+# web (browser_click, browser_fill_form). So the look-only MCP tools are
+# allowlisted by name, one place for both harnesses (poller/wake_policy.py;
+# re, 30 Oct, into #295 before it merged): reads enabled, writes absent.
+try:
+    from poller.wake_policy import WIKI_MCP_SERVER, WIKI_READ_TOOLS, MEMORY_MCP_SERVERS
+except ImportError:  # run as a script, from poller/
+    from wake_policy import WIKI_MCP_SERVER, WIKI_READ_TOOLS, MEMORY_MCP_SERVERS
+
+
+def _look_only_tools():
+    entries = ['read', 'grep', 'find', 'ls', 'codemode']
+    entries += [f'mcp__{WIKI_MCP_SERVER}__{name}' for name in WIKI_READ_TOOLS]
+    entries += [f'mcp__{server}__*' for server in MEMORY_MCP_SERVERS]  # the record, whole
+    return ','.join(entries)
+
+
+LOOK_ONLY_TOOLS = _look_only_tools()
 COMPACT = re.compile(r'/compact(?:\s+(.+))?\Z', re.S)  # what the runner sends for "/compact re [what to keep]"
+# A tool loop tripwire: a machine attractor repeats the exact same call, and by the third time
+# (even with text between the repeats — the 28 Oct specimen had escape text every 3–4s) the run
+# is a runaway, not a retry. Only a *different* call breaks the streak; then the turn is killed.
+TOOL_LOOP_KILL = 3
+TOOL_LOOP_WINDOW = 10
+TOOL_LOOP_WINDOW_KILL = 5
+TOOL_LOOP_MAX_CALLS = 50
+
+
+class LoopGuard:
+    """The tripwire both wakers share: watch a turn's tool calls, and by the
+    third identical one (same tool, same arguments), say the turn is a runaway.
+    Text between the repeats does not break the streak — the 28 Oct specimen
+    had escape text every few seconds — only a *different* call does.
+    Also catches alternating ping-pong loops (A -> B -> A -> B) via a sliding
+    window, and enforces a hard ceiling on tool calls per wake."""
+
+    def __init__(self, limit=TOOL_LOOP_KILL, window_limit=TOOL_LOOP_WINDOW_KILL,
+                 window_size=TOOL_LOOP_WINDOW, max_calls=TOOL_LOOP_MAX_CALLS):
+        self.limit = limit
+        self.window_limit = window_limit
+        self.max_calls = max_calls
+        self.streak, self.last = 0, None
+        self.total = 0
+        self.recent = deque(maxlen=window_size)
+
+    def see(self, name, args):
+        """Note one tool call; a nonempty string once the tripwire has tripped."""
+        self.total += 1
+        try:
+            arg_str = json.dumps(args or {}, sort_keys=True)
+        except (TypeError, ValueError):
+            arg_str = str(args or {})
+        key = (name, arg_str)
+        self.streak = self.streak + 1 if key == self.last else 1
+        self.last = key
+        self.recent.append(key)
+        window_count = sum(1 for k in self.recent if k == key)
+
+        if self.streak >= self.limit:
+            return f'tool loop: {name} called {self.streak}× with identical arguments'
+        if window_count >= self.window_limit:
+            return f'tool loop: {name} called {window_count}× within last {len(self.recent)} calls'
+        if self.total >= self.max_calls:
+            return f'tool loop: turn exceeded maximum tool calls limit ({self.total})'
+        return ''
 EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # The names the model menu has always offered, as Pi should read them. Left
 # to Pi, a bare 'opus' is fuzzy-matched across every vendor it knows, and
@@ -387,6 +461,14 @@ class PiWaker:
         except OSError:
             return None
 
+    def session_bytes(self, session_id):
+        """The session file's size on disk (0 if unknown): the poller's size cap reads it."""
+        path = self.find(session_id)
+        try:
+            return path.stat().st_size if path else 0
+        except OSError:
+            return 0
+
     def cwd_for(self, session_id):
         path = self.find(session_id)
         if path is None:
@@ -500,7 +582,7 @@ class PiWaker:
         if effort:
             cmd += ['--thinking', EFFORTS.get(effort, effort)]
         if not full:
-            cmd += ['--tools', LOOK_ONLY_TOOLS]  # reading only; MCP tools stay
+            cmd += ['--tools', LOOK_ONLY_TOOLS]  # look-only: reads and the allowlisted MCP tools (wake_policy.py)
         if system:  # its instructions (mood_poller.MoodPoller.instructions_for): after Pi's own, never in the session
             cmd += ['--append-system-prompt', system]
         return cmd + [prompt]
@@ -526,6 +608,7 @@ class PiWaker:
         proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, start_new_session=True)
         done = self._watch(proc, stop)
+        guard, killed = LoopGuard(), None  # the tool-loop tripwire (TOOL_LOOP_KILL)
         try:
             for line in proc.stdout:  # Pi frames on LF only; one JSON object per line
                 done.heard = time.monotonic()
@@ -539,13 +622,55 @@ class PiWaker:
                             on_event(event)
                         except Exception as e:  # never let reporting stop the turn
                             logger.warning(f'on_event failed: {e}')
-            proc.wait()
+                    if event.get('type') == 'tool_call' and not killed:
+                        killed = guard.see(event.get('name'), event.get('input'))
+                        if killed:
+                            logger.warning(f'ending pi turn for {new_session_id}: {killed}')
+                            if on_event:
+                                try:
+                                    now = time.time() * 1000
+                                    on_event({
+                                        'type': 'assistant_message',
+                                        'id': translator.id(now, 'assistant', 9999),
+                                        'turn': translator.turn,
+                                        'at': iso(now),
+                                        'text': f'⚠️ Turn stopped by loop tripwire: {killed}',
+                                        'stop_reason': 'error',
+                                    })
+                                except Exception:
+                                    pass
+                            try:
+                                os.killpg(proc.pid, signal.SIGTERM)
+                            except (OSError, ProcessLookupError, AttributeError):
+                                try:
+                                    proc.terminate()
+                                except (OSError, ProcessLookupError, AttributeError):
+                                    pass
+                if killed:
+                    break
         finally:
             done.set()
+        try:
+            proc.wait(timeout=2)
+        except (subprocess.TimeoutExpired, AttributeError):
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError, AttributeError):
+                try:
+                    proc.kill()
+                except (OSError, ProcessLookupError, AttributeError):
+                    pass
+            try:
+                proc.wait(timeout=2)
+            except (subprocess.TimeoutExpired, AttributeError):
+                pass
         if not translator.settled:
             # The runner closes the turn in the Mood when a wake raises.
             err = (proc.stderr.read() or '').strip()[:500]
             self.last_result = {'subtype': 'error', 'run_cost_usd': translator.cost}
+            if killed:
+                self.last_result['error'] = killed
+                raise RuntimeError(f'pi exited {proc.returncode} without settling: {killed}: {err}')
             raise RuntimeError(f'pi exited {proc.returncode} without settling: {err}')
         self.last_result = {'subtype': 'error' if translator.error else 'success', 'run_cost_usd': translator.cost,
                             'stop_reason': translator.last_stop}
