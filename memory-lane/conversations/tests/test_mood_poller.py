@@ -2487,6 +2487,35 @@ class WaitingTest(TestCase):
         self.assertEqual(poller.poll_once(), ['m26'])               # posted: its turn now, the rest in view
         self.assertIn('You chose to wait for justin', self.waker.woken[1][1])
 
+    def test_an_answer_between_the_ask_and_the_wait_taking_releases_the_wait(self):
+        # Justin, 29 Oct: blu waited for magent, who had already answered the very question a minute before
+        # blu's wait was taken (22:01 the answer, 22:02 the wait). The wait measured what counted from its own
+        # taking, so the answer was invisible and blu sat the full WAIT_FOR before being told to answer.
+        poller = self.make(['<wait for="re"/>'])
+        # re answered at T0+30s: after the ask (T0), before the wait is taken (T0+1min).
+        answer = dict(turn('r0', 're', 0, 'Read it: the split holds.'))
+        answer['created_at'] = (T0 + timedelta(seconds=30)).isoformat()
+        self.page['turns'] = [answer]
+        self.assertEqual(poller.poll_once(), ['m26'])              # the wait is taken this pass
+        self.assertIn('m26', poller.state['waits'])
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), ['m26'])              # and released: re had already answered
+        self.assertIn('You chose to wait for re. re has answered', self.waker.woken[1][1])
+        self.assertNotIn('m26', poller.state['waits'])
+
+    def test_an_answer_before_the_ask_does_not_release_the_wait(self):
+        # The baseline is the ask, not older talk: an answer to an earlier question doesn't settle this one.
+        poller = self.make(['<wait for="re"/>'])
+        old = dict(turn('r-1', 're', -5, 'About the earlier thing: yes.'))
+        old['created_at'] = (T0 - timedelta(minutes=5)).isoformat()
+        self.page['turns'] = [old]
+        self.assertEqual(poller.poll_once(), ['m26'])
+        self.assertIn('m26', poller.state['waits'])               # not released: that answer predates the ask
+        self.page['turns'] = [dict(turn('r0', 're', 1, 'Now this one: done.'))]
+        self.clock[0] += timedelta(minutes=1)
+        self.assertEqual(poller.poll_once(), ['m26'])             # but this one releases it
+        self.assertNotIn('m26', poller.state['waits'])
+
     def test_at_work_at_its_check_in_the_wait_goes_on_with_no_turn_spent(self):
         poller = self.make(['<wait for="re"/>'])
         poller.poll_once()

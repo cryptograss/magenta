@@ -2329,7 +2329,12 @@ class MoodPoller:
         # Who was named first, this agent among them: if two wait on each other, that one answers.
         first = next((n for t in owed for n in t.get('mentions') or []
                       if n != t.get('sender') and (n == self.agent or n in names)), self.agent)
-        self.state['waits'][slug] = {'for': names, 'owed': owed, 'since': now.isoformat(),
+        # The question it waits on: the newest of the posts that woke it, as also_asked reads them -- not the
+        # moment the wait was taken. An answer that landed between the ask and the wait-taking has to count, or
+        # the wait runs out its whole WAIT_FOR on an answer already in the record (Justin, 29 Oct: blu waited for
+        # magent, who had answered a minute earlier; blu sat the full five minutes, then got 'has not answered').
+        since = max((t.get('created_at') or '' for t in owed), default=now.isoformat())
+        self.state['waits'][slug] = {'for': names, 'owed': owed, 'since': since,
                                      'until': (now + WAIT_FOR).isoformat(), 'first': first}
         self.state['waited'] = (self.state['waited'] + ids)[-200:]
         to = wait_to(match.group(2))
