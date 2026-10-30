@@ -996,12 +996,21 @@ TOOLS_OFFER = ('If answering needs your full tools, reply with only <tools to="a
                '<merge to="a few words on which PR"/> for a merge (🔀), <deploy to="a few words on which server"/> '
                "for a redeploy (🔄). Each posts a visible line here, and an icon sits by the Mood's name until "
                'a person does it.')
+# The full-tools wake (re, 30 Oct): the merge and redeploy asks are exactly for when you ARE mid-work with
+# your tools -- you still must not merge (a person's) or redeploy a server (no-touch) -- so they're offered
+# there, where <tools/> would mean nothing.
+FULL_TOOLS_OFFER = ('Merge requests and redeploys are still a person\'s, even with your full tools: if one needs '
+                    'doing now, reply with only <merge to="a few words on which PR"/> for a merge (🔀), or '
+                    '<deploy to="a few words on which server"/> for a redeploy (🔄): the Mood shows it, and an '
+                    'icon sits by its name until a person does it.')
 
 
 def wake_footer(full=False, texts=None):
     """What this turn may do, and the wake's close: the end of every wake prompt."""
     tools = wake_line(texts, 'full-tools', FULL_TOOLS) if full else (
         wake_line(texts, 'look-only', LOOK_ONLY) + ' ' + wake_line(texts, 'tools-offer', TOOLS_OFFER))
+    if full:
+        tools += '\n\n' + wake_line(texts, 'tools-offer-full', FULL_TOOLS_OFFER)
     # What holds in every Mood (etiquette, silence, greeting, handoffs, settings, to-do lists) is in its
     # instructions, Cryptograss:Moods/Instructions (poller/instructions.py); the wake says only what this
     # turn is (Justin, magent-self, 2026-10-24: "let's move that stuff out of the python and into the wiki").

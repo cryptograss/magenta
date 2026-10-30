@@ -6180,10 +6180,15 @@
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
     box.innerHTML = ((m && m.asked) || []).map(t =>
       `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
-        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b>`
-        + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
+        + ` title="${esc(askHow(t))}">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b>`
+        + ` ${esc(askLineWord(t.kind, t.for))} · `
         + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
   }
+  // How a person grants it: mention the asker on a turn with tools, merge the PR, redeploy the server (re, 30 Oct).
+  const askHow = t => t.kind === 'tools' ? `mention @${t.agent} on a turn with its tools to wake it and answer`
+    : t.kind === 'merge' ? 'merge it, and the ask lifts' : 'redeploy it, and the ask lifts';
+  const askLineWord = (kind, what) => kind === 'tools' ? `requested tools for ${what}`
+    : kind === 'merge' ? `requested a merge for ${what}` : `requested a redeploy of ${what}`;
   function renderTyping() {
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('typing', typingNow.includes(el.dataset.who)));
     typingEl.classList.toggle('on', typingNow.length > 0);

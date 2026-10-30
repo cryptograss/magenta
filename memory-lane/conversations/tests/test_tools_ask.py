@@ -40,8 +40,14 @@ class AskTest(TestCase):
                                    ('<deploy to="hunter"/>', 'deploy', 'requested a redeploy of hunter')):
             self.assertEqual(quiet_reason(tag), {'reason': reason, 'by': '', 'type': type_})
             self.assertTrue(_SILENT_REPLY.match(tag))
-        self.assertIn('<tools to=', '\n'.join(wake_footer(full=False)))
-        self.assertNotIn('<tools to=', '\n'.join(wake_footer(full=True)))
+        # The look-only footer offers all three asks; the full-tools footer says nothing of <tools/> (you
+        # have them) but retells the merge and redeploy asks -- those are exactly for when you are mid-work
+        # with your tools, and still must not merge or redeploy yourself (re, 30 Oct).
+        look, full = '\n'.join(wake_footer(full=False)), '\n'.join(wake_footer(full=True))
+        self.assertIn('<tools to=', look)
+        self.assertIn('<merge to=', look); self.assertIn('<deploy to=', look)
+        self.assertNotIn('<tools to=', full)
+        self.assertIn('<merge to=', full); self.assertIn('<deploy to=', full)
 
     def test_each_ask_is_a_line_and_stays_until_its_event_lands(self):
         self.say('mood-poller', '<mood-wake mood="jams"> ... This turn can look but not touch ...', 1)
