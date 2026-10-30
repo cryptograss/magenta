@@ -223,6 +223,25 @@ class ActivityTest(TestCase):
         set_held('m26', 'magent', '', now=NOW - 1)
         self.assertEqual(self.now()['doing'], 'waking')
 
+    def test_hold_a_turn_is_under_way_keeps_agent_working(self):
+        """Justin, 30 Oct: a post arriving while a turn is under way set a hold 'a turn is under way
+        here; this one is next', which stopped the pulsing on the mood list and the activities bar.
+        It must keep the agent working, with its running streak, not held."""
+        from conversations.models import Thought
+        self.add(self.justin, 100, 'first question')
+        self.add(self.magent, 50, 'thinking about it', model=Thought)
+        # Justin posts a follow-on while magent is running
+        self.add(self.justin, 20, '@magent second question', source_file='mood-web')
+        # Poller holds the second question because turn 1 is running
+        set_held('m26', 'magent', 'a turn is under way here; this one is next', now=NOW - 15)
+        act = self.now()
+        self.assertIsNotNone(act)
+        self.assertEqual(act['agent'], 'magent')
+        self.assertNotEqual(act['doing'], 'held')
+        self.assertEqual(act['doing'], 'still at work')
+        self.assertEqual(act['why'], 'a turn is under way here; this one is next')
+
+
     def test_a_web_post_naming_nobody_wakes_nobody(self):
         self.add(self.justin, 3, 'just a note', source_file='mood-web')
         self.assertIsNone(self.now())

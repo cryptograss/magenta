@@ -1956,14 +1956,14 @@
     const mine = viewer && slug === current && Date.now() - hereAt < SHOWN_FOR_MS;
     const d = { ...raw, speakers: [...(raw.speakers || []).filter(n => n !== viewer), ...(mine ? [viewer] : [])] };
     const typing = new Set(slug === current ? [...d.typing, ...typingNow] : d.typing);
-    const busy = slug === current ? acts.filter(a => a.doing !== 'held').map(a => a.agent) : (d.busy_all || (d.busy ? [d.busy] : []));
+    const busy = slug === current ? acts.filter(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')).map(a => a.agent) : (d.busy_all || (d.busy ? [d.busy] : []));
     // Listening by voice (services/listening.py): 🎧 on their name where it's shown; one listening to this Mood
     // alone is shown here even if they haven't spoken. One listening to every Mood isn't put on every line.
     const listening = new Map((d.listening || []).map(who => [who.name, who.everywhere]));
     const names = [...new Set([...busy, ...typing, ...d.speakers,
                                ...[...listening].filter(([, everywhere]) => !everywhere).map(([name]) => name)])];
     // A turn with its full tools: 🔨 by the pulsing name (Justin, 29 Oct).
-    const tooled = new Set((slug === current ? acts : (d.activities || [])).filter(a => a.doing !== 'held' && a.tools === 'full').map(a => a.agent));
+    const tooled = new Set((slug === current ? acts : (d.activities || [])).filter(a => (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) && a.tools === 'full').map(a => a.agent));
     return { names, active: new Set([...typing, ...busy]), listening, tooled };
   }
   function peopleLine(slug) {
@@ -4606,7 +4606,7 @@
   }
   // Working only if it's the newest thing here and the agent is at work now.
   function isWorking(b) {
-    return b.parentNode && lastOf(b.parentNode) === b && acts.some(a => a.agent === b._agent && a.doing !== 'held');
+    return b.parentNode && lastOf(b.parentNode) === b && acts.some(a => a.agent === b._agent && (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')));
   }
   // A turn that a person spoke after is over, whether or not its end was marked.
   function closeBlock(container) {
@@ -5300,7 +5300,7 @@
     // Who's at work there, as the list of Moods last heard it (/api/moods/live/): shown at once, and put
     // right by the Mood's own look when it's back (Justin, 25 Oct: they "suddenly pop up").
     acts = (liveData[slug] && liveData[slug].activities) || [];
-    act = [...acts].reverse().find(a => a.doing !== 'held') || acts[0] || null;
+    act = [...acts].reverse().find(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) || acts[0] || null;
     renderActivity();
     drawMoodbar(null);  // the last Mood's head goes with it
     renderPins([]);  // the last Mood's pins aren't this one's; its own come with its first look
@@ -6376,7 +6376,7 @@
   // `agent`: whom to stop (a line's own 🛑); none: the one that started last (the button, Esc).
   async function interrupt(agent) {
     if (typeof agent !== 'string') agent = null;
-    if (!agent && (!act || act.doing === 'held')) return false;
+    if (!agent && (!act || (act.doing === 'held' && !/a turn is under way/i.test(act.why || '')))) return false;
     if (!keyHolder || !current) return false;
     agent = agent || act.agent;
     stopBtn.disabled = true;
@@ -6387,7 +6387,7 @@
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
       acts = acts.filter(a => a.agent !== agent);
-      act = [...acts].reverse().find(a => a.doing !== 'held') || null;
+      act = [...acts].reverse().find(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) || null;
       renderActivity();
       await poll(false);
     } catch (e) { showError('stop: ' + e.message); }
@@ -6401,29 +6401,32 @@
     const turnsEl = document.getElementById('turns');
     const newest = turnsEl && turnsEl.lastElementChild;
     if (newest && newest.classList.contains('aturn')) drawBlockHead(newest);
-    const working = acts.filter(a => a.doing !== 'held');
+    const isHeld = a => a.doing === 'held' && !/a turn is under way/i.test(a.why || '');
+    const working = acts.filter(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || ''));
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('busy', working.some(a => el.dataset.who === a.agent)));
     activityEl.classList.toggle('on', acts.length > 0);
     markLive();
     // One at work: the stop button. Several: a little stop sign by each one's name instead (Justin, 28 Oct:
     // the button named only one of them).
     const several = working.length > 1;
-    stopBtn.hidden = !(keyHolder && act && act.doing !== 'held') || several;
+    stopBtn.hidden = !(keyHolder && act && (act.doing !== 'held' || /a turn is under way/i.test(act.why || ''))) || several;
     stopBtn.textContent = '■ stop';
-    const stopOne = a => keyHolder && several && a.doing !== 'held'
+    const stopOne = a => keyHolder && several && (a.doing !== 'held' || /a turn is under way/i.test(a.why || ''))
       ? `<button type="button" class="stopone" data-agent="${esc(a.agent)}" title="Stop ${esc(a.agent)}" aria-label="Stop ${esc(a.agent)}">🛑</button>` : '';
     if (!acts.length) return;
     const hhmm = iso => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     // A line for each, in its colour: two woken by one post, or one asked and one looking in.
-    activityText.innerHTML = acts.map(a => `<span class="one${a.doing === 'held' ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
+    activityText.innerHTML = acts.map(a => `<span class="one${isHeld(a) ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
       + (a.doing === 'waking'
         ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${stopOne(a)}${elapsed(a.since)}`
-        : a.doing === 'held' && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
+        : isHeld(a) && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${waitedFor(a.why)}` + (a.until ? ` · checks in by ${esc(hhmm(a.until))}` : '')
-        : a.doing === 'held'
+        : isHeld(a)
         ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
           + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
-        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${esc(a.doing)} · ${stopOne(a)}${elapsed(a.since)}`
+        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${esc(a.doing || 'at work')}`
+          + (/a turn is under way/i.test(a.why || '') ? ` <span class="meta">(next turn queued)</span>` : '')
+          + ` · ${stopOne(a)}${elapsed(a.since)}`
           + ([a.model, a.effort].filter(Boolean).length ? ` · ${esc([a.model, a.effort].filter(Boolean).join(' · '))}` : ''))
       + '</span>').join('');
   }
@@ -6715,7 +6718,7 @@
   });
   // Esc in the box, with no suggestions open: stop the agent, as in a terminal.
   sayBox.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !e.defaultPrevented && act && act.doing !== 'held') { e.preventDefault(); interrupt(); }
+    if (e.key === 'Escape' && !e.defaultPrevented && act && (act.doing !== 'held' || /a turn is under way/i.test(act.why || ''))) { e.preventDefault(); interrupt(); }
   });
   suggest.addEventListener('mousedown', e => { const d = e.target.closest('[data-i]'); if (d) { e.preventDefault(); acceptSuggest(+d.dataset.i); } });
   sayBox.addEventListener('blur', () => setTimeout(closeSuggest, 150));
