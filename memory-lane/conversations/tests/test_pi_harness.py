@@ -135,7 +135,18 @@ class CommandTest(TestCase):
         self.assertEqual(cmd[:2], ['pi', '--mode'])
         self.assertIn('--fork', cmd)
         self.assertEqual(cmd[cmd.index('--session-id') + 1], 'new')
-        self.assertEqual(cmd[cmd.index('--tools') + 1], 'read,grep,find,ls,codemode')
+        tools = cmd[cmd.index('--tools') + 1]
+        self.assertTrue(tools.startswith('read,grep,find,ls,codemode,'))
+        # MCP tools are allowlisted by name (poller/wake_policy.py): the wiki's
+        # reads, the memory server whole -- and nothing else. No write tool, no
+        # playwright: on a look-only turn they are not present, not merely denied.
+        mcp = [t for t in tools.split(',') if t.startswith('mcp__')]
+        from poller.wake_policy import WIKI_READ_TOOLS
+        self.assertEqual(sorted(mcp), sorted(
+            [f'mcp__pickipedia__{name}' for name in WIKI_READ_TOOLS]
+            + ['mcp__magenta-memory-v2__*']))
+        self.assertFalse([t for t in mcp if any(w in t for w in
+                         ('create', 'update', 'delete', 'move', 'protect', 'upload', 'browser'))])
         self.assertEqual(cmd[cmd.index('--thinking') + 1], 'xhigh')
         self.assertNotIn('--tools', waker.command(None, 'new', 'hi', full=True))
         self.assertEqual(cmd[-1], 'hi')

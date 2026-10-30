@@ -46,7 +46,28 @@ STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use
 # model. Without it, a look-only Pi turn can read neither its memory nor the
 # wiki: `--tools` with plain names replaces the whole selection, so MCP tools
 # left at their default `codemode` exposure are registered but unreachable.
-LOOK_ONLY_TOOLS = 'read,grep,find,ls,codemode'
+#
+# But an entry starting with `mcp__` switches `--tools` from "keep every MCP
+# tool" to "only these" (pi --help), and without it codemode was a doorway to
+# every MCP tool there is: the wiki's write tools (create-page, update-page,
+# delete-page, a full-rights bot account), and playwright, which acts on the
+# web (browser_click, browser_fill_form). So the look-only MCP tools are
+# allowlisted by name, one place for both harnesses (poller/wake_policy.py;
+# re, 30 Oct, into #295 before it merged): reads enabled, writes absent.
+try:
+    from poller.wake_policy import WIKI_MCP_SERVER, WIKI_READ_TOOLS, MEMORY_MCP_SERVERS
+except ImportError:  # run as a script, from poller/
+    from wake_policy import WIKI_MCP_SERVER, WIKI_READ_TOOLS, MEMORY_MCP_SERVERS
+
+
+def _look_only_tools():
+    entries = ['read', 'grep', 'find', 'ls', 'codemode']
+    entries += [f'mcp__{WIKI_MCP_SERVER}__{name}' for name in WIKI_READ_TOOLS]
+    entries += [f'mcp__{server}__*' for server in MEMORY_MCP_SERVERS]  # the record, whole
+    return ','.join(entries)
+
+
+LOOK_ONLY_TOOLS = _look_only_tools()
 COMPACT = re.compile(r'/compact(?:\s+(.+))?\Z', re.S)  # what the runner sends for "/compact re [what to keep]"
 # A tool loop tripwire: a machine attractor repeats the exact same call, and by the third time
 # (even with text between the repeats — the 28 Oct specimen had escape text every 3–4s) the run
@@ -561,7 +582,7 @@ class PiWaker:
         if effort:
             cmd += ['--thinking', EFFORTS.get(effort, effort)]
         if not full:
-            cmd += ['--tools', LOOK_ONLY_TOOLS]  # reading only; codemode enables MCP tools (memory, pickipedia)
+            cmd += ['--tools', LOOK_ONLY_TOOLS]  # look-only: reads and the allowlisted MCP tools (wake_policy.py)
         if system:  # its instructions (mood_poller.MoodPoller.instructions_for): after Pi's own, never in the session
             cmd += ['--append-system-prompt', system]
         return cmd + [prompt]

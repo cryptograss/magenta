@@ -264,12 +264,19 @@ def project_dir_name(cwd):
 # woke it, say -- never a shell.
 READ_TOOLS = 'Read,Grep,Glob'
 READ_MCP_SERVERS = ('magenta-memory-v2', 'pickipedia')
+try:
+    from poller.wake_policy import WIKI_MCP_SERVER, WIKI_READ_TOOLS
+except ImportError:  # run as a script, from poller/
+    from wake_policy import WIKI_MCP_SERVER, WIKI_READ_TOOLS
+# The wiki's read tools, one list for both harnesses (poller/wake_policy.py,
+# 30 Oct, into #295): a look-only turn gets these and no other MCP tool from
+# the wiki -- writes are absent, not merely denied. The memory server stays
+# whole (its `remember` is an open decision, Wake modes has it).
+WIKI_MCP_TOOLS = tuple(f'mcp__{WIKI_MCP_SERVER}__{name}' for name in WIKI_READ_TOOLS)
 ALLOWED = (
     'Read(~/workspace/**)', 'Grep(~/workspace/**)', 'Glob(~/workspace/**)',
     'mcp__magenta-memory-v2',
-    'mcp__pickipedia__get-page', 'mcp__pickipedia__get-page-history', 'mcp__pickipedia__get-revision',
-    'mcp__pickipedia__search-page', 'mcp__pickipedia__search-page-by-prefix',
-    'mcp__pickipedia__get-category-members', 'mcp__pickipedia__get-file',
+    *WIKI_MCP_TOOLS,
 )
 DENIED = (
     'Read(**/.env)', 'Read(**/.env.*)', 'Read(**/secrets/**)', 'Read(**/*vault*)', 'Read(**/*.pem)',

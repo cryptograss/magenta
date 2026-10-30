@@ -556,8 +556,14 @@ class ClaudeCodeWakerTest(TestCase):
         self.assertIn('--strict-mcp-config', cmd)
         self.assertEqual(cmd[cmd.index('--mcp-config') + 1], '/tmp/wake-mcp.json')
         allowed = cmd[cmd.index('--allowedTools') + 1:cmd.index('--disallowedTools')]
-        self.assertIn('mcp__pickipedia__get-page', allowed)
+        # The wiki's reads, one list for both harnesses (poller/wake_policy.py):
+        # exactly those, no hand-copied drift, and no write tool present.
+        from poller.wake_policy import WIKI_READ_TOOLS
+        wiki_allowed = [a for a in allowed if a.startswith('mcp__pickipedia__')]
+        self.assertEqual(sorted(wiki_allowed),
+                         sorted(f'mcp__pickipedia__{name}' for name in WIKI_READ_TOOLS))
         self.assertFalse([a for a in allowed if 'update' in a or 'create' in a or 'delete' in a or 'upload' in a])
+        self.assertFalse([a for a in allowed if 'playwright' in a or 'browser' in a])
         self.assertIn('Read(~/.bashrc)', cmd)
         self.assertEqual(cmd[-2:], ['--', '<mood-wake>'])
 
