@@ -28,6 +28,38 @@ def translated(session=SESSION):
     return t, events
 
 
+class LoopGuardTest(PlainCase):
+    """The tripwire both wakers share: three identical calls is a runaway;
+    text between the repeats doesn't help (the 28 Oct specimen had escape text every few seconds)."""
+
+    def test_three_identical_calls_trip_it(self):
+        guard = LoopGuard()
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertIn('tool loop: read called 3×', guard.see('read', {'path': 'x'}))
+
+    def test_a_different_call_breaks_the_streak(self):
+        guard = LoopGuard()
+        guard.see('read', {'path': 'x'})
+        guard.see('read', {'path': 'x'})
+        self.assertEqual(guard.see('read', {'path': 'y'}), '')  # the different one: 1
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')  # 1 again, y broke it
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')  # 2
+        self.assertIn('tool loop', guard.see('read', {'path': 'x'}))  # 3
+
+    def test_text_between_repeats_does_not_break_the_streak(self):
+        # The 28 Oct specimen said "let me check that again" between every repeat: it still loops.
+        guard = LoopGuard()
+        for _ in range(2):
+            self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertIn('tool loop', guard.see('read', {'path': 'x'}))  # the guard never sees the text
+
+    def test_the_same_tool_with_different_args_is_not_a_loop(self):
+        guard = LoopGuard()
+        for i in range(5):
+            self.assertEqual(guard.see('read', {'path': f'f{i}'}), '')
+
+
 class TranslatorTest(TestCase):
 
     def test_a_real_run_becomes_a_turn_of_record_events(self):
@@ -145,6 +177,11 @@ class CompactTest(TestCase):
         (sessions / f'2026-10-18T15-00-00-000Z_{SESSION}.jsonl').write_text(
             json.dumps({'type': 'session', 'version': 3, 'id': SESSION, 'cwd': self.dir}) + '\n')
         self.waker = PiWaker(pi=self.pi, model='opus', session_dir=str(sessions))
+
+    def test_a_sessions_size_on_disk(self):
+        path = self.waker.find(SESSION)
+        self.assertEqual(self.waker.session_bytes(SESSION), path.stat().st_size)
+        self.assertEqual(self.waker.session_bytes('no-such-session'), 0)
 
     def test_compact_asks_pis_rpc_mode_from_a_fork_and_records_what_it_kept(self):
         events = []
@@ -309,7 +346,6 @@ class LoopKillTest(PlainCase):
         _, reply = self.waker.wake(SESSION, 'normal test', new_session_id='new-11', on_event=events.append)
         self.assertEqual(reply, 'Done reading.')
         self.assertEqual(self.waker.last_result['subtype'], 'success')
-
 
 @override_settings(MOOD_RUNNER_KEYS={'re': KEY}, TOOL_RESULT_CONTENT_CHARS=20000)
 class EndToEndTest(TestCase):

@@ -440,6 +440,14 @@ class PiWaker:
         except OSError:
             return None
 
+    def session_bytes(self, session_id):
+        """The session file's size on disk (0 if unknown): the poller's size cap reads it."""
+        path = self.find(session_id)
+        try:
+            return path.stat().st_size if path else 0
+        except OSError:
+            return 0
+
     def cwd_for(self, session_id):
         path = self.find(session_id)
         if path is None:
@@ -637,7 +645,7 @@ class PiWaker:
             self.last_result = {'subtype': 'error', 'run_cost_usd': translator.cost}
             if killed:
                 self.last_result['error'] = killed
-                raise RuntimeError(f'{killed}: pi exited {proc.returncode} without settling: {err}')
+                raise RuntimeError(f'pi exited {proc.returncode} without settling: {killed}: {err}')
             raise RuntimeError(f'pi exited {proc.returncode} without settling: {err}')
         self.last_result = {'subtype': 'error' if translator.error else 'success', 'run_cost_usd': translator.cost,
                             'stop_reason': translator.last_stop}

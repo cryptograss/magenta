@@ -124,6 +124,177 @@ class PlanReadingTest(TestCase):
                          [('five_hour', 0.41), ('seven_day', 0.6)])
 
 
+class LoopFollowTest(TestCase):
+    """The three follow-ups to the tool-loop guard (re and magent, 30 Oct): the session a kill leaves is
+    compacted before the next wake, the next wake is told what happened, and a session past its size cap
+    starts fresh instead of carrying an attractor forever. No Django, no network: the fakes below."""
+
+    def make(self, api, waker=None, minutes_now=15, **kwargs):
+        self.clock = [T0 + timedelta(minutes=minutes_now)]
+        self.waker = waker or FakeWaker()
+        poller = MoodPoller(api, self.waker, state_path=None, now=lambda: self.clock[0], **kwargs)
+        # A fresh state starts `since` at now, which would hide the test's older mentions.
+        poller.state['since'] = (T0 - timedelta(hours=1)).isoformat()
+        return poller
+
+    def test_the_next_wake_is_told_the_last_one_looping(self):
+        class LoopWaker(FakeWaker):
+            calls = 0
+
+            def wake(self, session_id, prompt, new_session_id=None, **kwargs):
+                LoopWaker.calls += 1
+                if LoopWaker.calls == 1:
+                    raise RuntimeError('pi exited 1 without settling: '
+                                       'tool loop: read called 3× with identical arguments')
+                self.woken.append((session_id, prompt))
+                return new_session_id or 'fork-1', self.reply
+
+        api = FakeAPI([mention('m26', turn('a', 'skyler', 0))], sessions={'m26': ['s-local']})
+        poller = self.make(api, LoopWaker())
+        self.assertEqual(poller.poll_once(), [])  # the loop-kill turn: it failed, so it isn't a woken one
+        self.assertIn('tool loop: read called 3× with identical arguments', poller.loop_note('m26'))
+        api._mentions.append(mention('m26', turn('c', 'skyler', 20)))
+        self.clock[0] = T0 + timedelta(minutes=35)  # the new mention is owed once its grace (10min) is past
+        self.assertEqual(poller.poll_once(), ['m26'])  # the next mention: told what happened last time
+        session, prompt = self.waker.woken[0]
+        self.assertEqual(session, 's-local')
+        self.assertIn('ended in a tool loop', prompt)
+        self.assertIn('tool loop: read called 3× with identical arguments', prompt)
+        self.assertIn('break the pattern: vary the arguments', prompt)
+
+    def test_a_turn_that_speaks_clears_the_loop_note(self):
+        api = FakeAPI([mention('m26', turn('a', 'skyler', 0))], sessions={'m26': ['s-local']})
+        poller = self.make(api)
+        poller.note_loop('m26', 'tool loop: read ×3')
+        self.assertEqual(poller.poll_once(), ['m26'])  # a good turn: the warning has done its work
+        self.assertIsNone(poller.loop_note('m26'))
+        api._mentions.append(mention('m26', turn('c', 'skyler', 20)))
+        self.clock[0] = T0 + timedelta(minutes=35)  # its grace (10min) is past
+        self.assertEqual(poller.poll_once(), ['m26'])
+        self.assertNotIn('tool loop', self.waker.woken[1][1])
+
+    def test_an_old_loop_kill_is_not_told_again(self):
+        poller = self.make(FakeAPI())
+        poller.state['loop'] = {'m26': {'at': (T0 - timedelta(hours=7)).isoformat(), 'why': 'tool loop: read ×3'}}
+        self.assertIsNone(poller.loop_note('m26'))
+
+    def test_the_footer_carries_the_loop_notice_before_its_close(self):
+        told = '\n'.join(wake_footer(loop='tool loop: read called 3× with identical arguments'))
+        self.assertIn('Your last turn in this Mood ended in a tool loop', told)
+        self.assertIn('tool loop: read called 3× with identical arguments', told)
+        self.assertTrue(told.rstrip().endswith('</mood-wake>'))
+        self.assertNotIn('tool loop', '\n'.join(wake_footer()))
+
+    def test_a_loop_killed_turn_compacts_the_session_it_leaves(self):
+        class CompactWaker(FakeWaker):
+            def wake(self, session_id, prompt, new_session_id=None, **kwargs):
+                raise RuntimeError('tool loop: read called 3× with identical arguments')
+
+            def compact(self, session_id, keep, **kwargs):
+                self.compacted.append((session_id, keep))
+                return 'compacted-1', ''
+
+        CompactWaker.compacted = []
+        posters = []
+
+        class Poster:
+            def __init__(self, slug, session, forked_from=None):
+                self.slug, self.session, self.forked_from = slug, session, forked_from
+                self.claimed = self.closed = False
+
+            def claim(self):
+                self.claimed = True
+
+            def put(self, event):
+                pass
+
+            def close(self):
+                self.closed = True
+
+        def streamer(slug, session, forked_from=None):
+            poster = Poster(slug, session, forked_from)
+            posters.append(poster)
+            return poster
+
+        api = FakeAPI([mention('m26', turn('a', 'skyler', 0))], sessions={'m26': ['s-local']})
+        poller = self.make(api, CompactWaker(), streamer=streamer)
+        self.assertEqual(poller.poll_once(), [])  # a killed turn isn't a woken one
+        assert CompactWaker.compacted
+        session_id, keep = CompactWaker.compacted[0]
+        self.assertNotEqual(session_id, 's-local')  # the fork the killed turn wrote, not its parent
+        self.assertEqual(keep, poller.LOOP_KEEP)
+        # Two posters: the killed turn's own, and the compaction's fork. The latter is claimed, so the
+        # next wake there resumes it, not the loop's.
+        self.assertEqual(posters[-1].session, 'compacted-1')
+        self.assertTrue(posters[-1].claimed and posters[-1].closed)
+        self.assertEqual(posters[-1].forked_from, session_id)
+
+    def test_a_waker_without_compact_is_left_alone_after_a_kill(self):
+        class LoopWaker(FakeWaker):
+            def wake(self, session_id, prompt, new_session_id=None, **kwargs):
+                raise RuntimeError('tool loop: read ×3')
+
+        api = FakeAPI([mention('m26', turn('a', 'skyler', 0))], sessions={'m26': ['s-local']})
+        poller = self.make(api, LoopWaker())  # FakeWaker has no compact: Claude Code compacts itself
+        self.assertEqual(poller.poll_once(), [])  # a killed turn isn't a woken one
+        self.assertIn('tool loop', poller.loop_note('m26'))
+
+    def test_a_session_past_its_size_cap_starts_fresh(self):
+        class BigWaker(FakeWaker):
+            def session_bytes(self, session_id):
+                return 5 * 1024 * 1024
+
+        api = FakeAPI([mention('m26', turn('a', 'skyler', 0))], sessions={'m26': ['s-local', 's-older']})
+        poller = self.make(api, BigWaker())
+        poller.poll_once()
+        session, prompt = self.waker.woken[0]
+        self.assertIsNone(session)  # a fresh session, not the bloated one
+        self.assertIn('grew past the size a session is kept to', prompt)
+        self.assertIn('read_mood "m26"', prompt)  # where to catch up
+
+    def test_a_session_under_its_cap_resumes(self):
+        class SmallWaker(FakeWaker):
+            def session_bytes(self, session_id):
+                return 1024
+
+        api = FakeAPI([mention('m26', turn('a', 'skyler', 0))], sessions={'m26': ['s-local', 's-older']})
+        poller = self.make(api, SmallWaker())
+        poller.poll_once()
+        self.assertEqual(self.waker.woken[0][0], 's-local')
+
+    def test_the_cap_is_a_dial(self):
+        class BigWaker(FakeWaker):
+            def session_bytes(self, session_id):
+                return 3 * 1024 * 1024
+
+        api = FakeAPI([mention('m26', turn('a', 'skyler', 0))], sessions={'m26': ['s-local']})
+        poller = self.make(api, BigWaker())
+        poller.settings = {'m26': {'session_cap_mb': 5}}
+        poller.poll_once()
+        self.assertEqual(self.waker.woken[0][0], 's-local')  # 3MB, under the Mood's own 5MB cap
+        poller.settings = {'m26': {'session_cap_mb': 1}}
+        api._mentions.append(mention('m26', turn('c', 'skyler', 20)))
+        self.clock[0] = T0 + timedelta(minutes=35)  # its grace (10min) is past
+        poller.poll_once()
+        self.assertIsNone(self.waker.woken[1][0])  # past it now: fresh
+
+    def test_harnesses_asks_the_session_owning_harness(self):
+        class Waker(FakeWaker):
+            def session_bytes(self, session_id):
+                return 7
+
+            def compact(self, session_id, keep, **kwargs):
+                self.compacted = (session_id, keep)
+                return 'c1', ''
+
+        waker = Waker()
+        harnesses = Harnesses({'pi': waker}, 'pi')
+        self.assertEqual(harnesses.session_bytes('s-local'), 7)
+        self.assertEqual(harnesses.compact('s-local', 'keep it'), ('c1', ''))
+        self.assertEqual(waker.compacted, ('s-local', 'keep it'))
+        self.assertIsNone(Harnesses({'pi': FakeWaker()}, 'pi').compact('s-local', 'keep it'))
+
+
 def mention(mood, t):
     return {'mood': mood, 'turn': t}
 
