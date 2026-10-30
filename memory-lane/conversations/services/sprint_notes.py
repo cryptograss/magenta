@@ -81,6 +81,37 @@ def header(sprint, sprint_page, person_page):
             f'see [[Magenta:Sprints]]. Edit freely.\n\n')
 
 
+SOURCE = 'sprint-note'
+
+
+def announce_note(message, person, sprint, page, url):
+    """Leave an event line in the message's Mood, and also in #general (Justin, 30 Oct: "When someone adds
+    something to their sprint notes, it needs to say that in the mood, and also in #general")."""
+    import time
+    import uuid
+    from conversations.models import ConversationParticipant, Message, Mood
+    system, _ = ConversationParticipant.objects.get_or_create(name='system',
+                                                              defaults={'participant_type': 'system'})
+    now_ms = int(time.time() * 1000)
+    content = {
+        'type': SOURCE,
+        'by': person,
+        'message': str(message.id),
+        'message_by': message.sender_id,
+        'mood': message.mood.slug if message.mood else '',
+        'sprint': sprint,
+        'page': page,
+        'url': url,
+    }
+    if message.mood:
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=message.mood,
+                               source_file=SOURCE, timestamp=now_ms, content=content)
+    general = Mood.objects.filter(slug='general').first()
+    if general and (not message.mood or general.id != message.mood.id):
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=general,
+                               source_file=SOURCE, timestamp=now_ms, content=content)
+
+
 def add(message, person, bot=None, http=None, now=None):
     """Add `message` to `person`'s notes for the current sprint: {'sprint', 'page', 'url', 'already'}. Refused if
     there's no sprint named, no wiki bot here, or the wiki won't take it."""
@@ -104,6 +135,7 @@ def add(message, person, bot=None, http=None, now=None):
         done = bot.edit(page, text.rstrip('\n') + '\n' + entry, f'A note for {person}, from #{message.mood.slug} '
                         f'(#m-{message.id}), by magenta at their ask', revision)
         if (done.get('edit') or {}).get('result') == 'Success':
+            announce_note(message, person, sprint, page, url)
             return {'sprint': sprint, 'page': page, 'url': url, 'already': False}
         if (done.get('error') or {}).get('code') not in ('editconflict', 'articleexists', 'missingtitle'):
             raise Refused(f"the wiki didn't take it: {(done.get('error') or {}).get('info') or done}", 502)

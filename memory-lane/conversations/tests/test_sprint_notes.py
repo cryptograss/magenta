@@ -90,6 +90,29 @@ class SprintNotesTest(TestCase):
             self.assertEqual(client.post(url, '{}', content_type='application/json').status_code, 410)
         self.assertEqual(Client().post(url, '{}', content_type='application/json').status_code, 401)
 
+    def test_adds_event_message_in_mood_and_in_general(self):
+        general, _ = Mood.objects.get_or_create(slug='general', defaults={'title': 'general'})
+        said = self.say(self.re, 'Track this for the sprint.')
+        sprint_notes.add(said, 'justin', bot=self.bot)
+        # 1. Event line in the message's mood
+        in_mood = Message.objects.filter(mood=self.mood, source_file='sprint-note').first()
+        self.assertIsNotNone(in_mood)
+        self.assertEqual(in_mood.content['by'], 'justin')
+        self.assertEqual(in_mood.content['message'], str(said.id))
+        self.assertEqual(in_mood.content['sprint'], 'Jellyfish')
+        # 2. Event line in #general
+        in_gen = Message.objects.filter(mood=general, source_file='sprint-note').first()
+        self.assertIsNotNone(in_gen)
+        self.assertEqual(in_gen.content['mood'], 'magenta-interface')
+        self.assertEqual(in_gen.content['message'], str(said.id))
+
+        # 3. Noted in #general itself: only one event message created
+        said_in_gen = Message.objects.create(id=uuid.uuid4(), sender=self.re, mood=general, timestamp=2,
+                                             content=[{'type': 'text', 'text': 'General note'}])
+        sprint_notes.add(said_in_gen, 'justin', bot=self.bot)
+        gen_events = Message.objects.filter(mood=general, source_file='sprint-note', content__message=str(said_in_gen.id))
+        self.assertEqual(gen_events.count(), 1)
+
 
 class WikiEmbedTest(TestCase):
     """⧉ Copy for PickiPedia: {{Magenta message}}, words and all (services/wiki_embed.py; Justin, 25 Oct)."""

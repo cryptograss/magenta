@@ -3666,6 +3666,22 @@
       prev = null;
       return;
     }
+    if (e.type === 'sprint-note') {  // a message added to sprint notes (services/sprint_notes.py; Justin, 30 Oct)
+      el.className = 'event sprint-note';
+      const who = `<b>${esc(shown(e.by || 'someone'))}</b>`;
+      const isHere = !e.mood || e.mood === current;
+      const msgLink = e.message
+        ? `<a href="/moods/${encodeURIComponent(e.mood || current)}/#m-${esc(e.message)}">${isHere ? 'this message' : 'a message in #' + esc(e.mood)}</a>`
+        : 'a message';
+      const author = e.message_by && e.message_by !== e.by ? ` by <b>${esc(shown(e.message_by))}</b>` : '';
+      const notes = e.url
+        ? `<a href="${esc(e.url)}" target="_blank" rel="noopener"><b>${esc(e.sprint || 'sprint')} notes</b></a>`
+        : `<b>${esc(e.sprint || 'sprint')} notes</b>`;
+      el.innerHTML = `📝 ${who} added ${msgLink}${author} to their ${notes} · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'tiding-comment') {  // said on Tidings, not here: a line, not the words (services/tiding_links._notice)
       el.className = 'event tiding-comment';
       // Its link's title, and the comment's first words, which open it there (Justin, 23 Oct). A line from
