@@ -70,6 +70,11 @@ GLOBAL_KNOBS = {
     'models_off': ({}, "Per vendor, the makers or models not offered (and not settable): {\"openrouter\": [\"anthropic\"]}."),
     'settings_may_set': (['magent'], "The agents that may set other agents' settings in a Mood (and their own), "
                                      "with a ```settings block, when someone signed in with an SSH key asks."),
+    # A message across the top of magenta (Justin, 30 Oct: 'put a message across the top, and select its
+    # background and foreground colour'). Empty text: no banner. Empty colours: the page's own warning ones.
+    'banner': ('', 'A message across the top of magenta. Empty: none.'),
+    'banner_bg': ('', "The banner's background, as #rrggbb. Empty: the page's own warning colour."),
+    'banner_fg': ('', "The banner's text colour, as #rrggbb. Empty: the page's own warning ink."),
 }
 # Links pinned to the top of Tidings by someone signed in with an SSH key: their ids, last pinned first.
 # Set from Tidings itself (tiding_links.pin), not the settings page.
@@ -295,6 +300,16 @@ def clean(key, value):
         value = str(value or '').strip()
         if len(value) > 100:
             raise Invalid(f'{key}: a name, at most 100 characters')
+        return value
+    if key == 'banner':
+        value = str(value or '').strip()
+        if len(value) > 300 or not value.isprintable():
+            raise Invalid('banner: at most 300 characters, on one line')
+        return value
+    if key in ('banner_bg', 'banner_fg'):
+        value = str(value or '').strip().lower()
+        if value and not re.fullmatch(r'#[0-9a-f]{6}', value):
+            raise Invalid(f'{key}: a colour as #rrggbb')
         return value
     if key == 'voice_usd_per_day':
         try:

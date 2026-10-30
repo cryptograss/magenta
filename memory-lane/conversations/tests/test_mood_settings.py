@@ -95,6 +95,75 @@ class ResolveTest(TestCase):
             knobs.change('consider_usd_per_day', 5, mood=self.m26)
 
 
+class BannerTest(TestCase):
+    """The message across the top (Justin, 30 Oct): its text and colours, on the one page and the front."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+
+    def as_(self, entity):
+        return mock.patch('conversations.services.mood_auth.device_for',
+                          return_value=mock.Mock(entity=entity, entity_id=entity.name, tier='key'))
+
+    def post(self, body):
+        return self.client.post('/api/settings/', json.dumps(body), content_type='application/json')
+
+    def test_set_and_read_back(self):
+        knobs.change('banner', 'we are experiencing degraded performance', by=self.justin)
+        knobs.change('banner_bg', '#CD6B33', by=self.justin)
+        knobs.change('banner_fg', '#FFFFFF', by=self.justin)
+        got = knobs.global_values(['banner', 'banner_bg', 'banner_fg'])
+        self.assertEqual(got['banner'], 'we are experiencing degraded performance')
+        self.assertEqual((got['banner_bg'], got['banner_fg']), ('#cd6b33', '#ffffff'))  # colours are lowered
+        self.assertEqual(knobs.set_by(None, None, ['banner'])['banner']['by'], 'justin')
+
+    def test_values_are_checked(self):
+        for key, value in (('banner', 'x' * 301), ('banner', 'two\nlines'),
+                           ('banner_bg', 'red'), ('banner_bg', '#12345'), ('banner_bg', 'fff'),
+                           ('banner_fg', 'white'), ('banner_fg', '#ffff')):
+            with self.subTest(key=key, value=value):
+                with self.assertRaises(knobs.Invalid):
+                    knobs.change(key, value)
+        self.assertEqual(knobs.clean('banner', '   '), '')       # empty: no banner
+        self.assertEqual(knobs.clean('banner_bg', ''), '')       # empty: the page's warning colour
+        self.assertEqual(knobs.clean('banner', '  slow today  '), 'slow today')
+
+    def test_applies_everywhere_at_once(self):
+        magent = ThinkingEntity.objects.create(name='magent', is_biological_human=False)
+        mood = Mood.objects.create(slug='m26')
+        with self.assertRaises(knobs.Invalid):
+            knobs.change('banner', 'hi', mood=mood, by=self.justin)
+        with self.assertRaises(knobs.Invalid):
+            knobs.change('banner_bg', '#cc3333', agent=magent, by=self.justin)
+
+    def test_the_pages_show_it(self):
+        self.assertNotContains(self.client.get('/moods/'), 'the kerfuffle abides')
+        self.assertNotContains(self.client.get('/'), 'the kerfuffle abides')
+        knobs.change('banner', 'degraded performance, but the music goes on', by=self.justin)
+        knobs.change('banner_bg', '#cc3333', by=self.justin)
+        knobs.change('banner_fg', '#ffffff', by=self.justin)
+        page = self.client.get('/moods/')
+        self.assertContains(page, 'degraded performance, but the music goes on')
+        self.assertContains(page, 'style="background:#cc3333;color:#ffffff"')
+        self.assertContains(self.client.get('/'), 'degraded performance, but the music goes on')
+        # Colors alone, the page's text stays; text alone, the page's warning colours stay.
+        knobs.change('banner_bg', '', by=self.justin)
+        knobs.change('banner_fg', '', by=self.justin)
+        only_text = self.client.get('/moods/')
+        self.assertContains(only_text, '<div class="banner">degraded performance, but the music goes on</div>')
+
+    def test_the_settings_state_and_api_carry_it(self):
+        knobs.change('banner', 'slow today', by=self.justin)
+        state = self.client.get('/api/settings/').json()
+        self.assertEqual(state['global']['banner'], 'slow today')
+        self.assertIn('banner_bg', state['global_knobs'])
+        with self.as_(self.justin):
+            self.assertEqual(self.post({'key': 'banner', 'value': ''}).status_code, 201)
+            self.assertEqual(self.post({'key': 'banner_bg', 'value': 'blue'}).status_code, 400)
+        self.assertEqual(knobs.global_value('banner'), '')
+
+
 class SettingsAPITest(TestCase):
 
     @classmethod
