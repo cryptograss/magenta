@@ -1047,8 +1047,14 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
         return
 
     # Newest first, in chunks, until there are enough.
+    # When paging back, internal tool steps or thoughts must not exhaust the budget
+    # and leave the reader with 0 readable turns (Justin, 30 Oct: 400 steps of an
+    # emergent loop returned 0 visible messages). Keep reading until we have enough
+    # conversational turns, or hit a safety ceiling.
     found, last = [], None
-    while len(found) < limit:
+    min_turns = min(15, limit) if limit >= 10 else 1
+    max_items = max(limit, limit * 3)
+    while len(found) < max_items:
         chunk = rows.order_by('-created_at')
         if last is not None:
             chunk = chunk.filter(created_at__lt=last)
@@ -1060,8 +1066,14 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
             got = item(msg)
             if got:
                 found.append(got)
-                if len(found) == limit:
-                    break
+                if len(found) >= limit:
+                    turns_count = sum(1 for k, _, _ in found if k in ('turn', 'compaction', 'event'))
+                    if turns_count >= min_turns or len(found) >= max_items:
+                        break
+        if len(found) >= limit:
+            turns_count = sum(1 for k, _, _ in found if k in ('turn', 'compaction', 'event'))
+            if turns_count >= min_turns or len(found) >= max_items:
+                break
     yield from reversed(found)
 
 
