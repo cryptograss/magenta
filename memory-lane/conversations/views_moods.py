@@ -1677,7 +1677,7 @@ def api_moods_live(request):
         entry['last'] = last.isoformat() if last else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way
             doing = activities(mood)
-            working = [a['agent'] for a in doing if a.get('doing') != 'held']
+            working = [a['agent'] for a in doing if a.get('doing') != 'held' or 'a turn is under way' in str(a.get('why') or '')]
             # An agent waiting for another asked too (poller's _WAIT_REPLY): read aloud as thinking is.
             # 'waiting for re to settle the schema': for 're', to 'settle the schema'.
             waiting = [{'agent': a['agent'], **dict(zip(('for', 'to'), a['why'][len('waiting for '):].split(' to ', 1)))}

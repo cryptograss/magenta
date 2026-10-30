@@ -1644,6 +1644,12 @@ def _activity(mood, now=None, only=None):
             return {'agent': only, 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
                     'since': hold['at']}
 
+    ended = mood.messages.filter(sender_id='system', content__type='turn-result')
+    if only:
+        ended = ended.filter(content__agent=only)
+    ended = ended.order_by('-created_at').first()
+    ended = _when(ended) if ended is not None else None
+
     if newest.source_file in POSTED:
         named = [only] if only else named_in(newest)
         if not named:
@@ -1653,13 +1659,17 @@ def _activity(mood, now=None, only=None):
         # long as the runner keeps it -- an hour, at the hourly cap -- not
         # just the window an unexplained wait is shown for.
         hold = held_in(mood.slug, now).get(named[0])
-        if hold and hold['at'] >= _when(newest):
+        turn_under_way = bool(hold and 'a turn is under way' in str(hold.get('reason') or ''))
+        if hold and hold['at'] >= _when(newest) and not turn_under_way:
             return {'agent': named[0], 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
                     'since': _when(newest)}
         alive = running_in(mood.slug, now).get(named[0])
-        if alive and alive['since'] <= _when(newest):
-            # Posted while its turn was already running: it's at work on that, not waking for this.
-            return {'agent': named[0], 'doing': 'still at work', 'since': alive['since']}
+        if turn_under_way or (alive and alive['since'] <= _when(newest)):
+            # Posted while its turn was already running: it's at work on that, not waking for this,
+            # and never 'held' (Justin, 30 Oct: "held: a turn is under way" stopped pulsing and activity).
+            since = alive['since'] if alive else _when(newest)
+            return {'agent': named[0], 'doing': 'still at work', 'since': since,
+                    **({'why': hold['reason']} if turn_under_way else {})}
         if now - _when(newest) > ACTIVITY_WINDOW:
             return None
         # "@magent /compact" runs the command, not a turn: say what's happening.
@@ -1680,11 +1690,6 @@ def _activity(mood, now=None, only=None):
     # watcher brings the run's own lines from its transcript a moment after the
     # runner's end -- a /compact's command line, a background task's notice --
     # and newest-arrived, they read as the agent at work again.
-    ended = mood.messages.filter(sender_id='system', content__type='turn-result')
-    if only:
-        ended = ended.filter(content__agent=only)
-    ended = ended.order_by('-created_at').first()
-    ended = _when(ended) if ended is not None else None
     if ended is not None and ended >= _when(newest):
         return None
     if newest.sender_id in agents and newest.stop_reason in TURN_ENDS:
