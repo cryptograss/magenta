@@ -3900,13 +3900,42 @@
     prev = null;  // whoever speaks next starts afresh
   }
 
-  // --- up and down a message at a time --------------------------------------
+  // --- up and down a message or round at a time -----------------------------
+  // The targets for jump: rounds of conversation, not individual tool steps or lead-ins
+  // within the same turn or back-and-forth exchange (Justin, 30 Oct).
+  function roundTargets(only = '') {
+    if (only) {
+      const sel = only.split(',').map(c => '#turns .turn' + c.trim()).join(', ');
+      return [...document.querySelectorAll(sel)].filter(t => (!t.closest('.aturn.folded') || t.closest('.abody') === null) && !t.closest('.runhid'));
+    }
+    const turnsEl = document.getElementById('turns');
+    if (!turnsEl) return [];
+    const targets = [];
+    for (const el of turnsEl.children) {
+      if (el.classList.contains('runhid')) continue;
+      if (el.classList.contains('turn')) {
+        targets.push(el);
+      } else if (el.classList.contains('runhead')) {
+        targets.push(el);
+      } else if (el.classList.contains('aturn')) {
+        // If it's part of an open multi-turn run, the runhead marks the whole round.
+        let p = el.previousElementSibling;
+        while (p && p.classList.contains('aturn')) p = p.previousElementSibling;
+        if (!p || !p.classList.contains('runhead')) {
+          targets.push(el);
+        }
+      } else if (el.classList.contains('event') || el.classList.contains('compaction')) {
+        targets.push(el);
+      }
+    }
+    return targets;
+  }
+
   function jump(dir, only = '') {
     const top = main.getBoundingClientRect().top;
-    const sel = only ? only.split(',').map(c => '#turns .turn' + c.trim()).join(', ') : '#turns .turn';
-    const turns = [...document.querySelectorAll(sel)].filter(t => (!t.closest('.aturn.folded') || t.closest('.abody') === null) && !t.closest('.runhid'));
+    const targets = roundTargets(only);
     const at = t => t.getBoundingClientRect().top - top;
-    const target = dir > 0 ? turns.find(t => at(t) > 16) : turns.reverse().find(t => at(t) < -16);
+    const target = dir > 0 ? targets.find(t => at(t) > 16) : targets.reverse().find(t => at(t) < -16);
     if (target) main.scrollTo({ top: main.scrollTop + at(target) - 8, behavior: 'smooth' });
     else if (dir > 0) main.scrollTo({ top: main.scrollHeight, behavior: 'smooth' });
     else {
@@ -5324,7 +5353,11 @@
     try {
       const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/turns/?before=' + firstId
                             + (to ? '&from=' + encodeURIComponent(to) : ''));
-      if (!r.ok) return false;
+      if (!r.ok) {
+        button.textContent = 'could not load (retry)';
+        setTimeout(() => { if (button && !button.disabled) button.textContent = 'Load earlier'; }, 3000);
+        return false;
+      }
       const data = await r.json();
       if (mine !== gen) return false;  // switched away meanwhile
       const items = itemsOf(data);
@@ -5340,6 +5373,11 @@
       main.scrollTop += main.scrollHeight - height;
       if (items.length) firstId = items[0].v.id;
       button.hidden = !data.has_earlier;
+      // If only internal steps/thoughts came back, automatically fetch the next slice
+      // so the reader gets readable conversation without clicking again (Justin, 30 Oct).
+      if ((!data.turns || !data.turns.length) && data.has_earlier && !to) {
+        return loadEarlier();
+      }
       return true;
     } finally { button.disabled = false; button.textContent = 'Load earlier'; }
   }
@@ -5778,7 +5816,31 @@
     toBottom.classList.toggle('on', far);
     toBottom.textContent = newBelow ? `↓ ${newBelow} new` : '↓ newest';
   }
-  main.addEventListener('scroll', renderToBottom, { passive: true });
+  let autoLoadingEarlier = false;
+  async function checkAutoLoadEarlier() {
+    if (autoLoadingEarlier || !current) return;
+    const earlier = document.getElementById('earlier');
+    if (!earlier || earlier.hidden || earlier.disabled) return;
+    const turnsEl = document.getElementById('turns');
+    let threshold = 350;
+    if (turnsEl && turnsEl.children.length >= 3) {
+      // 3 messages from the top: position of the 3rd child
+      const third = turnsEl.children[2];
+      threshold = Math.max(threshold, third.offsetTop + third.offsetHeight);
+    }
+    if (main.scrollTop <= threshold) {
+      autoLoadingEarlier = true;
+      try {
+        await loadEarlier();
+      } finally {
+        autoLoadingEarlier = false;
+      }
+    }
+  }
+  main.addEventListener('scroll', () => {
+    renderToBottom();
+    checkAutoLoadEarlier();
+  }, { passive: true });
   toBottom.addEventListener('click', () => main.scrollTo({ top: main.scrollHeight, behavior: 'smooth' }));
 
   // --- what an agent is doing: read from the record, ticking locally ----------

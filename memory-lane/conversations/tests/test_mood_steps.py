@@ -116,6 +116,19 @@ class StepsTest(TestCase):
         # All of it, uncapped, is still there when only ?from= is asked (the runner's read).
         self.assertEqual(len(self.get(**{'from': target})['turns']), PAGE)
 
+    def test_earlier_page_does_not_starve_turns_when_agent_has_many_steps(self):
+        # Justin, 30 Oct: hundreds of steps of an emergent loop returned 0 readable turns.
+        # timeline() now continues scanning through steps to ensure readable turns arrive.
+        self.add(self.justin, 'the topic before the steps')
+        for i in range(60):
+            self.add(self.magent, {'command': f'step {i}'}, model=ToolUse, tool_name='Bash', tool_id=f't_{i}')
+        self.add(self.justin, 'after the steps')
+        # Request with limit=50 (smaller than the 60 steps)
+        page = self.get(limit=50)
+        turn_texts = [t['text'] for t in page['turns']]
+        self.assertIn('the topic before the steps', turn_texts)
+        self.assertIn('after the steps', turn_texts)
+
     def test_a_poll_after_an_id_is_everything_since(self):
         first = self.add(self.justin, 'one')
         self.add(self.justin, 'two')

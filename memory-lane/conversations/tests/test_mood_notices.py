@@ -252,8 +252,7 @@ class AroundTest(TestCase):
 
     def setUp(self):
         from django.core.cache import cache
-        cache.delete('moods-live')
-        cache.delete('typing:m26')
+        cache.clear()
 
     def test_recent_speakers_per_mood(self):
         from datetime import timedelta
