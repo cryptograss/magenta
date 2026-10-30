@@ -146,8 +146,8 @@
     <div class="multiples" id="u-moods"></div>
     <h3>Most expensive turns, past 24 hours</h3>
     <div class="tabs" role="tablist">
-      <button role="tab" data-tab="anthropic" aria-selected="true">Anthropic</button>
-      <button role="tab" data-tab="openrouter" aria-selected="false">OpenRouter</button>
+      <button role="tab" data-tab="openrouter" aria-selected="true">OpenRouter</button>
+      <button role="tab" data-tab="anthropic" aria-selected="false">Anthropic</button>
       <button role="tab" data-tab="other" aria-selected="false" hidden>other vendors</button>
     </div>
     <div id="u-top"></div>
@@ -216,7 +216,7 @@
   const SLOTS = 7;  // categorical slots before the rest fold into "other"
   const $ = id => document.getElementById(id);
   const tip = $('u-tip');
-  let state = null, tab = 'anthropic';
+  let state = null, tab = 'openrouter';
 
   const usd = v => v >= 100 ? '$' + Math.round(v) : v >= 1 ? '$' + v.toFixed(2) : v > 0 ? '$' + v.toFixed(3) : '$0';
   const tok = n => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M'
@@ -363,12 +363,24 @@
       bars(box, series(mine, by, measure), by, measure);
     }
 
+    function drillDownMood(m) {
+      const pick = document.getElementById('kindsMood');
+      if (!pick) return;
+      if (!Array.from(pick.options).some(o => o.value === m)) pick.add(new Option('#' + m, m));
+      pick.value = m;
+      pick.dispatchEvent(new Event('change'));
+      const target = document.getElementById('kinds') || pick;
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     const moods = state.moods.slice(0, 9);
-    $('u-moods').innerHTML = moods.map(m => `<div><h4><a href="/moods/${encodeURIComponent(m)}/">#${esc(m)}</a> <span></span></h4><div data-mood="${esc(m)}"></div></div>`).join('');
+    $('u-moods').innerHTML = moods.map(m => `<div><h4 style="cursor:pointer" title="Drill down into #${esc(m)} wakes"><a href="/moods/${encodeURIComponent(m)}/" onclick="event.stopPropagation()">#${esc(m)}</a> <span></span></h4><div data-mood="${esc(m)}" style="cursor:pointer" title="Drill down into #${esc(m)} wakes"></div></div>`).join('');
     for (const m of moods) {
       const here = paid.filter(s => s[2] === m), box = $('u-moods').querySelector(`[data-mood="${CSS.escape(m)}"]`);
       box.previousElementSibling.querySelector('span').textContent = fmt(measure, sum(here, measure));
+      box.previousElementSibling.addEventListener('click', () => drillDownMood(m));
       bars(box, series(here, 'agent', measure), 'agent', measure, 120);
+      box.addEventListener('click', () => drillDownMood(m));
     }
     drawTop();
   }
