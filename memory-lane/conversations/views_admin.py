@@ -34,7 +34,7 @@ from .models import Device, LoginCode, Setting, ThinkingEntity
 from .services import mood_auth
 from .services import settings as knobs
 
-ACTIONS = ('kick', 'kick-device', 'ban', 'unban', 'az5', 'lift')
+ACTIONS = ('kick', 'kick-device', 'ban', 'unban', 'az5', 'lift', 'mention-only', 'banner')
 TARGETED = ('kick', 'kick-device', 'ban', 'unban')
 # A device by the start of its id, as the devices dialog shows it (8 hex digits).
 DEVICE_PREFIX = re.compile(r'^[0-9a-f]{4,32}$')
@@ -71,13 +71,30 @@ def api_admin(request):
         return JsonResponse({'error': 'expected challenge, signature, action (and target)'}, status=400)
     if action not in ACTIONS:
         return JsonResponse({'error': f"action: one of {', '.join(ACTIONS)}"}, status=400)
-    if (action in TARGETED) != bool(target) or (target and not re.fullmatch(r'[a-z0-9._-]{1,60}', target)):
-        return JsonResponse({'error': f'{action} takes {"a name" if action in TARGETED else "no name"}'}, status=400)
+    if action in TARGETED and not target:
+        return JsonResponse({'error': f'{action} needs a name'}, status=400)
+    if action not in TARGETED and action != 'mention-only' and target:
+        return JsonResponse({'error': f'{action} takes no name'}, status=400)
+    if target and not re.fullmatch(r'[a-z0-9._-]{1,60}', target):
+        return JsonResponse({'error': 'invalid target'}, status=400)
     if (action == 'kick-device') != bool(device) or (device and not DEVICE_PREFIX.match(device)):
         return JsonResponse({'error': 'kick-device takes a device: the start of its id, as the devices dialog shows it'
                              if action == 'kick-device' else f'{action} takes no device'}, status=400)
     if not mood_auth.challenge_is_fresh(challenge):
         return JsonResponse({'error': 'challenge expired; fetch a new one'}, status=400)
+
+    if action == 'banner':
+        message = str(body.get('message') or '')
+        bg = str(body.get('bg') or '')
+        fg = str(body.get('fg') or '')
+        purpose = f'admin banner {message} {bg} {fg}'.strip()
+        msg_str = mood_auth.signed_message(challenge, mood_auth.origin_of(request), purpose)
+        admin = mood_auth.signer_of(msg_str, signature)
+        if admin not in admins:
+            return JsonResponse({'error': 'not an admin signature'}, status=403)
+        from .services import banner
+        banner_data = banner.set_banner(message, bg, fg, by=admin)
+        return JsonResponse({'action': 'banner', 'banner': banner_data, 'by': admin})
 
     message = mood_auth.signed_message(challenge, mood_auth.origin_of(request), admin_purpose(action, target, device))
     admin = mood_auth.signer_of(message, signature)
@@ -120,6 +137,17 @@ def api_admin(request):
         Setting.objects.create(key='scram', value=True, set_by=admin_entity, note=f'AZ5 by {admin}')
     elif action == 'lift':
         Setting.objects.create(key='scram', value=False, set_by=admin_entity, note=f'lifted by {admin}')
+    elif action == 'mention-only':
+        from .services import access
+        emergents = list(ThinkingEntity.objects.filter(is_biological_human=False))
+        mode = 'on' if target in ('on', 'lift', 'unmention-only') else 'mentions'
+        val = {'mode': mode, 'until': None}
+        rows = []
+        for a in emergents:
+            rows.extend(knobs.change_every_mood('listening', val, a, by=admin_entity, note=f'mention-only by {admin}'))
+        access.announce('mention-only' if mode == 'mentions' else 'mention-only-lifted', admin)
+        result['mode'] = mode
+        result['emergents'] = [a.name for a in emergents]
     # Said in #general, so the room knows an admin acted (services/access.py).
     from .services import access
     if action == 'kick-device':

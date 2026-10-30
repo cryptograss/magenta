@@ -121,6 +121,7 @@ Every change is kept at the bottom, with who made it.</p>
   <div class="cards" id="models">Loading…</div>
   <h3>Emergent defaults</h3>
   <p class="note">Each emergent in every Mood and thread, new ones included, unless that Mood sets its own.</p>
+  <div class="setline" style="margin-bottom: 12px;"><button type="button" id="allMentionOnlyWide" ${viewer ? '' : 'disabled'}>🤫 Turn all emergents to mention-only in every Mood</button> <span class="status" id="allMentionOnlyStatus"></span></div>
   <div class="defaults-wrap"><table class="defaults" id="defaults"></table></div>
   <h3>For all emergents together</h3>
   <div class="cards" id="global"></div>
@@ -494,7 +495,24 @@ Every change is kept at the bottom, with who made it.</p>
     if (e.target.dataset && e.target.dataset.offer !== undefined) { saveOffered(e.target); return; }
     if (e.target.dataset && e.target.dataset.key) save(e.target);
   });
-  document.addEventListener('click', e => { if (e.target.id === 'setWide') setWide(); });
+  document.addEventListener('click', async e => {
+    if (e.target.id === 'setWide') setWide();
+    if (e.target.id === 'allMentionOnlyWide') {
+      const status = document.getElementById('allMentionOnlyStatus');
+      if (status) { status.className = 'status'; status.textContent = 'setting…'; }
+      const r = await fetch('/api/settings/', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ key: 'listening', value: 'mentions', all_emergents: true, note: 'mention-only in every Mood' }),
+      });
+      if (!r.ok) {
+        const err = ((await r.json().catch(() => ({}))).error || r.status);
+        if (status) { status.className = 'status err'; status.textContent = err; }
+        return;
+      }
+      if (status) { status.className = 'status saved'; status.textContent = 'all emergents set to mention-only in every Mood'; }
+      setTimeout(load, 800);
+    }
+  });
   document.addEventListener('toggle', e => { if (e.target.id === 'offered') offeredOpen = e.target.open; }, true);
   load();
 })();

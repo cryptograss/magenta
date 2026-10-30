@@ -78,13 +78,22 @@ def moods_page(request, slug=None, section=''):
 
 
 def banner_context():
-    """The message across the top (settings: banner), as the template writes it: its text, and an inline
-    style for the colours it was given; empty colours fall back to the page's own warning ones."""
-    from .services import settings as knobs
-    at = knobs.global_values(['banner', 'banner_bg', 'banner_fg'])
-    style = ';'.join(p for p in (f"background:{at['banner_bg']}" if at['banner_bg'] else '',
-                                 f"color:{at['banner_fg']}" if at['banner_fg'] else '') if p)
-    return {'text': at['banner'], 'style': style}
+    """The message across the top: reads from disk first (never the DB, so it works when the DB is down),
+    then falls back to settings knobs; empty colours fall back to warning colours."""
+    from .services import banner
+    disk_b = banner.get_banner()
+    if disk_b:
+        style = ';'.join(p for p in (f"background:{disk_b['bg']}" if disk_b.get('bg') else '',
+                                     f"color:{disk_b['fg']}" if disk_b.get('fg') else '') if p)
+        return {'text': disk_b.get('message', ''), 'style': style}
+    try:
+        from .services import settings as knobs
+        at = knobs.global_values(['banner', 'banner_bg', 'banner_fg'])
+        style = ';'.join(p for p in (f"background:{at['banner_bg']}" if at['banner_bg'] else '',
+                                     f"color:{at['banner_fg']}" if at['banner_fg'] else '') if p)
+        return {'text': at['banner'], 'style': style}
+    except Exception:
+        return {'text': '', 'style': ''}
 
 
 def interface_words():
@@ -1652,14 +1661,15 @@ def api_moods_live(request):
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list
-    from .services import listening, watchers
+    from .services import banner, listening, watchers
     for slug in list(live):  # who's listening by voice there, 🎧 beside their names (Justin, 22 Oct)
         heard_by = listening.in_mood(slug)
         if heard_by:
             live[slug]['listening'] = heard_by
     for slug, n in watchers.by_mood().items():  # who's reading without signing in: a count beside the Mood
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['watching'] = n
-    body = {'moods': live, 'blocks': AROUND_BLOCKS}
+    b_data = banner.get_banner()
+    body = {'moods': live, 'blocks': AROUND_BLOCKS, 'banner': b_data}
     cache.set('moods-live', body, 3)
     return JsonResponse(body)
 

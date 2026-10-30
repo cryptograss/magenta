@@ -313,6 +313,16 @@ def api_settings(request):
         if agent is None:
             return JsonResponse({'error': f"no agent {body['agent']}"}, status=400)
     try:
+        if body.get('all_emergents'):  # all emergents' setting in every Mood at once (e.g. mention-only)
+            if mood is not None or key not in knobs.KNOBS:
+                return JsonResponse({'error': 'all_emergents: key must be a per-agent knob, no Mood'}, status=400)
+            emergents = ThinkingEntity.objects.filter(is_biological_human=False)
+            val = body.get('value')
+            note = body.get('note', 'all emergents')
+            rows = []
+            for a in emergents:
+                rows.extend(knobs.change_every_mood(key, val, a, by=device.entity, note=note))
+            return JsonResponse({'set': [knobs.describe(r) for r in rows]}, status=201)
         if body.get('every_mood'):  # one agent's setting, in every Mood at once (the settings page's Set)
             if agent is None or mood is not None or key not in knobs.KNOBS:
                 return JsonResponse({'error': 'every_mood: one agent, one per-agent setting, no Mood'}, status=400)
