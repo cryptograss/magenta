@@ -1418,7 +1418,7 @@
 {% include "conversations/poll_card.html" %}
 </head>
 <body{% if initial_section and initial_section != "moods" %} class="in-section"{% endif %}>
-{% if banner.text %}<div class="banner"{% if banner.style %} style="{{ banner.style }}"{% endif %}>{{ banner.text }}</div>{% endif %}
+{% if banner.text %}<div id="magenta-banner" class="banner" role="alert"{% if banner.style %} style="{{ banner.style }}"{% endif %}>{{ banner.text }}</div>{% endif %}
 {% include "conversations/install_prompt.html" with nudge_only_asked=True %}
 <header>
   <button id="menu" type="button" aria-label="Moods" aria-expanded="false">☰</button>
@@ -6183,8 +6183,9 @@
   }
 
   function renderBanner(b) {
-    let bEl = document.querySelector('.banner, #magenta-banner');
+    let bEls = document.querySelectorAll('#magenta-banner, .banner');
     if (b && b.message) {
+      let bEl = bEls[0];
       if (!bEl) {
         bEl = document.createElement('div');
         bEl.className = 'banner';
@@ -6194,8 +6195,9 @@
       }
       bEl.style.cssText = (b.bg || b.fg) ? `background: ${b.bg || '#b71c1c'}; color: ${b.fg || '#ffffff'}; width: 100%; box-sizing: border-box; padding: 6px 14px; font-weight: 600; font-size: 13px; line-height: 1.35; text-align: center; position: relative; z-index: 999999; flex: none; border-bottom: 1px solid rgba(0,0,0,0.15); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;` : '';
       bEl.textContent = b.message;
-    } else if (bEl) {
-      bEl.remove();
+      for (let i = 1; i < bEls.length; i++) bEls[i].remove();
+    } else {
+      bEls.forEach(el => el.remove());
     }
   }
 

@@ -74,7 +74,7 @@
 </style>
 </head>
 <body>
-{% if banner.text %}<div class="banner"{% if banner.style %} style="{{ banner.style }}"{% endif %}>{{ banner.text }}</div>{% endif %}
+{% if banner.text %}<div id="magenta-banner" class="banner" role="alert"{% if banner.style %} style="{{ banner.style }}"{% endif %}>{{ banner.text }}</div>{% endif %}
 {% include "conversations/install_prompt.html" %}
 <main>
   <section class="hero">
