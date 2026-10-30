@@ -268,6 +268,8 @@ class TidingTalkTests(TidingLinksTest):
         # Signed in: the box, and [[ suggesting PickiPedia's titles.
         html = self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
         self.assertIn('>add comment</button>', html)
+        self.assertIn('saving…', html)
+        self.assertIn('.comment:target', html)
         self.assertIn('id="wikiSuggest"', html)
         self.assertIn('list=prefixsearch', html)
         gone = self.client.get(f'/moods/tidings/{uuid.uuid4()}/?embed=1')
