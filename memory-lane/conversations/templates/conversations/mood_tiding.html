@@ -56,6 +56,7 @@
   .thelink .post .replyto { font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
   .thelink .post .replyto:hover { color: var(--accent); }
   .comment { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .comment:target { background: var(--accent-soft); border-radius: 6px; padding: 7px 6px; }
   .comment .rank { padding-top: 1px; }
   .comment .said { flex: 1; min-width: 0; }
   .comment .who { font-size: 12.5px; color: var(--muted); }
@@ -190,14 +191,21 @@
     words.after(box);
     area.focus();
     box.querySelector('.cancel').onclick = () => { box.remove(); words.hidden = false; };
-    box.querySelector('.save').onclick = async () => {
+    const saveBtn = box.querySelector('.save');
+    saveBtn.onclick = async () => {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'saving…';
       try {
         const r = await fetch(saidUrl(b), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
                                             body: JSON.stringify({ text: area.value }) });
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || r.status);
         location.reload();
-      } catch (err) { box.querySelector('.err').textContent = err.message; }
+      } catch (err) {
+        box.querySelector('.err').textContent = err.message;
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'save';
+      }
     };
   });
   document.addEventListener('click', async e => {
@@ -216,6 +224,8 @@
     err.textContent = '';
     const text = form.text.value.trim();
     if (!text) { err.textContent = 'nothing to say'; return; }
+    const prevText = button.textContent;
+    button.textContent = 'saving…';
     button.disabled = true;
     try {
       const r = await fetch(form.action, {
@@ -224,9 +234,18 @@
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || r.status);
+      button.textContent = 'saved ✓';
+      form.text.value = '';
+      form.reset();
+      if (d.comment && d.comment.id) {
+        location.hash = 'c-' + d.comment.id;
+      }
       location.reload();
-    } catch (e2) { err.textContent = e2.message; }
-    button.disabled = false;
+    } catch (e2) {
+      err.textContent = e2.message;
+      button.textContent = prevText;
+      button.disabled = false;
+    }
   }
 </script>
 {% include "conversations/mood_tiding_tools.html" %}
