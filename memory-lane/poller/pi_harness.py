@@ -40,6 +40,31 @@ logger = logging.getLogger(__name__)
 STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use', 'error': 'error',
                 'aborted': 'aborted'}
 LOOK_ONLY_TOOLS = 'read,grep,find,ls'
+# A tool loop tripwire: a machine attractor repeats the exact same call, and by the third time
+# (even with text between the repeats — the 28 Oct specimen had escape text every 3–4s) the run
+# is a runaway, not a retry. Only a *different* call breaks the streak; then the turn is killed.
+TOOL_LOOP_KILL = 3
+
+
+class LoopGuard:
+    """The tripwire both wakers share: watch a turn's tool calls, and by the
+    third identical one (same tool, same arguments), say the turn is a runaway.
+    Text between the repeats does not break the streak — the 28 Oct specimen
+    had escape text every few seconds — only a *different* call does."""
+
+    def __init__(self):
+        self.streak, self.last = 0, None
+
+    def see(self, name, args):
+        """Note one tool call; a nonempty string once the streak has tripped."""
+        key = (name, json.dumps(args or {}, sort_keys=True))
+        self.streak = self.streak + 1 if key == self.last else 1
+        self.last = key
+        if self.streak < TOOL_LOOP_KILL:
+            return ''
+        return f'tool loop: {name} called {self.streak}× with identical arguments'
+
+
 COMPACT = re.compile(r'/compact\s+(.+)\Z', re.S)  # what the runner sends for "/compact re <what to keep>"
 EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # The names the model menu has always offered, as Pi should read them. Left
@@ -387,6 +412,14 @@ class PiWaker:
         except OSError:
             return None
 
+    def session_bytes(self, session_id):
+        """The session file's size on disk (0 if unknown): the poller's size cap reads it."""
+        path = self.find(session_id)
+        try:
+            return path.stat().st_size if path else 0
+        except OSError:
+            return 0
+
     def cwd_for(self, session_id):
         path = self.find(session_id)
         if path is None:
@@ -522,6 +555,7 @@ class PiWaker:
         proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, start_new_session=True)
         done = self._watch(proc, stop)
+        guard, killed = LoopGuard(), None  # the tool-loop tripwire (TOOL_LOOP_KILL)
         try:
             for line in proc.stdout:  # Pi frames on LF only; one JSON object per line
                 done.heard = time.monotonic()
@@ -530,11 +564,21 @@ class PiWaker:
                 except ValueError:
                     continue
                 for event in translator.feed(raw):
+                    if event.get('type') == 'tool_call' and not killed:
+                        killed = guard.see(event.get('name'), event.get('input'))
+                        if killed:
+                            logger.warning(f'ending pi turn for {new_session_id}: {killed}')
+                            try:
+                                os.killpg(proc.pid, signal.SIGTERM)
+                            except ProcessLookupError:
+                                pass
                     if on_event:
                         try:
                             on_event(event)
                         except Exception as e:  # never let reporting stop the turn
                             logger.warning(f'on_event failed: {e}')
+                if killed:
+                    break
             proc.wait()
         finally:
             done.set()
@@ -542,6 +586,9 @@ class PiWaker:
             # The runner closes the turn in the Mood when a wake raises.
             err = (proc.stderr.read() or '').strip()[:500]
             self.last_result = {'subtype': 'error', 'run_cost_usd': translator.cost}
+            if killed:
+                self.last_result['error'] = killed
+                raise RuntimeError(f'pi exited {proc.returncode} without settling: {killed}: {err}')
             raise RuntimeError(f'pi exited {proc.returncode} without settling: {err}')
         self.last_result = {'subtype': 'error' if translator.error else 'success', 'run_cost_usd': translator.cost,
                             'stop_reason': translator.last_stop}

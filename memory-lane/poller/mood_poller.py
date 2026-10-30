@@ -606,6 +606,14 @@ class ClaudeCodeWaker:
         except OSError:
             return None
 
+    def session_bytes(self, session_id):
+        """The transcript's size on disk (0 if unknown): the poller's size cap reads it."""
+        path = self.find(session_id)
+        try:
+            return path.stat().st_size if path else 0
+        except OSError:
+            return 0
+
     def command(self, session_id, new_session_id, prompt, grant=(), budget=None, effort=None, model=None,
                 full=False, ultracode=False, system=None):
         # No session to resume (a new Mood's first turn): start one.
@@ -654,6 +662,10 @@ class ClaudeCodeWaker:
         stream event as it comes out; `stop()`, if given, is asked now and
         then whether to end the turn. self.last_result keeps the run's
         result event: its cost, its duration, how it ended."""
+        try:  # lazy, matching how this module loads the Pi harness elsewhere
+            from poller.pi_harness import LoopGuard
+        except ImportError:  # running outside the repo's layout (tests import it directly)
+            from pi_harness import LoopGuard
         if session_id is None:  # a new session, where new ones start
             cwd = str(Path(self.new_cwd).expanduser())
             spent_before = 0.0
@@ -678,6 +690,7 @@ class ClaudeCodeWaker:
         watchdog.start()
         result = None
         said = ''  # the last text the agent itself wrote (not a helper's)
+        guard, killed = LoopGuard(), None  # the tool-loop tripwire (TOOL_LOOP_KILL in pi_harness)
         try:
             for raw in proc.stdout:
                 heard[0] = time.monotonic()
@@ -687,16 +700,29 @@ class ClaudeCodeWaker:
                     continue
                 if not isinstance(event, dict):
                     continue
+                if event.get('type') == 'assistant' and not event.get('parent_tool_use_id'):
+                    blocks = (event.get('message') or {}).get('content') or []
+                    # Same tripwire as pi_harness's LoopGuard: a machine attractor repeats the exact
+                    # same call, and text between the repeats does not break the streak (28 Oct
+                    # specimen); only a different call does. By the third identical one, end the turn.
+                    if not killed:
+                        for block in blocks:
+                            if isinstance(block, dict) and block.get('type') == 'tool_use':
+                                killed = guard.see(block.get('name'), block.get('input'))
+                                if killed:
+                                    logger.warning(f'ending turn for {new_session_id}: {killed}')
+                                    end_process_group(proc)
+                    if not killed:
+                        texts = [b.get('text', '') for b in blocks if isinstance(b, dict) and b.get('type') == 'text']
+                        if any(t.strip() for t in texts):
+                            said = '\n'.join(t for t in texts if t.strip())
+                if killed:
+                    break
                 if event.get('type') == 'result':
                     # What this run cost, not the session's history: posted
                     # with the result, so the record keeps the turn's own cost.
                     event['run_cost_usd'] = max(0.0, float(event.get('total_cost_usd') or 0.0) - spent_before)
                     result = event
-                elif event.get('type') == 'assistant' and not event.get('parent_tool_use_id'):
-                    blocks = (event.get('message') or {}).get('content') or []
-                    texts = [b.get('text', '') for b in blocks if isinstance(b, dict) and b.get('type') == 'text']
-                    if any(t.strip() for t in texts):
-                        said = '\n'.join(t for t in texts if t.strip())
                 if on_event:
                     try:
                         on_event(event)
@@ -708,7 +734,11 @@ class ClaudeCodeWaker:
         drain.join(5)
         self.last_result = dict(result or {})
         if result is None:
-            raise RuntimeError(f'claude exited {proc.returncode} without a result: {"".join(stderr).strip()[:500]}')
+            detail = f'claude exited {proc.returncode} without a result: {"".join(stderr).strip()[:500]}'
+            if killed:
+                self.last_result = {'subtype': 'error', 'error': killed}
+                raise RuntimeError(f'{killed}: {detail}')
+            raise RuntimeError(detail)
         # A run that ends in an error -- over its budget, say -- may still have
         # said something; its result then carries no text, but the stream does.
         return new_session_id, (result.get('result') or said or '').strip()
@@ -805,6 +835,16 @@ class Harnesses:
     def last_touched(self, session_id):
         return self.mine(session_id, 'last_touched', None)
 
+    def session_bytes(self, session_id):
+        return self.mine(session_id, 'session_bytes', 0)
+
+    def compact(self, session_id, keep, **options):
+        """Compact a session on the harness that keeps it, or None where that harness can't: Pi (RPC mode)
+        compacts on request -- what an auto-compact after a tool-loop kill calls -- while Claude Code
+        compacts itself."""
+        waker = self.wakers.get(self.owner(session_id))
+        return waker.compact(session_id, keep, **options) if hasattr(waker, 'compact') else None
+
     def catalog(self):
         """Pi's list of what it can run, with Anthropic's models usable when Claude Code is here."""
         pi = self.wakers.get('pi')
@@ -864,6 +904,21 @@ def harness_back_opening(slug, was, now, since=None):
             f'session here on it. Since that session\'s last turn you have also answered here through '
             f"{HARNESS_NAMES.get(was, was)}, in sessions this one hasn't seen. Before you answer, read what you "
             f'said there: read_mood "{slug}"{since_text}.', '</harness-switch>', '']
+
+
+def oversized_session_opening(slug, session_id, size, cap, instructions=True):
+    """What a session started over is told, when the agent's last session here grew past the size a session
+    is kept to: it has been here, the record kept everything, and this one starts clean (30 Oct: a very long
+    session makes repeating its own last words likelier, and repeating them is how turns go haywire)."""
+    return [f'<session-rotated mood="{slug}">',
+            f'Your last session here ({session_id[:8]}) grew past the size a session is kept to '
+            f'({size // 1048576}MB of transcript on disk; the cap is {max(1, cap // 1048576)}MB): a very long '
+            'session makes repeating your own last words likelier, and that is how turns go haywire. So this '
+            'session has just started, with none of that history in it. The record kept everything: what you '
+            'said here, what was asked, what was settled. ' + reorient(instructions) + ' Before you answer, '
+            f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest '
+            'summary, and get_message_context for anything it points to) until you know what is settled and '
+            'what is open. Then answer what was asked.', '</session-rotated>', '']
 
 
 def harness_new_opening(slug, was, now, instructions=True):
@@ -1007,17 +1062,30 @@ FULL_TOOLS_OFFER = ('What the standing orders won\'t let you do alone: '
                     'Each posts a visible line here, and an icon sits by the Mood\'s name until a person does it.')
 
 
-def wake_footer(full=False, texts=None):
-    """What this turn may do, and the wake's close: the end of every wake prompt."""
+# Told on the wakes after a turn the tool-loop guard ended: what happened, and the way out (re and magent,
+# 30 Oct: told before it loops, not after). The {why} is the guard's own words, e.g. 'tool loop: read called
+# 3× with identical arguments'.
+AFTER_LOOP = ('Your last turn in this Mood ended in a tool loop: the same call with the same arguments, over and '
+              'over ({why}). Before you work, break the pattern: vary the arguments, take a different path, or '
+              'stop and say where you are.')
+
+
+def wake_footer(full=False, texts=None, loop=None):
+    """What this turn may do, and the wake's close: the end of every wake prompt. `loop`: why the last turn
+    here was killed by the tool-loop guard, told while it's fresh, so the next one doesn't walk back in."""
     if full:
         tools = wake_line(texts, 'full-tools', FULL_TOOLS) + ' ' + wake_line(
             texts, 'full-tools-offer', FULL_TOOLS_OFFER)
     else:
         tools = wake_line(texts, 'look-only', LOOK_ONLY) + ' ' + wake_line(texts, 'tools-offer', TOOLS_OFFER)
+    lines = ['', tools]
+    if loop:
+        lines += ['', wake_line(texts, 'after-loop', AFTER_LOOP, why=loop)]
     # What holds in every Mood (etiquette, silence, greeting, handoffs, settings, to-do lists) is in its
     # instructions, Cryptograss:Moods/Instructions (poller/instructions.py); the wake says only what this
     # turn is (Justin, magent-self, 2026-10-24: "let's move that stuff out of the python and into the wiki").
-    return ['', tools, '</mood-wake>']
+    lines += ['</mood-wake>']
+    return lines
 
 
 # What each kind of wake says around its content. One place, so the Mood's
@@ -1719,6 +1787,7 @@ class MoodPoller:
         self.state.setdefault('wait_also', {})  # slug -> agents an answer waited for handed it on to
         self.state.setdefault('handed', {})   # slug -> handoff event ids shown to the agent there (handed_events)
         self.state.setdefault('degraded', {})  # slug -> the degraded lines last said there (say_degraded)
+        self.state.setdefault('loop', {})      # slug -> the last turn there the tool-loop guard ended
         self.replies = {}      # flight -> what its turn replied, for after it lands
         self.wait_notes = {}   # slug -> what the next wake there says of the wait that ended
         self.end_orphans = end_orphans
@@ -2600,6 +2669,9 @@ class MoodPoller:
                                                  **options)
         except Exception as e:
             logger.error(f'{slug}: wake failed, not retrying: {e}')
+            if 'tool loop' in str(e):  # the guard's kill: purge what it left, and tell the next wake
+                self.compact_after_loop(slug, new_session, str(e))
+                self.note_loop(slug, str(e))
             if bundled is not None:
                 self.record_bundle(bundled, new_session, heard.get('at'), options.get('harness'))
             if poster:  # close the turn in the Mood, or it shows as working until it times out
@@ -2643,6 +2715,8 @@ class MoodPoller:
                        # Nothing spent, its harness saying it failed: a provider's hiccup, worth a second try.
                        # Not a turn over its budget or its turns (error_max_*), which would only fail again.
                        'retry': cost < self.NOTHING_USD and not ending.startswith('error_max')}
+        elif self.state.get('loop', {}).pop(slug, None) is not None:
+            self.save()  # a turn that ended well: the loop warning has done its work
         return 'woken', reply, cost, failure
 
     def prompt(self, slug, owed, full=False, again=()):
@@ -2725,7 +2799,7 @@ class MoodPoller:
             extras = self.extras_lines(slug, length=False)
         else:
             extras = self.extras_lines(slug)
-        return '\n'.join(lines + extras + wake_footer(full, self.texts))
+        return '\n'.join(lines + extras + self.footer(slug, full))
 
     def handed_lines(self, slug, page, again=()):
         """What's been handed to the agent in this Mood and not shown it yet, as prompt lines; marked shown in the
@@ -2946,7 +3020,7 @@ class MoodPoller:
                 lines, cost = self.catch_up(slug, recent, posts)
                 self.spend(cost)
                 prompt = '\n'.join(crosstalk_opening(slug, began) + lines + ['', crosstalk_ask(self.texts)]
-                                   + self.extras_lines(slug) + wake_footer(texts=self.texts))
+                                   + self.extras_lines(slug) + self.footer(slug))
                 outcome = self.consider_wake(slug, prompt, crosstalk=True)
             except Exception as e:  # one Mood's trouble is not every Mood's
                 logger.error(f'{slug}: looking at crosstalk failed: {e}')
@@ -2982,15 +3056,83 @@ class MoodPoller:
         return done
 
     OURS_FOR = timedelta(seconds=60)
+    # A session file this big is an attractor as much as a transcript: every repeated phrase in it makes
+    # repeating that phrase likelier still (re's 750k-token heap, 30 Oct). Past it, start fresh.
+    SESSION_BYTES_CAP = 4 * 1024 * 1024
+    # How long the wakes after a tool-loop kill are told of it (AFTER_LOOP), and what the compaction
+    # after one keeps: the work, not the attractor's own words.
+    LOOP_FOR = timedelta(hours=6)
+    LOOP_KEEP = ('the task being worked on and anything learned from it; not the repeated tool calls that '
+                 'ended the last turn, nor the text around them')
+
+    def note_loop(self, slug, why):
+        """A turn the tool-loop guard ended here: remembered, so the next wakes there are told what happened
+        and warned to break the pattern, instead of walking straight back into it."""
+        at = why.find('tool loop')  # the guard's own words, not its harness's preamble
+        self.state.setdefault('loop', {})[slug] = {
+            'at': self.now().isoformat(), 'why': (why[at:] if at >= 0 else why)[:300]}
+        self.save()
+
+    def loop_note(self, slug):
+        """Why the last turn here was killed for looping, while it's fresh (LOOP_FOR); None otherwise."""
+        noted = self.state.get('loop', {}).get(slug)
+        if noted and self.now() - parse_time(noted['at']) < self.LOOP_FOR:
+            return noted['why']
+        return None
+
+    def footer(self, slug, full=False):
+        """The wake's close (wake_footer), with the last tool-loop kill here told while it's fresh."""
+        return wake_footer(full, self.texts, loop=self.loop_note(slug))
+
+    def compact_after_loop(self, slug, session_id, why):
+        """A turn the tool-loop guard killed leaves its repeats in the session it ran in, and the next wake
+        resumes that session: compact it first, or the attractor's own words re-seed it (magent, 30 Oct).
+        Only a harness that compacts on request does; the fork it leaves is claimed as this Mood's, so
+        the next wake resumes the compacted one, not the loop's."""
+        if self.dry_run or session_id is None:
+            return None
+        compact = getattr(self.waker, 'compact', None)
+        if compact is None:
+            return None
+        poster = None
+        try:
+            compact_id, _ = compact(session_id, self.LOOP_KEEP)
+            if compact_id and self.streamer:
+                takes = getattr(getattr(self.streamer, '__code__', None), 'co_varnames', ())
+                poster = self.streamer(slug, compact_id,
+                                       **({'forked_from': session_id} if 'forked_from' in takes else {}))
+                if hasattr(poster, 'claim'):
+                    poster.claim()
+            if compact_id:
+                logger.info(f'{slug}: compacted {session_id[:8]} after a tool-loop kill: '
+                            f'the next wake resumes {compact_id[:8]}')
+            return compact_id
+        except Exception as e:  # noqa: BLE001 -- a failed compaction is no reason to fail the turn again
+            logger.warning(f'{slug}: could not compact after a tool-loop kill: {e}')
+            return None
+        finally:
+            if poster:
+                poster.close()
+
 
     def session_for(self, slug, sessions):
         """(session, opening): which of the agent's sessions in `slug` (newest first) a turn there
         resumes, and what it's told first. The newest, unless the Mood's model runs on the other of two
-        harnesses (Harnesses): then that harness's newest, told it has been away; with none, a new
+        harnesses (Harnesses): then that harness's newest, told it has been away; past the size cap
+        (the Mood's session_cap_mb, else SESSION_BYTES_CAP), a new session, told why; with none, a new
         session (None), told where to catch up. Only asked once the newest is this machine's."""
+        if not sessions:
+            return None, []
+        newest = sessions[0]
+        size = getattr(self.waker, 'session_bytes', lambda s: 0)(newest)
+        cap = int(self.knob(slug, 'session_cap_mb', 0) or 0) * 1024 * 1024 or self.SESSION_BYTES_CAP
+        if size > cap:
+            logger.info(f'{slug}: session {newest[:8]} is {size / 1048576:.1f}MB, past the '
+                        f'{cap / 1048576:.0f}MB cap: starting a fresh session')
+            return None, oversized_session_opening(slug, newest, size, cap, self.instructions)
         harness_for = getattr(self.waker, 'harness_for', None)
-        if not sessions or harness_for is None:
-            return (sessions[0] if sessions else None), []
+        if harness_for is None:
+            return newest, []
         harness, was = harness_for(self.knob(slug, 'model')), self.waker.owner(sessions[0])
         if was in (None, harness):
             return sessions[0], []
@@ -3141,7 +3283,7 @@ class MoodPoller:
         handed = self.handed_lines(slug, lambda: recent)
         prompt_lines = (consider_opening(slug) + [*lines] + (['', wake_line(self.texts, 'handed', HANDED_NOTE), *handed] if handed else [])
                         + ['', consider_ask(discretion, self.texts)])
-        return self.consider_wake(slug, '\n'.join(prompt_lines + self.extras_lines(slug) + wake_footer(texts=self.texts)))
+        return self.consider_wake(slug, '\n'.join(prompt_lines + self.extras_lines(slug) + self.footer(slug)))
 
     def consider_quiet(self, slug, quiet_for, after=None, first=True):
         cost = self.look_usd(slug)
@@ -3165,7 +3307,7 @@ class MoodPoller:
                 logger.info(f'{slug}: quiet screened: {reason}')
                 return 'screened'
         lines = quiet_opening(slug, minutes) + [*transcript_of(recent['turns']), '', QUIET_ASK]
-        return self.consider_wake(slug, '\n'.join(lines + self.extras_lines(slug) + wake_footer(texts=self.texts)), after=after)
+        return self.consider_wake(slug, '\n'.join(lines + self.extras_lines(slug) + self.footer(slug)), after=after)
 
     # --- arrivals: someone has just signed in -----------------------------------
     def greet_arrivals(self, pulse):
@@ -3214,7 +3356,7 @@ class MoodPoller:
         recent = self.api.recent(slug, limit=8)
         lines = arrival_opening(slug, a, self.now()) + transcript_of(recent.get('turns', []))
         logger.info(f'{slug}: {who} signed in; looking whether to greet them')
-        return self.consider_wake(slug, '\n'.join(lines + ['', ARRIVAL_ASK] + self.extras_lines(slug) + wake_footer(texts=self.texts)))
+        return self.consider_wake(slug, '\n'.join(lines + ['', ARRIVAL_ASK] + self.extras_lines(slug) + self.footer(slug)))
 
     def consider_wake(self, slug, prompt, after=None, crosstalk=False):
         """Wake the agent itself to consider; 'spoke', 'silent', 'failed' or 'elsewhere'. `crosstalk`: a look at

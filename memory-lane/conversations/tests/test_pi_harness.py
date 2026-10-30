@@ -9,9 +9,10 @@ import uuid
 from pathlib import Path
 
 from django.test import TestCase, override_settings
+from unittest import TestCase as PlainCase  # for tests that need no database
 
 from conversations.models import Message, Mood, ThinkingEntity, ToolResult, ToolUse
-from poller.pi_harness import EventsPoster, PiTranslator, PiWaker
+from poller.pi_harness import EventsPoster, LoopGuard, PiTranslator, PiWaker
 
 FIXTURE = Path(__file__).with_name('fixtures') / 'pi-1.1.0-turn.jsonl'  # Pi 1.1.0, local model, 2026-10-11
 KEY = 'k' * 64
@@ -25,6 +26,38 @@ def translated(session=SESSION):
     for line in FIXTURE.read_text().splitlines():
         events += t.feed(json.loads(line))
     return t, events
+
+
+class LoopGuardTest(PlainCase):
+    """The tripwire both wakers share: three identical calls is a runaway;
+    text between the repeats doesn't help (the 28 Oct specimen had escape text every few seconds)."""
+
+    def test_three_identical_calls_trip_it(self):
+        guard = LoopGuard()
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertIn('tool loop: read called 3×', guard.see('read', {'path': 'x'}))
+
+    def test_a_different_call_breaks_the_streak(self):
+        guard = LoopGuard()
+        guard.see('read', {'path': 'x'})
+        guard.see('read', {'path': 'x'})
+        self.assertEqual(guard.see('read', {'path': 'y'}), '')  # the different one: 1
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')  # 1 again, y broke it
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')  # 2
+        self.assertIn('tool loop', guard.see('read', {'path': 'x'}))  # 3
+
+    def test_text_between_repeats_does_not_break_the_streak(self):
+        # The 28 Oct specimen said "let me check that again" between every repeat: it still loops.
+        guard = LoopGuard()
+        for _ in range(2):
+            self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertIn('tool loop', guard.see('read', {'path': 'x'}))  # the guard never sees the text
+
+    def test_the_same_tool_with_different_args_is_not_a_loop(self):
+        guard = LoopGuard()
+        for i in range(5):
+            self.assertEqual(guard.see('read', {'path': f'f{i}'}), '')
 
 
 class TranslatorTest(TestCase):
@@ -145,6 +178,11 @@ class CompactTest(TestCase):
             json.dumps({'type': 'session', 'version': 3, 'id': SESSION, 'cwd': self.dir}) + '\n')
         self.waker = PiWaker(pi=self.pi, model='opus', session_dir=str(sessions))
 
+    def test_a_sessions_size_on_disk(self):
+        path = self.waker.find(SESSION)
+        self.assertEqual(self.waker.session_bytes(SESSION), path.stat().st_size)
+        self.assertEqual(self.waker.session_bytes('no-such-session'), 0)
+
     def test_compact_asks_pis_rpc_mode_from_a_fork_and_records_what_it_kept(self):
         events = []
         new, reply = self.waker.wake(SESSION, '/compact keep the setlist', new_session_id='new-1',
@@ -172,6 +210,56 @@ class CompactTest(TestCase):
         self.assertEqual(self.waker.command(SESSION, 'n', 'You were woken: /compact re keep it')[-1],
                          'You were woken: /compact re keep it')
         self.assertIsNone(__import__('poller.pi_harness', fromlist=['COMPACT']).COMPACT.match('woken: /compact x'))
+
+
+# A pi stuck in a machine attractor, as re's was on 28 Oct: the same read over and over,
+# with escape text every time, until something kills it.
+FAKE_LOOP_PI = r'''#!PYTHON
+import json, time
+print(json.dumps({'type': 'session', 'version': 3, 'id': 'x', 'timestamp': '2026-10-30T03:00:00.000Z'}), flush=True)
+call = {'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
+        'content': [{'type': 'text', 'text': 'Let me check that file again.'},
+                    {'type': 'toolCall', 'id': 'c1', 'name': 'read', 'arguments': {'path': 'x'}}]}}
+for _ in range(3):
+    print(json.dumps(call), flush=True)
+time.sleep(60)  # until the tripwire kills us
+'''
+
+
+class LoopKillTest(PlainCase):
+    """The tripwire in PiWaker.wake: by the third identical call, the run is dead."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.pi = os.path.join(self.dir, 'pi')
+        Path(self.pi).write_text(FAKE_LOOP_PI.replace('PYTHON', sys.executable))
+        os.chmod(self.pi, 0o755)
+        sessions = Path(self.dir, 's')
+        sessions.mkdir()
+        (sessions / f'2026-10-18T15-00-00-000Z_{SESSION}.jsonl').write_text(
+            json.dumps({'type': 'session', 'version': 3, 'id': SESSION, 'cwd': self.dir}) + '\n')
+        self.waker = PiWaker(pi=self.pi, model='opus', session_dir=str(sessions))
+
+    def test_a_tool_loop_is_killed_and_said_so(self):
+        import time
+        start = time.time()
+        events = []
+        with self.assertRaises(RuntimeError) as ctx:
+            self.waker.wake(SESSION, 'p', new_session_id='new-9', on_event=events.append)
+        self.assertIn('tool loop: read called 3× with identical arguments', str(ctx.exception))
+        self.assertIn('tool loop', self.waker.last_result['error'])
+        # The record keeps what the loop did: every call, escape text and all.
+        self.assertEqual([e['type'] for e in events],
+                         ['turn_started'] + ['assistant_message', 'tool_call'] * 3)
+        self.assertLess(time.time() - start, 10)  # killed, not slept out
+
+    def test_a_tool_loop_that_yields_nothing_still_names_itself(self):
+        # A run the poller sees nothing of but the kill: the error names the loop anyway.
+        events = []
+        with self.assertRaises(RuntimeError) as ctx:
+            self.waker.wake(SESSION, 'p', new_session_id='new-9')
+        self.assertIn('tool loop', str(ctx.exception))
+        self.assertEqual(self.waker.last_result['subtype'], 'error')
 
 
 @override_settings(MOOD_RUNNER_KEYS={'re': KEY}, TOOL_RESULT_CONTENT_CHARS=20000)
