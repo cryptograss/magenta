@@ -93,3 +93,20 @@ class AskTest(TestCase):
                                          f'as in your terminal ... Your instructions this turn are bundle {bundle} (Special:AgentBundles).'}])
         cache.clear()
         self.assertEqual(self.asked(), [])
+
+    def test_multiple_agents_asking_tools_both_recorded(self):
+        ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False})
+        self.say('re', '<tools to="push the fix"/>', 1, session=self.sid)
+        self.say('magent', '<tools to="review code"/>', 2, session=uuid.uuid4())
+        cache.clear()
+        got = self.asked()
+        self.assertEqual([(t['kind'], t['agent'], t['for']) for t in got],
+                         [('tools', 're', 'push the fix'), ('tools', 'magent', 'review code')])
+
+    def test_one_type_icon_regardless_of_request_count_in_template(self):
+        """Justin, 30 Oct: multiple requests of the same type show only one type icon, dots indicate count."""
+        from pathlib import Path
+        template = Path(__file__).resolve().parent.parent / 'templates' / 'conversations' / 'moods.html'
+        html = template.read_text()
+        self.assertIn("[...new Set(m.asked.map(t => ASK_EMOJI[t.kind] || '🔨'))].join('')", html)
+
