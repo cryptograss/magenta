@@ -1322,6 +1322,7 @@
   .pie.warm { --pc: #d4a514; }  /* yellow from 50%, orange from 70%, red from 85% */
   .pie.hot { --pc: #e8761c; }
   .pie.full { --pc: #d63a2f; }
+  .pie.pulse { animation: pulse 1.2s ease-in-out infinite; }
   #locked { display: none; background: #3a0d0d; color: #ffd9d9; padding: 8px 16px; font-size: 13.5px; }
   body.locked #locked { display: block; }
   body.locked #composer, body.locked #typing { display: none !important; }
@@ -5994,7 +5995,8 @@
       if (!a) { if (p) p.remove(); return; }
       // In the settings table, inside the name's cell: a cell of its own would push the row a column over.
       if (!p) { p = document.createElement('span'); (el.closest('.agentgrid') ? el.querySelector('.cell') : el).prepend(p); }
-      p.className = 'pie' + (a.pct >= 85 ? ' full' : a.pct >= 70 ? ' hot' : a.pct >= 50 ? ' warm' : '');
+      p.className = 'pie' + (a.pct >= 85 ? ' full' : a.pct >= 70 ? ' hot' : a.pct >= 50 ? ' warm' : '')
+        + (a.pct >= 90 ? ' pulse' : '');
       p.style.setProperty('--p', a.pct + '%');
       p.title = a.title;
     });
