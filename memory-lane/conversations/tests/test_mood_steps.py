@@ -102,6 +102,20 @@ class StepsTest(TestCase):
         self.assertEqual([t['text'] for t in back['turns']], [f'line {i}' for i in range(5)])
         self.assertFalse(back['has_earlier'])
 
+    def test_a_window_from_a_message_is_one_page_forward_not_the_whole_history(self):
+        # Justin, 30 Oct: a link to an ancient message fetched everything since it (?from= without a cap)
+        # and the "finding it" mask sat half a minute. from+limit is now the first N items *at* that
+        # message, inclusive, so a reveal is one small page wherever the message sits.
+        for i in range(PAGE * 2 + 7):
+            self.add(self.justin, f'line {i}')
+        target = self.get()['turns'][0]['id']  # the oldest drawn on the first load
+        win = self.get(**{'from': target, 'limit': 20})
+        self.assertEqual(len(win['turns']), 20)
+        self.assertEqual(win['turns'][0]['id'], target)  # the message itself is first
+        self.assertTrue(win['has_earlier'])
+        # All of it, uncapped, is still there when only ?from= is asked (the runner's read).
+        self.assertEqual(len(self.get(**{'from': target})['turns']), PAGE)
+
     def test_a_poll_after_an_id_is_everything_since(self):
         first = self.add(self.justin, 'one')
         self.add(self.justin, 'two')

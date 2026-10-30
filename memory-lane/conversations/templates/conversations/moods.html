@@ -5132,10 +5132,10 @@
         el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
         return true;
       }
-      // Not drawn yet: everything back to it, in one ask, under a spinner.
-      const earlier = document.getElementById('earlier');
-      if (i || !earlier || earlier.hidden) return false;
-      if (!(await reaching(() => loadEarlier(id)))) return false;
+      // Not drawn yet: the page *at* that message, in one small ask -- never everything since it
+      // (the old ?from= walk fetched the whole history back to an ancient message and took half a
+      // minute, Justin, 30 Oct: "finding it" was the page rendering from there to now).
+      if (i || !(await reaching(() => loadAt(id)))) return false;
     }
     return false;
   }
@@ -5329,6 +5329,36 @@
       button.hidden = !data.has_earlier;
       return true;
     } finally { button.disabled = false; button.textContent = 'Load earlier'; }
+  }
+  // A link's message, far below the page (a notification, a search hit): one page starting there, drawn in
+  // place of the page before -- the thread is now that window, and reveal finds the message as its first item.
+  async function loadAt(to) {
+    const mine = gen;
+    let data;
+    try {
+      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/turns/?from=' + encodeURIComponent(to)
+                            + '&limit=' + FIRST_PAGE);
+      if (!r.ok) return false;
+      data = await r.json();
+    } catch (e) { return false; }
+    if (mine !== gen) return false;  // switched away meanwhile
+    const items = itemsOf(data);
+    if (!items.length) return false;
+    noteAgents(current, data.agents);  // the thread is now a window at the message; the Mood head keeps its own
+    const turnsEl = document.getElementById('turns');
+    const saved = prev; prev = null;
+    turnsEl.replaceChildren();
+    const box = document.createElement('div');
+    renderItems(items, box, false);
+    foldOld(box, false);
+    prev = saved;
+    turnsEl.append(...box.children);
+    drawRuns(turnsEl);
+    firstId = items[0].v.id; lastId = items[items.length - 1].v.id;
+    const earlier = document.getElementById('earlier');
+    if (earlier) earlier.hidden = !data.has_earlier;
+    renderToBottom();
+    return true;
   }
   document.addEventListener('click', e => { if (e.target.id === 'earlier') loadEarlier(); });
 

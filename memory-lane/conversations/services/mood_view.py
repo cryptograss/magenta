@@ -1027,6 +1027,25 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
                 yield found
         return
 
+    if start is not None:
+        # A window at a message (?from=<id>&limit=N): the first N items *at* that message, never everything
+        # back to an ancient one -- the old from+limit meant "the newest N since then", so a link to a
+        # message far back fetched and rendered the whole history (Justin, 30 Oct: "finding it" sat for
+        # half a minute). Pinned to the message's own row (its time and id), so the message itself is
+        # first even when several share a moment; the rows were already cut to gte its time.
+        key = (start.created_at, start.id)
+        found = []
+        for msg in rows.order_by('created_at', 'id'):
+            if (msg.created_at, msg.id) < key:
+                continue  # the ties (same moment) that came before it
+            got = item(msg)
+            if got:
+                found.append(got)
+                if len(found) == limit:
+                    break
+        yield from found
+        return
+
     # Newest first, in chunks, until there are enough.
     found, last = [], None
     while len(found) < limit:
