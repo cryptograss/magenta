@@ -9,9 +9,10 @@ import uuid
 from pathlib import Path
 
 from django.test import TestCase, override_settings
+from unittest import TestCase as PlainCase  # for tests that need no database
 
 from conversations.models import Message, Mood, ThinkingEntity, ToolResult, ToolUse
-from poller.pi_harness import EventsPoster, PiTranslator, PiWaker
+from poller.pi_harness import EventsPoster, LoopGuard, PiTranslator, PiWaker
 
 FIXTURE = Path(__file__).with_name('fixtures') / 'pi-1.1.0-turn.jsonl'  # Pi 1.1.0, local model, 2026-10-11
 KEY = 'k' * 64
@@ -174,71 +175,95 @@ class CompactTest(TestCase):
         self.assertIsNone(__import__('poller.pi_harness', fromlist=['COMPACT']).COMPACT.match('woken: /compact x'))
 
 
+class LoopGuardTest(PlainCase):
+    """The tripwire both wakers share: three identical calls is a runaway;
+    text between the repeats doesn't help (the 28 Oct specimen had escape text every few seconds).
+    Also checks alternating loops and max call ceiling."""
+
+    def test_three_identical_calls_trip_it(self):
+        guard = LoopGuard()
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertIn('tool loop: read called 3×', guard.see('read', {'path': 'x'}))
+
+    def test_a_different_call_breaks_the_streak(self):
+        guard = LoopGuard()
+        guard.see('read', {'path': 'x'})
+        guard.see('read', {'path': 'x'})
+        self.assertEqual(guard.see('read', {'path': 'y'}), '')  # the different one: 1
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')  # 1 again, y broke it
+        self.assertEqual(guard.see('read', {'path': 'x'}), '')  # 2
+        self.assertIn('tool loop', guard.see('read', {'path': 'x'}))  # 3
+
+    def test_text_between_repeats_does_not_break_the_streak(self):
+        # The 28 Oct specimen said "let me check that again" between every repeat: it still loops.
+        guard = LoopGuard()
+        for _ in range(2):
+            self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertIn('tool loop', guard.see('read', {'path': 'x'}))  # the guard never sees the text
+
+    def test_the_same_tool_with_different_args_is_not_a_loop(self):
+        guard = LoopGuard()
+        for i in range(5):
+            self.assertEqual(guard.see('read', {'path': f'f{i}'}), '')
+
+    def test_alternating_calls_trip_sliding_window(self):
+        guard = LoopGuard(window_size=10, window_limit=5)
+        calls = [('grep', {'path': 'x'}), ('read', {'path': 'y'})] * 4  # 8 calls: 4 grep, 4 read
+        for name, inp in calls:
+            self.assertEqual(guard.see(name, inp), '')
+        # 9th call: 5th grep in 9 calls
+        self.assertIn('tool loop: grep called 5× within last 9 calls', guard.see('grep', {'path': 'x'}))
+
+    def test_total_tool_calls_cap_trips(self):
+        guard = LoopGuard(max_calls=10)
+        for i in range(9):
+            self.assertEqual(guard.see(f'tool_{i}', {'path': str(i)}), '')
+        self.assertIn('maximum tool calls limit (10)', guard.see('tool_9', {'path': '9'}))
+
+
+# A pi stuck in a machine attractor, as re's was on 28 Oct: the same read over and over,
+# with escape text every time, until something kills it.
 FAKE_LOOP_PI = r'''#!PYTHON
 import json, sys, time
 
 lines = [
-    {'type': 'session', 'version': 3, 'id': 's1', 'cwd': '/tmp'},
+    {'type': 'session', 'version': 3, 'id': 'x', 'timestamp': '2026-10-30T03:00:00.000Z'},
     {'type': 'turn_start'},
 ]
 
 mode = sys.argv[-1]
-if 'consecutive' in mode:
-    for i in range(5):
-        lines.append({
-            'type': 'message_end',
-            'message': {
-                'role': 'assistant',
-                'stopReason': 'toolUse',
-                'usage': {},
-                'content': [{'type': 'toolCall', 'id': f'call_{i}', 'name': 'grep', 'arguments': {'path': 'a.py', 'pattern': 'x'}}]
-            }
-        })
-elif 'alternating' in mode:
-    for i in range(8):
+if 'alternating' in mode:
+    for i in range(10):
         tool = 'grep' if i % 2 == 0 else 'read'
-        lines.append({
-            'type': 'message_end',
-            'message': {
-                'role': 'assistant',
-                'stopReason': 'toolUse',
-                'usage': {},
-                'content': [{'type': 'toolCall', 'id': f'call_{i}', 'name': tool, 'arguments': {'path': 'a.py'}}]
-            }
-        })
+        lines.append({'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
+                      'content': [{'type': 'toolCall', 'id': f'c{i}', 'name': tool, 'arguments': {'path': 'x'}}]}})
 elif 'normal' in mode:
     for i in range(3):
-        lines.append({
-            'type': 'message_end',
-            'message': {
-                'role': 'assistant',
-                'stopReason': 'toolUse',
-                'usage': {},
-                'content': [{'type': 'toolCall', 'id': f'call_{i}', 'name': 'read', 'arguments': {'path': f'file_{i}.txt'}}]
-            }
-        })
-    lines.append({
-        'type': 'message_end',
-        'message': {
-            'role': 'assistant',
-            'stopReason': 'stop',
-            'usage': {},
-            'content': [{'type': 'text', 'text': 'Done reading.'}]
-        }
-    })
+        lines.append({'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
+                      'content': [{'type': 'toolCall', 'id': f'c{i}', 'name': 'read', 'arguments': {'path': f'f{i}'}}]}})
+    lines.append({'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'stop', 'usage': {},
+                  'content': [{'type': 'text', 'text': 'Done reading.'}]}})
     lines.append({'type': 'agent_settled', 'aborted': False})
+    for line in lines:
+        print(json.dumps(line), flush=True)
+    sys.exit(0)
+else:
+    call = {'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
+            'content': [{'type': 'text', 'text': 'Let me check that file again.'},
+                        {'type': 'toolCall', 'id': 'c1', 'name': 'read', 'arguments': {'path': 'x'}}]}}
+    for _ in range(3):
+        lines.append(call)
 
 for line in lines:
     print(json.dumps(line), flush=True)
 
-try:
-    time.sleep(5)
-except BaseException:
-    pass
+time.sleep(60)  # until the tripwire kills us
 '''
 
 
-class LoopTripwireTest(TestCase):
+class LoopKillTest(PlainCase):
+    """The tripwire in PiWaker.wake: by the third identical call, the run is dead."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -247,30 +272,41 @@ class LoopTripwireTest(TestCase):
         os.chmod(self.pi, 0o755)
         sessions = Path(self.dir, 's')
         sessions.mkdir()
+        (sessions / f'2026-10-18T15-00-00-000Z_{SESSION}.jsonl').write_text(
+            json.dumps({'type': 'session', 'version': 3, 'id': SESSION, 'cwd': self.dir}) + '\n')
         self.waker = PiWaker(pi=self.pi, model='opus', session_dir=str(sessions), new_cwd=self.dir)
 
-    def test_consecutive_identical_tool_calls_trip_tripwire(self):
+    def test_a_tool_loop_is_killed_and_said_so(self):
+        import time
+        start = time.time()
         events = []
-        from poller.pi_harness import ToolLoopTripwire
-        with self.assertRaises(ToolLoopTripwire) as ctx:
-            self.waker.wake(None, 'consecutive loop test', on_event=events.append)
-        self.assertIn('repeated 3 times in a row', str(ctx.exception))
-        self.assertEqual(self.waker.last_result['subtype'], 'loop_detected')
-        notice = next((e for e in events if e.get('type') == 'assistant_message' and 'loop tripwire' in e.get('text', '')), None)
-        self.assertIsNotNone(notice)
-        self.assertIn('Identical tool call repeated 3 times', notice['text'])
+        with self.assertRaises(RuntimeError) as ctx:
+            self.waker.wake(SESSION, 'p', new_session_id='new-9', on_event=events.append)
+        self.assertIn('tool loop: read called 3× with identical arguments', str(ctx.exception))
+        self.assertIn('tool loop', self.waker.last_result['error'])
+        # The record keeps what the loop did: every call, escape text and all, plus loop notice
+        self.assertEqual([e['type'] for e in events],
+                         ['turn_started'] + ['assistant_message', 'tool_call'] * 3 + ['assistant_message'])
+        self.assertIn('⚠️ Turn stopped by loop tripwire', events[-1]['text'])
+        self.assertLess(time.time() - start, 10)  # killed, not slept out
+
+    def test_a_tool_loop_that_yields_nothing_still_names_itself(self):
+        # A run the poller sees nothing of but the kill: the error names the loop anyway.
+        with self.assertRaises(RuntimeError) as ctx:
+            self.waker.wake(SESSION, 'p', new_session_id='new-9')
+        self.assertIn('tool loop', str(ctx.exception))
+        self.assertEqual(self.waker.last_result['subtype'], 'error')
 
     def test_alternating_tool_calls_trip_sliding_window_tripwire(self):
         events = []
-        from poller.pi_harness import ToolLoopTripwire
-        with self.assertRaises(ToolLoopTripwire) as ctx:
-            self.waker.wake(None, 'alternating loop test', on_event=events.append)
-        self.assertIn('repeated 4 times within last', str(ctx.exception))
-        self.assertEqual(self.waker.last_result['subtype'], 'loop_detected')
+        with self.assertRaises(RuntimeError) as ctx:
+            self.waker.wake(SESSION, 'alternating loop test', new_session_id='new-10', on_event=events.append)
+        self.assertIn('called 5× within last', str(ctx.exception))
+        self.assertIn('tool loop', self.waker.last_result['error'])
 
     def test_different_tool_calls_do_not_trip_tripwire(self):
         events = []
-        _, reply = self.waker.wake(None, 'normal test', on_event=events.append)
+        _, reply = self.waker.wake(SESSION, 'normal test', new_session_id='new-11', on_event=events.append)
         self.assertEqual(reply, 'Done reading.')
         self.assertEqual(self.waker.last_result['subtype'], 'success')
 

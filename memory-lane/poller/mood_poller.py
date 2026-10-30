@@ -654,6 +654,10 @@ class ClaudeCodeWaker:
         stream event as it comes out; `stop()`, if given, is asked now and
         then whether to end the turn. self.last_result keeps the run's
         result event: its cost, its duration, how it ended."""
+        try:  # lazy, matching how this module loads the Pi harness elsewhere
+            from poller.pi_harness import LoopGuard
+        except ImportError:  # running outside the repo's layout (tests import it directly)
+            from pi_harness import LoopGuard
         if session_id is None:  # a new session, where new ones start
             cwd = str(Path(self.new_cwd).expanduser())
             spent_before = 0.0
@@ -678,6 +682,7 @@ class ClaudeCodeWaker:
         watchdog.start()
         result = None
         said = ''  # the last text the agent itself wrote (not a helper's)
+        guard, killed = LoopGuard(), None  # the tool-loop tripwire (TOOL_LOOP_KILL in pi_harness)
         try:
             for raw in proc.stdout:
                 heard[0] = time.monotonic()
@@ -687,16 +692,29 @@ class ClaudeCodeWaker:
                     continue
                 if not isinstance(event, dict):
                     continue
+                if event.get('type') == 'assistant' and not event.get('parent_tool_use_id'):
+                    blocks = (event.get('message') or {}).get('content') or []
+                    # Same tripwire as pi_harness's LoopGuard: a machine attractor repeats the exact
+                    # same call, and text between the repeats does not break the streak (28 Oct
+                    # specimen); only a different call does. By the third identical one, end the turn.
+                    if not killed:
+                        for block in blocks:
+                            if isinstance(block, dict) and block.get('type') == 'tool_use':
+                                killed = guard.see(block.get('name'), block.get('input'))
+                                if killed:
+                                    logger.warning(f'ending turn for {new_session_id}: {killed}')
+                                    end_process_group(proc)
+                    if not killed:
+                        texts = [b.get('text', '') for b in blocks if isinstance(b, dict) and b.get('type') == 'text']
+                        if any(t.strip() for t in texts):
+                            said = '\n'.join(t for t in texts if t.strip())
+                if killed:
+                    break
                 if event.get('type') == 'result':
                     # What this run cost, not the session's history: posted
                     # with the result, so the record keeps the turn's own cost.
                     event['run_cost_usd'] = max(0.0, float(event.get('total_cost_usd') or 0.0) - spent_before)
                     result = event
-                elif event.get('type') == 'assistant' and not event.get('parent_tool_use_id'):
-                    blocks = (event.get('message') or {}).get('content') or []
-                    texts = [b.get('text', '') for b in blocks if isinstance(b, dict) and b.get('type') == 'text']
-                    if any(t.strip() for t in texts):
-                        said = '\n'.join(t for t in texts if t.strip())
                 if on_event:
                     try:
                         on_event(event)
@@ -708,7 +726,11 @@ class ClaudeCodeWaker:
         drain.join(5)
         self.last_result = dict(result or {})
         if result is None:
-            raise RuntimeError(f'claude exited {proc.returncode} without a result: {"".join(stderr).strip()[:500]}')
+            detail = f'claude exited {proc.returncode} without a result: {"".join(stderr).strip()[:500]}'
+            if killed:
+                self.last_result = {'subtype': 'error', 'error': killed}
+                raise RuntimeError(f'{killed}: {detail}')
+            raise RuntimeError(detail)
         # A run that ends in an error -- over its budget, say -- may still have
         # said something; its result then carries no text, but the stream does.
         return new_session_id, (result.get('result') or said or '').strip()
@@ -2603,7 +2625,7 @@ class MoodPoller:
             if bundled is not None:
                 self.record_bundle(bundled, new_session, heard.get('at'), options.get('harness'))
             if poster:  # close the turn in the Mood, or it shows as working until it times out
-                subtype = 'loop_detected' if type(e).__name__ == 'ToolLoopTripwire' else 'error_during_execution'
+                subtype = 'loop_detected' if ('tool loop' in str(e)) else 'error_during_execution'
                 poster.put({'type': 'result', 'subtype': subtype, 'is_error': True,
                             'session_id': new_session, 'uuid': str(uuid.uuid4())})
                 poster.close()

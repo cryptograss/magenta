@@ -629,6 +629,35 @@ class RealProcessTest(TestCase):
         with self.assertRaises(RuntimeError):
             self.waker("echo 'oops' >&2; exit 3").wake('s-old', 'prompt')
 
+    def test_a_tool_loop_ends_the_turn_saying_what_looping(self):
+        # re, 28 Oct: the same read over and over, escape text between, until someone
+        # pressed stop. Now the waker itself ends it by the third identical call.
+        use = {'type': 'assistant', 'message': {'content': [
+            {'type': 'text', 'text': 'Let me check that file again.'},
+            {'type': 'tool_use', 'id': 't1', 'name': 'grep', 'input': {'path': 'x'}}]}}
+        result = {'type': 'result', 'subtype': 'success', 'result': 'done', 'total_cost_usd': 0.1}
+        body = ''.join(f"echo '{json.dumps(use)}'; sleep 1\n" for _ in range(3)) + f"echo '{json.dumps(result)}'\n"
+        start = time.time()
+        waker = self.waker(body)
+        with self.assertRaises(RuntimeError) as ctx:
+            waker.wake('s-old', 'p', new_session_id='s-new')
+        self.assertIn('tool loop: grep called 3× with identical arguments', str(ctx.exception))
+        self.assertEqual(waker.last_result['subtype'], 'error')
+        self.assertIn('tool loop', waker.last_result['error'])
+        self.assertLess(time.time() - start, 10)  # killed at the third call, not slept out
+
+    def test_two_identical_calls_then_a_different_one_are_no_loop(self):
+        call = lambda name, inp: {'type': 'assistant', 'message': {'content': [
+            {'type': 'tool_use', 'id': 't', 'name': name, 'input': inp}]}}
+        result = {'type': 'result', 'subtype': 'success', 'result': 'done', 'total_cost_usd': 0.1}
+        body = ''.join(f"echo '{json.dumps(c)}'\n" for c in
+                       [call('grep', {'path': 'x'}), call('grep', {'path': 'x'}),
+                        call('read', {'path': 'y'}), call('grep', {'path': 'x'})]) \
+               + f"echo '{json.dumps(result)}'\n"
+        waker = self.waker(body)
+        self.assertEqual(waker.wake('s-old', 'p', new_session_id='s-new')[1], 'done')
+        self.assertEqual(waker.last_result['subtype'], 'success')
+
     def test_a_turn_that_never_ends_is_ended(self):
         import time
         start = time.time()
