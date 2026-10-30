@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import TestCase
 
-from poller.mood_poller import (SILENT, WAIT_FOR, ClaudeCodeWaker, Harnesses, MoodPoller, parse_time, project_dir_name,
+from poller.mood_poller import (SILENT, WAIT_FOR, ClaudeCodeWaker, Harnesses, MoodPoller, parse_time, project_dir_name, wake_footer,
                                 since_last_word)
 
 T0 = datetime(2026, 9, 29, 18, 0, tzinfo=timezone.utc)
@@ -3021,3 +3021,24 @@ class FreshCopiesTest(TestCase):
         poller.fresh_problems = []
         self.assertEqual(poller.fresh_line(), '')
 
+
+
+class WakeFooterAsksTest(TestCase):
+    """What each kind of wake teaches about the asks (Justin, 29 Oct; re, 30 Oct):
+
+    A full-tools wake has no <tools> to ask for -- it teaches the merge and
+    deploy asks the standing orders forbid alone. A look-only wake teaches
+    all three, and how a request is granted.
+    """
+
+    def test_full_tools_wake_teaches_merge_and_deploy(self):
+        body = ' '.join(wake_footer(full=True))
+        self.assertIn('<merge to=', body)
+        self.assertIn('<deploy to=', body)
+        self.assertNotIn('<tools to=', body)
+
+    def test_look_only_wake_teaches_all_three_and_grant(self):
+        body = ' '.join(wake_footer(full=False))
+        for tag in ('<tools to=', '<merge to=', '<deploy to='):
+            self.assertIn(tag, body)
+        self.assertIn('mention the agent', body)
