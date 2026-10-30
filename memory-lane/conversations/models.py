@@ -529,6 +529,11 @@ class Message(models.Model):
     eth_blockheight = models.BigIntegerField(null=True, blank=True)
     eth_block_offset = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Full-text vector, kept as text: tsvector is PostgreSQL-only, and SQLite
+    # (the test harness) has no such column type. The migration that populates
+    # this and adds the GIN indexes is PostgreSQL-guarded (0042_search_vectors);
+    # search code reads it there and falls back to scans elsewhere.
+    search_vector = models.TextField(null=True, blank=True)
 
     # Metadata
     model_backend = models.CharField(max_length=100, null=True, blank=True)

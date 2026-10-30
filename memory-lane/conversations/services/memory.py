@@ -109,20 +109,32 @@ class MemoryService:
     @staticmethod
     def search_messages(query, limit=50):
         """Full-text search for messages"""
-        # PostgreSQL full-text search
-        from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
-
-        search_vector = SearchVector('content')
-        search_query = SearchQuery(query)
+        from django.db import connection
+        from django.db.models import F
+        from django.db.models.functions import Cast
+        from django.db.models import TextField
 
         # Tool output is excluded: it was never stored until #19, and long
         # output would outrank prose (rank isn't normalised for length).
-        messages = Message.objects.exclude(sender_id='tool-result').annotate(
-            rank=SearchRank(search_vector, search_query)
-        ).filter(
-            rank__gt=0
-        ).order_by('-rank', '-created_at')[:limit]
-
+        base = Message.objects.exclude(sender_id='tool-result')
+        if connection.vendor == 'postgresql':
+            # The stored vector (migration 0042_search_vectors) is GIN-indexed;
+            # the old per-row to_tsvector() over a year of messages was the
+            # whole-table scan that made search take minutes.
+            from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVectorFromText
+            search_query = SearchQuery(query)
+            vector = SearchVectorFromText(F('search_vector'))
+            messages = (base
+                        .exclude(search_vector__isnull=True)
+                        .annotate(vector=vector, rank=SearchRank(vector, search_query))
+                        .filter(vector=search_query)
+                        .order_by('-rank', '-created_at')[:limit])
+        else:
+            # Not PostgreSQL (tests, local runs): best-effort scan, still bounded.
+            messages = (base
+                        .annotate(text=Cast('content', TextField()))
+                        .filter(text__icontains=query[:200])
+                        .order_by('-created_at')[:limit])
         return list(messages)
 
     @staticmethod
