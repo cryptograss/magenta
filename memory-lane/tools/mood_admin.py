@@ -36,7 +36,8 @@ NAMESPACE = 'magenta-moods'  # fixed here: a server must not choose what your ke
 def signed_message(challenge, base, purpose):
     """mood_auth.signed_message: the challenge, the server, and what this signature is for."""
     parts = urllib.parse.urlsplit(base)
-    return f'{NAMESPACE} {purpose}\n{parts.scheme}://{parts.netloc}'.lower() + f'\n{challenge}'
+    origin = f'{parts.scheme}://{parts.netloc}'.lower().rstrip('/')
+    return f'{NAMESPACE} {purpose}\n{origin}\n{challenge}'
 
 
 def call(url, payload=None):
@@ -106,7 +107,7 @@ def main():
     device = (args.device or '').lower().replace('-', '')
     if args.action == 'kick' and device:
         action = 'kick-device'
-    target = (args.name or '').lower()
+    target = None if action == 'banner' else (args.name or '').lower()
     base = args.base.rstrip('/')
 
     message_arg = ''
