@@ -1,0 +1,104 @@
+"""Tests for the emergency disk-backed banner and BannerMiddleware."""
+
+import os
+import tempfile
+from unittest import mock
+
+from django.http import HttpResponse, JsonResponse
+from django.test import RequestFactory, SimpleTestCase, override_settings
+
+from conversations.middleware import BannerMiddleware
+from conversations.services import banner
+
+
+class BannerServiceTest(SimpleTestCase):
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.banner_path = os.path.join(self.dir, 'banner.json')
+
+    def tearDown(self):
+        banner.clear_banner()
+
+    def test_banner_lifecycle_on_disk(self):
+        with override_settings(MAGENTA_BANNER_PATH=self.banner_path):
+            with mock.patch.dict(os.environ, {'MAGENTA_BANNER_PATH': self.banner_path}):
+                self.assertIsNone(banner.get_banner())
+
+                data = banner.set_banner('Scheduled maintenance in 10m', bg='orange', fg='black', by='justin')
+                self.assertIsNotNone(data)
+                self.assertEqual(data['message'], 'Scheduled maintenance in 10m')
+                self.assertEqual(data['bg'], 'orange')
+                self.assertEqual(data['fg'], 'black')
+                self.assertEqual(data['by'], 'justin')
+                self.assertTrue(os.path.exists(self.banner_path))
+
+                # Reads back from disk
+                read_back = banner.get_banner()
+                self.assertEqual(read_back['message'], 'Scheduled maintenance in 10m')
+
+                # Render HTML escapes message
+                html = banner.render_banner_html(read_back)
+                self.assertIn('class="banner"', html)
+                self.assertIn('Scheduled maintenance in 10m', html)
+                self.assertIn('background: orange', html)
+                self.assertIn('color: black', html)
+
+                # Clear banner removes file
+                banner.clear_banner()
+                self.assertIsNone(banner.get_banner())
+                self.assertFalse(os.path.exists(self.banner_path))
+
+    def test_set_banner_clear_keywords(self):
+        with mock.patch.dict(os.environ, {'MAGENTA_BANNER_PATH': self.banner_path}):
+            banner.set_banner('Active', 'red', 'white')
+            self.assertIsNotNone(banner.get_banner())
+
+            # 'clear' removes it
+            banner.set_banner('clear')
+            self.assertIsNone(banner.get_banner())
+
+            banner.set_banner('Active', 'red', 'white')
+            # 'off' removes it
+            banner.set_banner('off')
+            self.assertIsNone(banner.get_banner())
+
+
+class BannerMiddlewareTest(SimpleTestCase):
+
+    def setUp(self):
+        self.rf = RequestFactory()
+        self.dir = tempfile.mkdtemp()
+        self.banner_path = os.path.join(self.dir, 'banner.json')
+
+    def tearDown(self):
+        banner.clear_banner()
+
+    def test_middleware_injects_into_html_after_body(self):
+        with mock.patch.dict(os.environ, {'MAGENTA_BANNER_PATH': self.banner_path}):
+            banner.set_banner('Emergency Alert', 'red', 'white')
+
+            req = self.rf.get('/')
+            middleware = BannerMiddleware(lambda r: HttpResponse('<!DOCTYPE html><html><body class="test"><main>Hello</main></body></html>', content_type='text/html'))
+            resp = middleware(req)
+
+            body = resp.content.decode('utf-8')
+            self.assertIn('<body class="test"><div id="magenta-banner" class="banner"', body)
+            self.assertIn('Emergency Alert', body)
+
+    def test_middleware_does_not_touch_json_or_empty_banner(self):
+        with mock.patch.dict(os.environ, {'MAGENTA_BANNER_PATH': self.banner_path}):
+            banner.set_banner('Emergency Alert', 'red', 'white')
+
+            req = self.rf.get('/api/test/')
+            middleware = BannerMiddleware(lambda r: JsonResponse({'status': 'ok'}))
+            resp = middleware(req)
+            self.assertEqual(resp['Content-Type'], 'application/json')
+            self.assertNotIn('magenta-banner', resp.content.decode('utf-8'))
+
+            # When banner is cleared, HTML is untouched
+            banner.clear_banner()
+            req2 = self.rf.get('/')
+            middleware2 = BannerMiddleware(lambda r: HttpResponse('<html><body>No banner</body></html>', content_type='text/html'))
+            resp2 = middleware2(req2)
+            self.assertNotIn('class="banner"', resp2.content.decode('utf-8'))

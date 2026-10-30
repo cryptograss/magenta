@@ -58,6 +58,7 @@ MIDDLEWARE = [
     # of JSON uncompressed. (Django's GZip pads against BREACH.)
     'django.middleware.gzip.GZipMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'conversations.middleware.BannerMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

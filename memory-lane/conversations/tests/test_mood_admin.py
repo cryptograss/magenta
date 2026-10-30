@@ -45,13 +45,22 @@ class AdminTest(TestCase):
         LoginCode.objects.create(code_hash='c-skyler', entity=self.skyler,
                                  expires_at=timezone.now() + timedelta(minutes=10))
 
-    def admin(self, action, target='', key='justin', signed_as=None, device=''):
+    def admin(self, action, target='', key='justin', signed_as=None, device='', extra_body=None):
         challenge = self.client.get('/api/auth/challenge/').json()['challenge']
-        purpose = admin_purpose(*(signed_as or (action, target, device)))
+        if action == 'banner':
+            msg = (extra_body or {}).get('message') or target
+            bg = (extra_body or {}).get('bg', '')
+            fg = (extra_body or {}).get('fg', '')
+            purpose = f'admin banner {msg} {bg} {fg}'.strip()
+        else:
+            purpose = admin_purpose(*(signed_as or (action, target, device)))
         signature = sign(self.keys[key], mood_auth.signed_message(challenge, 'http://testserver', purpose))
-        return self.client.post('/api/auth/admin/', json.dumps({'challenge': challenge, 'signature': signature,
-                                                                'action': action, 'target': target or None,
-                                                                'device': device or None}),
+        payload = {'challenge': challenge, 'signature': signature,
+                   'action': action, 'target': target or None,
+                   'device': device or None}
+        if extra_body:
+            payload.update(extra_body)
+        return self.client.post('/api/auth/admin/', json.dumps(payload),
                                 content_type='application/json')
 
     def enroll(self, key):
@@ -182,3 +191,76 @@ class AdminTest(TestCase):
         arrivals = self.client.get('/api/moods/pulse/').json()['arrivals']
         self.assertEqual([(a['who'], a['tier'], a['mood']) for a in arrivals], [('skyler', 'key', 'general')])
         self.assertIsNotNone(arrivals[0]['last_said'])
+
+    def test_admin_banner_sets_and_clears_on_disk_without_db(self):
+        from conversations.services import banner
+        banner_path = os.path.join(self.dir, 'banner.json')
+        with override_settings(MAGENTA_BANNER_PATH=banner_path):
+            # Non-admin cannot set banner
+            bad = self.admin('banner', key='skyler', extra_body={'message': 'test', 'bg': 'red', 'fg': 'white'})
+            self.assertEqual(bad.status_code, 403)
+
+            # Admin sets banner
+            res = self.admin('banner', extra_body={'message': 'System Down', 'bg': 'red', 'fg': 'white'}).json()
+            self.assertEqual(res['action'], 'banner')
+            self.assertEqual(res['banner']['message'], 'System Down')
+            self.assertEqual(res['banner']['bg'], 'red')
+            self.assertEqual(res['banner']['fg'], 'white')
+
+            # Disk file was written
+            b = banner.get_banner()
+            self.assertIsNotNone(b)
+            self.assertEqual(b['message'], 'System Down')
+
+            # Banner is injected into HTML responses
+            page = self.client.get('/moods/general/').content.decode('utf-8')
+            self.assertIn('class="banner"', page)
+            self.assertIn('System Down', page)
+
+            # Live poll carries the banner
+            live = self.client.get('/api/moods/live/').json()
+            self.assertEqual(live['banner']['message'], 'System Down')
+
+            # Admin clears banner
+            res_clear = self.admin('banner', target='', extra_body={'message': ''}).json()
+            self.assertEqual(res_clear['action'], 'banner')
+            self.assertIsNone(res_clear['banner'])
+            self.assertIsNone(banner.get_banner())
+
+            # Page no longer has banner
+            page_cleared = self.client.get('/moods/general/').content.decode('utf-8')
+            self.assertNotIn('class="banner"', page_cleared)
+
+    def test_admin_mention_only_sets_all_emergents_in_every_mood(self):
+        from conversations.services import settings as knobs
+        # Admin triggers mention-only
+        res = self.admin('mention-only').json()
+        self.assertEqual(res['action'], 'mention-only')
+        self.assertEqual(res['mode'], 'mentions')
+        self.assertIn('magent', res['emergents'])
+
+        # Verified in knobs across moods
+        self.assertEqual(knobs.resolve('m26', 'magent')['listening']['mode'], 'mentions')
+        self.assertEqual(knobs.resolve('general', 'magent')['listening']['mode'], 'mentions')
+
+        # Admin lifts mention-only
+        res_lift = self.admin('mention-only', target='lift').json()
+        self.assertEqual(res_lift['action'], 'mention-only')
+        self.assertEqual(res_lift['mode'], 'on')
+        self.assertEqual(knobs.resolve('m26', 'magent')['listening']['mode'], 'on')
+
+    def test_api_settings_all_emergents(self):
+        from unittest import mock
+        from conversations.services import settings as knobs
+        with mock.patch('conversations.services.mood_auth.device_for',
+                        return_value=mock.Mock(entity=self.justin, entity_id='justin', tier='key')):
+            r = self.client.post('/api/settings/', json.dumps({
+                'key': 'listening',
+                'value': 'mentions',
+                'all_emergents': True,
+                'note': 'test mention-only'
+            }), content_type='application/json')
+            self.assertEqual(r.status_code, 201)
+            self.assertEqual(knobs.resolve('m26', 'magent')['listening']['mode'], 'mentions')
+            self.assertEqual(knobs.resolve('general', 'magent')['listening']['mode'], 'mentions')
+

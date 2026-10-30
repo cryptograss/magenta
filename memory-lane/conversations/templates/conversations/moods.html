@@ -1261,6 +1261,8 @@
   .hush .agentgrid .cell { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
   .hush .pace { flex-basis: 100%; font-size: 12px; color: var(--muted); margin-top: 4px; }
   .hush .pace input { width: 4.5em; font-size: 12px; }
+  .hush .all-mention-only { font: inherit; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+  .hush .all-mention-only:hover { color: var(--ink); border-color: var(--accent); }
   .hush .agentgrid .heads { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
   .hush .agentgrid .heads .cell[title] { cursor: help; }
   /* Folded, all the agents are one line: each one's pie, model and effort in its colour; ▸ opens their menus. */
@@ -1945,8 +1947,10 @@
     try {
       const r = await fetch('/api/moods/live/', { signal: AbortSignal.timeout(POLL_WAIT_MS) });
       if (r.ok) {
+        const payload = await r.json();
         const before = liveData;
-        liveData = (await r.json()).moods || {};
+        liveData = payload.moods || {};
+        renderBanner(payload.banner || null);
         markLive();
         if (asksChanged()) { renderNav(); renderToolsOpen(); }
         noticeThinking(before);
@@ -3632,6 +3636,8 @@
           + (e.key ? ` · key <code title="${esc(e.key)}">${esc(e.key.slice(0, 15))}…</code>, nobody's here` : ''),
         'az5': `☢ ${who} pressed AZ5: everyone signed out, Moods locked`,
         'lifted': `${who} lifted AZ5: Moods open again`,
+        'mention-only': `🤫 ${who} set all emergents to mention-only everywhere`,
+        'mention-only-lifted': `👂 ${who} turned emergents back to listening everywhere`,
         // Taking back (services/retract.py): an admin's, of someone else's words; or a burst of them.
         'took-back': `🗑 ${by} took back ${who}'s words · ${esc(e.label || '')}`,
         'taking-back-a-lot': `⚠ ${who} is taking back a lot · ${esc(e.label || '')}`,
@@ -6063,7 +6069,9 @@
     if (!pace || !keyHolder) return '';
     return '<div class="pace" title="the pace here, for every emergent">pace here: ' + PACE.map(([k, label, unit, scale, what]) =>
       `<label title="${esc(what)}">${esc(label)} <input type="number" min="0" data-pace="${k}" data-scale="${scale}"`
-      + ` value="${Math.round((pace[k] || 0) / scale)}">${esc(unit)}</label>`).join(' · ') + '</div>';
+      + ` value="${Math.round((pace[k] || 0) / scale)}">${esc(unit)}</label>`).join(' · ')
+      + ' · <button type="button" id="allMentionOnlyBtn" class="all-mention-only" title="Turn all emergents to mention-only in every Mood">🤫 all mention-only</button>'
+      + ' <span id="allMentionOnlyStatus" class="status"></span></div>';
   }
   document.addEventListener('change', async e => {
     const input = e.target.closest('#hush input[data-pace]');
@@ -6109,6 +6117,43 @@
       ? `Locked: AZ5 by ${scram.by} at ${new Date(scram.at).toLocaleString()}. Nobody can post or sign in, and every emergent is still, until it's lifted.`
       : '';
   }
+
+  function renderBanner(b) {
+    let bEl = document.querySelector('.banner, #magenta-banner');
+    if (b && b.message) {
+      if (!bEl) {
+        bEl = document.createElement('div');
+        bEl.className = 'banner';
+        bEl.id = 'magenta-banner';
+        bEl.setAttribute('role', 'alert');
+        document.body.prepend(bEl);
+      }
+      bEl.style.cssText = (b.bg || b.fg) ? `background: ${b.bg || '#b71c1c'}; color: ${b.fg || '#ffffff'}; width: 100%; box-sizing: border-box; padding: 6px 14px; font-weight: 600; font-size: 13px; line-height: 1.35; text-align: center; position: relative; z-index: 999999; flex: none; border-bottom: 1px solid rgba(0,0,0,0.15); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;` : '';
+      bEl.textContent = b.message;
+    } else if (bEl) {
+      bEl.remove();
+    }
+  }
+
+  document.addEventListener('click', async e => {
+    const btn = e.target.closest('#allMentionOnlyBtn');
+    if (!btn) return;
+    const status = document.getElementById('allMentionOnlyStatus');
+    if (status) { status.className = 'status'; status.textContent = 'setting…'; }
+    const r = await fetch('/api/settings/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ key: 'listening', value: 'mentions', all_emergents: true, note: 'mention-only in every Mood' }),
+    });
+    if (!r.ok) {
+      const err = ((await r.json().catch(() => ({}))).error || r.status);
+      if (status) { status.className = 'status err'; status.textContent = err; }
+      else showError(err);
+      return;
+    }
+    if (status) { status.className = 'status saved'; status.textContent = 'set in every Mood'; }
+    agentsShown = '';
+    poll(false);
+  });
 
   // What an agent left running in the background, as in its terminal.
   let tasks = [];

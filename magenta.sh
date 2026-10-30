@@ -19,6 +19,9 @@ Usage: magenta.sh [TARGET] [OPTIONS]
        magenta.sh login [--key <path>] [--base <url>]
        magenta.sh kick <name> --all [--ban] | --device <id>   |   magenta.sh unban <name>
        magenta.sh AZ5 [TARGET]          |   magenta.sh AZ5 --lift
+       magenta.sh mention-only [--lift]
+       magenta.sh banner "message" <background color> <foreground color>
+       magenta.sh banner --clear
        magenta.sh recovery [--fresh] [--openrouter | --subscription]
 
 Connect to a container and drop into a tmux + Claude Code session.
@@ -82,6 +85,14 @@ SUBCOMMANDS:
                         whole command. Either kick needs an admin's key
                         (memory-lane's MOOD_ADMINS); signed like login.
   unban <name>          Let <name> sign in again.
+  mention-only [--lift] Turn all emergents to mention-only in every Mood.
+                        With --lift, turns them back to listening on.
+  banner "msg" <bg> <fg>
+                        Display an emergency banner across the top of every
+                        page (e.g. magenta.sh banner "Maintenance" red white).
+                        Lives on disk, never the database, so it works even if
+                        the database is down or migrations are broken.
+                        Clear with `magenta.sh banner --clear`.
   AZ5 [TARGET]          The scram. Signs everyone out of Moods, locks them
                         (no posting, no signing in) and stills every agent
                         runner -- then drops you into the session picker on
@@ -137,6 +148,9 @@ EXAMPLES:
   magenta.sh kick skyler --all                # sign skyler out of Moods everywhere
   magenta.sh kick skyler --all --ban          # ...and bar their key until unbanned
   magenta.sh kick skyler --device 21c74117    # sign out just that one device of theirs
+  magenta.sh mention-only                     # all emergents to mention-only everywhere
+  magenta.sh banner "System update" red white # emergency banner across all pages
+  magenta.sh banner --clear                   # remove emergency banner
   magenta.sh AZ5                              # everyone out, everything still, then the picker
   magenta.sh AZ5 --lift                       # back to normal
   magenta.sh recovery                         # nothing answers: magent on hunter's host
@@ -192,6 +206,14 @@ case "${1:-}" in
     unban)
         shift
         exec python3 "$MOOD_TOOLS/mood_admin.py" unban "$@"
+        ;;
+    mention-only|mentions-only|mentions)
+        shift
+        exec python3 "$MOOD_TOOLS/mood_admin.py" mention-only "$@"
+        ;;
+    banner)
+        shift
+        exec python3 "$MOOD_TOOLS/mood_admin.py" banner "$@"
         ;;
     recovery)
         shift
