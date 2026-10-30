@@ -71,15 +71,6 @@ def api_admin(request):
         return JsonResponse({'error': 'expected challenge, signature, action (and target)'}, status=400)
     if action not in ACTIONS:
         return JsonResponse({'error': f"action: one of {', '.join(ACTIONS)}"}, status=400)
-    if action in TARGETED and not target:
-        return JsonResponse({'error': f'{action} needs a name'}, status=400)
-    if action not in TARGETED and action != 'mention-only' and target:
-        return JsonResponse({'error': f'{action} takes no name'}, status=400)
-    if target and not re.fullmatch(r'[a-z0-9._-]{1,60}', target):
-        return JsonResponse({'error': 'invalid target'}, status=400)
-    if (action == 'kick-device') != bool(device) or (device and not DEVICE_PREFIX.match(device)):
-        return JsonResponse({'error': 'kick-device takes a device: the start of its id, as the devices dialog shows it'
-                             if action == 'kick-device' else f'{action} takes no device'}, status=400)
     if not mood_auth.challenge_is_fresh(challenge):
         return JsonResponse({'error': 'challenge expired; fetch a new one'}, status=400)
 
@@ -95,6 +86,16 @@ def api_admin(request):
         from .services import banner
         banner_data = banner.set_banner(message, bg, fg, by=admin)
         return JsonResponse({'action': 'banner', 'banner': banner_data, 'by': admin})
+
+    if action in TARGETED and not target:
+        return JsonResponse({'error': f'{action} needs a name'}, status=400)
+    if action not in TARGETED and action != 'mention-only' and target:
+        return JsonResponse({'error': f'{action} takes no name'}, status=400)
+    if target and not re.fullmatch(r'[a-z0-9._-]{1,60}', target):
+        return JsonResponse({'error': 'invalid target'}, status=400)
+    if (action == 'kick-device') != bool(device) or (device and not DEVICE_PREFIX.match(device)):
+        return JsonResponse({'error': 'kick-device takes a device: the start of its id, as the devices dialog shows it'
+                             if action == 'kick-device' else f'{action} takes no device'}, status=400)
 
     message = mood_auth.signed_message(challenge, mood_auth.origin_of(request), admin_purpose(action, target, device))
     admin = mood_auth.signer_of(message, signature)

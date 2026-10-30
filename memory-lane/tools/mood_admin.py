@@ -106,7 +106,7 @@ def main():
     device = (args.device or '').lower().replace('-', '')
     if args.action == 'kick' and device:
         action = 'kick-device'
-    target = (args.name or '').lower()
+    target = None if action == 'banner' else (args.name or '').lower()
     base = args.base.rstrip('/')
 
     message_arg = ''

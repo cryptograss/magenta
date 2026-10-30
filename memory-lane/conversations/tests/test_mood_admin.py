@@ -200,8 +200,8 @@ class AdminTest(TestCase):
             bad = self.admin('banner', key='skyler', extra_body={'message': 'test', 'bg': 'red', 'fg': 'white'})
             self.assertEqual(bad.status_code, 403)
 
-            # Admin sets banner
-            res = self.admin('banner', extra_body={'message': 'System Down', 'bg': 'red', 'fg': 'white'}).json()
+            # Admin sets banner (even if target is sent by an older client)
+            res = self.admin('banner', target='Some Banner Message', extra_body={'message': 'System Down', 'bg': 'red', 'fg': 'white'}).json()
             self.assertEqual(res['action'], 'banner')
             self.assertEqual(res['banner']['message'], 'System Down')
             self.assertEqual(res['banner']['bg'], 'red')
