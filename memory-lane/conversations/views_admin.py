@@ -82,6 +82,10 @@ def api_admin(request):
         msg_str = mood_auth.signed_message(challenge, mood_auth.origin_of(request), purpose)
         admin = mood_auth.signer_of(msg_str, signature)
         if admin not in admins:
+            # Fallback for mood_admin.py clients that lowercased the signed purpose line
+            fallback_msg = f'{mood_auth.NAMESPACE} {purpose}\n{mood_auth.origin_of(request).lower().rstrip("/")}'.lower() + f'\n{challenge}'
+            admin = mood_auth.signer_of(fallback_msg, signature)
+        if admin not in admins:
             return JsonResponse({'error': 'not an admin signature'}, status=403)
         from .services import banner
         banner_data = banner.set_banner(message, bg, fg, by=admin)

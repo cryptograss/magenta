@@ -207,19 +207,31 @@ class AdminTest(TestCase):
             self.assertEqual(res['banner']['bg'], 'red')
             self.assertEqual(res['banner']['fg'], 'white')
 
+            # Admin sets banner using older client that lowercased the signed purpose string
+            chal = self.client.get('/api/auth/challenge/').json()['challenge']
+            purpose = 'admin banner Maintenance Window #123 red white'
+            lowered_signed = f'magenta-moods {purpose}\nhttp://testserver'.lower() + f'\n{chal}'
+            sig = sign(self.keys['justin'], lowered_signed)
+            res_old_client = self.client.post('/api/auth/admin/', json.dumps({
+                'challenge': chal, 'signature': sig, 'action': 'banner',
+                'message': 'Maintenance Window #123', 'bg': 'red', 'fg': 'white'
+            }), content_type='application/json').json()
+            self.assertEqual(res_old_client['action'], 'banner')
+            self.assertEqual(res_old_client['banner']['message'], 'Maintenance Window #123')
+
             # Disk file was written
             b = banner.get_banner()
             self.assertIsNotNone(b)
-            self.assertEqual(b['message'], 'System Down')
+            self.assertEqual(b['message'], 'Maintenance Window #123')
 
             # Banner is injected into HTML responses
             page = self.client.get('/moods/general/').content.decode('utf-8')
             self.assertIn('class="banner"', page)
-            self.assertIn('System Down', page)
+            self.assertIn('Maintenance Window #123', page)
 
             # Live poll carries the banner
             live = self.client.get('/api/moods/live/').json()
-            self.assertEqual(live['banner']['message'], 'System Down')
+            self.assertEqual(live['banner']['message'], 'Maintenance Window #123')
 
             # Admin clears banner
             res_clear = self.admin('banner', target='', extra_body={'message': ''}).json()
