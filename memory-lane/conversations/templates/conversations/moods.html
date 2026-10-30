@@ -3346,7 +3346,14 @@
     el.className = 'work' + (cont ? ' cont' : '');
     el.dataset.sender = s.sender;
     el.style.setProperty('--who', agentColor(s.sender));
-    el.innerHTML = `<div class="who"><span class="name">${icon(s.sender, false)}${esc(s.sender)}</span><time datetime="${esc(s.created_at)}">${stamp(s.created_at)}</time>${how(s)}</div>`
+    // The work fold's date is a permalink to the step that opened it, like
+    // a post's date (Justin, 29 Oct): a bug report can now link to the exact
+    // step instead of the whole turn. Only when the row has a message id.
+    if (s.id) el.id = 'm-' + esc(s.id);
+    const when = s.id
+      ? `<a class="permalink" href="#m-${esc(s.id)}" title="This step's link: click to copy it"><time datetime="${esc(s.created_at)}">${stamp(s.created_at)}</time></a>`
+      : `<time datetime="${esc(s.created_at)}">${stamp(s.created_at)}</time>`;
+    el.innerHTML = `<div class="who"><span class="name">${icon(s.sender, false)}${esc(s.sender)}</span>${when}${how(s)}</div>`
       + `<button class="work-head" type="button"><span class="caret">▸</span><span class="what"></span></button><div class="steps"></div>`;
     container.appendChild(el);
     return el;
