@@ -2603,7 +2603,8 @@ class MoodPoller:
             if bundled is not None:
                 self.record_bundle(bundled, new_session, heard.get('at'), options.get('harness'))
             if poster:  # close the turn in the Mood, or it shows as working until it times out
-                poster.put({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
+                subtype = 'loop_detected' if type(e).__name__ == 'ToolLoopTripwire' else 'error_during_execution'
+                poster.put({'type': 'result', 'subtype': subtype, 'is_error': True,
                             'session_id': new_session, 'uuid': str(uuid.uuid4())})
                 poster.close()
             return 'failed', None, 0.0, {'why': str(e).splitlines()[0][:200] if str(e) else 'it failed to run',

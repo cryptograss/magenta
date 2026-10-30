@@ -102,7 +102,7 @@ class CommandTest(TestCase):
         self.assertEqual(cmd[:2], ['pi', '--mode'])
         self.assertIn('--fork', cmd)
         self.assertEqual(cmd[cmd.index('--session-id') + 1], 'new')
-        self.assertEqual(cmd[cmd.index('--tools') + 1], 'read,grep,find,ls')
+        self.assertEqual(cmd[cmd.index('--tools') + 1], 'read,grep,find,ls,codemode')
         self.assertEqual(cmd[cmd.index('--thinking') + 1], 'xhigh')
         self.assertNotIn('--tools', waker.command(None, 'new', 'hi', full=True))
         self.assertEqual(cmd[-1], 'hi')
@@ -172,6 +172,107 @@ class CompactTest(TestCase):
         self.assertEqual(self.waker.command(SESSION, 'n', 'You were woken: /compact re keep it')[-1],
                          'You were woken: /compact re keep it')
         self.assertIsNone(__import__('poller.pi_harness', fromlist=['COMPACT']).COMPACT.match('woken: /compact x'))
+
+
+FAKE_LOOP_PI = r'''#!PYTHON
+import json, sys, time
+
+lines = [
+    {'type': 'session', 'version': 3, 'id': 's1', 'cwd': '/tmp'},
+    {'type': 'turn_start'},
+]
+
+mode = sys.argv[-1]
+if 'consecutive' in mode:
+    for i in range(5):
+        lines.append({
+            'type': 'message_end',
+            'message': {
+                'role': 'assistant',
+                'stopReason': 'toolUse',
+                'usage': {},
+                'content': [{'type': 'toolCall', 'id': f'call_{i}', 'name': 'grep', 'arguments': {'path': 'a.py', 'pattern': 'x'}}]
+            }
+        })
+elif 'alternating' in mode:
+    for i in range(8):
+        tool = 'grep' if i % 2 == 0 else 'read'
+        lines.append({
+            'type': 'message_end',
+            'message': {
+                'role': 'assistant',
+                'stopReason': 'toolUse',
+                'usage': {},
+                'content': [{'type': 'toolCall', 'id': f'call_{i}', 'name': tool, 'arguments': {'path': 'a.py'}}]
+            }
+        })
+elif 'normal' in mode:
+    for i in range(3):
+        lines.append({
+            'type': 'message_end',
+            'message': {
+                'role': 'assistant',
+                'stopReason': 'toolUse',
+                'usage': {},
+                'content': [{'type': 'toolCall', 'id': f'call_{i}', 'name': 'read', 'arguments': {'path': f'file_{i}.txt'}}]
+            }
+        })
+    lines.append({
+        'type': 'message_end',
+        'message': {
+            'role': 'assistant',
+            'stopReason': 'stop',
+            'usage': {},
+            'content': [{'type': 'text', 'text': 'Done reading.'}]
+        }
+    })
+    lines.append({'type': 'agent_settled', 'aborted': False})
+
+for line in lines:
+    print(json.dumps(line), flush=True)
+
+try:
+    time.sleep(5)
+except BaseException:
+    pass
+'''
+
+
+class LoopTripwireTest(TestCase):
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.pi = os.path.join(self.dir, 'pi')
+        Path(self.pi).write_text(FAKE_LOOP_PI.replace('PYTHON', sys.executable))
+        os.chmod(self.pi, 0o755)
+        sessions = Path(self.dir, 's')
+        sessions.mkdir()
+        self.waker = PiWaker(pi=self.pi, model='opus', session_dir=str(sessions), new_cwd=self.dir)
+
+    def test_consecutive_identical_tool_calls_trip_tripwire(self):
+        events = []
+        from poller.pi_harness import ToolLoopTripwire
+        with self.assertRaises(ToolLoopTripwire) as ctx:
+            self.waker.wake(None, 'consecutive loop test', on_event=events.append)
+        self.assertIn('repeated 3 times in a row', str(ctx.exception))
+        self.assertEqual(self.waker.last_result['subtype'], 'loop_detected')
+        notice = next((e for e in events if e.get('type') == 'assistant_message' and 'loop tripwire' in e.get('text', '')), None)
+        self.assertIsNotNone(notice)
+        self.assertIn('Identical tool call repeated 3 times', notice['text'])
+
+    def test_alternating_tool_calls_trip_sliding_window_tripwire(self):
+        events = []
+        from poller.pi_harness import ToolLoopTripwire
+        with self.assertRaises(ToolLoopTripwire) as ctx:
+            self.waker.wake(None, 'alternating loop test', on_event=events.append)
+        self.assertIn('repeated 4 times within last', str(ctx.exception))
+        self.assertEqual(self.waker.last_result['subtype'], 'loop_detected')
+
+    def test_different_tool_calls_do_not_trip_tripwire(self):
+        events = []
+        _, reply = self.waker.wake(None, 'normal test', on_event=events.append)
+        self.assertEqual(reply, 'Done reading.')
+        self.assertEqual(self.waker.last_result['subtype'], 'success')
 
 
 @override_settings(MOOD_RUNNER_KEYS={'re': KEY}, TOOL_RESULT_CONTENT_CHARS=20000)

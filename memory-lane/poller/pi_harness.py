@@ -19,6 +19,7 @@ pi-1.1.0-turn.jsonl). What that run showed, and the translation leans on:
   - Every assistant message carries its own usage and cost.
 """
 
+import collections
 import json
 import logging
 import os
@@ -30,6 +31,7 @@ import subprocess
 import threading
 import time
 import uuid
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,8 +41,13 @@ logger = logging.getLogger(__name__)
 
 STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use', 'error': 'error',
                 'aborted': 'aborted'}
-LOOK_ONLY_TOOLS = 'read,grep,find,ls'
+LOOK_ONLY_TOOLS = 'read,grep,find,ls,codemode'
 COMPACT = re.compile(r'/compact\s+(.+)\Z', re.S)  # what the runner sends for "/compact re <what to keep>"
+
+
+class ToolLoopTripwire(RuntimeError):
+    """Raised when an agent turn gets stuck in a repetitive tool loop (Justin & emergents, 30 Oct)."""
+    pass
 EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # The names the model menu has always offered, as Pi should read them. Left
 # to Pi, a bare 'opus' is fuzzy-matched across every vendor it knows, and
@@ -297,6 +304,11 @@ class PiWaker:
     machine. Same interface as mood_poller.ClaudeCodeWaker, except that what
     reaches `on_event` is already record events."""
 
+    CONSECUTIVE_CALL_LIMIT = 3
+    WINDOW_CALL_LIMIT = 4
+    WINDOW_SIZE = 10
+    MAX_TOOL_CALLS = 50
+
     def __init__(self, pi='pi', model=None, session_dir='~/.local/state/magenta/pi-sessions',
                  new_cwd='~/workspace', quiet_limit=1500, version=None):
         self.pi, self.model = pi, model
@@ -497,7 +509,7 @@ class PiWaker:
         if effort:
             cmd += ['--thinking', EFFORTS.get(effort, effort)]
         if not full:
-            cmd += ['--tools', LOOK_ONLY_TOOLS]  # reading only; MCP tools stay
+            cmd += ['--tools', LOOK_ONLY_TOOLS]  # reading only; codemode enables MCP tools (memory, pickipedia)
         if system:  # its instructions (mood_poller.MoodPoller.instructions_for): after Pi's own, never in the session
             cmd += ['--append-system-prompt', system]
         return cmd + [prompt]
@@ -522,6 +534,11 @@ class PiWaker:
         proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, start_new_session=True)
         done = self._watch(proc, stop)
+        total_tool_calls = 0
+        consecutive_tool = None
+        consecutive_count = 0
+        recent_tool_calls = deque(maxlen=self.WINDOW_SIZE)
+        tripped_reason = None
         try:
             for line in proc.stdout:  # Pi frames on LF only; one JSON object per line
                 done.heard = time.monotonic()
@@ -535,9 +552,78 @@ class PiWaker:
                             on_event(event)
                         except Exception as e:  # never let reporting stop the turn
                             logger.warning(f'on_event failed: {e}')
-            proc.wait()
+                    if event.get('type') == 'tool_call':
+                        total_tool_calls += 1
+                        name = event.get('name') or ''
+                        args = event.get('input') or {}
+                        try:
+                            args_sig = json.dumps(args, sort_keys=True)
+                        except (TypeError, ValueError):
+                            args_sig = str(args)
+                        sig = (name, args_sig)
+
+                        if sig == consecutive_tool:
+                            consecutive_count += 1
+                        else:
+                            consecutive_tool = sig
+                            consecutive_count = 1
+
+                        recent_tool_calls.append(sig)
+                        window_count = sum(1 for s in recent_tool_calls if s == sig)
+
+                        if consecutive_count >= self.CONSECUTIVE_CALL_LIMIT:
+                            tripped_reason = (f'Identical tool call repeated {consecutive_count} times in a row: '
+                                              f'{name}({args_sig[:120]})')
+                        elif window_count >= self.WINDOW_CALL_LIMIT:
+                            tripped_reason = (f'Tool call repeated {window_count} times within last '
+                                              f'{len(recent_tool_calls)} calls: {name}({args_sig[:120]})')
+                        elif total_tool_calls >= self.MAX_TOOL_CALLS:
+                            tripped_reason = f'Turn exceeded maximum tool calls limit ({total_tool_calls})'
+
+                        if tripped_reason:
+                            logger.error(f'{new_session_id}: loop tripwire tripped: {tripped_reason}')
+                            if on_event:
+                                try:
+                                    now = time.time() * 1000
+                                    on_event({
+                                        'type': 'assistant_message',
+                                        'id': translator.id(now, 'assistant', 9999),
+                                        'turn': translator.turn,
+                                        'at': iso(now),
+                                        'text': f'⚠️ Turn stopped by loop tripwire: {tripped_reason}',
+                                        'stop_reason': 'error',
+                                    })
+                                except Exception as e:
+                                    logger.warning(f'failed to post loop notice: {e}')
+                            try:
+                                os.killpg(proc.pid, signal.SIGTERM)
+                            except (OSError, ProcessLookupError, AttributeError):
+                                try:
+                                    proc.terminate()
+                                except (OSError, ProcessLookupError, AttributeError):
+                                    pass
+                            break
+                if tripped_reason:
+                    break
         finally:
             done.set()
+        try:
+            proc.wait(timeout=2)
+        except (subprocess.TimeoutExpired, AttributeError):
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError, AttributeError):
+                try:
+                    proc.kill()
+                except (OSError, ProcessLookupError, AttributeError):
+                    pass
+            try:
+                proc.wait(timeout=2)
+            except (subprocess.TimeoutExpired, AttributeError):
+                pass
+        if tripped_reason:
+            self.last_result = {'subtype': 'loop_detected', 'error': tripped_reason, 'run_cost_usd': translator.cost}
+            raise ToolLoopTripwire(tripped_reason)
         if not translator.settled:
             # The runner closes the turn in the Mood when a wake raises.
             err = (proc.stderr.read() or '').strip()[:500]
