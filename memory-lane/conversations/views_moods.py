@@ -134,6 +134,14 @@ def page_version():
 @require_GET
 def api_moods(request):
     """Every Mood, most recently active first; archived ones flagged (the page lists them apart)."""
+    from django.core.cache import cache
+    from .services.mood_cache import API_MOODS_CACHE_KEY, API_MOODS_CACHE_TTL
+    cached = cache.get(API_MOODS_CACHE_KEY)
+    if cached is not None:
+        response = JsonResponse(cached['body'])
+        response['Server-Timing'] = f'hit;dur=0, {cached["timing"]}'
+        return response
+
     from .services import settings as knobs
     # Timed (Justin, 29 Oct: reopening #search "took quite a while"; this list took 5-20s then): Server-Timing
     # says which part, and the slowest Mood's own payload; logged when slow.
@@ -161,18 +169,20 @@ def api_moods(request):
     people = list(people)
     power = clock('powers', powers, [p.name for p in people if not p.is_biological_human])
     said = clock('pronouns', pronouns, [(p.name, p.is_biological_human) for p in people])
-    response = JsonResponse({'moods': payloads, 'people': [
+    body = {'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
          **(look[p.name] if p.is_biological_human and p.name in look else {}),
          **({'for': power[p.name]['for'], 'for_short': power[p.name]['short']} if p.name in power else {}),
          **({'pronouns': said[p.name]} if p.name in said else {})}
         for p in people],
         # Tags for a group (@core): what each is, and who it mentions now.
-        'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]})
+        'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]}
+    response = JsonResponse(body)
     clock.lap('people')
     if each:
         took, slug = max(each)
         clock.laps.append((f'slowest;desc="{slug}"', took))
+    cache.set(API_MOODS_CACHE_KEY, {'body': body, 'timing': clock.header()}, API_MOODS_CACHE_TTL)
     return clock.report(response, 'Moods list')
 
 

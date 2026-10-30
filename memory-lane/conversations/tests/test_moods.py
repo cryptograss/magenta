@@ -205,3 +205,49 @@ class RenamingTest(TestCase):
         poller.moods, poller.known_as = {'delivery-kid'}, {'uploads-and-embeds': {'delivery-kid'}}
         self.assertTrue(poller.mine('uploads-and-embeds'))  # a container told the old name answers it still
         self.assertFalse(poller.mine('general'))
+
+
+class MoodsListCacheTest(TestCase):
+    """The /api/moods/ payload is cached to avoid full-table scans, and invalidated on lifecycle events."""
+
+    def test_cache_hit_and_invalidation_on_create_archive_rename(self):
+        from django.core.cache import cache
+        from conversations.models import Mood
+        from conversations.services import settings as knobs
+        from conversations.services.mood_cache import API_MOODS_CACHE_KEY
+
+        cache.clear()
+        mood = Mood.objects.create(slug='test-cache', title='Test Cache')
+
+        # First request: computes and caches
+        res1 = self.client.get('/api/moods/')
+        self.assertEqual(res1.status_code, 200)
+        self.assertIn('total;', res1['Server-Timing'])
+        cached = cache.get(API_MOODS_CACHE_KEY)
+        self.assertIsNotNone(cached)
+
+        # Second request: served from cache
+        res2 = self.client.get('/api/moods/')
+        self.assertEqual(res2.status_code, 200)
+        self.assertIn('hit;dur=0', res2['Server-Timing'])
+
+        # Lifecycle event 1: archiving a mood busts cache
+        knobs.change('archived', True, mood=mood)
+        self.assertIsNone(cache.get(API_MOODS_CACHE_KEY))
+
+        # Re-caches
+        res3 = self.client.get('/api/moods/')
+        self.assertIsNotNone(cache.get(API_MOODS_CACHE_KEY))
+
+        # Lifecycle event 2: renaming a mood busts cache
+        mood.rename('Test Cache Renamed')
+        self.assertIsNone(cache.get(API_MOODS_CACHE_KEY))
+
+        # Re-caches
+        res4 = self.client.get('/api/moods/')
+        self.assertIsNotNone(cache.get(API_MOODS_CACHE_KEY))
+
+        # Lifecycle event 3: creating a new mood busts cache
+        Mood.objects.create(slug='brand-new', title='Brand New')
+        self.assertIsNone(cache.get(API_MOODS_CACHE_KEY))
+
