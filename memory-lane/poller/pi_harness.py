@@ -75,6 +75,8 @@ def _look_only_tools():
 
 LOOK_ONLY_TOOLS = _look_only_tools()
 COMPACT = re.compile(r'/compact(?:\s+(.+))?\Z', re.S)  # what the runner sends for "/compact re [what to keep]"
+# Seconds to let a stopped turn wind down, its in-flight tool included, before SIGKILL.
+TURN_STOP_GRACE = 10
 
 
 class LoopGuard:
@@ -651,9 +653,13 @@ class PiWaker:
                     break
         finally:
             done.set()
+        # SIGTERM asks; SIGKILL is the last resort. A turn stopped mid-tool leaves the tool's own
+        # child running (a `git commit`, a test run), and SIGKILL to the group murders it mid-write:
+        # magent's commit died 137 that way on 31 Oct. So let the polite signal land first.
         try:
-            proc.wait(timeout=2)
+            proc.wait(timeout=TURN_STOP_GRACE)
         except (subprocess.TimeoutExpired, AttributeError):
+            logger.warning(f'pi still running {TURN_STOP_GRACE}s after SIGTERM: killing the group')
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
             except (OSError, ProcessLookupError, AttributeError):
