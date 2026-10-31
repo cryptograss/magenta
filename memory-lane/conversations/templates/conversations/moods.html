@@ -2084,12 +2084,12 @@
         liveData = payload.moods || {};
         renderBanner(payload.banner || null);
         markLive();
-        if (asksChanged()) { renderNav(); renderToolsOpen(); }
         noticeThinking(before);
-        preload();
-        warmAgents();
+        // One after another, not side by side: each is a stream of asks, and a primed Mood's agents are noted
+        // with it, so warming doesn't ask for them again.
+        preload().then(prime).then(warmAgents);
       }
-    } catch (e) {}
+    } catch (e) { console.warn('live:', e); }  // said, not swallowed: a broken call here stopped preload for days
   }
   // An agent starting work where Moods are being read as they come: the narrator
   // says so ("Magent is thinking"), in its own voice, in turn with what's said.
@@ -5431,6 +5431,9 @@
     agentsNow = {};  // nothing to compare with: a first drawing never glows
     renderAgents(agentsFor[slug] || {});
     loadTodo();
+    // Primed in the background, never opened here: kept now, as an opened Mood is, and drawn from that.
+    if (!drawn.get(slug) && !keptOf(slug) && primed.has(slug)) keep(slug, primed.get(slug), true);
+    primed.delete(slug);
     const saved = drawn.get(slug), kept = !saved && keptOf(slug);
     // Moved on since it was drawn here (as the list of Moods last heard it): a pane says what's new is coming.
     const heldTo = preloadedTo[slug] || (saved && saved.now) || (kept && kept.now) || '';
@@ -5493,15 +5496,50 @@
   let preloading = false;
   async function preload() {
     if (preloading || document.hidden) return;
-    const heldTo = slug => preloadedTo[slug] || (drawn.get(slug) || {}).now || (keptOf(slug) || {}).now || '';
+    const heldTo = slug => preloadedTo[slug] || (drawn.get(slug) || {}).now || (keptOf(slug) || {}).now
+      || (primed.get(slug) || {}).now || '';
     const due = Object.entries(liveData).filter(([slug, d]) => slug !== current && d.last && d.last > heldTo(slug)
-                                                         && (drawn.has(slug) || keptOf(slug)));
+                                                         && (drawn.has(slug) || keptOf(slug) || primed.has(slug)));
     if (!due.length) return;
     preloading = true;
     try { for (const [slug] of due) await preloadOne(slug); } finally { preloading = false; }
   }
+  // The Moods this page holds nothing of -- never opened here, or kept from before a deploy changed how
+  // they're drawn -- asked for in the background, a short first page each, one at a time: those with
+  // something for you first, then the most recently active. Held in this page only (the browser keeps
+  // what's opened), and brought up to date by preload like the rest (Justin, 31 Oct: "it's waiting for
+  // me to click over to start catching up").
+  const primed = new Map();  // slug -> a first page, as kept
+  const PRIME_PAGE = 50, PRIME_MOODS = 16;
+  let priming = false;
+  async function prime() {
+    if (priming || preloading || document.hidden || !moods.length) return;
+    const last = slug => (liveData[slug] || {}).last || '';
+    const want = moods.filter(m => !m.archived && m.slug !== current && !drawn.has(m.slug) && !keptOf(m.slug))
+      .sort((a, b) => ((unread[b.slug] || new Map()).size > 0) - ((unread[a.slug] || new Map()).size > 0)
+                      || (last(b.slug) > last(a.slug) ? 1 : last(b.slug) < last(a.slug) ? -1 : 0))
+      .slice(0, PRIME_MOODS).filter(m => !primed.has(m.slug));
+    if (!want.length) return;
+    priming = true;
+    try {
+      for (const m of want) {
+        if (document.hidden) break;
+        if (m.slug === current || drawn.has(m.slug) || keptOf(m.slug)) continue;  // opened meanwhile
+        let data;
+        try {
+          const r = await fetch('/api/moods/' + encodeURIComponent(m.slug) + '/turns/?limit=' + PRIME_PAGE,
+                                { signal: AbortSignal.timeout(POLL_WAIT_MS) });
+          if (!r.ok) continue;
+          data = await r.json();
+        } catch (e) { continue; }
+        if (m.slug === current || drawn.has(m.slug) || keptOf(m.slug)) continue;
+        noteAgents(m.slug, data.agents);
+        primed.set(m.slug, grow({ has_earlier: !!data.has_earlier, version: KEPT_VERSION }, data));
+      }
+    } finally { priming = false; }
+  }
   async function preloadOne(slug) {
-    const held = drawn.get(slug), kept = keptOf(slug);
+    const held = drawn.get(slug), kept = keptOf(slug) || primed.get(slug);
     const keptItems = !held && kept ? itemsOf(kept) : [];
     const after = held ? held.lastId : keptItems.length ? keptItems[keptItems.length - 1].v.id : null;
     if (!after) return;
@@ -5516,6 +5554,7 @@
     noteAgents(slug, data.agents);
     // Kept without the server's time: what changed since was not asked, and opening it still asks.
     keep(slug, { ...data, now: undefined }, false, false);
+    if (primed.has(slug)) grow(primed.get(slug), { ...data, now: undefined });
     const items = itemsOf(data);
     if (!items.length || drawn.get(slug) !== held || !held) return;
     const turnsEl = held.nodes.getElementById('turns');
@@ -5685,7 +5724,16 @@
   function keep(slug, data, full, opened = true) {
     let kept = full ? null : keptOf(slug);
     if (!full && !kept) return;  // grown only from a whole first page
-    kept = kept || { has_earlier: !!data.has_earlier, version: KEPT_VERSION };
+    kept = grow(kept || { has_earlier: !!data.has_earlier, version: KEPT_VERSION }, data);
+    // Opened goes first in the queue to be kept; brought up to date unopened (preload) keeps its place.
+    const order = opened || !store.get('kept', []).includes(slug) ? [slug, ...store.get('kept', []).filter(s => s !== slug)]
+      : store.get('kept', []);
+    for (const gone of order.slice(KEPT_MOODS)) { try { localStorage.removeItem('moods.kept.' + gone); } catch (e) {} }
+    store.set('kept', order.slice(0, KEPT_MOODS));
+    store.set('kept.' + slug, kept);
+  }
+  // A kept first page, grown by what came since: the newest KEPT_ITEMS.
+  function grow(kept, data) {
     if (data.mood) kept.mood = { ...(kept.mood || {}), ...data.mood };  // a poll's is only its name: the rest stays
     for (const k of KEPT_KINDS) {
       const byId = new Map((kept[k] || []).map(v => [v.id, v]));
@@ -5700,12 +5748,7 @@
       kept.has_earlier = true;
     }
     kept.now = data.now || kept.now;
-    // Opened goes first in the queue to be kept; brought up to date unopened (preload) keeps its place.
-    const order = opened || !store.get('kept', []).includes(slug) ? [slug, ...store.get('kept', []).filter(s => s !== slug)]
-      : store.get('kept', []);
-    for (const gone of order.slice(KEPT_MOODS)) { try { localStorage.removeItem('moods.kept.' + gone); } catch (e) {} }
-    store.set('kept', order.slice(0, KEPT_MOODS));
-    store.set('kept.' + slug, kept);
+    return kept;
   }
   function forgetKept() {
     for (const slug of store.get('kept', [])) { try { localStorage.removeItem('moods.kept.' + slug); } catch (e) {} }
