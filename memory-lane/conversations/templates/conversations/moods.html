@@ -876,6 +876,7 @@
   .event.wiki summary { cursor: pointer; }
   .aturn .heard { font-size: 12.5px; color: var(--muted); margin: 2px 0 4px; }
   .aturn .heard a { color: var(--accent); }
+  .aturn .heard summary { cursor: pointer; }
   .event.wiki .each { margin: 4px 0 0 18px; }
   .event.wiki .wthumb img { height: 32px; max-width: 64px; object-fit: cover; border-radius: 3px; border: 1px solid var(--line);
                             vertical-align: middle; margin: 0 5px 0 1px; }
@@ -4598,9 +4599,13 @@
       const line = document.createElement('div');
       line.className = 'heard';
       // Not its words (Justin, 27 Oct): "announcement" links to the message, with its words on hover.
-      line.innerHTML = v.heard.map(h => `📣 heard <b>${esc(shown(h.by))}</b>'s `
+      const each = v.heard.map(h => `📣 heard <b>${esc(shown(h.by))}</b>'s `
         + (h.message ? `<a href="/moods/${encodeURIComponent(h.from)}/#m-${esc(h.message)}" title="${esc(h.text)}">announcement</a>` : 'announcement')
-        + ` from <a class="moodlink" data-mood="${esc(h.from)}" href="/moods/${encodeURIComponent(h.from)}/">#${esc(h.from)}</a>`).join('<br>');
+        + ` from <a class="moodlink" data-mood="${esc(h.from)}" href="/moods/${encodeURIComponent(h.from)}/">#${esc(h.from)}</a>`);
+      // Several in a row fold into one line, opened on demand (Justin, 31 Oct).
+      const by = [...new Set(v.heard.map(h => shown(h.by)))];
+      line.innerHTML = each.length < 2 ? each[0]
+        : `<details><summary>📣 heard ${each.length} announcements, from <b>${by.map(esc).join('</b>, <b>')}</b></summary>${each.join('<br>')}</details>`;
       const body = b.querySelector('.abody');
       if (body) body.prepend(line);
     }
