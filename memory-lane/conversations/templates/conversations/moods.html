@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- interactive-widget: a phone's keyboard shrinks the page, rather than sliding it up under the top bar and leaving it
+     there, out of reach (Justin, 30 Oct: the ☰ "stuck" above the screen) -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
 <title>magenta</title>
 <link rel="manifest" href="/moods/manifest.webmanifest">
 <meta name="color-scheme" content="light dark">
@@ -247,6 +249,10 @@
      next, as big bars, and big buttons found by thumb. Where you are stays, one small line (re). */
   body.voice-mode #main, body.voice-mode #composer, body.voice-mode #readBar, body.voice-mode #readQueue,
   body.voice-mode .layout > nav { display: none !important; }
+  /* ☰ in voice mode: the Moods over it, to go to another and stay in voice mode (Justin, 30 Oct). */
+  body.voice-mode.menu-open .layout > nav { display: block !important; position: fixed; top: 41px; left: 0; right: 0; z-index: 31;
+                                            max-height: 70vh; overflow-y: auto; border-bottom: 1px solid var(--line);
+                                            box-shadow: 0 8px 24px rgba(0,0,0,.35); font-size: 17px; }
   #voiceMode { position: fixed; inset: 41px 0 0 0; z-index: 30; background: var(--bg); display: none; flex-direction: column;
                gap: 10px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); overflow-y: auto; }
   body.voice-mode #voiceMode { display: flex; }
@@ -1266,6 +1272,14 @@
   }
   .turn .body audio { display: block; width: 100%; max-width: 420px; height: 36px; margin: 4px 0; }
   .turn .body .memo { font-size: 12.5px; color: var(--muted); }
+  /* A person's voice memo: the player, big, and its words folded under "Transcript" (Justin, 30 Oct). */
+  .turn .body.memoed audio { max-width: 520px; height: 48px; margin: 6px 0 2px; }
+  .turn .body details.transcript { margin: 2px 0 4px; }
+  .turn .body details.transcript > summary { cursor: pointer; color: var(--accent); font-size: 13px; list-style: none; user-select: none; }
+  .turn .body details.transcript > summary::-webkit-details-marker { display: none; }
+  .turn .body details.transcript > summary::before { content: "▸"; display: inline-block; width: 1em; transition: transform .15s; }
+  .turn .body details.transcript[open] > summary::before { transform: rotate(90deg); }
+  .turn .body details.transcript > summary small { color: var(--muted); }
   #composer.dropping textarea { outline: 2px dashed var(--accent); }
   /* Whether each agent is listening here; a hush for a long deliberation. */
   /* Each agent's listening, model and effort, and its pie: in the footer, always in view. */
@@ -3059,6 +3073,23 @@
     a.replaceWith(box);
   });
 
+  // A person's voice memo: its player stands out, and what was said is folded under "Transcript", opened by the
+  // word or the chevron (Justin, 30 Oct: "these long voice memos are better left hidden"). What came before the
+  // player (words typed with it) stays in view; everything after it is the transcript.
+  function foldMemo(el) {
+    const body = el.querySelector(':scope > .body'), audio = body && body.querySelector(':scope > p > audio');
+    if (!audio || body.querySelector(':scope > details.transcript')) return;
+    const rest = [];
+    for (let n = audio.parentElement.nextElementSibling; n; n = n.nextElementSibling) rest.push(n);
+    body.classList.add('memoed');
+    if (!rest.length) return;
+    const words = rest.map(n => n.textContent).join(' ').trim().split(/\s+/).filter(Boolean).length;
+    const fold = document.createElement('details');
+    fold.className = 'transcript';
+    fold.innerHTML = `<summary>Transcript <small>· ${words.toLocaleString()} word${words === 1 ? '' : 's'}</small></summary>`;
+    rest.forEach(n => fold.appendChild(n));
+    body.appendChild(fold);
+  }
   function turnEl(t, isNew) {
     const el = document.createElement('article');
     const at = new Date(t.created_at).getTime();
@@ -3138,6 +3169,7 @@
     }
     if (t.reply) noteLink(document.getElementById('m-' + t.reply.id), { id: t.id, sender: t.sender, mood: current, reply: true });
     if (t.attested) el._proof = t.attested;
+    if (t.is_human && !t.deleted) foldMemo(el);
     markTurn(el, t.mentions || []);
     markAgentMentions(el, t);
     el.querySelectorAll('a.yarn[data-yarn]').forEach(decorateYarn);
@@ -6776,7 +6808,15 @@
   menu.addEventListener('click', () => {
     menu.setAttribute('aria-expanded', document.body.classList.toggle('menu-open'));
   });
-  nav.addEventListener('click', e => { if (e.target.closest('a.mood')) document.body.classList.remove('menu-open'); });
+  nav.addEventListener('click', e => {
+    if (!e.target.closest('a.mood')) return;
+    document.body.classList.remove('menu-open'); menu.setAttribute('aria-expanded', 'false');
+  });
+  // Where a browser slides the whole page up for the keyboard (iOS), it can leave it there once the keyboard has
+  // gone, the top bar above the screen and only the thread answering a swipe: put it back.
+  const unslide = () => { if (window.scrollY && document.activeElement?.tagName !== 'TEXTAREA') window.scrollTo(0, 0); };
+  document.addEventListener('focusout', () => setTimeout(unslide, 300));
+  window.visualViewport?.addEventListener('resize', unslide);
   // On a phone: one line until there's more to say, growing with the text (to 40% of the screen).
   const phone = matchMedia(PHONE).matches;
   function fitSay() {
