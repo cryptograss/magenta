@@ -697,7 +697,10 @@ class ClaudeCodeWaker:
         watchdog.start()
         result = None
         said = ''  # the last text the agent itself wrote (not a helper's)
-        guard, killed = LoopGuard(), None  # the tool-loop tripwire (TOOL_LOOP_KILL in pi_harness)
+        # The tool-loop tripwire (pi_harness.LoopGuard): the attractor detectors kill, and the
+        # per-turn ceiling is a 150-call budget that still ends the turn -- Claude Code's `-p`
+        # has no stdin, so unlike pi there is no mid-turn warning here (pi_harness, 31 Oct).
+        guard, killed = LoopGuard(), None
         try:
             for raw in proc.stdout:
                 heard[0] = time.monotonic()

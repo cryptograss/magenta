@@ -45,9 +45,14 @@ def mcp_read_patterns():
     return [f'mcp__{WIKI_MCP_SERVER}__{name}' for name in WIKI_READ_TOOLS]
 
 
-# Tool loop tripwire limits (shared by pi_harness and mood_poller):
-# Attractor loops: identical tool call repeated 3 times, or 5 times in 10-call window.
-# Turn call ceiling: 150 calls default (settable via TOOL_LOOP_MAX_CALLS env var).
+# Tool loop tripwire limits (shared by pi_harness and mood_poller).
+# A machine attractor repeats the exact same call, and by the third time (even with text between
+# the repeats -- the 28 Oct specimen had escape text every 3-4s) the run is a runaway, not a retry:
+# those detectors kill. The per-turn ceiling is a *budget*, not a kill: on 31 Oct it stopped two
+# productive turns cold (magent, #interfaces, 22:50 and 01:13) -- big PR work, never a loop. So it
+# sits high, and at 2/3 of it pi is steered a wrap-up warning (pi_harness); a run that ignores the
+# warning still trips the ceiling and dies. Claude Code's `-p` has no stdin: there the budget only
+# moves. TOOL_LOOP_MAX_CALLS overrides the default.
 TOOL_LOOP_KILL = 3
 TOOL_LOOP_WINDOW = 10
 TOOL_LOOP_WINDOW_KILL = 5

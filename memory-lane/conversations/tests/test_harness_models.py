@@ -79,7 +79,7 @@ class PiCatalogTest(TestCase):
 
     def test_the_menus_names_mean_anthropics_models_on_pi(self):
         waker = PiWaker(pi='pi')
-        model_of = lambda m: (lambda c: c[c.index('--model') + 1])(waker.command(None, 'n', 'hi', model=m))
+        model_of = lambda m: (lambda c: c[c.index('--model') + 1])(waker.command(None, 'n', model=m))
         self.assertEqual(model_of('opus'), 'anthropic/claude-opus-5-5')  # never Bedrock's, by fuzzy match
         self.assertEqual(model_of('sonnet'), 'anthropic/claude-sonnet-5-5')
         self.assertEqual(model_of('openrouter/moonshotai/kimi-k3'), 'openrouter/moonshotai/kimi-k3')

@@ -46,14 +46,14 @@ class RulesPromptTest(SimpleTestCase):
         self.assertIn('Never print a credential.', waker.options['system'])
 
     def test_both_harnesses_append_it_to_their_own(self):
-        pi = PiWaker(pi='pi', model='openrouter/x', session_dir='/tmp/s').command('old', 'new', 'hi', system=RULES)
+        pi = PiWaker(pi='pi', model='openrouter/x', session_dir='/tmp/s').command('old', 'new', system=RULES)
         self.assertEqual(pi[pi.index('--append-system-prompt') + 1], RULES)
-        self.assertEqual(pi[-1], 'hi')
+        self.assertNotIn('hi', pi)  # pi is RPC mode now: the prompt rides stdin, not argv
         claude = ClaudeCodeWaker(claude='claude').command('old', 'new', 'hi', system=RULES)
         self.assertEqual(claude[claude.index('--append-system-prompt') + 1], RULES)
         self.assertEqual(claude[claude.index('--system-prompt-snapshot') + 1], 'off')
         self.assertEqual(claude[-2:], ['--', 'hi'])
-        self.assertNotIn('--append-system-prompt', PiWaker(pi='pi', session_dir='/tmp/s').command('o', 'n', 'hi'))
+        self.assertNotIn('--append-system-prompt', PiWaker(pi='pi', session_dir='/tmp/s').command('o', 'n'))
         without = ClaudeCodeWaker(claude='claude').command('o', 'n', 'hi')
         self.assertEqual(without[without.index('--system-prompt-snapshot') + 1], 'off')
 

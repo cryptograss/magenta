@@ -1,7 +1,7 @@
 """Pi (https://github.com/earendil-works/pi) as a harness the runner can wake.
 
 Pi is one open-source harness for many model providers. The runner starts a
-turn with `pi --mode json`, the way it starts Claude Code with `claude -p`,
+turn with `pi --mode rpc`, the way it starts Claude Code with `claude -p`,
 and this module translates what Pi prints into record events
 (docs/RECORD_EVENTS.md), memory-lane's own format, before anything is
 posted. Nothing of Pi's format reaches memory-lane.
@@ -77,6 +77,13 @@ LOOK_ONLY_TOOLS = _look_only_tools()
 COMPACT = re.compile(r'/compact(?:\s+(.+))?\Z', re.S)  # what the runner sends for "/compact re [what to keep]"
 # Seconds to let a stopped turn wind down, its in-flight tool included, before SIGKILL.
 TURN_STOP_GRACE = 10
+# TOOL_LOOP_KILL / WINDOW / WINDOW_KILL / MAX_CALLS come from poller/wake_policy.py, one place for
+# both harnesses. The per-turn ceiling there is a budget, not a kill: on 31 Oct (magent, #interfaces,
+# 22:50 and 01:13) it stopped two productive turns cold -- big PR work, never a loop. So it sits
+# high, and at 2/3 of it the turn gets a warning steered in over RPC (pi's `steer` lands before the
+# next model call; the record keeps it as the poller's user message). Only the attractor detectors
+# kill; a run that ignores the warning still trips the ceiling and dies. Claude Code's `-p` has no
+# stdin: there the budget only moves, no warning.
 
 
 class LoopGuard:
@@ -92,6 +99,8 @@ class LoopGuard:
         self.limit = limit
         self.window_limit = window_limit
         self.max_calls = TOOL_LOOP_MAX_CALLS if max_calls is None else max_calls
+        self.warn_at = (self.max_calls * 2) // 3  # where the wrap-up warning goes out (2/3 of the budget)
+        self.warn = None  # set once, at warn_at: the pi harness delivers it as an RPC steer
         self.streak, self.last = 0, None
         self.total = 0
         self.recent = deque(maxlen=window_size)
@@ -115,8 +124,9 @@ class LoopGuard:
             return f'tool loop: {name} called {window_count}× within last {len(self.recent)} calls'
         if self.total >= self.max_calls:
             return f'tool loop: turn exceeded maximum tool calls limit ({self.total})'
-        if self.total == int(self.max_calls * 2 / 3):
-            logger.warning(f'turn approaching call ceiling: {self.total}/{self.max_calls} tool calls used')
+        if self.warn is None and self.total >= self.warn_at:
+            self.warn = (f'tool budget: {self.total} of {self.max_calls} tool calls used this turn. '
+                         'Wrap up soon: finish what is in hand, then post your reply and stop calling tools.')
         return ''
 EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # The names the model menu has always offered, as Pi should read them. Left
@@ -573,8 +583,10 @@ class PiWaker:
         threading.Thread(target=watch, daemon=True).start()
         return done
 
-    def command(self, session_id, new_session_id, prompt, model=None, effort=None, full=False, system=None):
-        cmd = [self.pi, '--mode', 'json', '--session-dir', str(self.session_dir), '--session-id', new_session_id]
+    def command(self, session_id, new_session_id, model=None, effort=None, full=False, system=None):
+        """The argv for one wake's pi process: RPC mode, so the runner prompts it on stdin and
+        can steer it mid-turn (the tool budget's wrap-up warning)."""
+        cmd = [self.pi, '--mode', 'rpc', '--session-dir', str(self.session_dir), '--session-id', new_session_id]
         if session_id:
             cmd += ['--fork', session_id]
         model = model or self.model
@@ -588,11 +600,12 @@ class PiWaker:
             cmd += ['--tools', LOOK_ONLY_TOOLS]  # look-only: reads and the allowlisted MCP tools (wake_policy.py)
         if system:  # its instructions (mood_poller.MoodPoller.instructions_for): after Pi's own, never in the session
             cmd += ['--append-system-prompt', system]
-        return cmd + [prompt]
+        return cmd
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, model=None, effort=None, full=False,
              stop=None, system=None, **ignored):
-        """Run one turn; (new session id, its reply). '/compact <what to keep>' compacts instead."""
+        """Run one turn; (new session id, its reply). '/compact <what to keep>' compacts instead.
+        The prompt goes in on stdin (RPC mode), and LoopGuard's tool-budget warning is steered in mid-turn."""
         keep = COMPACT.match(prompt or '')
         if keep and session_id:
             instructions = keep.group(1).strip() if (keep and keep.group(1)) else ''
@@ -607,12 +620,20 @@ class PiWaker:
         new_session_id = new_session_id or str(uuid.uuid4())
         self.session_dir.mkdir(parents=True, exist_ok=True)
         translator = PiTranslator(new_session_id, effort=effort)
-        cmd = self.command(session_id, new_session_id, prompt, model=model, effort=effort, full=full, system=system)
-        proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        cmd = self.command(session_id, new_session_id, model=model, effort=effort, full=full, system=system)
+        proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, start_new_session=True)
         done = self._watch(proc, stop)
-        guard, killed = LoopGuard(), None  # the tool-loop tripwire (TOOL_LOOP_KILL)
+        guard, killed, steered = LoopGuard(), None, False  # the tool-loop tripwire (TOOL_LOOP_KILL)
         try:
+            proc.stdin.write(json.dumps({'id': 'turn', 'type': 'prompt', 'message': prompt}) + '\n')
+            proc.stdin.flush()
+            # RPC mode streams no session record, so the turn starts here (as compact does).
+            if on_event:
+                try:
+                    on_event(translator.event('turn_started', iso(time.time() * 1000), cwd=cwd, effort=effort))
+                except Exception as e:  # never let reporting stop the turn
+                    logger.warning(f'on_event failed: {e}')
             for line in proc.stdout:  # Pi frames on LF only; one JSON object per line
                 done.heard = time.monotonic()
                 try:
@@ -649,10 +670,25 @@ class PiWaker:
                                     proc.terminate()
                                 except (OSError, ProcessLookupError, AttributeError):
                                     pass
+                        elif guard.warn and not steered:
+                            # The tool budget's wrap-up warning: pi delivers a steer before the
+                            # next model call, and the record keeps it as the poller's user message.
+                            steered = True
+                            try:
+                                proc.stdin.write(json.dumps({'type': 'steer', 'message': guard.warn}) + '\n')
+                                proc.stdin.flush()
+                            except (BrokenPipeError, OSError, AttributeError):
+                                pass
                 if killed:
                     break
+                if translator.settled:
+                    break  # RPC pi lives on after its run; closing stdin is its orderly exit
         finally:
             done.set()
+            try:
+                proc.stdin.close()  # Pi's orderly exit
+            except (BrokenPipeError, OSError, AttributeError):
+                pass
         # SIGTERM asks; SIGKILL is the last resort. A turn stopped mid-tool leaves the tool's own
         # child running (a `git commit`, a test run), and SIGKILL to the group murders it mid-write:
         # magent's commit died 137 that way on 31 Oct. So let the polite signal land first.

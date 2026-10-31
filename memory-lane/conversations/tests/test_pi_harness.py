@@ -99,7 +99,7 @@ class CommandTest(TestCase):
 
     def test_look_only_reads_and_a_fork_names_its_parent(self):
         waker = PiWaker(pi='pi', model='local/qwen', session_dir='/tmp/s')
-        cmd = waker.command('old', 'new', 'hi', effort='max')
+        cmd = waker.command('old', 'new', effort='max')  # RPC mode: the prompt goes on stdin, not argv
         self.assertEqual(cmd[:2], ['pi', '--mode'])
         self.assertIn('--fork', cmd)
         self.assertEqual(cmd[cmd.index('--session-id') + 1], 'new')
@@ -116,8 +116,9 @@ class CommandTest(TestCase):
         self.assertFalse([t for t in mcp if any(w in t for w in
                          ('create', 'update', 'delete', 'move', 'protect', 'upload', 'browser'))])
         self.assertEqual(cmd[cmd.index('--thinking') + 1], 'xhigh')
-        self.assertNotIn('--tools', waker.command(None, 'new', 'hi', full=True))
-        self.assertEqual(cmd[-1], 'hi')
+        self.assertNotIn('--tools', waker.command(None, 'new', full=True))
+        self.assertEqual(cmd[1:3], ['--mode', 'rpc'])
+        self.assertNotIn('hi', cmd)  # the prompt never rides the command line: stdin carries it
 
 
 # A Pi in RPC mode, as Pi 1.1.0 answers `compact` (tried on hunter, 18 Oct): its events, then the response.
@@ -186,8 +187,7 @@ class CompactTest(TestCase):
         self.assertEqual(self.waker.last_result['subtype'], 'error')
 
     def test_an_ordinary_wake_that_mentions_compact_is_a_turn(self):
-        self.assertEqual(self.waker.command(SESSION, 'n', 'You were woken: /compact re keep it')[-1],
-                         'You were woken: /compact re keep it')
+        self.assertNotIn('/compact', self.waker.command(SESSION, 'n')[-1])  # the prompt rides stdin, not argv
         self.assertIsNone(__import__('poller.pi_harness', fromlist=['COMPACT']).COMPACT.match('woken: /compact x'))
 
 
@@ -241,18 +241,36 @@ class LoopGuardTest(PlainCase):
         guard = LoopGuard()
         self.assertEqual(guard.max_calls, 150)
 
+    def test_the_budget_warns_at_two_thirds_without_killing(self):
+        # 31 Oct: the 50-call ceiling stopped two productive magent turns cold (#interfaces).
+        # Now the ceiling is a 150-call budget, and at 2/3 of it the guard hands the harness
+        # a wrap-up warning to steer in -- the turn goes on unless a loop trips first.
+        guard = LoopGuard()
+        for i in range(99):
+            self.assertEqual(guard.see(f'read_{i}', {'path': f'f{i}'}), '')
+        self.assertIsNone(guard.warn)
+        self.assertEqual(guard.see('read_99', {'path': 'f99'}), '')  # call 100: warned, not killed
+        self.assertEqual(guard.warn.split('.')[0], 'tool budget: 100 of 150 tool calls used this turn')
+        for i in range(100, 149):  # the warning fires once; the turn lives on to the ceiling
+            self.assertEqual(guard.see(f'read_{i}', {'path': f'f{i}'}), '')
+        self.assertIn('tool budget: 100 of 150', guard.warn)
+        self.assertIn('maximum tool calls limit (150)', guard.see('read_149', {'path': 'f149'}))
 
-# A pi stuck in a machine attractor, as re's was on 28 Oct: the same read over and over,
-# with escape text every time, until something kills it.
+
+# A pi in RPC mode, as the waker now runs it (pi_harness, 31 Oct): the prompt arrives on stdin.
+# Its loop mode is a machine attractor, as re's was on 28 Oct: the same read over and over, with
+# escape text every time, until something kills it.
 FAKE_LOOP_PI = r'''#!PYTHON
 import json, sys, time
 
-lines = [
-    {'type': 'session', 'version': 3, 'id': 'x', 'timestamp': '2026-10-30T03:00:00.000Z'},
-    {'type': 'turn_start'},
-]
+mode = json.loads(sys.stdin.readline())['message']
 
-mode = sys.argv[-1]
+# RPC pi echoes the prompt as a user message (the translator turns it into the wake's user_message).
+print(json.dumps({'type': 'message_end', 'message': {'role': 'user', 'timestamp': 1793519999000,
+                  'content': [{'type': 'text', 'text': mode}]}}), flush=True)
+
+lines = [{'type': 'turn_start'}]
+
 if 'alternating' in mode:
     for i in range(10):
         tool = 'grep' if i % 2 == 0 else 'read'
@@ -265,6 +283,24 @@ elif 'normal' in mode:
     lines.append({'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'stop', 'usage': {},
                   'content': [{'type': 'text', 'text': 'Done reading.'}]}})
     lines.append({'type': 'agent_settled', 'aborted': False})
+    for line in lines:
+        print(json.dumps(line), flush=True)
+    sys.exit(0)
+elif 'steering' in mode:
+    # 120 distinct calls: past the 2/3 warning (100), short of the 150 ceiling. Print 100
+    # first (the runner steers the warning at call 100), then read the steer -- a readline
+    # before the prints would deadlock: the runner would wait for calls never printed.
+    for i in range(100):
+        print(json.dumps({'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'toolUse',
+                          'usage': {}, 'content': [{'type': 'toolCall', 'id': f'c{i}', 'name': 'read',
+                                                    'arguments': {'path': f'f{i}'}}]}}), flush=True)
+    steer = json.loads(sys.stdin.readline())  # blocks until the runner steers it in
+    open(sys.argv[0] + '.steered', 'w').write(json.dumps(steer))
+    lines = [{'type': 'message_end', 'message': {'role': 'user', 'timestamp': 1793520000000,
+              'content': [{'type': 'text', 'text': steer['message']}]}},
+             {'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'stop', 'usage': {},
+              'content': [{'type': 'text', 'text': 'Wrapped up early.'}]}},
+             {'type': 'agent_settled', 'aborted': False}]
     for line in lines:
         print(json.dumps(line), flush=True)
     sys.exit(0)
@@ -306,7 +342,7 @@ class LoopKillTest(PlainCase):
         self.assertIn('tool loop', self.waker.last_result['error'])
         # The record keeps what the loop did: every call, escape text and all, plus loop notice
         self.assertEqual([e['type'] for e in events],
-                         ['turn_started'] + ['assistant_message', 'tool_call'] * 3 + ['assistant_message'])
+                         ['turn_started', 'user_message'] + ['assistant_message', 'tool_call'] * 3 + ['assistant_message'])
         self.assertIn('⚠️ Turn stopped by loop tripwire', events[-1]['text'])
         self.assertLess(time.time() - start, 10)  # killed, not slept out
 
@@ -329,6 +365,23 @@ class LoopKillTest(PlainCase):
         _, reply = self.waker.wake(SESSION, 'normal test', new_session_id='new-11', on_event=events.append)
         self.assertEqual(reply, 'Done reading.')
         self.assertEqual(self.waker.last_result['subtype'], 'success')
+
+    def test_the_tool_budget_warns_mid_turn_and_the_turn_survives(self):
+        # 31 Oct, magent in #interfaces: two productive turns died at the 50-call ceiling with no
+        # word to anyone. Now the ceiling is a 150-call budget; at call 100 the harness steers
+        # the warning in, pi delivers it as the poller's user message, and the turn ends when
+        # the agent wraps up -- not by a kill.
+        events = []
+        _, reply = self.waker.wake(SESSION, 'steering test', new_session_id='new-12', on_event=events.append)
+        self.assertEqual(reply, 'Wrapped up early.')
+        self.assertEqual(self.waker.last_result['subtype'], 'success')
+        steer = json.loads(Path(self.pi + '.steered').read_text())
+        self.assertEqual((steer.get('type'), steer.get('message').split('.')[0]),
+                         ('steer', 'tool budget: 100 of 150 tool calls used this turn'))
+        warned = [e for e in events if e['type'] == 'user_message']
+        self.assertEqual([e['text'] for e in warned],
+                         ['steering test', 'tool budget: 100 of 150 tool calls used this turn. '
+                          'Wrap up soon: finish what is in hand, then post your reply and stop calling tools.'])
 
 @override_settings(MOOD_RUNNER_KEYS={'re': KEY}, TOOL_RESULT_CONTENT_CHARS=20000)
 class EndToEndTest(TestCase):
@@ -453,8 +506,8 @@ class EndToEndTest(TestCase):
             self.assertFalse(is_router(model), model)
         waker = PiWaker(pi='pi', session_dir=tempfile.mkdtemp())
         with self.assertRaisesRegex(RuntimeError, 'router'):
-            waker.command(None, 's1', 'hi', model='openrouter/openrouter/pareto-code')
-        self.assertIn('--model', waker.command(None, 's1', 'hi', model='openrouter/deepseek/deepseek-v4-pro'))
+            waker.command(None, 's1', model='openrouter/openrouter/pareto-code')
+        self.assertIn('--model', waker.command(None, 's1', model='openrouter/deepseek/deepseek-v4-pro'))
 
     def test_a_wake_that_failed_closes_its_turn(self):
         client, posted = self.client, []
