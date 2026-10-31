@@ -180,7 +180,17 @@ def api_moods(request):
     clock.lap('payloads')
     # A Mood nobody has spoken in yet ranks by when it was started: a new one first.
     started = {m.slug: m.created_at.isoformat() for m in moods}
-    payloads.sort(key=lambda p: p['last_at'] or started[p['slug']], reverse=True)
+    # A Mood is as recent as the newest word in it or in any of its threads, threads of threads too (Justin,
+    # 31 Oct): a busy thread keeps the Mood it came from up the list, with the thread nested under it.
+    active = {p['slug']: p['last_at'] or started[p['slug']] for p in payloads}
+    parent = {p['slug']: p.get('thread_of') for p in payloads}
+    for slug, at in list(active.items()):
+        seen, up = {slug}, parent.get(slug)
+        while up in active and up not in seen:
+            active[up] = max(active[up], at)
+            seen.add(up)
+            up = parent.get(up)
+    payloads.sort(key=lambda p: active[p['slug']], reverse=True)
     payloads.sort(key=lambda p: not p['pinned'])  # pinned first, each part still newest first
     people = ThinkingEntity.objects.order_by('name')
     look = knobs.looks()
