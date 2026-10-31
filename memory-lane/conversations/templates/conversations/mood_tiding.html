@@ -105,13 +105,16 @@
   .say.signin { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .say a.button { border-radius: 6px; padding: 6px 18px; background: var(--accent); color: #fff; }
   .say a.button:hover { text-decoration: none; filter: brightness(1.1); }
-  /* [[ suggests PickiPedia's titles, under the box. */
+  /* Autocomplete: [[, @, #, #m- under the box. */
   .say .box { position: relative; }
-  .say .suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; max-width: 420px; margin-top: 2px;
-                  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
-                  box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
-  .say .suggest div { padding: 5px 10px; cursor: pointer; }
-  .say .suggest div.sel { background: var(--accent-soft); }
+  .say .suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; max-width: 480px; margin-top: 2px;
+                  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow-y: auto;
+                  max-height: 240px; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); font-size: 13.5px; }
+  .say .suggest div { padding: 6px 10px; cursor: pointer; display: flex; align-items: baseline; gap: 8px; }
+  .say .suggest div.sel, .say .suggest div:hover { background: var(--accent-soft); }
+  .say .suggest .emo { flex: none; width: 1.5em; text-align: center; font-size: 14px; }
+  .say .suggest b { color: var(--ink); font-weight: 600; }
+  .say .suggest small { color: var(--muted); margin-left: auto; font-size: 12px; }
 </style>
 {% if embed %}<!-- Inside the one page's Tidings frame: no bar of its own; a link into magenta goes there. -->
 <script>
@@ -251,16 +254,35 @@
 {% include "conversations/mood_tiding_tools.html" %}
 {% if viewer %}
 <script>
-  // [[ suggests PickiPedia titles as they're typed, as the Moods' composer does; ↑↓ to choose, Enter or Tab
-  // to take one, Esc to leave it. The wiki's API answers any page, so it's asked directly.
+  // Autocomplete: [[ for PickiPedia, @ for entities, # for moods, and #m- for messages.
   document.addEventListener('DOMContentLoaded', function () {
     const WIKI = "{{ pickipedia_url|escapejs }}" || 'https://pickipedia.xyz';
     const box = document.getElementById('say'), list = document.getElementById('wikiSuggest');
-    const found = new Map();
-    let titles = [], chosen = 0, timer = null;
+    if (!box || !list) return;
+
+    let choices = [], chosen = 0, timer = null;
+    const wikiCache = new Map();
+    let apiData = null;
+
+    async function loadApiData() {
+      if (apiData) return apiData;
+      try {
+        if (window.parent && window.parent !== window && window.parent.people && window.parent.moods) {
+          apiData = { people: window.parent.people, moods: window.parent.moods, groups: window.parent.groups || [] };
+          return apiData;
+        }
+      } catch (e) {}
+      try {
+        const r = await fetch('/api/moods/');
+        if (r.ok) apiData = await r.json();
+      } catch (e) {}
+      return apiData || { people: [], moods: [], groups: [] };
+    }
+    loadApiData();
+
     const titleCase = s => s.replace(/(^|[\s:_(-])([a-z])/g, (m, p, c) => p + c.toUpperCase());
     async function titlesFor(prefix) {
-      if (found.has(prefix)) return found.get(prefix);
+      if (wikiCache.has(prefix)) return wikiCache.get(prefix);
       const ask = async q => {
         const r = await fetch(`${WIKI}/api.php?action=query&list=prefixsearch&pslimit=8&format=json&origin=*&pssearch=${encodeURIComponent(q)}`);
         return ((await r.json()).query || {}).prefixsearch || [];
@@ -268,57 +290,155 @@
       let hits = [];
       try {
         hits = await ask(prefix);
-        if (!hits.length && titleCase(prefix) !== prefix) hits = await ask(titleCase(prefix));  // 'tony r': Tony Rice
+        if (!hits.length && titleCase(prefix) !== prefix) hits = await ask(titleCase(prefix));
       } catch (e) { hits = []; }
-      found.set(prefix, hits.map(h => h.title));
-      return found.get(prefix);
+      wikiCache.set(prefix, hits.map(h => h.title));
+      return wikiCache.get(prefix);
     }
-    function typing() {
-      const m = box.value.slice(0, box.selectionStart).match(/\[\[([^\[\]|\n]{1,100})$/);
-      return m ? m[1] : null;
+
+    function localMessages() {
+      const msgs = [];
+      const originMsgId = "{{ tiding.message|escapejs }}";
+      const originMood = "{{ tiding.mood|escapejs }}";
+      if (originMsgId) {
+        msgs.push({ id: originMsgId, mood: originMood, label: `source message in #${originMood}` });
+      }
+      document.querySelectorAll('.comment').forEach(el => {
+        const voteBtn = el.querySelector('[data-vote]');
+        const voteUrl = voteBtn ? voteBtn.dataset.vote || '' : '';
+        const idMatch = voteUrl.match(/comments?\/([0-9a-f-]{36})\//i);
+        const id = idMatch ? idMatch[1] : (el.id.replace(/^c-/, '') || '');
+        const moodLink = el.querySelector('.who a[href*="/#m-"]');
+        const moodMatch = moodLink ? moodLink.getAttribute('href').match(/\/moods\/([^\/]+)\/#m-/) : null;
+        const mood = moodMatch ? moodMatch[1] : originMood;
+        const who = el.querySelector('.who b')?.textContent?.trim() || '';
+        const text = el.querySelector('.words')?.textContent?.replace(/\s+/g, ' ')?.trim()?.slice(0, 60) || '';
+        if (id && !msgs.some(m => m.id === id)) {
+          msgs.push({ id, mood, label: `${who ? who + ': ' : ''}${text || (mood ? 'in #' + mood : '')}` });
+        }
+      });
+      return msgs;
     }
-    function close() { list.hidden = true; titles = []; }
+
+    function wordAtCaret() {
+      const upto = box.value.slice(0, box.selectionStart);
+      const w = upto.match(/\[\[([^\[\]|\n]{1,100})$/);
+      if (w) return { kind: 'wiki', start: upto.length - w[1].length, prefix: w[1] };
+      let m = upto.match(/(^|[^\w@\/.])@([A-Za-z][\w.-]*)?$/);
+      if (m) return { kind: 'mention', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
+      m = upto.match(/(^|[^\w&#\/;=])#m-([0-9a-f-]{0,36})$/i);
+      if (m) return { kind: 'message', start: upto.length - m[2].length, prefix: m[2].toLowerCase() };
+      m = upto.match(/(^|[^\w&#\/;=])#([a-z0-9][a-z0-9-]{0,79})?$/i);
+      if (m) return { kind: 'mood', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
+      return null;
+    }
+
+    function close() { list.hidden = true; choices = []; }
+
     function draw() {
       list.innerHTML = '';
-      titles.forEach((t, i) => {
+      choices.forEach((c, i) => {
         const row = document.createElement('div');
-        row.textContent = '📖 ' + t;
+        row.innerHTML = c.html;
         row.className = i === chosen ? 'sel' : '';
         row.setAttribute('role', 'option');
         row.addEventListener('mousedown', e => { e.preventDefault(); take(i); });
         list.append(row);
       });
-      list.hidden = !titles.length;
+      list.hidden = !choices.length;
     }
+
     function take(i) {
-      const prefix = typing();
-      if (prefix === null || !titles[i]) return close();
-      const caret = box.selectionStart, start = caret - prefix.length;
-      box.value = box.value.slice(0, start) + titles[i] + ']]' + box.value.slice(caret);
-      box.setSelectionRange(start + titles[i].length + 2, start + titles[i].length + 2);
+      const at = wordAtCaret();
+      if (!at || !choices[i]) return close();
+      const before = box.value.slice(0, at.start), after = box.value.slice(box.selectionStart);
+      box.value = before + choices[i].insert + after;
+      const caret = (before + choices[i].insert).length;
+      box.setSelectionRange(caret, caret);
       close();
       box.focus();
     }
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    async function updateSuggestions() {
+      const at = wordAtCaret();
+      if (!at) return close();
+      if (at.kind === 'wiki') {
+        const titles = await titlesFor(at.prefix);
+        const still = wordAtCaret();
+        if (!still || still.kind !== 'wiki' || still.prefix !== at.prefix) return;
+        choices = titles.map(t => ({ insert: t + ']] ', html: `<span class="emo">📖</span><b>${esc(t)}</b>` }));
+      } else if (at.kind === 'mention') {
+        const data = await loadApiData();
+        const still = wordAtCaret();
+        if (!still || still.kind !== 'mention' || still.prefix !== at.prefix) return;
+        const p = at.prefix;
+        const peopleHits = (data.people || [])
+          .filter(n => n.name.toLowerCase().startsWith(p) || (n.name.toLowerCase().includes(p) && p.length > 1))
+          .slice(0, 8)
+          .map(n => ({
+            insert: n.name + ' ',
+            html: `<span class="emo">${n.is_human ? '👤' : '🤖'}</span><b>@${esc(n.name)}</b><small>${n.is_human ? 'person' : esc(n.for_short || 'emergent')}</small>`
+          }));
+        const groupHits = (data.groups || [])
+          .filter(g => g.name.toLowerCase().startsWith(p))
+          .map(g => ({
+            insert: g.name + ' ',
+            html: `<span class="emo">👥</span><b>@${esc(g.name)}</b><small>${esc(g.is || 'group')}</small>`
+          }));
+        choices = [...groupHits, ...peopleHits].slice(0, 8);
+      } else if (at.kind === 'mood') {
+        const data = await loadApiData();
+        const still = wordAtCaret();
+        if (!still || still.kind !== 'mood' || still.prefix !== at.prefix) return;
+        const p = at.prefix;
+        choices = (data.moods || [])
+          .filter(m => m.slug.toLowerCase().startsWith(p) || ((m.title || '').toLowerCase().includes(p) && p.length > 1))
+          .slice(0, 8)
+          .map(m => ({
+            insert: m.slug + ' ',
+            html: `<span class="emo">#</span><b>${esc(m.slug)}</b><small>${esc(m.title && m.title !== m.slug ? m.title : '')}</small>`
+          }));
+      } else if (at.kind === 'message') {
+        const p = at.prefix;
+        const local = localMessages();
+        const hits = local.filter(m => m.id.toLowerCase().startsWith(p) || (m.label || '').toLowerCase().includes(p));
+        choices = hits.slice(0, 8).map(m => ({
+          insert: m.id + ' ',
+          html: `<span class="emo">💬</span><b>#m-${esc(m.id.slice(0, 8))}…</b><small>${esc(m.label || '#' + m.mood)}</small>`
+        }));
+      }
+      chosen = 0;
+      draw();
+    }
+
     box.addEventListener('input', () => {
-      const prefix = typing();
       clearTimeout(timer);
-      if (prefix === null) return close();
-      timer = setTimeout(async () => {
-        const got = await titlesFor(prefix);
-        if (typing() !== prefix) return;  // they've typed on
-        titles = got; chosen = 0; draw();
-      }, found.has(prefix) ? 0 : 150);
+      const at = wordAtCaret();
+      if (!at) return close();
+      timer = setTimeout(updateSuggestions, at.kind === 'wiki' ? (wikiCache.has(at.prefix) ? 0 : 150) : 50);
     });
+
     box.addEventListener('keydown', e => {
       if (list.hidden) return;
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-        chosen = (chosen + (e.key === 'ArrowDown' ? 1 : titles.length - 1)) % titles.length;
+        chosen = (chosen + (e.key === 'ArrowDown' ? 1 : choices.length - 1)) % choices.length;
         draw();
-      } else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); take(chosen); }
-      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+      } else if ((e.key === 'Enter' && !e.ctrlKey && !e.metaKey) || e.key === 'Tab') {
+        e.preventDefault();
+        take(chosen);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      }
     });
-    box.addEventListener('blur', () => setTimeout(close, 150));
+    box.addEventListener('blur', () => setTimeout(close, 200));
   });
 </script>
 {% endif %}
@@ -354,7 +474,7 @@
     <input type="hidden" id="replyTo" name="reply_to" value="">
     <input type="hidden" id="replyKind" name="reply_kind" value="">
     <div class="box">
-      <textarea id="say" name="text" placeholder="Say something about this… [[Page]] links PickiPedia."></textarea>
+      <textarea id="say" name="text" placeholder="Say something about this… @person, #mood, #m-message, [[Page]]"></textarea>
       <div class="suggest" id="wikiSuggest" role="listbox" hidden></div>
     </div>
     <div class="bar">
