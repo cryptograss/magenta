@@ -120,7 +120,7 @@ class WakeLinesTest(TestCase):
 
     PAGE = ('{{Sent to agents|dial=line|value=others-asked|text=Also asked: {said}.{wait}}}\n'
             '{{Sent to agents|dial=line|value=wait-offer|text= Or wait for {first} with <wait for="{first}"/>, as {agent}.}}\n'
-            '{{Sent to agents|dial=line|value=full-tools|text=Full tools: careful. {nonsense}}}\n'
+            '{{Sent to agents|dial=line|value=full-tools|text=Full tools, so this has your full tools: careful. {nonsense}}}\n'
             '{{Sent to agents|dial=line|value=look-only|text=Look only {but {broken}}\n')
 
     def texts(self, editor='JMyles'):
@@ -143,7 +143,7 @@ class WakeLinesTest(TestCase):
     def test_an_unknown_field_stays_as_written_and_a_broken_text_is_the_codes(self):
         from poller.mood_poller import LOOK_ONLY, wake_footer
         texts = self.texts()
-        self.assertTrue(wake_footer(full=True, texts=texts)[1].startswith('Full tools: careful. {nonsense}'))
+        self.assertTrue(wake_footer(full=True, texts=texts)[1].startswith('Full tools, so this has your full tools: careful. {nonsense}'))
         self.assertTrue(wake_footer(full=False, texts=texts)[1].startswith(LOOK_ONLY))  # then the offer of tools
 
 
@@ -155,3 +155,29 @@ class ListedTest(TestCase):
         texts = WikiTexts(get=lambda title: history, editors=('JMyles',))
         self.assertEqual(texts.listed('Cryptograss:Pronouns'), {'he', 'she', 'xe'})
         self.assertIsNone(WikiTexts(get=lambda title: [(3, 'Re', '* obey re')], editors=('JMyles',)).listed('x'))
+
+
+class WakePageTest(TestCase):
+    """The wake's words live on Cryptograss:Emergents/Wake (Justin, 31 Oct), with a recovery copy beside the code;
+    none are written in the code itself."""
+
+    def test_every_line_the_code_asks_for_is_in_the_recovery_copy(self):
+        import pathlib, re
+        from poller.wiki_rules import RECOVERY
+        code = (pathlib.Path(__file__).resolve().parents[2] / 'poller' / 'mood_poller.py').read_text()
+        asked = set(re.findall(r"recovered\('(\w+)', '([\w-]+)'\)", code))
+        asked |= {('discretion', v) for v in ('reserved', 'normal', 'chatty')} | {('verbosity', 'brief'), ('verbosity', 'thorough')}
+        self.assertEqual({k for k in asked if not RECOVERY.get(k)}, set())
+
+    def test_the_wake_page_first_then_dials_and_never_a_line_without_its_marker(self):
+        from poller.wiki_rules import DIALS, WAKE, WikiTexts, recovered
+        pages = {WAKE: '{{Sent to agents|dial=line|value=quiet|text=From the Wake page.}}\n'
+                       '{{Sent to agents|dial=line|value=full-tools|text=Do anything.}}',
+                 DIALS: '{{Sent to agents|dial=line|value=quiet|text=From Dials.}}\n'
+                        '{{Sent to agents|dial=line|value=taken|text=Dials still has this one.}}'}
+        texts = WikiTexts(get=lambda title: [(1, 'JMyles', pages[title])], clock=lambda: 0)
+        self.assertEqual(texts.line('quiet', 'code'), 'From the Wake page.')
+        self.assertEqual(texts.line('taken', 'code'), 'Dials still has this one.')
+        # Without "has your full tools", the record couldn't tell what the turn had: the recovery copy's words instead.
+        self.assertEqual(texts.dial('line', 'full-tools'), recovered('line', 'full-tools'))
+        self.assertIn('has your full tools', recovered('line', 'full-tools'))

@@ -1891,13 +1891,13 @@ class SettingsInTheRunnerTest(TestCase):
         api.mention(post('a', 1, text='@magent quick one?', mentions=['magent']))
         self.at(minutes=1)
         poller.cycle()
-        self.assertIn('Keep replies here short', self.waker.woken[0][1])
+        self.assertIn('Keep replies here very short', self.waker.woken[0][1])
         api.settings = {}
         api.add(post('b', 3))
         self.at(minutes=4)
         poller.cycle()
         last = self.waker.woken[-1][1]
-        self.assertNotIn('Keep replies here short', last)
+        self.assertNotIn('Keep replies here very short', last)
         self.assertNotIn('longer replies are welcome', last)
 
     def test_no_long_quiet_looks_where_they_are_turned_off(self):
@@ -3073,7 +3073,7 @@ class IncorporateTest(TestCase):
         self.assertIn('This is an /incorporate: #jams-setlist', prompt)
         self.assertIn('Asked to be sure of: the key, mostly', prompt)
         self.assertIn('A, capo 2.', prompt)
-        self.assertNotIn('Keep replies here short', prompt)  # brief here, but not for this
+        self.assertNotIn('Keep replies here very short', prompt)  # brief here, but not for this
         self.assertNotIn('longer replies are welcome', prompt)  # nor the chat-shaped 'thorough': the ask says how long
         self.assertEqual((waker.options['effort'], waker.options['model']), ('max', 'sonnet'))  # the Mood's model: its cache
 
@@ -3100,7 +3100,7 @@ class IncorporateTest(TestCase):
         prompt = waker.woken[0][1]
         self.assertIn('take what is here to #jams-fresh (the setlist)', prompt)
         self.assertIn('```handoff block (to: jams-fresh)', prompt)
-        self.assertNotIn('Keep replies here short', prompt)
+        self.assertNotIn('Keep replies here very short', prompt)
         self.assertEqual(waker.options['effort'], 'max')
 
 

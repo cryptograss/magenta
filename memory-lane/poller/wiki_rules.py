@@ -32,6 +32,9 @@ log = logging.getLogger(__name__)
 API = 'https://pickipedia.xyz/api.php'
 WIKI = 'https://pickipedia.xyz/wiki/'
 DIALS = 'Cryptograss:Moods/Dials'
+# The wake's own lines (Justin, 31 Oct: "get all these instructions out of the business logic"): on the page that
+# describes the wake, each beside what it's for. Dials keeps what tunes a setting (discretion, verbosity).
+WAKE = 'Cryptograss:Emergents/Wake'
 TEMPLATE = 'Sent to agents'
 TTL = 300  # seconds between looks at a page
 HISTORY = 20  # revisions looked back through for the newest trusted one
@@ -105,6 +108,31 @@ def blocks(wikitext):
         i = j
 
 
+def _recovery():
+    """{(dial, value): text} from the recovery copy beside this file (wake_texts.md): what is said when the wiki
+    can't be read and never has been. No words are written in the code itself."""
+    import pathlib
+    try:
+        found = blocks((pathlib.Path(__file__).with_name('wake_texts.md')).read_text())
+    except OSError as e:
+        log.error('wiki_rules: no recovery copy of the wake texts: %s', e)
+        return {}
+    return {(b['dial'], b['value']): b['text'] for b in found}
+
+
+RECOVERY = _recovery()
+
+
+def recovered(dial, value):
+    """One text from the recovery copy ('' if it has none)."""
+    return RECOVERY.get((dial, value), '')
+
+
+# Words the record reads back to know what a turn could do (conversations/services/mood_view.wake_said,
+# tools_ask): a line on the wiki without them would make every turn read as neither. Such a line isn't used.
+MARKERS = {'full-tools': 'has your full tools', 'look-only': 'can look but not touch'}
+
+
 class WikiTexts:
     """Pages read from the wiki, each kept TTL seconds: {title: (fetched_at, revision, blocks)}."""
 
@@ -168,14 +196,22 @@ class WikiTexts:
             if kept:
                 self.pages[title] = (self.clock(), kept[1], kept[2])
                 return kept[1], kept[2]
+            self.pages[title] = (self.clock(), None, [])  # nothing to read yet: asked again after TTL, not every wake
             return None, []
         self.pages[title] = (self.clock(), revision, blocks(wikitext))
         return self.pages[title][1], self.pages[title][2]
 
-    def dial(self, key, value, fallback=''):
-        """The text for one setting of a dial (discretion=reserved), else `fallback`."""
-        _, found = self.page(DIALS)
-        return next((b['text'] for b in found if b['dial'] == key and b['value'] == value), fallback)
+    def dial(self, key, value, fallback=None):
+        """The text for one setting of a dial (discretion=reserved) or one of the wake's lines (line=look-only): from
+        the Wake page, then Dials (where the lines were first), else `fallback`, else the recovery copy."""
+        for title in ((WAKE, DIALS) if key == 'line' else (DIALS,)):
+            _, found = self.page(title)
+            text = next((b['text'] for b in found if b['dial'] == key and b['value'] == value), None)
+            if text is not None and (key != 'line' or MARKERS.get(value, '') in text):
+                return text
+            if text is not None:
+                log.warning('wiki_rules: %s line=%s lacks "%s": not used', title, value, MARKERS[value])
+        return recovered(key, value) if fallback is None else fallback
 
     def line(self, name, fallback, **fields):
         """One of the wake's fixed lines, as the Dials page has it ({{Sent to agents|dial=line|value=<name>|text=...}};
