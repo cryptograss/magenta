@@ -37,7 +37,7 @@ class VerifyTest(TestCase):
         def history(title):
             if title == 'Cryptograss:Pronouns':
                 raise OSError('down')
-            return histories.get(title, [(5, 'JMyles', '')])
+            return title, histories.get(title, [(5, 'JMyles', '')])
 
         found = verify.state(history=history)
         rows = {r['page']: r for r in found['pages']}
@@ -53,6 +53,13 @@ class VerifyTest(TestCase):
         self.assertEqual(found['waiting'], 3)
         states = [r['state'] for r in found['pages']]  # what needs a person first, then the rest
         self.assertEqual((sorted(states[:2]), states[2], states[-1]), (['missing', 'untrusted'], 'waiting', 'verified'))
+
+    def test_an_old_title_redirecting_is_listed_once_by_its_new_one(self):
+        bundle(standing={'page': 'Cryptograss:Agents/GeneralOrders'}, identity={'page': 'Cryptograss:Emergents/GeneralOrders'})
+        moved = {'Cryptograss:Agents/GeneralOrders': 'Cryptograss:Emergents/GeneralOrders'}
+        pages = [r['page'] for r in verify.state(history=lambda t: (moved.get(t, t), [(5, 'JMyles', '')]))['pages']]
+        self.assertNotIn('Cryptograss:Agents/GeneralOrders', pages)
+        self.assertEqual(pages.count('Cryptograss:Emergents/GeneralOrders'), 1)
 
     def test_the_section_renders(self):
         verify.cache.set(verify.KEY, {'pages': [{'page': 'Cryptograss:Moods/Dials', 'url': 'https://x/wiki/D',

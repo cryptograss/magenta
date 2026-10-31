@@ -47,11 +47,14 @@ def _ask(params):
 
 
 def _history(title):
-    """[(revid, user, timestamp)], newest first, as far back as the runners look (wiki_rules.HISTORY)."""
+    """(the page's own title, [(revid, user, timestamp)] newest first, as far back as the runners look
+    (wiki_rules.HISTORY)). A redirect is followed, as the runners follow it: a page moved (Agents/* to
+    Emergents/*, 25 Oct) is listed once, by the title it lives at (Justin, 31 Oct)."""
     from poller.wiki_rules import HISTORY
     page = _ask({'action': 'query', 'prop': 'revisions', 'titles': title, 'redirects': '1',
                  'rvprop': 'ids|user|timestamp', 'rvlimit': HISTORY})['query']['pages'][0]
-    return [(r['revid'], r.get('user', ''), r.get('timestamp', '')) for r in page.get('revisions') or []]
+    return page.get('title') or title, [(r['revid'], r.get('user', ''), r.get('timestamp', ''))
+                                        for r in page.get('revisions') or []]
 
 
 def state(history=_history):
@@ -66,15 +69,18 @@ def state(history=_history):
         return found
     editors = list(getattr(settings, 'MOOD_WIKI_RULES_EDITORS', None) or EDITORS)
     trusted = {e.strip().lower().replace('_', ' ') for e in editors}
-    rows, error = [], ''
-    for title in watched():
-        row = {'page': title, 'url': page_url(title)}
+    rows, error, seen = [], '', set()
+    for asked in watched():
         try:
-            revisions = history(title)
+            title, revisions = history(asked)
         except Exception as e:  # noqa: BLE001 -- PickiPedia down or slow: said, and the rest still listed
             error = f"PickiPedia couldn't be read ({type(e).__name__})"
-            rows.append({**row, 'state': 'unread'})
+            rows.append({'page': asked, 'url': page_url(asked), 'state': 'unread'})
             continue
+        if title in seen:
+            continue  # an old title redirecting to a page already listed
+        seen.add(title)
+        row = {'page': title, 'url': page_url(title)}
         if not revisions:
             rows.append({**row, 'state': 'missing'})
             continue
