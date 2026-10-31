@@ -1,6 +1,7 @@
 """Tests for Moods: the subject a conversation belongs to."""
 
 import json
+from unittest import mock
 import tempfile
 import uuid
 from io import StringIO
@@ -168,7 +169,9 @@ class RenamingTest(TestCase):
     """Renamed, a Mood gets the slug its title calls for; the old one still finds it."""
 
     def test_the_moods_list_says_where_its_time_went(self):
+        from django.core.cache import cache
         from conversations.models import Mood
+        cache.clear()  # built here, not served from another test's list
         Mood.objects.create(slug='jams', title='jams')
         timing = self.client.get('/api/moods/')['Server-Timing']
         for part in ('flags;', 'tools;', 'payloads;', 'powers;', 'pronouns;', 'people;', 'slowest;desc="jams"', 'total;'):
@@ -208,46 +211,64 @@ class RenamingTest(TestCase):
 
 
 class MoodsListCacheTest(TestCase):
-    """The /api/moods/ payload is cached to avoid full-table scans, and invalidated on lifecycle events."""
+    """The /api/moods/ list is never dropped: past fresh it's served while one build makes the next
+    (services/mood_cache.py), and a lifecycle event marks it stale rather than deleting it."""
 
-    def test_cache_hit_and_invalidation_on_create_archive_rename(self):
+    def setUp(self):
         from django.core.cache import cache
+        cache.clear()
+        from conversations.services import mood_cache
+        self.spawned = []
+        patcher = mock.patch.object(mood_cache, 'spawn', lambda fn, *a: self.spawned.append((fn, a)))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_spawned(self):
+        with mock.patch('django.db.connection.close'):  # in line, the thread's connection is the test's
+            while self.spawned:
+                fn, args = self.spawned.pop(0)
+                fn(*args)
+
+    def slugs(self):
+        return {m['slug'] for m in self.client.get('/api/moods/').json()['moods']}
+
+    def test_built_once_then_a_hit(self):
+        from conversations.models import Mood
+        Mood.objects.create(slug='test-cache', title='Test Cache')
+        first = self.client.get('/api/moods/')
+        self.assertIn('built;dur=0', first['Server-Timing'])
+        self.assertIn('hit;dur=0', self.client.get('/api/moods/')['Server-Timing'])
+        self.assertEqual(self.spawned, [])
+
+    def test_a_lifecycle_event_is_seen_at_once(self):
         from conversations.models import Mood
         from conversations.services import settings as knobs
-        from conversations.services.mood_cache import API_MOODS_CACHE_KEY
-
-        cache.clear()
         mood = Mood.objects.create(slug='test-cache', title='Test Cache')
-
-        # First request: computes and caches
-        res1 = self.client.get('/api/moods/')
-        self.assertEqual(res1.status_code, 200)
-        self.assertIn('total;', res1['Server-Timing'])
-        cached = cache.get(API_MOODS_CACHE_KEY)
-        self.assertIsNotNone(cached)
-
-        # Second request: served from cache
-        res2 = self.client.get('/api/moods/')
-        self.assertEqual(res2.status_code, 200)
-        self.assertIn('hit;dur=0', res2['Server-Timing'])
-
-        # Lifecycle event 1: archiving a mood busts cache
-        knobs.change('archived', True, mood=mood)
-        self.assertIsNone(cache.get(API_MOODS_CACHE_KEY))
-
-        # Re-caches
-        res3 = self.client.get('/api/moods/')
-        self.assertIsNotNone(cache.get(API_MOODS_CACHE_KEY))
-
-        # Lifecycle event 2: renaming a mood busts cache
-        mood.rename('Test Cache Renamed')
-        self.assertIsNone(cache.get(API_MOODS_CACHE_KEY))
-
-        # Re-caches
-        res4 = self.client.get('/api/moods/')
-        self.assertIsNotNone(cache.get(API_MOODS_CACHE_KEY))
-
-        # Lifecycle event 3: creating a new mood busts cache
+        self.slugs()
         Mood.objects.create(slug='brand-new', title='Brand New')
-        self.assertIsNone(cache.get(API_MOODS_CACHE_KEY))
+        self.assertIn('brand-new', self.slugs())
+        knobs.change('archived', True, mood=mood)
+        self.assertTrue(next(m for m in self.client.get('/api/moods/').json()['moods'] if m['slug'] == 'test-cache')['archived'])
+        self.assertEqual(self.spawned, [])
+
+    def test_with_nothing_kept_one_builds_and_the_rest_wait_for_it(self):
+        from django.core.cache import cache
+        from conversations.services import mood_cache
+        cache.add(mood_cache.BUILDING_KEY, 1, 60)  # another request is building it
+        entry = {'body': {'moods': [], 'people': [], 'groups': []}, 'timing': 'total;dur=1', 'at': 0}
+        built = []
+        with mock.patch.object(mood_cache.time, 'sleep', lambda s: cache.set(mood_cache.API_MOODS_CACHE_KEY, entry, None)):
+            got, how = mood_cache.moods_list(lambda: built.append(1))
+        self.assertEqual((got, how, built), (entry, 'hit', []))
+
+    def test_past_fresh_it_is_rebuilt_in_the_background(self):
+        import time
+        from conversations.services.mood_cache import API_MOODS_CACHE_TTL
+        self.client.get('/api/moods/')
+        later = time.time() + API_MOODS_CACHE_TTL + 1
+        with mock.patch('conversations.services.mood_cache.time.time', return_value=later):
+            self.assertIn('stale;dur=0', self.client.get('/api/moods/')['Server-Timing'])
+            self.assertEqual(len(self.spawned), 1)
+            self.run_spawned()
+            self.assertIn('hit;dur=0', self.client.get('/api/moods/')['Server-Timing'])
 

@@ -13,7 +13,7 @@ import re
 
 from django.conf import settings
 from django.db.models import Max
-from django.http import Http404, HttpResponseRedirect, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
@@ -154,14 +154,15 @@ def page_version():
 @require_GET
 def api_moods(request):
     """Every Mood, most recently active first; archived ones flagged (the page lists them apart)."""
-    from django.core.cache import cache
-    from .services.mood_cache import API_MOODS_CACHE_KEY, API_MOODS_CACHE_TTL
-    cached = cache.get(API_MOODS_CACHE_KEY)
-    if cached is not None:
-        response = JsonResponse(cached['body'])
-        response['Server-Timing'] = f'hit;dur=0, {cached["timing"]}'
-        return response
+    from .services.mood_cache import moods_list
+    entry, how = moods_list(_build_moods_list)
+    response = JsonResponse(entry['body'])
+    response['Server-Timing'] = f'{how};dur=0, {entry["timing"]}'
+    return response
 
+
+def _build_moods_list():
+    """(body, Server-Timing) of the Moods list: built off the request when it can be (services/mood_cache.py)."""
     from .services import settings as knobs
     # Timed (Justin, 29 Oct: reopening #search "took quite a while"; this list took 5-20s then): Server-Timing
     # says which part, and the slowest Mood's own payload; logged when slow.
@@ -197,13 +198,12 @@ def api_moods(request):
         for p in people],
         # Tags for a group (@core): what each is, and who it mentions now.
         'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]}
-    response = JsonResponse(body)
     clock.lap('people')
     if each:
         took, slug = max(each)
         clock.laps.append((f'slowest;desc="{slug}"', took))
-    cache.set(API_MOODS_CACHE_KEY, {'body': body, 'timing': clock.header()}, API_MOODS_CACHE_TTL)
-    return clock.report(response, 'Moods list')
+    clock.report(HttpResponse(), 'Moods list')  # logged when slow
+    return body, clock.header()
 
 
 def pronouns_here(mood):
