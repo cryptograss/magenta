@@ -407,12 +407,12 @@
   nav #archived a.mood { opacity: .75; }
   nav a.mood .pin { font-size: 11px; margin-right: -4px; }
   nav a.mood {
-    display: block; padding: 5px 14px; text-decoration: none; color: inherit;
-    border-left: 3px solid transparent;
+    display: block; padding: 5px 12px 5px 24px; text-decoration: none; color: inherit;
+    border-left: 3px solid transparent; position: relative;
   }
   nav a.mood:hover { background: var(--hover); }
   /* A thread, under the Mood it came from (Justin, 27 Oct). */
-  nav a.mood.sub { padding-left: calc(14px + 14px * var(--depth, 1)); padding-top: 3px; padding-bottom: 3px; }
+  nav a.mood.sub { padding-left: calc(24px + 14px * var(--depth, 1)); padding-top: 3px; padding-bottom: 3px; }
   nav a.mood.sub .title { font-size: 13px; font-weight: 500; }
   nav a.mood.sub .title::before { content: '⑂'; color: var(--muted); font-weight: 400; margin-right: -3px; }
   /* A fresh thread isn't a fork of anything (Justin, 27 Oct): its own mark. */
@@ -420,6 +420,26 @@
   /* Handed back to its Mood to incorporate (Justin, 29 Oct: "some kind of arrow"), until it's forked again. */
   nav a.mood.sub.back .title::before { content: '↩'; font-size: 1em; }
   nav a.mood.active { background: var(--accent-soft); border-left-color: var(--accent); }
+  nav a.mood.on-trail { border-left-color: color-mix(in srgb, var(--accent) var(--trail-pct, 35%), transparent); }
+  nav a.mood .trailpip {
+    position: absolute;
+    left: calc(5px + 14px * var(--depth, 0));
+    top: 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    font-size: 9.5px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: var(--muted);
+    opacity: var(--trail-op, 0.75);
+    letter-spacing: -0.02em;
+    user-select: none;
+  }
+  nav a.mood.sub .trailpip { top: 4px; }
+  nav a.mood:hover .trailpip { color: var(--ink); opacity: 1; }
+  nav a.mood .trailpip .pen { color: var(--accent); font-size: 9px; margin-left: 0.5px; }
   nav a.mood .title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; line-height: 1.3; }
   nav a.mood .meta { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
   /* How warm a Mood is (moodWarmth): its past day's count, coloured by how much of it came in the past 3 hours;
@@ -1812,6 +1832,22 @@
   let lastId = null;        // last turn id rendered, for ?after=
   let me = viewer || store.get('me', '') || '';
   let lastSeen = store.get('lastSeen', {});   // slug -> iso
+  let pathTrail = store.get('pathTrail', []);  // [{ slug, at, posted }]
+  function recordPath(slug) {
+    if (!slug) return;
+    const existing = pathTrail.find(x => x.slug === slug);
+    const posted = existing ? !!existing.posted : false;
+    pathTrail = [{ slug, at: Date.now(), posted }, ...pathTrail.filter(x => x.slug !== slug)].slice(0, 8);
+    store.set('pathTrail', pathTrail);
+  }
+  function recordPosted(slug) {
+    if (!slug) return;
+    const hit = pathTrail.find(x => x.slug === slug);
+    if (hit) hit.posted = true;
+    else pathTrail.unshift({ slug, at: Date.now(), posted: true });
+    store.set('pathTrail', pathTrail);
+    renderNav();
+  }
   let badges = {};          // slug -> count of my mentions since lastSeen
   let badgesBy = {};        // slug -> {person, agent}: a person's and an emergent's, apart (Justin, 29 Oct)
   let withReplies = store.get('bellReplies', false);  // agents' answers to you: counted and listed only if asked for
@@ -1964,8 +2000,17 @@
       const foldBtn = threadCount
         ? `<span role="button" tabindex="0" class="foldthreads" data-parent="${esc(m.slug)}" title="${isFolded ? 'Show threads' : 'Fold threads'}" aria-label="${isFolded ? 'Show threads' : 'Fold threads'}">${isFolded ? '▸' : '▾'}</span>`
         : '';
+      const trailIdx = pathTrail.findIndex(x => x.slug === m.slug);
+      const onTrail = trailIdx > 0 && trailIdx <= 5;
+      const trailItem = onTrail ? pathTrail[trailIdx] : null;
+      const trailPct = onTrail ? Math.max(15, Math.round(85 - (trailIdx - 1) * 16)) : 0;
+      const trailOp = onTrail ? ((7 - trailIdx) / 7).toFixed(2) : '1';
+      const trailMark = onTrail
+        ? `<span class="trailpip" title="Visited ${trailIdx} mood${trailIdx > 1 ? 's' : ''} ago (${ago(new Date(trailItem.at).toISOString())})${trailItem.posted ? ' · you sent a message here' : ''}"><span class="step">${trailIdx}</span>${trailItem.posted ? '<span class="pen">✎</span>' : ''}</span>`
+        : (trailIdx === 0 && pathTrail[0] && pathTrail[0].posted ? `<span class="trailpip current" title="You sent a message here"><span class="pen">✎</span></span>` : '');
       return `
-      <a class="mood ${m.slug === current ? 'active' : ''}${depth ? ' sub' : ''}${depth && (!m.forked_at || m.compacted) ? ' fresh' : depth && m.incorporated ? ' back' : ''}"${depth > 1 ? ` style="--depth: ${depth}"` : ''} href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
+      <a class="mood ${m.slug === current ? 'active' : ''}${onTrail ? ' on-trail' : ''}${depth ? ' sub' : ''}${depth && (!m.forked_at || m.compacted) ? ' fresh' : depth && m.incorporated ? ' back' : ''}" style="--depth: ${depth}; ${onTrail ? `--trail-pct: ${trailPct}%; --trail-op: ${trailOp};` : ''}" href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
+        ${trailMark}
         <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${foldBtn}${(m.asked || []).length
           ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${[...new Set(m.asked.map(t => ASK_EMOJI[t.kind] || '🔨'))].join('')}${
               m.asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badgeHtml(m.slug)}</div>
@@ -5407,6 +5452,7 @@
     stash();
     gen++;
     current = slug;
+    recordPath(slug);
     sayHere(slug);  // shown here to everyone, and gone from where they were
     renderVideoCards();  // the videos waiting for a draft page are per Mood
     renderShare();  // a share waiting says which Mood it would go to
@@ -8826,6 +8872,7 @@
         renderVoiceMode();
       }
       typingSent = 0; sendTyping(false); cancelReply(); showLicense();
+      recordPosted(current);
       composer.querySelectorAll('.note').forEach(el => el.remove());
       if (done.pending) memoOnItsWay(done.pending);
       if (/^\/(?:clips|yarn)\s+(save|forget)\b/i.test(text)) clipsCache = null;  // the library changed
