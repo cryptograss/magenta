@@ -133,6 +133,15 @@ class LookTest(TestCase):
         self.assertEqual(pr_cards.one('cryptograss', 'maybelle-config', 243, http=self.github, wiki=wiki), 'written')
         self.assertEqual(list(wiki.pages), ['VersionControl:PRs/maybelle-config/243'])
 
+    def test_repositories_past_the_first_hundred(self):
+        fresh = lambda n: {'full_name': f'cryptograss/r{n}', 'pushed_at': '2026-10-30T00:00:00Z'}
+        pages = {1: [fresh(n) for n in range(100)], 2: [fresh(100), {'full_name': 'cryptograss/old', 'pushed_at': '2025-01-01T00:00:00Z'}]}
+        http = mock.Mock(get=lambda url, params=None, **kw: mock.Mock(status_code=200, json=lambda: pages.get(params['page'], [])))
+        names = pr_cards.repositories(http, NOW)
+        self.assertEqual(len(names), 101)
+        self.assertIn('cryptograss/r100', names)
+        self.assertNotIn('cryptograss/old', names)
+
     @override_settings(PICKIPEDIA_TODO_BOT_USER='')
     def test_no_bot_no_nudge(self):
         self.assertFalse(pr_cards.nudge())

@@ -114,10 +114,17 @@ def _pushed(owner, repo, pull, http):
 def repositories(http, now):
     """The org's repositories pushed to lately, and any others named in settings.PR_CARD_REPOS."""
     from .todo import _github
-    since = now - timedelta(days=PUSHED_WITHIN)
-    listed = _github(f'/orgs/{ORG}/repos', http, sort='pushed', direction='desc', per_page=100) or []
-    names = [r['full_name'] for r in listed if isinstance(r, dict) and not r.get('archived')
-             and (r.get('pushed_at') or '') >= since.strftime('%Y-%m-%dT%H:%M:%SZ')]
+    since = (now - timedelta(days=PUSHED_WITHIN)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    names, page = [], 1
+    while True:
+        listed = _github(f'/orgs/{ORG}/repos', http, sort='pushed', direction='desc', per_page=100, page=page)
+        listed = [r for r in listed or [] if isinstance(r, dict)]
+        fresh = [r for r in listed if (r.get('pushed_at') or '') >= since]
+        names += [r['full_name'] for r in fresh if not r.get('archived')]
+        # Newest push first: the next page is only worth asking for if this one was full and fresh to the end.
+        if len(listed) < 100 or len(fresh) < len(listed):
+            break
+        page += 1
     return names + [n for n in getattr(settings, 'PR_CARD_REPOS', []) if n not in names]
 
 
