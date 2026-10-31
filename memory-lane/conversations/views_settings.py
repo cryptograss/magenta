@@ -65,7 +65,7 @@ def makers_offered():
             for vendor, makers in sorted(found.items()) if vendor}
 
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'settings')
 
 
 def section(name):
@@ -106,6 +106,21 @@ def api_todo(request):
     """All to-dos across all Moods, reverse chronologically: {"items", "total", "open", "done", "moods"}."""
     from .services import todo
     return JsonResponse(todo.all_todos())
+
+
+@section('verify')
+def verify_page(request):
+    """The pages the emergents are told from, and which wait for a verify (services/verify.py).
+    Justin, 31 Oct: "a page with links to all the places that need to be verified for regular operation"."""
+    from .services import verify
+    return render(request, 'conversations/mood_verify.html', {'verify': verify.state(), 'embed': True})
+
+
+@require_GET
+def api_verify(request):
+    """{"pages", "editors", "waiting", "error"}: as the verify section shows them."""
+    from .services import verify
+    return JsonResponse(verify.state())
 
 
 @section('settings')
