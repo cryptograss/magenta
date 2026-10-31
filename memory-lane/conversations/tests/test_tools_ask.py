@@ -94,6 +94,52 @@ class AskTest(TestCase):
             self.say('re', text, 1)
         self.assertEqual(self.asked(), [])
 
+    def test_a_merge_ask_clears_once_github_says_its_pulls_merged(self):
+        # Justin, 31 Oct: the 🔀 for #316 stood after the merge, since its webhook event never reached the Mood.
+        # Now GitHub is asked, as the to-do lists ask it: every pull request the ask names merged, it's answered.
+        from unittest import mock
+
+        from conversations.services.tools_ask import named_pulls
+        self.assertEqual(named_pulls('#316, the verify section'), [('cryptograss', 'magenta', 316)])
+        self.assertEqual(named_pulls('PR #295 and maybelle#231'),
+                         [('cryptograss', 'magenta', 295), ('cryptograss', 'maybelle-config', 231)])
+        self.assertEqual(named_pulls('the polls PR'), [])
+        self.assertEqual(named_pulls('someone-else#4'), [])  # a repository not known here: only its event answers
+        self.say('re', '<merge to="#316 and maybelle#231"/>', 1)
+        merged = {316: True, 231: False}
+        with mock.patch('conversations.services.todo._merged', lambda o, r, n, http: merged[n]):
+            self.assertEqual([t['kind'] for t in self.asked()], ['merge'])  # one of two merged: still open
+            cache.clear()
+            merged[231] = True
+            self.assertEqual(self.asked(), [])
+
+    def test_a_redeploy_ask_clears_only_when_its_servers_finish(self):
+        # Justin, 31 Oct: any deploy event answered a redeploy ask -- pickipedia's for a hunter ask, or one only begun.
+        from conversations.services.tools_ask import named_servers
+        self.assertEqual(named_servers('hunter for the poller (#309); maybelle for #310'), ['hunter', 'maybelle'])
+        self.say('re', '<deploy to="hunter and maybelle"/>', 1)
+        n = 2
+
+        def deploy(server, state):
+            nonlocal n
+            n += 1
+            self.say('system', 'deploy', n, session=None, source='deploy',
+                     content={'type': 'deploy', 'server': server, 'state': state, 'by': 'justin', 'note': ''})
+            cache.clear()
+            return [t['kind'] for t in self.asked()]
+
+        self.assertEqual(deploy('pickipedia', 'finished'), ['deploy'])  # another server
+        self.assertEqual(deploy('hunter', 'started'), ['deploy'])  # begun, not done
+        self.assertEqual(deploy('hunter', 'finished'), ['deploy'])  # one of two
+        self.assertEqual(deploy('maybelle', 'failed'), ['deploy'])
+        self.assertEqual(deploy('maybelle', 'finished'), [])
+
+    def test_a_redeploy_ask_naming_no_server_clears_on_any_finished_deploy(self):
+        self.say('re', '<deploy to="the fix"/>', 1)
+        self.say('system', 'deploy', 2, session=None, source='deploy',
+                 content={'type': 'deploy', 'server': 'hunter', 'state': 'finished', 'by': 'justin', 'note': ''})
+        self.assertEqual(self.asked(), [])
+
     def test_a_newer_ask_replaces_an_older_ask_of_the_same_kind(self):
         self.say('re', '<tools to="push the fix"/>', 1, session=self.sid)
         self.say('re', '<tools to="rebase first, then push"/>', 2, session=self.sid)
