@@ -92,6 +92,35 @@ _TOOLS = re.compile(r'^\s*<tools\s+to="([^"<>]{1,200})"\s*/>\s*$')
 # as the tools ask is, until the event lands (a full-tools wake, a merged event, a deploy event).
 _MERGE = re.compile(r'^\s*<merge\s+to="([^"<>]{1,200})"\s*/>\s*$')
 _DEPLOY = re.compile(r'^\s*<deploy\s+to="([^"<>]{1,200})"\s*/>\s*$')
+# The same asks after words, one or several at the very end (Justin, 31 Oct, #interfaces: every merge and redeploy
+# ask that night went out as text, since each came with a sentence saying what it was for). The words are said,
+# and each ask stands as it would alone; only the tags are taken out of the words.
+_ASK_TAIL = re.compile(r'\s*<(tools|merge|deploy)\s+to="([^"<>]{1,200})"\s*/>\s*$')
+ASK_EMOJI = {'tools': '🔨', 'merge': '🔀', 'deploy': '🔄'}
+
+
+def _ask_reason(kind, to):
+    """How an ask reads in the Mood: 'requested a merge for #313', from its to="…"."""
+    to = to.split()
+    if kind == 'deploy':
+        return 'requested a redeploy of ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'of', 'for') else to)[:10])
+    lead = 'requested tools for ' if kind == 'tools' else 'requested a merge for '
+    return lead + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10])
+
+
+def trailing_asks(text):
+    """(words, [{'type', 'reason'}]) for a reply that ends with asks after words; (text, []) if it doesn't.
+    A reply that is only an ask is quiet_reason's, not this."""
+    words, asks = text or '', []
+    while True:
+        m = _ASK_TAIL.search(words)
+        if not m:
+            break
+        asks.insert(0, {'type': m.group(1), 'reason': _ask_reason(m.group(1), m.group(2))})
+        words = words[:m.start()]
+    if not asks or not words.strip():
+        return text, []
+    return words.rstrip(), asks
 
 
 def quiet_reason(text):
@@ -102,21 +131,10 @@ def quiet_reason(text):
         tail = _QUIET_TAIL.match(text or '')
         if tail:
             return {'reason': (tail.group(2) or '').strip(), 'by': '', 'thought': tail.group(1).strip()}
-        tools = _TOOLS.match(text or '')
-        if tools:
-            to = tools.group(1).split()
-            return {'reason': 'requested tools for ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10]),
-                    'by': '', 'type': 'tools'}
-        merge = _MERGE.match(text or '')
-        if merge:
-            to = merge.group(1).split()
-            return {'reason': 'requested a merge for ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10]),
-                    'by': '', 'type': 'merge'}
-        deploy = _DEPLOY.match(text or '')
-        if deploy:
-            to = deploy.group(1).split()
-            return {'reason': 'requested a redeploy of ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'of', 'for') else to)[:10]),
-                    'by': '', 'type': 'deploy'}
+        for kind, pattern in (('tools', _TOOLS), ('merge', _MERGE), ('deploy', _DEPLOY)):
+            ask = pattern.match(text or '')
+            if ask:
+                return {'reason': _ask_reason(kind, ask.group(1)), 'by': '', 'type': kind}
         take = _TAKE.match(text or '')
         if take:
             to = take.group(1).split()
@@ -1018,6 +1036,9 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
             from .handoff import split as split_handoffs
             if not split_handoffs(text)[0].strip():
                 return None
+        words, asks = trailing_asks(text)
+        if asks:  # its asks, each a line under its words, as a reply of only the ask shows it
+            text = words + '\n\n' + '\n'.join(f"{ASK_EMOJI[a['type']]} {a['reason']}" for a in asks)
         return ('turn', msg, text)
 
     if limit is None:

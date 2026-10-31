@@ -1,5 +1,5 @@
 """Which emergents asked for what where (Justin, 28 Oct: a hammer by the Mood's title "so that we know you're
-waiting for that"): a look-only turn's reply of only <tools to="…"/> (also <merge to="…"/>, <deploy to="…"/>,
+waiting for that"): a look-only turn's reply of <tools to="…"/>, alone or after its words, (also <merge to="…"/>, <deploy to="…"/>,
 the same ask, other things -- Justin, 29 Oct) is a line in the Mood and an icon by its name until someone does
 it. Each ask stays open until its event lands in that Mood: a full-tools wake answers the tools ask, a merged
 event the merge ask, a deploy event the deploy ask.
@@ -33,7 +33,7 @@ def open_requests():
     from django.db.models.functions import Cast
     from django.utils import timezone
     from conversations.models import BundleRecord, Message, ThinkingEntity
-    from .mood_view import BUNDLE_SAID, prose, quiet_reason
+    from .mood_view import BUNDLE_SAID, prose, quiet_reason, trailing_asks
     agents = set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
     since = timezone.now() - LOOK_BACK
     want = Q()
@@ -43,16 +43,27 @@ def open_requests():
     for m in (Message.objects.filter(created_at__gt=since, mood__isnull=False, sender_id__in=agents)
               .annotate(t=Cast('content', TextField())).filter(want)
               .select_related('mood').order_by('created_at')):
-        said = quiet_reason((prose(m.content) or '').strip())
-        kind = (said or {}).get('type')
-        if kind in KINDS:
-            latest[(m.mood.slug, m.sender_id, kind)] = (m, said['reason'][len(_PREFIX[kind]):])
+        text = (prose(m.content) or '').strip()
+        said = quiet_reason(text)
+        asks = [said] if said else trailing_asks(text)[1]  # alone, or after words (Justin, 31 Oct)
+        for kind, reasons in _by_kind(asks).items():
+            latest[(m.mood.slug, m.sender_id, kind)] = (m, '; '.join(reasons))
     found = {}
     for (slug, agent, kind), (m, purpose) in latest.items():
         if not _answered(kind, slug, agent, m):
             found.setdefault(slug, []).append({'kind': kind, 'agent': agent, 'for': purpose,
                                                'at': m.created_at.isoformat(), 'id': str(m.id)})
     cache.set(KEY, found, KEEP)
+    return found
+
+
+def _by_kind(asks):
+    """{kind: [what each is for]}, in order: a reply may ask two merges, one line in the Mood for both."""
+    found = {}
+    for ask in asks:
+        kind = ask.get('type')
+        if kind in KINDS:
+            found.setdefault(kind, []).append(ask['reason'][len(_PREFIX[kind]):])
     return found
 
 

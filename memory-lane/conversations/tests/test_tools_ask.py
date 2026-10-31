@@ -74,6 +74,26 @@ class AskTest(TestCase):
         cache.clear()
         self.assertEqual(self.asked(), [])
 
+    def test_asks_after_words_are_asks_and_the_words_are_said(self):
+        # Justin, 31 Oct (#interfaces): every merge and redeploy ask that night came with a sentence saying what
+        # it was for, and each went out as plain text. Now asks may trail words, several in one reply.
+        self.say('re', 'Reviewed and green.\n\n<merge to="#313, the loop guard"/>\n<merge to="#310"/>\n'
+                       '<deploy to="hunter"/>', 1)
+        page = self.client.get('/api/moods/jams/turns/').json()
+        self.assertEqual(page['quiet'], [])
+        self.assertEqual([t['text'] for t in page['turns']],
+                         ['Reviewed and green.\n\n🔀 requested a merge for #313, the loop guard\n'
+                          '🔀 requested a merge for #310\n🔄 requested a redeploy of hunter'])
+        self.assertEqual([(t['kind'], t['for']) for t in self.asked()],
+                         [('merge', '#313, the loop guard; #310'), ('deploy', 'hunter')])
+
+    def test_a_tag_mid_reply_or_quoted_is_not_an_ask(self):
+        from conversations.services.mood_view import trailing_asks
+        for text in ('Use <merge to="x"/> when you need one, then wait.', 'The tag is `<merge to="x"/>`'):
+            self.assertEqual(trailing_asks(text), (text, []))
+            self.say('re', text, 1)
+        self.assertEqual(self.asked(), [])
+
     def test_a_newer_ask_replaces_an_older_ask_of_the_same_kind(self):
         self.say('re', '<tools to="push the fix"/>', 1, session=self.sid)
         self.say('re', '<tools to="rebase first, then push"/>', 2, session=self.sid)
