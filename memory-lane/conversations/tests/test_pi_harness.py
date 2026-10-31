@@ -120,6 +120,15 @@ class CommandTest(TestCase):
         self.assertEqual(cmd[1:3], ['--mode', 'rpc'])
         self.assertNotIn('hi', cmd)  # the prompt never rides the command line: stdin carries it
 
+    def test_every_wake_loads_the_loop_guard_extension(self):
+        # Repeats are stopped inside Pi before they run (pi_extensions/loop_guard.ts, vendored
+        # pi-death-loop-guard 0.1.2), on look-only and full-tools wakes alike.
+        from poller.pi_harness import LOOP_GUARD_EXTENSION
+        self.assertTrue(LOOP_GUARD_EXTENSION.is_file())
+        waker = PiWaker(pi='pi', model='local/qwen', session_dir='/tmp/s')
+        for cmd in (waker.command('old', 'new'), waker.command(None, 'new', full=True)):
+            self.assertEqual(cmd[cmd.index('-e') + 1], str(LOOP_GUARD_EXTENSION))
+
 
 # A Pi in RPC mode, as Pi 1.1.0 answers `compact` (tried on hunter, 18 Oct): its events, then the response.
 FAKE_RPC_PI = r'''#!PYTHON
@@ -237,6 +246,13 @@ class LoopGuardTest(PlainCase):
             self.assertEqual(guard.see(f'tool_{i}', {'path': str(i)}), '')
         self.assertIn('maximum tool calls limit (10)', guard.see('tool_9', {'path': '9'}))
 
+    def test_with_detectors_off_only_the_budget_stops_it(self):
+        # The Pi wake: the extension owns repeats, so LoopGuard keeps the budget alone.
+        guard = LoopGuard(limit=None, window_limit=None, max_calls=10)
+        for _ in range(9):
+            self.assertEqual(guard.see('read', {'path': 'x'}), '')
+        self.assertIn('maximum tool calls limit (10)', guard.see('read', {'path': 'x'}))
+
     def test_default_max_calls_is_150(self):
         guard = LoopGuard()
         self.assertEqual(guard.max_calls, 150)
@@ -271,11 +287,14 @@ print(json.dumps({'type': 'message_end', 'message': {'role': 'user', 'timestamp'
 
 lines = [{'type': 'turn_start'}]
 
-if 'alternating' in mode:
+if 'alternating' in mode or 'repeat' in mode:
     for i in range(10):
-        tool = 'grep' if i % 2 == 0 else 'read'
+        tool = 'grep' if ('alternating' in mode and i % 2 == 0) else 'read'
         lines.append({'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
                       'content': [{'type': 'toolCall', 'id': f'c{i}', 'name': tool, 'arguments': {'path': 'x'}}]}})
+    lines.append({'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'stop', 'usage': {},
+                  'content': [{'type': 'text', 'text': 'Done reading.'}]}})
+    lines.append({'type': 'agent_settled', 'aborted': False})
 elif 'normal' in mode:
     for i in range(3):
         lines.append({'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
@@ -304,12 +323,10 @@ elif 'steering' in mode:
     for line in lines:
         print(json.dumps(line), flush=True)
     sys.exit(0)
-else:
-    call = {'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
-            'content': [{'type': 'text', 'text': 'Let me check that file again.'},
-                        {'type': 'toolCall', 'id': 'c1', 'name': 'read', 'arguments': {'path': 'x'}}]}}
-    for _ in range(3):
-        lines.append(call)
+else:  # a runaway: distinct calls past the 150-call budget (the steer at 100 goes unread)
+    for i in range(160):
+        lines.append({'type': 'message_end', 'message': {'role': 'assistant', 'stopReason': 'toolUse', 'usage': {},
+                      'content': [{'type': 'toolCall', 'id': f'c{i}', 'name': 'read', 'arguments': {'path': f'f{i}'}}]}})
 
 for line in lines:
     print(json.dumps(line), flush=True)
@@ -319,7 +336,7 @@ time.sleep(60)  # until the tripwire kills us
 
 
 class LoopKillTest(PlainCase):
-    """The tripwire in PiWaker.wake: by the third identical call, the run is dead."""
+    """The tripwire in PiWaker.wake: the budget only; repeats are the loop-guard extension's."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -332,33 +349,22 @@ class LoopKillTest(PlainCase):
             json.dumps({'type': 'session', 'version': 3, 'id': SESSION, 'cwd': self.dir}) + '\n')
         self.waker = PiWaker(pi=self.pi, model='opus', session_dir=str(sessions), new_cwd=self.dir)
 
-    def test_a_tool_loop_is_killed_and_said_so(self):
-        import time
-        start = time.time()
+    def test_repeats_are_left_to_the_extension(self):
+        # Pi stops repeats itself, before they run (pi_extensions/loop_guard.ts): five identical
+        # reads, ping-pong or straight, are no longer the harness's to kill. A real Pi with the
+        # extension would have blocked the 5th; this fake has none, so the turn just ends.
+        for mode in ('repeat test', 'alternating test'):
+            _, reply = self.waker.wake(SESSION, mode, new_session_id='new-9')
+            self.assertEqual(reply, 'Done reading.')
+            self.assertEqual(self.waker.last_result['subtype'], 'success')
+
+    def test_the_budget_still_stops_a_runaway(self):
         events = []
         with self.assertRaises(RuntimeError) as ctx:
-            self.waker.wake(SESSION, 'p', new_session_id='new-9', on_event=events.append)
-        self.assertIn('tool loop: read called 3× with identical arguments', str(ctx.exception))
+            self.waker.wake(SESSION, 'runaway test', new_session_id='new-10', on_event=events.append)
+        self.assertIn('maximum tool calls limit (150)', str(ctx.exception))
         self.assertIn('tool loop', self.waker.last_result['error'])
-        # The record keeps what the loop did: every call, escape text and all, plus loop notice
-        self.assertEqual([e['type'] for e in events],
-                         ['turn_started', 'user_message'] + ['assistant_message', 'tool_call'] * 3 + ['assistant_message'])
         self.assertIn('⚠️ Turn stopped by loop tripwire', events[-1]['text'])
-        self.assertLess(time.time() - start, 10)  # killed, not slept out
-
-    def test_a_tool_loop_that_yields_nothing_still_names_itself(self):
-        # A run the poller sees nothing of but the kill: the error names the loop anyway.
-        with self.assertRaises(RuntimeError) as ctx:
-            self.waker.wake(SESSION, 'p', new_session_id='new-9')
-        self.assertIn('tool loop', str(ctx.exception))
-        self.assertEqual(self.waker.last_result['subtype'], 'error')
-
-    def test_alternating_tool_calls_trip_sliding_window_tripwire(self):
-        events = []
-        with self.assertRaises(RuntimeError) as ctx:
-            self.waker.wake(SESSION, 'alternating loop test', new_session_id='new-10', on_event=events.append)
-        self.assertIn('called 5× within last', str(ctx.exception))
-        self.assertIn('tool loop', self.waker.last_result['error'])
 
     def test_different_tool_calls_do_not_trip_tripwire(self):
         events = []

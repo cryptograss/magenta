@@ -84,6 +84,12 @@ TURN_STOP_GRACE = 10
 # next model call; the record keeps it as the poller's user message). Only the attractor detectors
 # kill; a run that ignores the warning still trips the ceiling and dies. Claude Code's `-p` has no
 # stdin: there the budget only moves, no warning.
+#
+# Repeats are caught inside Pi, before the call runs: pi_extensions/loop_guard.ts (pi-death-loop-guard
+# 0.1.2, vendored) counts a call together with its result, steers a warning in at 3 identical pairs,
+# blocks the 5th (the model reads why as the tool's result), and ends the run after 3 blocks. So on
+# Pi, LoopGuard keeps only the budget; its repeat detectors still guard Claude Code (mood_poller).
+LOOP_GUARD_EXTENSION = Path(__file__).resolve().parent / 'pi_extensions' / 'loop_guard.ts'
 
 
 class LoopGuard:
@@ -92,7 +98,8 @@ class LoopGuard:
     Text between the repeats does not break the streak — the 28 Oct specimen
     had escape text every few seconds — only a *different* call does.
     Also catches alternating ping-pong loops (A -> B -> A -> B) via a sliding
-    window, and enforces a ceiling on tool calls per wake."""
+    window, and enforces a ceiling on tool calls per wake. limit / window_limit of
+    None turn those detectors off (the Pi wake: its extension catches repeats)."""
 
     def __init__(self, limit=TOOL_LOOP_KILL, window_limit=TOOL_LOOP_WINDOW_KILL,
                  window_size=TOOL_LOOP_WINDOW, max_calls=None):
@@ -118,9 +125,9 @@ class LoopGuard:
         self.recent.append(key)
         window_count = sum(1 for k in self.recent if k == key)
 
-        if self.streak >= self.limit:
+        if self.limit and self.streak >= self.limit:
             return f'tool loop: {name} called {self.streak}× with identical arguments'
-        if window_count >= self.window_limit:
+        if self.window_limit and window_count >= self.window_limit:
             return f'tool loop: {name} called {window_count}× within last {len(self.recent)} calls'
         if self.total >= self.max_calls:
             return f'tool loop: turn exceeded maximum tool calls limit ({self.total})'
@@ -586,7 +593,8 @@ class PiWaker:
     def command(self, session_id, new_session_id, model=None, effort=None, full=False, system=None):
         """The argv for one wake's pi process: RPC mode, so the runner prompts it on stdin and
         can steer it mid-turn (the tool budget's wrap-up warning)."""
-        cmd = [self.pi, '--mode', 'rpc', '--session-dir', str(self.session_dir), '--session-id', new_session_id]
+        cmd = [self.pi, '--mode', 'rpc', '--session-dir', str(self.session_dir), '--session-id', new_session_id,
+               '-e', str(LOOP_GUARD_EXTENSION)]  # repeats caught before they run (LOOP_GUARD_EXTENSION)
         if session_id:
             cmd += ['--fork', session_id]
         model = model or self.model
@@ -624,7 +632,8 @@ class PiWaker:
         proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, start_new_session=True)
         done = self._watch(proc, stop)
-        guard, killed, steered = LoopGuard(), None, False  # the tool-loop tripwire (TOOL_LOOP_KILL)
+        # The budget only: repeats are the extension's (LOOP_GUARD_EXTENSION), stopped before they run.
+        guard, killed, steered = LoopGuard(limit=None, window_limit=None), None, False
         try:
             proc.stdin.write(json.dumps({'id': 'turn', 'type': 'prompt', 'message': prompt}) + '\n')
             proc.stdin.flush()
