@@ -171,11 +171,14 @@ def _build_moods_list():
     moods = list(Mood.objects.all())
     from .services.tools_ask import KINDS, open_requests
     asked = clock('tools', open_requests)  # 🔨 🔀 🚀: emergents' open asks there
+    from .services.temperature import temperatures
+    warmth = clock('temperature', temperatures)  # each Mood's past day, people and emergents apart
     clock.lap('_')
     each, payloads = [], []
     for m in moods:
         began = clock.now()
         payloads.append({**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned,
+                         'temperature': warmth.get(m.pk, {}),
                          **({'asked': asked[m.slug]} if m.slug in asked else {})})
         each.append((clock.now() - began, m.slug))
     clock.lap('payloads')
