@@ -3664,7 +3664,9 @@
       const one = thumb + `<a href="${esc(page)}" target="_blank" rel="noopener">${esc((e.title || '').replace(/^File:/, ''))}</a>`
         + (e.kind === 'new' || e.kind === 'upload' ? (e.kind === 'new' ? ' (new)' : '') : ` <a class="delta" href="${esc(diff)}" target="_blank" rel="noopener">(${e.delta > 0 ? '+' : ''}${Number(e.delta) || 0})</a>`)
         // The Media Uploader's own words ("Uploaded a work by null from null with Media Uploader") say nothing.
-        + (e.comment && !(e.kind === 'upload' && /^Uploaded a work by /.test(e.comment)) ? ` · <i>${esc(e.comment)}</i>` : '');
+        + (e.comment && !(e.kind === 'upload' && /^Uploaded a work by /.test(e.comment))
+          // The MCP server signs every edit "(via update-page on MediaWiki MCP Server)": the tool says enough (Justin, 31 Oct).
+          ? ` · <i>${esc(e.comment.replace(/\(via ([\w-]+) on MediaWiki MCP Server\)/g, '(via $1)'))}</i>` : '');
       // A run of changes by one account folds into one line, opened on demand; its pictures stay in view.
       const last = container.lastElementChild;
       if (last && last.classList.contains('wiki') && last.dataset.user === (e.user || '')) {
