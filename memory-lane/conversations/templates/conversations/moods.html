@@ -1942,7 +1942,7 @@
     };
     const when = (x, who) => `${who} last spoke ` + (x && x.last_at ? `${stamp(x.last_at)} (${blocksAgo(x.last_at, true)} blocks ago)` : 'not in 30 days');
     const ages = `<span title="${esc(when(h, 'a person') + '\n' + when(e, 'an emergent'))}">${since(h, 'h')}/${since(e, 'e')}</span>`;
-    return `${counts} · ${ages} blocks`;
+    return `${counts} · ${ages}`;  // no "blocks": the hover says (Justin, 31 Oct)
   }
   // How many blocks ago (the header's block count: blockAnchor, else 12 s a block), short: 840, 7.2k.
   function blocksAgo(iso, full) {
