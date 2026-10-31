@@ -98,6 +98,28 @@ def _merged_on_github(purpose):
         return False
 
 
+def named_servers(purpose):
+    """The servers (services/servers.py) a redeploy ask names, in order: "hunter and maybelle" -> both."""
+    from .servers import SERVERS
+    words = re.findall(r'[\w-]+', (purpose or '').lower())
+    return [s['name'] for s in SERVERS if s['name'] in words]
+
+
+def _redeployed(request, purpose):
+    """Whether every server the ask names has finished a deploy since it (Justin, 31 Oct: before, any deploy event
+    answered it -- pickipedia's for a hunter ask, or one only started). One naming no server: any finished deploy."""
+    from conversations.models import Message
+    wanted = set(named_servers(purpose))
+    done = set()
+    for content in Message.objects.filter(mood=request.mood, source_file=KINDS['deploy']['source'],
+                                          created_at__gt=request.created_at).values_list('content', flat=True):
+        if isinstance(content, dict) and content.get('state') == 'finished':
+            if not wanted:
+                return True
+            done.add(content.get('server'))
+    return bool(wanted) and wanted <= done
+
+
 def _answered(kind, slug, agent, request, purpose=''):
     """Whether an ask's event has landed: a full-tools wake of the asker there; a merged or deploy event.
     The tools ask is answered the moment the turn starts, not when it ends: its wake names the bundle the runner
@@ -107,6 +129,8 @@ def _answered(kind, slug, agent, request, purpose=''):
     from conversations.models import BundleRecord, Message
     from .mood_view import BUNDLE_SAID
     source = KINDS[kind]['source']
+    if kind == 'deploy':
+        return _redeployed(request, purpose)
     if source:
         if Message.objects.filter(mood=request.mood, source_file=source, created_at__gt=request.created_at).exists():
             return True

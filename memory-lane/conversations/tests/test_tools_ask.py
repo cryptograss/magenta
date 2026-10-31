@@ -113,6 +113,33 @@ class AskTest(TestCase):
             merged[231] = True
             self.assertEqual(self.asked(), [])
 
+    def test_a_redeploy_ask_clears_only_when_its_servers_finish(self):
+        # Justin, 31 Oct: any deploy event answered a redeploy ask -- pickipedia's for a hunter ask, or one only begun.
+        from conversations.services.tools_ask import named_servers
+        self.assertEqual(named_servers('hunter for the poller (#309); maybelle for #310'), ['hunter', 'maybelle'])
+        self.say('re', '<deploy to="hunter and maybelle"/>', 1)
+        n = 2
+
+        def deploy(server, state):
+            nonlocal n
+            n += 1
+            self.say('system', 'deploy', n, session=None, source='deploy',
+                     content={'type': 'deploy', 'server': server, 'state': state, 'by': 'justin', 'note': ''})
+            cache.clear()
+            return [t['kind'] for t in self.asked()]
+
+        self.assertEqual(deploy('pickipedia', 'finished'), ['deploy'])  # another server
+        self.assertEqual(deploy('hunter', 'started'), ['deploy'])  # begun, not done
+        self.assertEqual(deploy('hunter', 'finished'), ['deploy'])  # one of two
+        self.assertEqual(deploy('maybelle', 'failed'), ['deploy'])
+        self.assertEqual(deploy('maybelle', 'finished'), [])
+
+    def test_a_redeploy_ask_naming_no_server_clears_on_any_finished_deploy(self):
+        self.say('re', '<deploy to="the fix"/>', 1)
+        self.say('system', 'deploy', 2, session=None, source='deploy',
+                 content={'type': 'deploy', 'server': 'hunter', 'state': 'finished', 'by': 'justin', 'note': ''})
+        self.assertEqual(self.asked(), [])
+
     def test_a_newer_ask_replaces_an_older_ask_of_the_same_kind(self):
         self.say('re', '<tools to="push the fix"/>', 1, session=self.sid)
         self.say('re', '<tools to="rebase first, then push"/>', 2, session=self.sid)
