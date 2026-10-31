@@ -1394,10 +1394,7 @@ _CONTROL_TAGS = (
     ('wait', re.compile(r'<wait\s+for="[^"]{1,100}"(?:\s+to="[^"<>]{0,200}")?\s*/>')),
     ('react', re.compile(r'<react\s+[^<>]*/>')),
     ('take', re.compile(r'<take\s+[^<>]*/>')),
-    ('tools', re.compile(r'<tools\s+[^<>]*/>')),
-    ('merge', re.compile(r'<merge\s+[^<>]*/>')),
-    ('deploy', re.compile(r'<deploy\s+[^<>]*/>')),
-)
+)  # <tools>, <merge>, <deploy> are asks after words too (mood_view.trailing_asks, 31 Oct): not near misses
 
 
 def near_misses(agent, page, seen):
