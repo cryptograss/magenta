@@ -21,7 +21,7 @@ from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
-from .services import delivery_kid, faces, push, servers, wiki_auth, wiki_feed, wiki_ledger, wiki_upload
+from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_feed, wiki_ledger, wiki_upload
 from .services import agent_commands, mood_auth
 from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.mood_view import (
@@ -687,6 +687,7 @@ def api_pulse(request):
     wiki_feed.nudge()  # asked every second by the runner: the wiki feed's clock (at most once a minute)
     push.nudge()       # and the push clock: notices to send to closed pages (at most every 10 s)
     wiki_ledger.nudge()  # and the Moods' links, written to PickiPedia (at most every 30 s)
+    pr_cards.nudge()     # and the pull requests' cards, VersionControl:PRs/... (at most every 10 min)
     moods = []
     for mood in Mood.objects.all():
         said = mood.messages.filter(is_sidechain=False).exclude(sender_id__in=MACHINERY_SENDERS)
@@ -1610,6 +1611,8 @@ def api_github_hook(request):
         return JsonResponse({'error': 'expected JSON, or a form with it as payload'}, status=400)
     pull = body.get('pull_request') or {}
     name = (body.get('repository') or {}).get('full_name', '')
+    if event == 'pull_request' and '/' in name:
+        pr_cards.heard(*name.split('/', 1), int(pull.get('number') or 0))  # its card, whatever happened to it
     if event == 'pull_request' and body.get('action') == 'closed' and pull.get('merged') and '/' in name:
         owner, repo = name.split('/', 1)
         todo.merged_now(owner, repo, int(pull.get('number') or 0), pull.get('title') or '',
