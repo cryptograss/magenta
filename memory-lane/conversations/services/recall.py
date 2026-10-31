@@ -257,10 +257,19 @@ def my_mood_turns(agent):
                 yield msg, whom
 
 
-def who_i_know(agent):
+WHO_I_KNOW_KEPT = 900  # seconds: two years of rows read for each bootstrap otherwise; a quarter hour stale is fine
+
+
+def who_i_know(agent, fresh=False):
     """[{name, human, words, first, last}], the most recent first: everyone the agent has exchanged
     words with. Words: their messages in its conversations, their turns addressing it in a Mood, and
     its turns addressing them."""
+    if not fresh:
+        from django.core.cache import cache
+        cache_key = f'recall:who_i_know:{agent}'
+        kept = cache.get(cache_key)
+        if kept is not None:
+            return kept
     others = people(agent)
     at, _ = arrival(agent)
     if at is None:
@@ -286,7 +295,11 @@ def who_i_know(agent):
             if name in others:
                 count(name, 1, msg.created_at, msg.created_at)
     found = [{'name': name, 'human': others[name], **k} for name, k in known.items()]
-    return sorted(found, key=lambda k: k['last'], reverse=True)
+    out = sorted(found, key=lambda k: k['last'], reverse=True)
+    if not fresh:
+        from django.core.cache import cache
+        cache.set(cache_key, out, WHO_I_KNOW_KEPT)
+    return out
 
 
 def who_i_know_text(agent, limit=40):
@@ -413,6 +426,15 @@ def voice_stats(agent, start, end):
     """How the agent spoke in a stretch, counting what the samples leave out: silences, reacts, one-liners.
     Over at most the last STATS_SPAN of the stretch: a long life's whole tail is too many rows to read for
     one line."""
+    # A stretch that closed before today can't change: kept for a day. One that runs to now is counted fresh.
+    from django.core.cache import cache
+    from django.utils import timezone
+    closed = end <= _day_start(timezone.now())
+    cache_key = f'recall:voice_stats:{agent}:{start.isoformat()}:{end.isoformat()}'
+    if closed:
+        kept = cache.get(cache_key)
+        if kept is not None:
+            return kept
     from .mood_view import quiet_reason
     from .reactions import agent_reaction
     counts = {'replies': 0, 'silences': 0, 'reacts': 0, 'lengths': []}
@@ -435,6 +457,8 @@ def voice_stats(agent, start, end):
             counts['lengths'].append(len(text))
     lengths = sorted(counts.pop('lengths'))
     counts['median_length'] = lengths[len(lengths) // 2] if lengths else 0
+    if closed:
+        cache.set(cache_key, counts, 86400)
     return counts
 
 
@@ -557,6 +581,19 @@ def how_i_speak(agent, count=12, shortest=200, longest=2500, now=None, fresh=Fal
         return []
     now = now or timezone.now()
     end = _pinned_end(now, at)
+    # Seeded by the day, so the day's draw is kept: until tomorrow, or until the agent stars or unstars a
+    # post (its own picks come first). Day 0 isn't pinned to the day's start, so it isn't kept.
+    from django.core.cache import cache
+    from .reactions import SOURCE
+    keep = not fresh and end != now
+    if keep:
+        own = Message.objects.filter(sender_id='system', source_file=SOURCE, content__emoji=STAR,
+                                     content__by=agent).count()
+        cache_key = f'recall:how_i_speak:{agent}:{count}:{shortest}:{longest}:{end.isoformat()}:{own}'
+        kept = cache.get(cache_key)
+        if kept is not None:
+            by_id = Message.objects.in_bulk([mid for mid, _ in kept])
+            return [(by_id[mid], text) for mid, text in kept if mid in by_id]
     count = max(2, min(int(count or 12), 40))
     rng = _seeded(agent, now, fresh)
     life = end - at
@@ -589,7 +626,10 @@ def how_i_speak(agent, count=12, shortest=200, longest=2500, now=None, fresh=Fal
             if hit:
                 out.append(hit)
                 picked.add(hit[0].id)
-    return sorted(out, key=lambda pair: pair[0].created_at)
+    out = sorted(out, key=lambda pair: pair[0].created_at)
+    if keep:
+        cache.set(cache_key, [(m.id, text) for m, text in out], 86400)
+    return out
 
 
 def _sample_lines(msg, text, me=True):
