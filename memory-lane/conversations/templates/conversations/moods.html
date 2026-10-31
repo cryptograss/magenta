@@ -5626,7 +5626,11 @@
     // slept): it no longer counts, or the page would freeze as it last was -- an
     // agent "compacting" for hours. (Its ask for turns gave up at POLL_WAIT_MS, so
     // it can't draw anything now; it's waiting on the rest.)
-    if (!full && polling && polling.gen === mine && Date.now() - polling.at < POLL_STALE_MS) return;
+    // No thread drawn yet (its first load failed, or timed out behind a busy server): this ask is a first
+    // load too, or it would ask "what's new since nothing", draw nothing, and say "Loading…" for good
+    // (Justin, 31 Oct). One at a time either way: a slow first load mustn't be joined by another every tick.
+    if (!document.getElementById('turns')) full = true;
+    if (polling && polling.gen === mine && Date.now() - polling.at < POLL_STALE_MS) return;
     const ticket = polling = { gen: mine, at: Date.now() };
     try { await pollOnce(full, mine); } finally { if (polling === ticket) polling = null; }
   }
@@ -5695,6 +5699,7 @@
     lastId = items[items.length - 1].v.id;
   }
   async function pollOnce(full, mine) {
+    const slug = current;
     const since = changesAt[current];
     const url = '/api/moods/' + encodeURIComponent(current) + '/turns/'
       + (lastId && !full ? '?after=' + lastId : '?limit=' + FIRST_PAGE)
@@ -5709,8 +5714,10 @@
       if (mine === gen) setStatus('reconnecting…', 'stale');
       return;
     }
-    if (mine !== gen) return;  // an answer for a Mood since left: drawing it here would mislead
-    keep(current, data, full);
+    // An answer for a Mood since left isn't drawn here, but it's kept: going back draws it at once,
+    // rather than "Loading…" and asking all over again (Justin, 31 Oct).
+    keep(slug, data, full);
+    if (mine !== gen) return;
     if (full) {
       prev = null;
       inner.innerHTML = renderHead(data.mood);
@@ -9088,9 +9095,13 @@
     // Asked for a section: shown at once, before the Moods load behind it -- not a Mood first, then the
     // section (Justin, 23 Oct: from the front page, a link took "quite a while").
     if (initialSection !== 'moods') showSection(initialSection, false);
-    try { await loadMoods(); } catch (e) { setStatus('cannot reach memory-lane', 'stale'); return; }
-    loadTokens();  // not awaited: badges fill in when they come
-    fetchBadges();
+    // The list of Moods and the Mood in the address are asked for together: the Mood isn't kept waiting on
+    // the list (Justin, 31 Oct: over a minute to load, the list rebuilding behind a deploy). Without a Mood
+    // in the address, the list says which to open, so it's waited for.
+    const listed = loadMoods();
+    listed.then(() => { loadTokens(); fetchBadges(); },  // not awaited: badges fill in when they come
+                () => setStatus('cannot reach memory-lane', 'stale'));
+    if (!initialSlug || sharing_) { try { await listed; } catch (e) { return; } }
     await pullSeen();  // where you've read up to, on every device, before anything is counted
     // A share opens where you last were (the Mood opened last in this browser), not at the top of the list.
     const lastOpened = sharing_ && store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived));
