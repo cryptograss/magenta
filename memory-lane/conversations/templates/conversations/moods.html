@@ -1927,16 +1927,29 @@
   }
   function moodWarmth(m) {
     // No marks (Justin, 31 Oct: "way too many of the little blue silhouettes"): people first, then emergents,
-    // "people/emergents"; what each number is, on hover.
+    // "people/emergents"; one hover per side, saying both (Justin, 31 Oct: "two tooltips instead of four").
+    // How long since, in blocks; the hover keeps the local time.
     const t = m.temperature || {}, h = t.humans, e = t.emergents;
     if (!h && !e) return ago(m.last_at);
-    const count = (x, who) => `<span${heat(x)} title="${who}: ${x ? x.day : 0} messages in the past 24 hours, ${x ? x.warm : 0} in the past 3">${x ? x.day : 0}</span>`;
-    const since = (x, who, cls) => {
-      if (!x || !x.last_at) return `<span title="no ${who} here in 30 days">–</span>`;
+    const n = x => x ? x.day : 0;
+    const counts = `<span title="${esc(`people: ${n(h)} messages in the past 24 hours, ${h ? h.warm : 0} in the past 3\n`
+      + `emergents: ${n(e)} messages in the past 24 hours, ${e ? e.warm : 0} in the past 3`)}">`
+      + `<span${heat(h)}>${n(h)}</span>/<span${heat(e)}>${n(e)}</span></span>`;
+    const since = (x, cls) => {
+      if (!x || !x.last_at) return '–';
       const fresh = Date.now() - new Date(x.last_at) < 30 * 60000;
-      return `<span${fresh ? ` class="fresh ${cls}"` : ''} title="${who} last spoke ${stamp(x.last_at)}">${ago(x.last_at).replace(' ago', '')}</span>`;
+      return `<span${fresh ? ` class="fresh ${cls}"` : ''}>${blocksAgo(x.last_at)}</span>`;
     };
-    return `${count(h, 'people')}/${count(e, 'emergents')} · ${since(h, 'a person', 'h')}/${since(e, 'an emergent', 'e')}`;
+    const when = (x, who) => `${who} last spoke ` + (x && x.last_at ? `${stamp(x.last_at)} (${blocksAgo(x.last_at, true)} blocks ago)` : 'not in 30 days');
+    const ages = `<span title="${esc(when(h, 'a person') + '\n' + when(e, 'an emergent'))}">${since(h, 'h')}/${since(e, 'e')}</span>`;
+    return `${counts} · ${ages} blocks`;
+  }
+  // How many blocks ago (the header's block count: blockAnchor, else 12 s a block), short: 840, 7.2k.
+  function blocksAgo(iso, full) {
+    let seconds = 12;
+    try { if (blockAnchor && blockAnchor.seconds) seconds = blockAnchor.seconds; } catch (e) {}  // drawn before it's declared
+    const n = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000 / seconds));
+    return full || n < 1000 ? n.toLocaleString() : (n < 10000 ? (n / 1000).toFixed(1) : Math.round(n / 1000)) + 'k';
   }
 
   const foldedThreads = new Set(store.get('foldedThreads', []));
