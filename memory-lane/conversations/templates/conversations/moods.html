@@ -252,12 +252,20 @@
   body.voice-mode #voiceMode { display: flex; }
   #voiceMode .where { font-size: 14px; color: var(--muted); text-align: center; }
   #voiceMode .where b { color: var(--ink); }
+  @keyframes voiceSlideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
   #voiceMode .bars { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
   #voiceMode .bar { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 14px; border-radius: 14px;
                     background: var(--panel); border: 1px solid var(--line); font-size: 18px; line-height: 1.3; }
   #voiceMode .bar .when { flex: none; width: 3.4em; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   #voiceMode .bar .say { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  #voiceMode .bar.now { border-color: var(--accent); background: var(--accent-soft, var(--panel)); font-size: 20px; }
+  #voiceMode .bar.past { opacity: 0.8; font-size: 16px; animation: voiceSlideIn 0.25s ease-out; }
+  #voiceMode .bar.now { border: 2px solid var(--accent); background: var(--accent-soft, var(--panel)); font-size: 20px; box-shadow: 0 0 0 1px var(--accent); }
+  #voiceMode .bar.now .when { color: var(--accent); font-weight: 700; }
+  #voiceMode .bar.sending { border-style: dashed; border-color: var(--accent); animation: voiceSlideIn 0.25s ease-out; }
+  #voiceMode .bar.sending .when { color: var(--accent); font-weight: 700; }
   #voiceMode .bar.work { border-style: dashed; }
   #voiceMode .bar .drop { flex: none; font: inherit; font-size: 20px; border: 0; background: none; color: var(--muted); padding: 8px 12px; cursor: pointer; }
   #voiceMode .none { color: var(--muted); font-size: 18px; text-align: center; padding: 24px 0; }
@@ -7332,6 +7340,8 @@
       recorder = null; memoSaving = true;
       memoBtn.classList.remove('recording'); memoBtn.classList.add('busy'); memoBtn.textContent = 'saving…';
       memoStatus(`🎙 Saving your memo (${clock(seconds)})…`);
+      voicePending = { state: 'uploading', seconds: seconds, pct: 0, who: viewer, mood: current };
+      renderVoiceMode();
       let ready = false, memoLink = '', blob = new Blob(chunks, { type: chunks[0]?.type || type || 'audio/webm' }), quiet = null;
       try {
         // Ends in silence: what has sound goes, as a WAV, and they're told (unless that would be too big to send).
@@ -7348,6 +7358,7 @@
             const pct = Math.round(done * 100);
             memoBtn.textContent = pct < 100 ? `saving ${pct}%` : 'saving…';
             memoStatus(pct < 100 ? `🎙 Saving your memo (${clock(seconds)}): ${pct}%` : `🎙 Saving your memo (${clock(seconds)}): almost…`);
+            if (voicePending && voicePending.state === 'uploading') { voicePending.pct = pct; renderVoiceMode(); }
           });
         const body = r.body;
         if (!r.ok) throw new Error(body.error || r.status);
@@ -7360,6 +7371,7 @@
         ready = true;
       } catch (e) {
         memoThenSend = false; showError('voice memo: ' + e.message);
+        voicePending = null; renderVoiceMode();
         if (memoPending) { memoPending.remove(); memoPending = null; }  // nothing to send: its place goes too
       }
       finally { memoSaving = false; memoBtn.classList.remove('busy'); memoBtn.textContent = '🎙'; }
@@ -7387,6 +7399,8 @@
       recorder = null; stream.getTracks().forEach(t => t.stop());
       showError('voice memo: ' + e.message); return;
     }
+    voicePending = { state: 'recording', seconds: 0, pct: 0, who: viewer, mood: current };
+    renderVoiceMode();
     recordingHold(true);  // nothing read aloud over it
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
     composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Recording: ■ stops it to add words; Send sends it as it is.</span>');
@@ -7398,6 +7412,7 @@
       const s = (Date.now() - started) / 1000;
       if (Date.now() - recordingSaid > 3000) { recordingSaid = Date.now(); sendTyping(true, 'recording'); }
       memoBtn.textContent = '■ ' + clock(s);
+      if (voicePending && voicePending.state === 'recording') { voicePending.seconds = s; renderVoiceMode(); }
       if (s >= MEMO_MAX_S && recorder) recorder.stop();
       const since = recorder ? mic.quietSince() : null;
       if (since !== null && recorder) { wentQuiet = Math.max(0, (since - started) / 1000); recorder.stop(); }
@@ -7512,9 +7527,29 @@
     const place = () => document.querySelector(`.turn.pending[data-memo="${CSS.escape(sha)}"]`);
     const look = setInterval(() => {
       const arrived = document.querySelector(`.turn:not(.pending) .body audio[src*="${CSS.escape(sha)}"]`);
-      if (arrived) { clearInterval(look); place()?.remove(); return; }
-      if (!place()) { clearInterval(look); return; }  // another Mood, or drawn anew
-      if (Date.now() - started > 300e3) { clearInterval(look); pendingSays(place(), "sent · taking a while: it'll show here when its words are in"); }
+      if (arrived) {
+        clearInterval(look);
+        place()?.remove();
+        if (voicePending && voicePending.sha === sha) {
+          const bodyEl = arrived.closest('.turn')?.querySelector('.body');
+          const clean = bodyEl ? (bodyEl.innerText || '').replace(/🎙\s*\[voice memo[^\]]*\]\([^)]*\)/, '').trim() : '';
+          const s = voicePending.seconds ? ` · ${clock(voicePending.seconds)}` : '';
+          readLastDone = { who: viewer, mood: current, text: clean ? `🎙 voice memo${s}\n\n${clean}` : `🎙 voice memo${s}`, whenLabel: 'sent' };
+          voicePending = null;
+          renderVoiceMode();
+        }
+        return;
+      }
+      if (!place() && (!voicePending || voicePending.sha !== sha)) { clearInterval(look); return; }
+      if (Date.now() - started > 300e3) {
+        clearInterval(look);
+        pendingSays(place(), "sent · taking a while: it'll show here when its words are in");
+        if (voicePending && voicePending.sha === sha) {
+          readLastDone = { who: viewer, mood: current, text: '🎙 voice memo', whenLabel: 'sent' };
+          voicePending = null;
+          renderVoiceMode();
+        }
+      }
     }, 1500);
   }
 
@@ -7546,6 +7581,8 @@
   const MEMO_AUDIO = /^🎙 \[voice memo[^\]]*\]\((\/moods\/media\/[0-9a-f]{64}\.[a-z0-9]+)\)/;
   const readQueue = [], readHeard = new Set();
   let readMode = 'off', readSinceMs = 0, readLast = null, readNow = null, readHeld = false, readBlocked = false, readWhy = '';
+  let readLastDone = null;   // what was just heard or sent: kept until the next message is completely done (Justin, 30 Oct)
+  let voicePending = null;   // memo/text currently recording/uploading/transcribing/sending in voice mode
   // A voice memo being recorded here: nothing is read over it (Justin, 18 Oct); what comes meanwhile waits its turn.
   let readRecording = false;
   let readQueueOpen = false;  // the whole queue shown, not only what's next
@@ -7925,7 +7962,10 @@
     if (readNow !== now) return;  // stopped meanwhile
     if (item.mood && thinkingToldAt[item.mood]) thinkingToldAt[item.mood] = Date.now();  // heard from there: a minute from now
     if (item.kind === 'deploy') readLast = null;  // after the news, whoever speaks next is said again
-    else if (item.kind !== 'thinking') readLast = { who: item.who, mood: item.mood };  // its answer still says who speaks
+    else if (item.kind !== 'thinking') {
+      readLast = { who: item.who, mood: item.mood };  // its answer still says who speaks
+      if (!now.skipped) readLastDone = item;          // kept as the one before until the next is completely done
+    }
     readNow = null;
     saveReadPlace();
     // All heard, and still listening: a falling chime says so, and that more will come as it's said.
@@ -7939,7 +7979,8 @@
     const where = esc((moods.find(m => m.slug === item.mood) || {}).title || item.mood || '');
     if (item.kind === 'thinking') return `<b>${esc(shown(item.who))}</b> ${item.waiting ? waitedFor('waiting for ' + item.waiting + (item.waitingTo ? ' to ' + item.waitingTo : '')) : 'at work'} · ${where}`;
     const memo = MEMO_AUDIO.test(item.text || '');
-    const words = memo ? '🎙 voice memo' : (item.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const clean = (item.text || '').replace(MEMO_AUDIO, '').replace(/\s+/g, ' ').trim();
+    const words = memo ? (clean ? '🎙 ' + clean.slice(0, 120) : '🎙 voice memo') : (item.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     return `<b>${esc(shown(item.who))}</b> · ${where}${words ? ' — ' + esc(words) : ''}`;
   }
   const READ_SHOWN = 2;  // what's next, before "N more"
@@ -8577,6 +8618,8 @@
     composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());  // the thread says how it's going now
     sayBox.value = ''; fitSay();
     tray = []; renderTray(); saveDraft();
+    if (voicePending) { voicePending.state = 'sending'; renderVoiceMode(); }
+    else { voicePending = { state: 'sending', text, who: viewer, mood: current }; renderVoiceMode(); }
     try {
       const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/say/', {
         method: 'POST',
@@ -8593,6 +8636,13 @@
         if (!done.id || document.getElementById('m-' + done.id)) pending.remove();  // nothing posted, or drawn already
         else pending.dataset.pendingId = done.id;
       }
+      if (done.pending) {
+        if (voicePending) { voicePending.state = 'transcribing'; voicePending.sha = done.pending; renderVoiceMode(); }
+      } else {
+        readLastDone = { who: viewer, mood: current, text, whenLabel: 'sent' };
+        voicePending = null;
+        renderVoiceMode();
+      }
       typingSent = 0; sendTyping(false); cancelReply(); showLicense();
       composer.querySelectorAll('.note').forEach(el => el.remove());
       if (done.pending) memoOnItsWay(done.pending);
@@ -8605,6 +8655,7 @@
       await poll(false);
       if (makeDraft && makeDraft.isConnected) sendOn();
     } catch (e) {
+      voicePending = null; renderVoiceMode();
       if (pending) pending.remove();
       if (!sayBox.value.trim()) { sayBox.value = words; fitSay(); }  // not sent: the words back where they were
       if (!tray.length) { tray = sentTray; renderTray(); }                // and the pictures
@@ -9043,9 +9094,31 @@
     const now = readNow && readNow.item;
     const bar = (cls, when, html, i) => `<div class="bar ${cls}"><span class="when">${when}</span><span class="say">${html}</span>`
       + (i >= 0 ? `<button type="button" class="drop" data-i="${i}" aria-label="Don't read this one">✕</button>` : '') + '</div>';
-    const bars = workBars().map(w => bar('work', 'at work', w, -1))
+
+    // The playlist rows (Justin, 30 Oct):
+    // 1. What was just heard, or what's currently being recorded/uploaded/transcribed/sent.
+    // Kept as the one before it until the next message is completely done.
+    let pastBar = '';
+    if (voicePending) {
+      const s = voicePending.seconds ? ` (${clock(voicePending.seconds)})` : '';
+      if (voicePending.state === 'recording') {
+        pastBar = bar('sending work', 'rec', `<b>${esc(shown(viewer))}</b> · recording voice memo${s}…`, -1);
+      } else if (voicePending.state === 'uploading') {
+        const pct = voicePending.pct ? `${voicePending.pct}%` : 'saving…';
+        pastBar = bar('sending work', 'upload', `<b>${esc(shown(viewer))}</b> · saving voice memo${s}: ${pct}`, -1);
+      } else if (voicePending.state === 'transcribing') {
+        pastBar = bar('sending work', 'writing', `<b>${esc(shown(viewer))}</b> · transcribing voice memo${s}…`, -1);
+      } else if (voicePending.state === 'sending') {
+        pastBar = bar('sending work', 'sending', `<b>${esc(shown(viewer))}</b> · ${esc(voicePending.text || 'sending…')}`, -1);
+      }
+    } else if (readLastDone) {
+      pastBar = bar('past', readLastDone.whenLabel || 'heard', readLabel(readLastDone), -1);
+    }
+
+    const bars = pastBar
       + (now ? bar('now', readRecording ? 'held' : readHeld ? 'paused' : 'now', readLabel(now), -1) : '')
-      + readQueue.slice(0, 6).map((item, i) => bar('', i === 0 ? 'next' : 'then', readLabel(item), i)).join('')
+      + workBars().map(w => bar('work', 'at work', w, -1)).join('')
+      + readQueue.slice(0, 6).map((item, i) => bar('', i === 0 && !now ? 'next' : 'then', readLabel(item), i)).join('')
       + (readQueue.length > 6 ? `<div class="where">+ ${readQueue.length - 6} more</div>` : '');
     const recording = memoBtn.classList.contains('recording'), saving = memoBtn.classList.contains('busy');
     const html = `<div class="where">#<b>${esc(here)}</b> · ${readMode === 'everywhere' ? 'hearing every Mood' : readMode === 'here' ? 'hearing this Mood' : 'not reading aloud'}</div>`
