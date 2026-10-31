@@ -14,6 +14,8 @@ is shared, and the separation is by tool name in the harness's tool
 selection -- reads enabled, writes absent, on both harnesses.
 """
 
+import os
+
 # The wiki server, as mcp.json names it, and its read tools as its MCP
 # server names them (`pi mcp list`, 30 Oct: hyphens -- which is also the
 # spelling Claude Code's allowlist already used). Its write tools --
@@ -41,3 +43,18 @@ def mcp_read_patterns():
     them: PickiPedia's reads by name; the memory server whole (Pi's `*`
     wildcard; Claude Code's bare server name is added by its own list)."""
     return [f'mcp__{WIKI_MCP_SERVER}__{name}' for name in WIKI_READ_TOOLS]
+
+
+# Tool loop tripwire limits (shared by pi_harness and mood_poller).
+# A machine attractor repeats the exact same call, and by the third time (even with text between
+# the repeats -- the 28 Oct specimen had escape text every 3-4s) the run is a runaway, not a retry:
+# those detectors kill. The per-turn ceiling is a *budget*, not a kill: on 31 Oct it stopped two
+# productive turns cold (magent, #interfaces, 22:50 and 01:13) -- big PR work, never a loop. So it
+# sits high, and at 2/3 of it pi is steered a wrap-up warning (pi_harness); a run that ignores the
+# warning still trips the ceiling and dies. Claude Code's `-p` has no stdin: there the budget only
+# moves. TOOL_LOOP_MAX_CALLS overrides the default.
+TOOL_LOOP_KILL = 3
+TOOL_LOOP_WINDOW = 10
+TOOL_LOOP_WINDOW_KILL = 5
+TOOL_LOOP_MAX_CALLS = int(os.environ.get('TOOL_LOOP_MAX_CALLS', '150'))
+
