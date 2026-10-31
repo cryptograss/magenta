@@ -35,6 +35,10 @@ class FakeRequest:
 
 class RecallTest(TestCase):
 
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
     @classmethod
     def setUpTestData(cls):
         for name, human in (('justin', True), ('magent', False), ('re', False), ('blu', False)):
@@ -181,6 +185,32 @@ class RecallTest(TestCase):
         morning = recall.how_i_speak('re', count=2, shortest=20, now=RE_ARRIVES + timedelta(days=3, hours=15))  # Oct 19 03:00
         evening = recall.how_i_speak('re', count=2, shortest=20, now=RE_ARRIVES + timedelta(days=4, hours=9))   # Oct 19 21:00
         self.assertEqual([m.id for m, _ in morning], [m.id for m, _ in evening])
+
+    def test_the_days_draw_is_kept_until_a_star_changes_it(self):
+        from conversations.services import reactions
+        now = RE_ARRIVES + timedelta(days=4)
+        found = recall.how_i_speak('re', count=2, shortest=20, now=now)
+        with self.assertNumQueries(4):   # arrival (two), its own stars counted, the kept messages read back
+            kept = recall.how_i_speak('re', count=2, shortest=20, now=now)
+        self.assertEqual([(m.id, t) for m, t in kept], [(m.id, t) for m, t in found])
+        # Starring its own post is a new key: drawn again, and the star comes first.
+        reactions.react_on(self.to_magent, 're', recall.STAR)
+        self.assertIn(self.to_magent.id, [m.id for m, _ in recall.how_i_speak('re', count=2, shortest=20, now=now)])
+
+    def test_day_zero_is_not_kept(self):
+        at = datetime(2026, 11, 1, 13, 0, tzinfo=timezone.utc)
+        say('blu', 'The first reply, hearable and mine. ' * 2, at + timedelta(hours=1))
+        recall.how_i_speak('blu', count=2, shortest=20, now=at + timedelta(hours=2))
+        later = say('blu', 'A second reply, also hearable and mine. ' * 2, at + timedelta(hours=3))
+        again = recall.how_i_speak('blu', count=2, shortest=20, now=at + timedelta(hours=4))
+        self.assertIn(later.id, [m.id for m, _ in again])
+
+    def test_who_i_know_is_kept_and_fresh_reads_again(self):
+        before = recall.who_i_know('re')
+        say('justin', 'Hey @re, one more about the mandolin.', RE_ARRIVES + timedelta(days=2), mood=self.mood)
+        self.assertEqual(recall.who_i_know('re'), before)
+        words = {k['name']: k['words'] for k in recall.who_i_know('re', fresh=True)}
+        self.assertEqual(words['justin'], {k['name']: k['words'] for k in before}['justin'] + 1)
 
     def test_pick_reads_an_even_spread_not_only_the_oldest(self):
         import random
@@ -329,3 +359,4 @@ class JournalTest(TestCase):
     def test_the_reflection_is_gone(self):
         from conversations.services.memory import MemoryService
         self.assertFalse(hasattr(MemoryService, 'get_awakening_reflection'))
+

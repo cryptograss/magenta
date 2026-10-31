@@ -930,7 +930,7 @@
   .compaction[open] summary { margin-bottom: 6px; }
   .compaction .body { font-size: 13px; color: var(--ink); background: var(--code); border-radius: 6px; padding: 8px 12px;
                       max-height: 60vh; overflow-y: auto; }
-  #activity, #composer { max-width: 760px; margin: 0 auto; }  /* the reading column's width */
+  #activity, #catchup, #composer { max-width: 760px; margin: 0 auto; }  /* the reading column's width */
   #composer { display: none; position: relative; padding: 10px 16px 14px; }
   body.writer #composer { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
   #composer textarea { flex: 1; font-family: inherit; line-height: inherit; min-height: 44px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
@@ -986,6 +986,11 @@
   #signedOut a { color: var(--accent); font-weight: 600; }
   #composer .note { color: var(--muted); font-size: 12px; }
   #activity { display: none; align-items: center; gap: 8px; padding: 2px 16px 3px; font-size: 12px; color: var(--muted); }
+  /* Opening a Mood that's moved on since it was last drawn here: what's new is coming, said where you'll see it land. */
+  #catchup { display: flex; align-items: center; gap: 8px; padding: 2px 16px 3px; font-size: 12px; color: var(--muted); }
+  #catchup[hidden] { display: none; }
+  #catchup .spin { width: 10px; height: 10px; border: 2px solid var(--line); border-top-color: var(--accent);
+                   border-radius: 50%; animation: spin .8s linear infinite; }
   #activity.on { display: flex; }
   #activity .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); animation: pulse 1.2s ease-in-out infinite; }
   #activity b { color: var(--who, var(--agent)); }
@@ -1421,7 +1426,7 @@
     main { padding-top: 12px; }
     .inner { padding: 0 max(12px, calc(var(--gutter) - max(0px, (100cqw - 760px) / 2))) 0 12px; }
     .mood-head h1 { font-size: 19px; }
-    #activity { padding: 2px 12px 3px; }
+    #activity, #catchup { padding: 2px 12px 3px; }
     .hush { padding: 4px 12px 0; }
     #jump { right: 3px; }
     :root { --text-base: 16.5px; }
@@ -1625,6 +1630,7 @@
     <div id="tasks"></div>
     <div id="readBar" hidden><span class="what"></span><button type="button" id="readSpeedBtn" title="Reading speed: press for the next">1×</button><button type="button" id="readPause" title="Pause or go on">⏸</button><button type="button" id="readSkip" title="Skip to the next message">⏭</button><button type="button" id="readStop" title="Stop reading as they come">■</button><button type="button" id="voiceModeBtn" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧</button></div>
     <div id="readQueue" hidden></div>
+    <div id="catchup" hidden><span class="spin"></span><span>catching up on what's new…</span></div>
     <div id="activity"><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button>
@@ -4957,6 +4963,7 @@
       // has somewhere to go and its notification its title.
       if (notices.some(n => !moods.some(m => m.slug === n.mood))) loadMoods();
       let ding = null;  // one chime per look, however many came: a mention's, if any was one
+      const ahead_ = [];
       for (const n of notices) {
         if (counted.has(n.turn.id)) continue;
         counted.add(n.turn.id);
@@ -4976,7 +4983,11 @@
         const looking = n.mood === current && !document.hidden;
         if (!looking) (unread[n.mood] = unread[n.mood] || new Map()).set(n.turn.id, n);
         if (!looking && n.turn.created_at > pageOpened && counts(n)) notify(n);
+        if (!looking) ahead_.push(n);
       }
+      // The newest few unread, asked for now: what the bell is most likely to be clicked for.
+      ahead_.sort((a, b) => a.turn.created_at < b.turn.created_at ? -1 : 1).slice(-AHEAD_KEPT)
+        .forEach(n => fetchAhead(n.mood, n.turn.id));
       if (ding) chime(ding === 'mention');
       badgeCursor = next;
     } catch (e) {}
@@ -5221,7 +5232,7 @@
     if (!a) return;
     e.preventDefault();
     if (matchMedia(PHONE).matches) closeSearch();
-    if (!(await openAndReveal(a.dataset.slug, a.dataset.id))) showError('That message is no longer here.');
+    if ((await openAndReveal(a.dataset.slug, a.dataset.id)) === false) showError('That message is no longer here.');
   });
 
   function touch(slug) {
@@ -5266,16 +5277,22 @@
   // "finding it…" over the thread while a link's message is fetched: its Mood opened, then reached
   // back to (Justin, 29 Oct: any link to a message, not only a search hit, sat for seconds without it).
   // Counted, so a reveal inside an openAndReveal doesn't take it away early; shown only past a moment.
-  let reachingN = 0, reachingTimer = null;
+  // Gone the moment they go elsewhere: opening another Mood takes it away, and the reach it covered, when it
+  // lands, draws nothing (Justin, 30 Oct: the mask followed him to the next Mood).
+  let reachingN = 0, reachingTimer = null, reachingEpoch = 0;
+  function dismissReaching() {
+    reachingEpoch++; reachingN = 0; clearTimeout(reachingTimer);
+    document.getElementById('reaching').hidden = true;
+  }
   async function reaching(work) {
-    const box = document.getElementById('reaching');
+    const box = document.getElementById('reaching'), epoch = reachingEpoch;
     if (!reachingN++) reachingTimer = setTimeout(() => {
       const r = main.getBoundingClientRect();  // over the thread, not the header or the Moods
       Object.assign(box.style, { inset: 'auto', top: r.top + 'px', left: r.left + 'px', width: r.width + 'px', height: r.height + 'px' });
       box.hidden = false;
     }, 150);
     try { return await work(); } finally {
-      if (!--reachingN) { clearTimeout(reachingTimer); box.hidden = true; }
+      if (epoch === reachingEpoch && !--reachingN) { clearTimeout(reachingTimer); box.hidden = true; }
     }
   }
   // Bring a message into view, reaching back to it in one ask if need be.
@@ -5298,13 +5315,17 @@
       // Not drawn yet: the page *at* that message, in one small ask -- never everything since it
       // (the old ?from= walk fetched the whole history back to an ancient message and took half a
       // minute, Justin, 30 Oct: "finding it" was the page rendering from there to now).
-      if (i || !(await reaching(() => loadAt(id)))) return false;
+      if (i) return false;
+      const got = await reaching(() => loadAt(id));
+      if (!got) return got;  // null: they've gone to another Mood meanwhile
     }
     return false;
   }
+  // Null if they went elsewhere before it was found: not found, but not "no longer here" either.
   function openAndReveal(slug, id, push = true) {
     return reaching(async () => {
-      if (slug !== current) await open(slug, push);
+      if (slug !== current) await open(slug, push, id);
+      if (slug !== current) return null;
       return reveal(id);
     });
   }
@@ -5333,9 +5354,13 @@
     while (drawn.size > KEEP_DRAWN) drawn.delete(drawn.keys().next().value);
   }
 
-  async function open(slug, push) {
+  // `at`: a message it's opened to (a notification, a link). Not drawn here yet, it's asked for as the page
+  // at it, in one ask, and the newest waits for the next poll -- not the newest first, then the page at it.
+  async function open(slug, push, at = null) {
+    if (!at) dismissReaching();
     if (slug === current && document.getElementById('turns')) return;
     const opening = Date.now();
+    catchingUp(false);
     saveDraft();  // what's typed here waits here, with the reply it's answering
     replyTo = null; replying.hidden = true;
     stash();
@@ -5365,32 +5390,57 @@
     agentsNow = {};  // nothing to compare with: a first drawing never glows
     renderAgents(agentsFor[slug] || {});
     loadTodo();
-    const saved = drawn.get(slug);
+    const saved = drawn.get(slug), kept = !saved && keptOf(slug);
+    // Moved on since it was drawn here (as the list of Moods last heard it): a pane says what's new is coming.
+    const heldTo = preloadedTo[slug] || (saved && saved.now) || (kept && kept.now) || '';
+    const behind = !!(liveData[slug] && liveData[slug].last && liveData[slug].last > heldTo);
+    const shown = () => at && (document.getElementById('m-' + at) || document.querySelector(`.step[data-id="${CSS.escape(at)}"]`));
     if (saved) {
       drawn.delete(slug);
       inner.replaceChildren(saved.nodes);
       ({ lastId, firstId, prev } = saved);
       showMoodName(saved.headMood);
       toNewest();  // before anything is painted: never its top while the poll is out
-      await poll(false);
-    } else if (keptOf(slug) && keptOf(slug).mood) {
+      if (!at) await catchUp(behind, () => poll(false));
+      else if (shown()) poll(false);  // the message is here: shown now, the newest below it as it comes
+    } else if (kept && kept.mood) {
       // Kept in this browser: drawn at once, then only what's new and what changed.
-      const kept = keptOf(slug);
       lastId = null;
       drawKept(kept);
       if (kept.now) changesAt[slug] = kept.now;
       toNewest();
-      await poll(lastId ? false : true);
+      if (!at) await catchUp(behind && lastId, () => poll(lastId ? false : true));
+      else if (shown()) poll(lastId ? false : true);
     } else {
       lastId = null;
       inner.innerHTML = '<div class="empty">Loading…</div>';
-      await poll(true);
+      const got = at ? await loadAt(at) : false;
+      if (got === null) return;  // gone to another Mood meanwhile: nothing here is theirs to draw
+      if (!got) await poll(true);
     }
     // A Mood opens at its newest, always: what's for you is marked, and the @
     // arrows (or a notification, a search hit, a link) take you to it. Unless
     // they've already scrolled it themselves while it was loading.
-    if (touchedAt < opening) toNewest();
+    if (touchedAt < opening && !at) {
+      if (!behind) toNewest();
+      else setTimeout(() => { if (current === slug && touchedAt < opening) toNewest(); }, 700);  // after the glide
+    }
     renderToBottom();
+  }
+  // What's new in a Mood that's moved on since it was drawn here: the pane at the bottom while it's asked
+  // for, then a glide down to the newest, so they see where they were and what came since (Justin, 31 Oct).
+  let gliding = false;
+  function catchingUp(on) { document.getElementById('catchup').hidden = !on; }
+  async function catchUp(behind, ask) {
+    if (!behind) return ask();
+    const mine = gen;
+    catchingUp(true);
+    stopSettling();  // the glide, not a jump
+    gliding = true;
+    try { await ask(); } finally {
+      gliding = false;
+      if (mine === gen) catchingUp(false);
+    }
   }
   // The Moods this page holds -- drawn this visit, or kept in this browser -- are
   // brought up to date in the background as things are added to them (/api/moods/live/
@@ -5504,19 +5554,21 @@
   }
   // A link's message, far below the page (a notification, a search hit): one page starting there, drawn in
   // place of the page before -- the thread is now that window, and reveal finds the message as its first item.
+  // Opened cold to the message, there's no thread yet: the page at it brings the Mood's head too.
+  // False if it isn't there; null if they went to another Mood while it was asked for.
   async function loadAt(to) {
     const mine = gen;
-    let data;
-    try {
-      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/turns/?from=' + encodeURIComponent(to)
-                            + '&limit=' + FIRST_PAGE);
-      if (!r.ok) return false;
-      data = await r.json();
-    } catch (e) { return false; }
-    if (mine !== gen) return false;  // switched away meanwhile
+    const data = await pageAt(current, to);
+    if (mine !== gen) return null;  // switched away meanwhile
+    if (!data) return false;
     const items = itemsOf(data);
     if (!items.length) return false;
     noteAgents(current, data.agents);  // the thread is now a window at the message; the Mood head keeps its own
+    if (!document.getElementById('turns')) {
+      prev = null;
+      inner.innerHTML = renderHead(data.mood);
+      showMoodName(data.mood);
+    }
     const turnsEl = document.getElementById('turns');
     const saved = prev; prev = null;
     turnsEl.replaceChildren();
@@ -5533,6 +5585,28 @@
     return true;
   }
   document.addEventListener('click', e => { if (e.target.id === 'earlier') loadEarlier(); });
+
+  // A notice's message is asked for the moment the notice is heard: the page at it, kept for when it's
+  // clicked, so the bell opens it at once rather than behind "finding it…" (Justin, 30 Oct). One ask at a
+  // time, the newest few kept, each good for AHEAD_FRESH_MS; past that, or never asked, it's asked on the click.
+  const ahead = new Map();  // message id -> {slug, at, data: Promise}
+  const AHEAD_KEPT = 8, AHEAD_FRESH_MS = 10 * 60 * 1000;
+  let aheadQueue = Promise.resolve();
+  function fetchAt(slug, id) {
+    return fetch('/api/moods/' + encodeURIComponent(slug) + '/turns/?from=' + encodeURIComponent(id) + '&limit=' + FIRST_PAGE)
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+  }
+  function fetchAhead(slug, id) {
+    if (ahead.has(id)) return;
+    const data = aheadQueue = aheadQueue.then(() => fetchAt(slug, id));
+    ahead.set(id, { slug, at: Date.now(), data });
+    while (ahead.size > AHEAD_KEPT) ahead.delete(ahead.keys().next().value);
+  }
+  function pageAt(slug, id) {
+    const got = ahead.get(id);
+    ahead.delete(id);
+    return got && got.slug === slug && Date.now() - got.at < AHEAD_FRESH_MS ? got.data : fetchAt(slug, id);
+  }
 
   async function poll(full) {
     if (!current) return;
@@ -5677,7 +5751,8 @@
       if (full) foldOld(turnsEl);
       drawRuns(turnsEl);
       lastId = items[items.length - 1].v.id;
-      if (full || nearBottom) main.scrollTop = main.scrollHeight;
+      if (gliding && nearBottom) main.scrollTo({ top: main.scrollHeight, behavior: 'smooth' });
+      else if (full || nearBottom) main.scrollTop = main.scrollHeight;
       else if (!full) { newBelow += data.turns.length; }
       renderToBottom();
       // Seen only if someone's looking: an answer that lands while this page is
