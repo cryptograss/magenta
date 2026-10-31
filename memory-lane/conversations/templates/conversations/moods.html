@@ -952,6 +952,12 @@
   #composer .field { flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 2px; padding: 2px 4px;
                      border: 1px solid var(--line); border-radius: 22px; background: var(--panel); }
   #composer .field:focus-within { border-color: var(--accent); }
+  #composer .field { position: relative; }
+  #composer .field #discardBtn { position: absolute; top: -9px; right: -6px; z-index: 2; width: 22px; height: 22px; padding: 0;
+                                 border: 1px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--muted);
+                                 font-size: 12px; line-height: 20px; cursor: pointer; }
+  #composer .field #discardBtn:hover { color: var(--err, #c0392b); border-color: var(--err, #c0392b); }
+  #composer .field #discardBtn[hidden] { display: none; }
   #composer.dropping .field { outline: 2px dashed var(--accent); }
   #composer .field textarea { border: 0; border-radius: 0; background: none; outline: none; padding: 9px 6px; resize: none; }
   #composer .field #attach, #composer .field #memoBtn, #composer .field #emojiBtn, #composer .field #sayHelp { flex: none; border: 0; border-radius: 50%; background: none;
@@ -1652,6 +1658,8 @@
         <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
         <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
+        <!-- ✕: throw away what's under way -- a recording, unsent; the words typed (Skyler, 31 Oct: "an x in the right corner to quick delete"). -->
+        <button type="button" id="discardBtn" title="Discard: stops a recording without sending it, and clears the box" aria-label="Discard what you're writing or recording" hidden>✕</button>
         <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
       <button type="submit" id="send" aria-label="Send"><span class="label">Send</span><span class="wait"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z" fill="currentColor"/></svg></button>
@@ -7334,6 +7342,18 @@
   const memoBtn = document.getElementById('memoBtn');
   const MEMO_MAX_S = 600;
   let recorder = null, memoTimer = null, memoSaving = false, memoThenSend = false;
+  let memoDiscard = false;  // ✕ pressed while recording: the recording stops and goes nowhere
+  const discardBtn = document.getElementById('discardBtn');
+  function showDiscard() { discardBtn.hidden = !(recorder || sayBox.value.trim()); }
+  sayBox.addEventListener('input', showDiscard);
+  discardBtn.addEventListener('click', () => {
+    if (recorder) { memoDiscard = true; memoThenSend = false; recorder.stop(); }
+    if (memoPending) { memoPending.remove(); memoPending = null; }
+    sayBox.value = '';
+    sayBox.dispatchEvent(new Event('input'));  // the draft, the box's size, its suggestions: as if typed away
+    composer.querySelectorAll('.err, .note.memo-note').forEach(el => el.remove());
+    showDiscard();
+  });
   let memoStarted = 0, memoPending = null;  // Send pressed before it's saved: its place in the thread, saying how far
   // Up with XMLHttpRequest, not fetch: only it says how much has gone (a phone's minutes of memo take a while).
   function postMemo(url, blob, progress) {
@@ -7453,6 +7473,12 @@
       recordingHold(false);
       mic.close();
       stream.getTracks().forEach(t => t.stop());
+      if (memoDiscard) {  // ✕: nothing saved, nothing sent
+        memoDiscard = false; recorder = null;
+        memoBtn.classList.remove('recording'); memoBtn.textContent = '🎙';
+        voicePending = null; renderVoiceMode(); showDiscard();
+        return;
+      }
       let seconds = (Date.now() - started) / 1000;
       recorder = null; memoSaving = true;
       memoBtn.classList.remove('recording'); memoBtn.classList.add('busy'); memoBtn.textContent = 'saving…';
@@ -7520,9 +7546,10 @@
     renderVoiceMode();
     recordingHold(true);  // nothing read aloud over it
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
-    composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Recording: ■ stops it to add words; Send sends it as it is.</span>');
+    composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Recording: ■ stops it to add words; Send sends it as it is; ✕ throws it away.</span>');
     memoBtn.classList.add('recording');
     memoBtn.textContent = '■ 0:00';
+    showDiscard();
     sendTyping(true, 'recording');  // others see it, as they see typing (Justin, 28 Oct)
     let recordingSaid = Date.now();
     memoTimer = setInterval(() => {
@@ -8664,7 +8691,7 @@
   function restoreDraft() {
     const d = current && store.get('draft:' + current, null);
     const fresh = d && Date.now() - (d.at || 0) < DRAFT_DAYS * 86400e3;
-    sayBox.value = fresh ? d.text || '' : '';
+    sayBox.value = fresh ? d.text || '' : ''; showDiscard();
     fitSay();
     if (fresh && d.reply && d.reply.id) showReply(d.reply);
     // Its pictures: those kept with the draft, and any still going up for it.
@@ -8733,7 +8760,7 @@
     memoPending = null;
     if (pending) pendingSays(pending, 'sending…');
     composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());  // the thread says how it's going now
-    sayBox.value = ''; fitSay();
+    sayBox.value = ''; fitSay(); showDiscard();
     tray = []; renderTray(); saveDraft();
     if (voicePending) { voicePending.state = 'sending'; renderVoiceMode(); }
     else { voicePending = { state: 'sending', text, who: viewer, mood: current }; renderVoiceMode(); }
@@ -8774,7 +8801,7 @@
     } catch (e) {
       voicePending = null; renderVoiceMode();
       if (pending) pending.remove();
-      if (!sayBox.value.trim()) { sayBox.value = words; fitSay(); }  // not sent: the words back where they were
+      if (!sayBox.value.trim()) { sayBox.value = words; fitSay(); showDiscard(); }  // not sent: the words back where they were
       if (!tray.length) { tray = sentTray; renderTray(); }                // and the pictures
       saveDraft();
       composer.insertAdjacentHTML('beforeend', `<span class="err">${esc(e.message)}</span>`);
