@@ -14,6 +14,8 @@ is shared, and the separation is by tool name in the harness's tool
 selection -- reads enabled, writes absent, on both harnesses.
 """
 
+import os
+
 # The wiki server, as mcp.json names it, and its read tools as its MCP
 # server names them (`pi mcp list`, 30 Oct: hyphens -- which is also the
 # spelling Claude Code's allowlist already used). Its write tools --
@@ -41,3 +43,13 @@ def mcp_read_patterns():
     them: PickiPedia's reads by name; the memory server whole (Pi's `*`
     wildcard; Claude Code's bare server name is added by its own list)."""
     return [f'mcp__{WIKI_MCP_SERVER}__{name}' for name in WIKI_READ_TOOLS]
+
+
+# Tool loop tripwire limits (shared by pi_harness and mood_poller):
+# Attractor loops: identical tool call repeated 3 times, or 5 times in 10-call window.
+# Turn call ceiling: 150 calls default (settable via TOOL_LOOP_MAX_CALLS env var).
+TOOL_LOOP_KILL = 3
+TOOL_LOOP_WINDOW = 10
+TOOL_LOOP_WINDOW_KILL = 5
+TOOL_LOOP_MAX_CALLS = int(os.environ.get('TOOL_LOOP_MAX_CALLS', '150'))
+

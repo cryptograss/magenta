@@ -55,9 +55,15 @@ STOP_REASONS = {'stop': 'end_turn', 'length': 'max_tokens', 'toolUse': 'tool_use
 # allowlisted by name, one place for both harnesses (poller/wake_policy.py;
 # re, 30 Oct, into #295 before it merged): reads enabled, writes absent.
 try:
-    from poller.wake_policy import WIKI_MCP_SERVER, WIKI_READ_TOOLS, MEMORY_MCP_SERVERS
+    from poller.wake_policy import (
+        WIKI_MCP_SERVER, WIKI_READ_TOOLS, MEMORY_MCP_SERVERS,
+        TOOL_LOOP_KILL, TOOL_LOOP_WINDOW, TOOL_LOOP_WINDOW_KILL, TOOL_LOOP_MAX_CALLS,
+    )
 except ImportError:  # run as a script, from poller/
-    from wake_policy import WIKI_MCP_SERVER, WIKI_READ_TOOLS, MEMORY_MCP_SERVERS
+    from wake_policy import (
+        WIKI_MCP_SERVER, WIKI_READ_TOOLS, MEMORY_MCP_SERVERS,
+        TOOL_LOOP_KILL, TOOL_LOOP_WINDOW, TOOL_LOOP_WINDOW_KILL, TOOL_LOOP_MAX_CALLS,
+    )
 
 
 def _look_only_tools():
@@ -69,13 +75,6 @@ def _look_only_tools():
 
 LOOK_ONLY_TOOLS = _look_only_tools()
 COMPACT = re.compile(r'/compact(?:\s+(.+))?\Z', re.S)  # what the runner sends for "/compact re [what to keep]"
-# A tool loop tripwire: a machine attractor repeats the exact same call, and by the third time
-# (even with text between the repeats — the 28 Oct specimen had escape text every 3–4s) the run
-# is a runaway, not a retry. Only a *different* call breaks the streak; then the turn is killed.
-TOOL_LOOP_KILL = 3
-TOOL_LOOP_WINDOW = 10
-TOOL_LOOP_WINDOW_KILL = 5
-TOOL_LOOP_MAX_CALLS = 50
 
 
 class LoopGuard:
@@ -84,13 +83,13 @@ class LoopGuard:
     Text between the repeats does not break the streak — the 28 Oct specimen
     had escape text every few seconds — only a *different* call does.
     Also catches alternating ping-pong loops (A -> B -> A -> B) via a sliding
-    window, and enforces a hard ceiling on tool calls per wake."""
+    window, and enforces a ceiling on tool calls per wake."""
 
     def __init__(self, limit=TOOL_LOOP_KILL, window_limit=TOOL_LOOP_WINDOW_KILL,
-                 window_size=TOOL_LOOP_WINDOW, max_calls=TOOL_LOOP_MAX_CALLS):
+                 window_size=TOOL_LOOP_WINDOW, max_calls=None):
         self.limit = limit
         self.window_limit = window_limit
-        self.max_calls = max_calls
+        self.max_calls = TOOL_LOOP_MAX_CALLS if max_calls is None else max_calls
         self.streak, self.last = 0, None
         self.total = 0
         self.recent = deque(maxlen=window_size)
@@ -114,6 +113,8 @@ class LoopGuard:
             return f'tool loop: {name} called {window_count}× within last {len(self.recent)} calls'
         if self.total >= self.max_calls:
             return f'tool loop: turn exceeded maximum tool calls limit ({self.total})'
+        if self.total == int(self.max_calls * 2 / 3):
+            logger.warning(f'turn approaching call ceiling: {self.total}/{self.max_calls} tool calls used')
         return ''
 EFFORTS = {'max': 'xhigh'}  # our effort names that Pi spells differently
 # The names the model menu has always offered, as Pi should read them. Left

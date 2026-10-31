@@ -28,38 +28,6 @@ def translated(session=SESSION):
     return t, events
 
 
-class LoopGuardTest(PlainCase):
-    """The tripwire both wakers share: three identical calls is a runaway;
-    text between the repeats doesn't help (the 28 Oct specimen had escape text every few seconds)."""
-
-    def test_three_identical_calls_trip_it(self):
-        guard = LoopGuard()
-        self.assertEqual(guard.see('read', {'path': 'x'}), '')
-        self.assertEqual(guard.see('read', {'path': 'x'}), '')
-        self.assertIn('tool loop: read called 3×', guard.see('read', {'path': 'x'}))
-
-    def test_a_different_call_breaks_the_streak(self):
-        guard = LoopGuard()
-        guard.see('read', {'path': 'x'})
-        guard.see('read', {'path': 'x'})
-        self.assertEqual(guard.see('read', {'path': 'y'}), '')  # the different one: 1
-        self.assertEqual(guard.see('read', {'path': 'x'}), '')  # 1 again, y broke it
-        self.assertEqual(guard.see('read', {'path': 'x'}), '')  # 2
-        self.assertIn('tool loop', guard.see('read', {'path': 'x'}))  # 3
-
-    def test_text_between_repeats_does_not_break_the_streak(self):
-        # The 28 Oct specimen said "let me check that again" between every repeat: it still loops.
-        guard = LoopGuard()
-        for _ in range(2):
-            self.assertEqual(guard.see('read', {'path': 'x'}), '')
-        self.assertIn('tool loop', guard.see('read', {'path': 'x'}))  # the guard never sees the text
-
-    def test_the_same_tool_with_different_args_is_not_a_loop(self):
-        guard = LoopGuard()
-        for i in range(5):
-            self.assertEqual(guard.see('read', {'path': f'f{i}'}), '')
-
-
 class TranslatorTest(TestCase):
 
     def test_a_real_run_becomes_a_turn_of_record_events(self):
@@ -268,6 +236,10 @@ class LoopGuardTest(PlainCase):
         for i in range(9):
             self.assertEqual(guard.see(f'tool_{i}', {'path': str(i)}), '')
         self.assertIn('maximum tool calls limit (10)', guard.see('tool_9', {'path': '9'}))
+
+    def test_default_max_calls_is_150(self):
+        guard = LoopGuard()
+        self.assertEqual(guard.max_calls, 150)
 
 
 # A pi stuck in a machine attractor, as re's was on 28 Oct: the same read over and over,
