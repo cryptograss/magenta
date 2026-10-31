@@ -1915,8 +1915,8 @@
     try { if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()); } catch (e) {}
   }
 
-  // A Mood's temperature (Justin, 31 Oct), in place of the count of all it ever said: messages from people (👤) and
-  // emergents (✦) in the past 24 hours, grey to amber to red as more of them came in the past 3; then how long since
+  // A Mood's temperature (Justin, 31 Oct), in place of the count of all it ever said: messages from people and
+  // emergents in the past 24 hours, grey to amber to red as more of them came in the past 3; then how long since
   // each last spoke, bold in their colour while under 30 minutes. The colours are the theme's (--heat-1, --heat-2).
   function heat(t) {
     if (!t || !t.day) return '';
@@ -1926,16 +1926,17 @@
     return ` style="color: ${colour}"`;
   }
   function moodWarmth(m) {
+    // No marks (Justin, 31 Oct: "way too many of the little blue silhouettes"): people first, then emergents,
+    // "people/emergents"; what each number is, on hover.
     const t = m.temperature || {}, h = t.humans, e = t.emergents;
-    const count = (x, mark) => x && x.day ? `<span${heat(x)} title="${x.day} in the past 24 hours, ${x.warm} in the past 3">${mark} ${x.day}</span>` : '';
-    const since = (x, mark, cls) => {
-      if (!x || !x.last_at) return '';
+    if (!h && !e) return ago(m.last_at);
+    const count = (x, who) => `<span${heat(x)} title="${who}: ${x ? x.day : 0} messages in the past 24 hours, ${x ? x.warm : 0} in the past 3">${x ? x.day : 0}</span>`;
+    const since = (x, who, cls) => {
+      if (!x || !x.last_at) return `<span title="no ${who} here in 30 days">–</span>`;
       const fresh = Date.now() - new Date(x.last_at) < 30 * 60000;
-      return `<span class="${fresh ? 'fresh ' + cls : ''}" title="${mark === '👤' ? 'a person' : 'an emergent'} last spoke ${stamp(x.last_at)}">${mark} ${ago(x.last_at).replace(' ago', '')}</span>`;
+      return `<span${fresh ? ` class="fresh ${cls}"` : ''} title="${who} last spoke ${stamp(x.last_at)}">${ago(x.last_at).replace(' ago', '')}</span>`;
     };
-    const counts = [count(h, '👤'), count(e, '✦')].filter(Boolean);
-    const ages = [since(h, '👤', 'h'), since(e, '✦', 'e')].filter(Boolean);
-    return [counts.length ? counts.join(' ') + ' /24h' : '', ages.join(' ')].filter(Boolean).join(' · ') || ago(m.last_at);
+    return `${count(h, 'people')}/${count(e, 'emergents')} · ${since(h, 'a person', 'h')}/${since(e, 'an emergent', 'e')}`;
   }
 
   const foldedThreads = new Set(store.get('foldedThreads', []));
