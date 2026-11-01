@@ -112,3 +112,53 @@ def _expand(text):
                                               'format': 'json'})
     with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': USER_AGENT}), timeout=5) as r:
         return json.load(r)['expandtemplates']['wikitext']
+
+
+# --- a name's frame, as each sets their own (Justin, re and blu, 1 Nov) ---------------------------------------------
+# While a name is at work in the Moods list it stands in a frame: dots by default, up to FRAME_WIDTH characters, so a
+# short name gives the cursor room; or the characters its owner chose, as re chose `~re~`. Chosen on their own User
+# page, {{Name frame|~}}, and read only from a revision they made themselves: theirs to set, nobody else's.
+FRAMES_KEY = 'name-frames'
+_FRAME = re.compile(r'\{\{\s*[Nn]ame frame\s*\|\s*([^{}|\n]{1,3}?)\s*\}\}')
+_FRAME_OK = re.compile(r'[^\w\s<>&"\'`]{1,3}')  # a few marks: no letters or digits, nothing markup
+
+
+def frame_in(text):
+    """The frame `text` (a User page) chooses, or ''."""
+    m = _FRAME.search(text or '')
+    return m.group(1) if m and _FRAME_OK.fullmatch(m.group(1)) else ''
+
+
+def frames(entities, fetch=None):
+    """{name: '~'} for those who've chosen a frame; kept a while (FRAMES_KEY). `entities`: [(name, is_human)]."""
+    kept = cache.get(FRAMES_KEY)
+    if kept is not None:
+        return kept
+    from .wiki_auth import names
+    from poller.wiki_rules import API, USER_AGENT
+    people_names, agents = names(), {n for n, human in entities if not human}
+
+    def newest_own(user):
+        """Their User page as they last left it themselves: their own newest revision of it."""
+        url = API + '?' + urllib.parse.urlencode({
+            'action': 'query', 'prop': 'revisions', 'titles': f'User:{user}', 'rvprop': 'content', 'rvslots': 'main',
+            'rvuser': user, 'rvlimit': 1, 'format': 'json', 'formatversion': '2'})
+        with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': USER_AGENT}), timeout=5) as r:
+            page = json.load(r)['query']['pages'][0]
+        revs = page.get('revisions') or []
+        return revs[0]['slots']['main']['content'] if revs else ''
+
+    try:
+        found = {}
+        for name, _ in entities:
+            user = wiki_name(name, people_names, agents)
+            if user and re.fullmatch(r"[\w .'-]{1,80}", user):
+                chosen = frame_in((fetch or newest_own)(user))
+                if chosen:
+                    found[name] = chosen
+        cache.set(FRAMES_KEY, found, KEEP)
+        cache.set(FRAMES_KEY + ':last', found, None)
+    except Exception:
+        found = cache.get(FRAMES_KEY + ':last') or {}
+        cache.set(FRAMES_KEY, found, KEEP_FAILED)
+    return found

@@ -461,6 +461,8 @@
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
   nav a.mood .toolsask { font-size: 12px; margin-left: 4px; }
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
+  nav .nmf { white-space: nowrap; }
+  nav .nmf .frame { color: var(--muted); opacity: .7; font-weight: 400; letter-spacing: -.05em; }  /* still: framed() */
   /* What an emergent is at, in how its name moves (Justin, 1 Nov); a tool, or anything else, pulses as above.
      Waking: grey, one letter of its colour stepping slowly across, grey left behind. Thinking: the inverse,
      its colour with one grey letter stepping across, quicker (Justin, 1 Nov: a cursor, not a banner).
@@ -2190,6 +2192,17 @@
     if (doing === 'remembering') return 'a-remember';
     return '';
   }
+  // A name at work stands in a frame (Justin, re and blu, 1 Nov), still while the name moves inside it: the one
+  // its owner chose on their User page ({{Name frame|~}}: `~re~`), else dots up to FRAME_WIDTH, so a short name
+  // gives the cursor room (`··re··`). Bare when idle.
+  const framesOf = {}, FRAME_WIDTH = 7;
+  function framed(n, html) {
+    const len = Array.from((looks[n] || {}).art || shown(n)).length, own = framesOf[n];
+    if (!own && len >= FRAME_WIDTH) return html;
+    const left = own || '·'.repeat(Math.ceil((FRAME_WIDTH - len) / 2));
+    const right = own ? Array.from(own).reverse().join('').replace(/[()[\]{}<>]/g, c => ({ '(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{', '<': '>', '>': '<' })[c]) : left;
+    return `<span class="frame">${esc(left)}</span>${html}<span class="frame">${esc(right)}</span>`;
+  }
   function peopleLine(slug) {
     const { names, active, listening, tooled, doing, typing, recording } = aroundIn(slug);
     // At work, an agent pulses in its own colour (Justin, 21 Oct), or moves as what it's at says (animOf);
@@ -2205,7 +2218,8 @@
         : ` style="color: ${agentColor(n)}; --who: ${agentColor(n)}"`;
       const inner = anim === 'a-wiki' && !(looks[n] || {}).art
         ? Array.from(shown(n)).map((ch, i) => `<span class="l${i % 2}">${esc(ch)}</span>`).join('') : nameHtml(n);
-      return `<span class="nm${active.has(n) ? ' live' : ''}${anim ? ' ' + anim : ''}" data-who="${esc(n)}"${style}>${inner}</span>`
+      const name = `<span class="nm${active.has(n) ? ' live' : ''}${anim ? ' ' + anim : ''}"${active.has(n) ? '' : ` data-who="${esc(n)}"`}${style}>${inner}</span>`;
+      return (active.has(n) ? `<span class="nmf" data-who="${esc(n)}">${framed(n, name)}</span>` : name)
       + (tooled.has(n) ? `<span class="tooled" title="${esc(shown(n))} is at work with its full tools">🔨</span>` : '')
       + (listening.has(n) ? `<span class="hears" title="${esc(shown(n))} is listening by voice, ${listening.get(n) ? 'to every Mood' : 'to this Mood'}">🎧</span>` : '');
     }).join(', ')
@@ -5056,6 +5070,7 @@
     groups = body.groups || [];
     people.forEach(p => { if (p.for) powers[p.name] = { for: p.for, short: p.for_short || p.for };
                           if (p.pronouns) pronounsOf[p.name] = p.pronouns;
+                          if (p.frame) framesOf[p.name] = p.frame;
                           human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
     renderMe(); renderAsksOpen();
