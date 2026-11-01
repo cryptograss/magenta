@@ -813,6 +813,7 @@ def api_here(request, slug):
         return JsonResponse({'error': 'sign in to be shown'}, status=401)
     mood = Mood.by_slug_or_404(slug)
     presence.note(device.entity_id, mood.slug)
+    presence.walked(device.entity_id, mood.slug)
     cache.delete('moods-live')  # seen there at the next look, not three seconds on
     return JsonResponse({'here': mood.slug})
 
@@ -1262,6 +1263,19 @@ def api_wiki_preview(request):
     response = JsonResponse(found)
     response['Cache-Control'] = 'public, max-age=3600'
     return response
+
+
+@require_GET
+def api_person_card(request, name):
+    """A person's card, for a click on their name (services/person_card.py): their User page in brief, last
+    messages with what answering them took, last PickiPedia edits, and their trail across the Moods.
+    404 for anyone who isn't a person here."""
+    from .services import person_card
+    found = person_card.card(name.lower())
+    if found is None:
+        raise Http404
+    return JsonResponse(found)
+
 
 @require_GET
 def api_mentions(request, name):
