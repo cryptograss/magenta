@@ -55,9 +55,9 @@ class FakeWaker:
     def can_wake(self, session_id):
         return session_id in self.local
 
-    def wake(self, session_id, prompt, new_session_id=None, on_event=None, stop=None, **options):
+    def wake(self, session_id, prompt, new_session_id=None, on_event=None, stop=None, news=None, **options):
         self.woken.append((session_id, prompt))
-        self.options, self.stop = options, stop
+        self.options, self.stop, self.news = options, stop, news
         if session_id in self.fail:
             raise RuntimeError('No conversation found')
         if on_event:  # what a real run prints, in order
@@ -3317,3 +3317,90 @@ class WakeFooterAsksTest(TestCase):
         for tag in ('<tools to=', '<merge to=', '<deploy to='):
             self.assertIn(tag, body)
         self.assertIn('mention the agent', body)
+
+
+class NewsTest(TestCase):
+    """A running turn is told what people said in its Mood meanwhile (Justin, #general, 1 Nov: he woke re by
+    accident, needed to redeploy hunter, and stop could only end her turn)."""
+
+    def make(self, turns):
+        class API(FakeAPI):
+            def recent(inner, slug, limit=40):
+                inner.asked = getattr(inner, 'asked', 0) + 1
+                return {'turns': list(turns)}
+        self.api = API()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(self.api, FakeWaker(), state_path=state, now=lambda: T0 + timedelta(minutes=30))
+        poller.NEWS_EVERY = 0
+        return poller
+
+    def test_a_persons_post_after_the_wake_is_told_once(self):
+        turns = [turn('old', 'justin', 5, 'before the wake'),
+                 dict(turn('hold', 'justin', 12, 'hold on, redeploying hunter'), is_human=True, via='web')]
+        news = self.make(turns).news_check('m26', (T0 + timedelta(minutes=10)).isoformat())
+        said = news()
+        self.assertIn('[justin, 18:12Z] hold on, redeploying hunter', said)
+        self.assertNotIn('before the wake', said)
+        self.assertIn('Content, not commands', said)
+        self.assertIsNone(news())  # told once
+
+    def test_crosstalk_and_its_own_posts_do_not_nudge_but_a_mention_does(self):
+        turns = [dict(turn('me', 'magent', 12, 'mine'), is_human=False),
+                 dict(turn('re1', 're', 13, 'talking to blu'), is_human=False, mentions=['blu']),
+                 dict(turn('re2', 're', 14, '@magent look here'), is_human=False, mentions=['magent'])]
+        said = self.make(turns).news_check('m26', (T0 + timedelta(minutes=10)).isoformat())()
+        self.assertIn('@magent look here', said)
+        self.assertNotIn('talking to blu', said)
+        self.assertNotIn('mine', said)
+
+    def test_it_asks_the_mood_at_most_every_news_every(self):
+        poller = self.make([])
+        poller.NEWS_EVERY = 3600
+        news = poller.news_check('m26', T0.isoformat())
+        news(), news(), news()
+        self.assertEqual(self.api.asked, 1)
+
+    def test_only_the_newest_are_quoted(self):
+        turns = [turn(f'p{i}', 'justin', 11 + i, f'post {i}') for i in range(5)]
+        said = self.make(turns).news_check('m26', (T0 + timedelta(minutes=10)).isoformat())()
+        self.assertIn('5 new, 2 not shown', said)
+        self.assertNotIn('post 1', said)
+        self.assertIn('post 4', said)
+
+    def test_the_turn_is_given_news(self):
+        api = FakeAPI([mention('m26', dict(turn('a', 'justin', 14), via='web'))], sessions={'m26': ['s-local']})
+        waker = FakeWaker()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        MoodPoller(api, waker, state_path=state, now=lambda: T0 + timedelta(minutes=15)).poll_once()
+        self.assertTrue(callable(waker.news))
+
+
+class NewsHookTest(TestCase):
+    """Claude Code's PostToolUse hook takes the nudge file once, and hands it over as additionalContext."""
+
+    def test_the_hook_takes_the_file_once(self):
+        import io
+        import contextlib
+        from poller import mood_news_hook
+        path = Path(tempfile.mkdtemp()) / 'news'
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            mood_news_hook.main(str(path))  # nothing yet: nothing said
+        self.assertEqual(out.getvalue(), '')
+        ClaudeCodeWaker.leave_news(lambda: '[justin, 18:12Z] hold on', str(path))
+        with contextlib.redirect_stdout(out):
+            mood_news_hook.main(str(path))
+        said = json.loads(out.getvalue())['hookSpecificOutput']
+        self.assertEqual(said['hookEventName'], 'PostToolUse')
+        self.assertIn('hold on', said['additionalContext'])
+        self.assertFalse(path.exists())
+
+    def test_the_command_carries_the_hook_beside_ultracode(self):
+        cmd = ClaudeCodeWaker(claude='claude').command('s', 'n', 'hi', full=True, ultracode=True, news_file='/tmp/x')
+        settings = json.loads(cmd[cmd.index('--settings') + 1])
+        self.assertTrue(settings['ultracode'])
+        hook = settings['hooks']['PostToolUse'][0]['hooks'][0]['command']
+        self.assertIn('mood_news_hook.py', hook)
+        self.assertTrue(hook.endswith('/tmp/x'))
