@@ -611,7 +611,7 @@ class PiWaker:
         return cmd
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, model=None, effort=None, full=False,
-             stop=None, system=None, **ignored):
+             stop=None, system=None, cwd=None, **ignored):
         """Run one turn; (new session id, its reply). '/compact <what to keep>' compacts instead.
         The prompt goes in on stdin (RPC mode), and LoopGuard's tool-budget warning is steered in mid-turn."""
         keep = COMPACT.match(prompt or '')
@@ -619,8 +619,8 @@ class PiWaker:
             instructions = keep.group(1).strip() if (keep and keep.group(1)) else ''
             return self.compact(session_id, instructions, new_session_id=new_session_id, on_event=on_event,
                                 model=model, stop=stop)
-        if session_id is None:
-            cwd = str(Path(self.new_cwd).expanduser())
+        if session_id is None:  # a new session: in its Mood's directory (`cwd`), else where new ones start
+            cwd = cwd or str(Path(self.new_cwd).expanduser())
         else:
             cwd = self.cwd_for(session_id)
             if cwd is None:
