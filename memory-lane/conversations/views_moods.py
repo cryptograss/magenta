@@ -1710,6 +1710,13 @@ def api_moods_live(request):
         entry['recording'] = recording_in(mood.slug)  # of those typing, who's speaking a memo: pulsing, not typing
         last = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at) index
         entry['last'] = last.isoformat() if last else None
+        # What the list sorts by: a word from a person or an emergent, not an announcement, event or tool row (Justin,
+        # 1 Nov: one /announce landed in every Mood at once and reshuffled the list by it).
+        from .services.temperature import NOT_SPEAKERS
+        said = (mood.messages.filter(is_sidechain=False, tooluse__isnull=True, thought__isnull=True,
+                                     sender__thinkingentity__isnull=False)
+                .exclude(sender_id__in=NOT_SPEAKERS).order_by('-created_at').values_list('created_at', flat=True).first())
+        entry['said'] = said.isoformat() if said else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way
             doing = activities(mood)
             working = [a['agent'] for a in doing if a.get('doing') != 'held' or 'a turn is under way' in str(a.get('why') or '')]

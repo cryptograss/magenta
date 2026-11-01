@@ -97,3 +97,19 @@ class PresenceTest(TestCase):
     def test_only_a_signed_in_person_is_shown(self):
         self.assertEqual(Client().post('/api/moods/jams/here/').status_code, 401)
         self.assertEqual(self.live(), {})
+
+
+class LiveSaidTest(TestCase):
+    """Justin, 1 Nov: the list sorts by words, not by an announcement landing in every Mood."""
+
+    def test_said_ignores_system_rows(self):
+        from conversations.models import ConversationParticipant
+        cache.delete('moods-live')
+        justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        mood = Mood.objects.create(slug='jams', title='jams')
+        system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        Message.objects.create(id=uuid.uuid4(), sender=justin, mood=mood, content='hi')
+        Message.objects.filter(mood=mood).update(created_at=timezone.now() - timedelta(days=3))
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, content={'type': 'announce'})
+        jams = Client().get('/api/moods/live/').json()['moods']['jams']
+        self.assertLess(jams['said'], jams['last'])
