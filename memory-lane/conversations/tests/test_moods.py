@@ -272,3 +272,22 @@ class MoodsListCacheTest(TestCase):
             self.run_spawned()
             self.assertIn('hit;dur=0', self.client.get('/api/moods/')['Server-Timing'])
 
+
+
+class SaidInTest(TestCase):
+    """What the list shows of each Mood's messages is kept until something new lands there (Justin, 1 Nov)."""
+
+    def test_kept_until_a_new_message(self):
+        import uuid
+        from django.core.cache import cache
+        from conversations.models import Message, Mood, ThinkingEntity
+        from conversations.services.mood_view import said_in
+        cache.clear()
+        ThinkingEntity.objects.get_or_create(name='justin', defaults={'is_biological_human': True})
+        mood = Mood.objects.create(slug='quiet', title='quiet')
+        Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=mood, content='first', timestamp=1)
+        self.assertEqual(said_in(mood)['message_count'], 1)
+        with self.assertNumQueries(1):  # the newest message's time, and nothing else
+            self.assertEqual(said_in(mood)['message_count'], 1)
+        Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=mood, content='second', timestamp=2)
+        self.assertEqual(said_in(mood)['message_count'], 2)

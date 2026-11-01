@@ -96,6 +96,10 @@ CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
         'LOCATION': os.getenv('MEMORY_LANE_CACHE_DIR', '/tmp/memory-lane-cache'),
+        # Django's default is 300, and past it a third of the entries go at random -- the Moods list among them,
+        # and a list dropped is a list every page waits on. A Mood's said_in, an agent's recall, a to-do's pulls:
+        # a few thousand is room enough.
+        'OPTIONS': {'MAX_ENTRIES': 20000},
     }
 }
 

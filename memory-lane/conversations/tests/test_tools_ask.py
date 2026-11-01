@@ -178,3 +178,29 @@ class AskTest(TestCase):
         self.assertIn("if (!kinds.has(icon)) kinds.set(icon, []);", html)
         self.assertIn("kinds.get(icon).push(t.agent);", html)
 
+
+
+class IncrementalAskTest(AskTest):
+    """Each read looks only at what came since the last (Justin, 1 Nov: a week afresh took 11 s every build)."""
+
+    def test_kept_between_reads_and_only_the_new_read(self):
+        from conversations.services import tools_ask
+        self.say('re', '<deploy to="hunter"/>', 1)
+        self.assertEqual(list(tools_ask.open_requests()), ['jams'])
+        cache.delete(tools_ask.KEY)
+        self.say('re', '<tools to="push it"/>', 2)
+        # Agents, the rows since the last read, the asks read back (3); the deploy's answer (1), the tools ask's (3).
+        with self.assertNumQueries(7):
+            asked = tools_ask.open_requests()
+        self.assertEqual(sorted(a['kind'] for a in asked['jams']), ['deploy', 'tools'])
+
+    def test_an_answered_ask_is_not_asked_again(self):
+        from unittest import mock
+        from conversations.services import tools_ask
+        self.say('re', 'Done.\n\n<merge to="#1"/>\n<deploy to="hunter"/>', 1)
+        self.say('system', '', 2, source='merged', content={'type': 'merged'})
+        self.assertEqual([a['kind'] for a in self.asked()], ['deploy'])
+        cache.delete(tools_ask.KEY)
+        with mock.patch.object(tools_ask, '_answered', wraps=tools_ask._answered) as answered:
+            tools_ask.open_requests()
+        self.assertEqual([c.args[0] for c in answered.call_args_list], ['deploy'])

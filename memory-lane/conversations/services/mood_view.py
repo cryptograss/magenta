@@ -1882,6 +1882,33 @@ def mood_description(mood):
     return description(mood)
 
 
+def said_in(mood):
+    """What the Mood list shows of what was said in a Mood: how much, when last, by whom, and whether it was handed
+    back. Each reads the whole of a big Mood (a second or two for #interfaces), and the list asks it of every Mood:
+    so it's kept, and read again only once something new lands there -- most Moods are quiet most of the time
+    (Justin, 1 Nov: the list took 25 s to build, every 30 s)."""
+    from django.core.cache import cache
+    newest = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at)
+    stamp = newest.isoformat() if newest else ''
+    key = f'mood-said:{mood.pk}'
+    kept = cache.get(key)
+    if kept and kept['stamp'] == stamp:
+        return kept['said']
+    # What was said, not the system's own rows (a redeploy announced in every
+    # Mood, a rename, a turn's tally): those mustn't make a Mood look active.
+    last = last_said(mood)
+    said = {
+        'message_count': mood.messages.exclude(sender_id='system').count(),
+        'last_at': last.isoformat() if last else None,
+        'participants': sorted(e.name for e in mood.thinking_entities()),
+        'incorporated': bool(mood.thread_of_id) and mood.messages.filter(
+            sender_id='system', content__type__in=['incorporated', 'reforked'])
+            .order_by('-created_at').values_list('content__type', flat=True).first() == 'incorporated',
+    }
+    cache.set(key, {'stamp': stamp, 'said': said}, 7 * 86400)
+    return said
+
+
 def mood_payload(mood, light=False):
     """A Mood as the page shows it. `light`: its name and description only, for a poll for what's new -- the
     count of everything it ever said, and everyone who ever spoke there, read the whole of a big Mood, and a
@@ -1897,22 +1924,16 @@ def mood_payload(mood, light=False):
     }
     if light:
         return head
-    # What was said, not the system's own rows (a redeploy announced in every
-    # Mood, a rename, a turn's tally): those mustn't make a Mood look active.
-    said = mood.messages.exclude(sender_id='system')
-    last = last_said(mood)
     from conversations.models import Message, Mood
+    said = said_in(mood)
     return {
         **head,
-        'message_count': said.count(),
-        'last_at': last.isoformat() if last else None,
-        'participants': sorted(e.name for e in mood.thinking_entities()),
+        **{k: v for k, v in said.items() if k != 'incorporated'},  # that one is a thread's only
         # A thread: where it was opened from, and when its emergents went on from there (forked; none: fresh).
         **({'thread_of': Mood.objects.filter(pk=mood.thread_of_id).values_list('slug', flat=True).first(),
             'forked_at': mood.forked_at.isoformat() if mood.forked_at else None,
             # Handed back to its Mood to incorporate, and not forked again since (Justin, 29 Oct: an arrow).
-            'incorporated': mood.messages.filter(sender_id='system', content__type__in=['incorporated', 'reforked'])
-                            .order_by('-created_at').values_list('content__type', flat=True).first() == 'incorporated',
+            'incorporated': said['incorporated'],
             # An emergent compacted in its Mood since the fork (Justin, 29 Oct): what it was forked from is gone
             # there, so the page shows it as fresh (🌱), whatever else it is, until it's forked again.
             'compacted': bool(mood.forked_at) and Message.objects.filter(

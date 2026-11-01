@@ -25,22 +25,32 @@ KINDS = {
 _PREFIX = {'tools': 'requested tools for ', 'merge': 'requested a merge for ', 'deploy': 'requested a redeploy of '}
 
 
+SCAN_KEY = 'asks-scan'
+OVERLAP = timedelta(minutes=10)  # each read starts this far before the last: a row stamped late is still met
+
+
 def open_requests():
-    """{slug: [{'kind', 'agent', 'for', 'at', 'id'}]}: asks not yet answered by their event there."""
+    """{slug: [{'kind', 'agent', 'for', 'at', 'id'}]}: asks not yet answered by their event there.
+
+    The newest ask of each kind by each agent in each Mood is kept between reads, and each read looks only at
+    what came since the last (Justin, 1 Nov: reading a week of agents' messages afresh took 11 s, every time
+    the Moods list was built). An ask once answered stays answered: its event doesn't go away."""
     kept = cache.get(KEY)
     if kept is not None:
         return kept
     from django.db.models import Q, TextField
     from django.db.models.functions import Cast
     from django.utils import timezone
-    from conversations.models import BundleRecord, Message, ThinkingEntity
-    from .mood_view import BUNDLE_SAID, prose, quiet_reason, trailing_asks
+    from conversations.models import Message, ThinkingEntity
+    from .mood_view import prose, quiet_reason, trailing_asks
+    now = timezone.now()
+    scan = cache.get(SCAN_KEY) or {'to': None, 'latest': {}, 'answered': set()}
+    since = max(now - LOOK_BACK, scan['to'] - OVERLAP) if scan['to'] else now - LOOK_BACK
     agents = set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
-    since = timezone.now() - LOOK_BACK
     want = Q()
     for kind in KINDS:
         want |= Q(t__contains=KINDS[kind]['tag'])
-    latest = {}
+    latest = scan['latest']  # (slug, agent, kind) -> (message id, its time, what it's for)
     for m in (Message.objects.filter(created_at__gt=since, mood__isnull=False, sender_id__in=agents)
               .annotate(t=Cast('content', TextField())).filter(want)
               .select_related('mood').order_by('created_at')):
@@ -48,12 +58,29 @@ def open_requests():
         said = quiet_reason(text)
         asks = [said] if said else trailing_asks(text)[1]  # alone, or after words (Justin, 31 Oct)
         for kind, reasons in _by_kind(asks).items():
-            latest[(m.mood.slug, m.sender_id, kind)] = (m, '; '.join(reasons))
+            key = (m.mood.slug, m.sender_id, kind)
+            if key not in latest or latest[key][1] <= m.created_at:
+                latest[key] = (m.id, m.created_at, '; '.join(reasons))
+    # Older than the look back: no longer shown, so no longer kept.
+    for key in [k for k, v in latest.items() if v[1] < now - LOOK_BACK]:
+        del latest[key]
+    # Answered, by ask: one reply may ask a merge and a redeploy, each answered by its own event.
+    answered = scan['answered'] & {(k, v[0]) for k, v in latest.items()}
+    asking = [(k, v) for k, v in latest.items() if (k, v[0]) not in answered]
+    requests = Message.objects.filter(id__in=[v[0] for _, v in asking]).select_related('mood').in_bulk()
     found = {}
-    for (slug, agent, kind), (m, purpose) in latest.items():
-        if not _answered(kind, slug, agent, m, purpose):
+    for (slug, agent, kind), (mid, _, purpose) in asking:
+        m = requests.get(mid)
+        if m is None:
+            continue
+        if _answered(kind, slug, agent, m, purpose):
+            answered.add(((slug, agent, kind), mid))
+        else:
             found.setdefault(slug, []).append({'kind': kind, 'agent': agent, 'for': purpose,
                                                'at': m.created_at.isoformat(), 'id': str(m.id)})
+    for asks in found.values():
+        asks.sort(key=lambda a: a['at'])
+    cache.set(SCAN_KEY, {'to': now, 'latest': latest, 'answered': answered}, 2 * LOOK_BACK.total_seconds())
     cache.set(KEY, found, KEEP)
     return found
 
