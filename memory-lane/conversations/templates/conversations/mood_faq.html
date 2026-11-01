@@ -44,6 +44,8 @@
                                                                        color: var(--accent); font-size: .8em; top: .25em; }
   .slide .answer .point.d3::before { left: 44px; }
   .slide.cover { text-align: center; align-items: center; }
+  .slide.cover img { width: clamp(96px, 18vw, 160px); height: auto; border-radius: 22%; margin-bottom: 18px;
+                    box-shadow: 0 8px 30px var(--glow); }
   .slide.cover h2 { font-size: clamp(40px, 8vw, 84px); color: var(--accent); margin-bottom: 12px; }
   .slide.cover p { color: var(--muted); font-size: 18px; margin: 0; }
   .slide.cover .hint { margin-top: 28px; font-size: 13px; }
@@ -101,7 +103,7 @@
   const slides = [];
   const cover = document.createElement('section');
   cover.className = 'slide cover';
-  cover.innerHTML = '<h2>magenta</h2><p>frequently asked questions</p><p class="hint">→ or swipe</p>';
+  cover.innerHTML = '<img src="/moods/icon-192.png" alt=""><h2>magenta</h2><p>frequently asked questions</p><p class="hint">→ or swipe</p>';
   slides.push(cover);
   items.forEach((it, i) => {
     const s = document.createElement('section');
