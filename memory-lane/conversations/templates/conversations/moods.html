@@ -5616,6 +5616,13 @@
       // (the old ?from= walk fetched the whole history back to an ancient message and took half a
       // minute, Justin, 30 Oct: "finding it" was the page rendering from there to now).
       if (i) return false;
+      // In the Mood already, and newer than what's drawn (a notice for what just landed): what's new, asked as
+      // any poll asks, and the thread kept -- not swapped for a window holding only that message, behind the
+      // mask (Justin, 1 Nov).
+      if (lastId && document.getElementById('turns')) {
+        await poll(false);
+        if (document.getElementById('m-' + id) || document.querySelector(`.step[data-id="${CSS.escape(id)}"]`)) continue;
+      }
       const got = await reaching(() => loadAt(id));
       if (!got) return got;  // null: they've gone to another Mood meanwhile
     }
@@ -5623,6 +5630,8 @@
   }
   // Null if they went elsewhere before it was found: not found, but not "no longer here" either.
   function openAndReveal(slug, id, push = true) {
+    // Here already: no mask over the thread you're reading; reveal masks only if it must reach back.
+    if (slug === current && document.getElementById('turns')) return reveal(id);
     return reaching(async () => {
       if (slug !== current) await open(slug, push, id);
       if (slug !== current) return null;
@@ -5960,9 +5969,11 @@
     // load too, or it would ask "what's new since nothing", draw nothing, and say "Loading…" for good
     // (Justin, 31 Oct). One at a time either way: a slow first load mustn't be joined by another every tick.
     if (!document.getElementById('turns')) full = true;
-    if (polling && polling.gen === mine && Date.now() - polling.at < POLL_STALE_MS) return;
+    // One out already: waited for, so a caller that needs what's new (reveal) has it when this returns.
+    if (polling && polling.gen === mine && Date.now() - polling.at < POLL_STALE_MS) return polling.done;
     const ticket = polling = { gen: mine, at: Date.now() };
-    try { await pollOnce(full, mine); } finally { if (polling === ticket) polling = null; }
+    ticket.done = pollOnce(full, mine).finally(() => { if (polling === ticket) polling = null; });
+    return ticket.done;
   }
   let polling = null;
   // Looked at again, or back online: ask now, not at the next tick.
