@@ -195,6 +195,8 @@ def _build_moods_list():
             seen.add(up)
             up = parent.get(up)
     payloads.sort(key=lambda p: active[p['slug']], reverse=True)
+    for p in payloads:
+        p['active_at'] = active[p['slug']]  # the page re-sorts by it as live news arrives (Justin, 1 Nov: threads too)
     payloads.sort(key=lambda p: not p['pinned'])  # pinned first, each part still newest first
     people = ThinkingEntity.objects.order_by('name')
     look = knobs.looks()
