@@ -461,6 +461,31 @@
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
   nav a.mood .toolsask { font-size: 12px; margin-left: 4px; }
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
+  /* What an emergent is at, in how its name moves (Justin, 1 Nov); a tool, or anything else, pulses as above.
+     Waking: grey, its colour typing slowly across. Thinking: its colour, grey typing across, quicker.
+     PickiPedia: its letters alternating, grey and its colour, swapping. Remembering: its colour closing in
+     from both ends, unevenly. */
+  nav .nm.live.a-wake, nav .nm.live.a-think, nav .nm.live.a-remember {
+    opacity: 1; color: transparent; -webkit-background-clip: text; background-clip: text; background-size: 200% 100%;
+  }
+  nav .nm.live.a-wake { background-image: linear-gradient(90deg, var(--who) 50%, var(--muted) 50%);
+                        animation: typeAcross 3.2s steps(var(--n, 8)) infinite; }
+  nav .nm.live.a-think { background-image: linear-gradient(90deg, var(--muted) 50%, var(--who) 50%);
+                         animation: typeAcross 1.6s steps(var(--n, 8)) infinite; }
+  @keyframes typeAcross { from { background-position: 100% 0; } to { background-position: 0 0; } }
+  nav .nm.live.a-remember { background-size: 100% 100%; animation: closeIn 2.6s ease-in-out infinite;
+    background-image: linear-gradient(90deg, var(--who) var(--inset), var(--muted) var(--inset),
+                                      var(--muted) calc(100% - var(--inset)), var(--who) calc(100% - var(--inset))); }
+  @property --inset { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+  @keyframes closeIn { 0%, 100% { --inset: 0%; } 18% { --inset: 32%; } 27% { --inset: 12%; } 52% { --inset: 50%; }
+                       64% { --inset: 22%; } 80% { --inset: 44%; } }
+  nav .nm.live.a-wiki { opacity: 1; animation: none; }
+  nav .nm.live.a-wiki .l0 { animation: flipA 1.1s steps(1) infinite; }
+  nav .nm.live.a-wiki .l1 { animation: flipB 1.1s steps(1) infinite; }
+  nav .nm.live.a-wiki:not(:has(.l0)) { animation: flipA 1.1s steps(1) infinite; }  /* a name written as art: whole */
+  @keyframes flipA { 0%, 100% { color: var(--who); } 50% { color: var(--muted); } }
+  @keyframes flipB { 0%, 100% { color: var(--muted); } 50% { color: var(--who); } }
+  @media (prefers-reduced-motion: reduce) { nav .nm.live[class*=" a-"], nav .nm.live.a-wiki span { animation: none; } }
 {% include "conversations/name_art_css.html" %}
   #lookBox .paint { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0 4px; user-select: none; touch-action: none; }
   #lookBox .paint > span { min-width: 1.35em; height: 1.7em; display: inline-flex; align-items: center; justify-content: center;
@@ -2138,15 +2163,33 @@
                                ...[...listening].filter(([, everywhere]) => !everywhere).map(([name]) => name)])];
     // A turn with its full tools: 🔨 by the pulsing name (Justin, 29 Oct).
     const tooled = new Set((slug === current ? acts : (d.activities || [])).filter(a => (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) && a.tools === 'full').map(a => a.agent));
-    return { names, active: new Set([...typing, ...busy]), listening, tooled };
+    // What each agent is at (mood_view._doing's words), for how its name moves (Justin, 1 Nov).
+    const doing = new Map((slug === current ? acts : (d.activities || [])).map(a => [a.agent, a.doing || '']));
+    return { names, active: new Set([...typing, ...busy]), listening, tooled, doing };
+  }
+  // mood_view._doing's words -> how the name moves; '' pulses, as a tool (or anything else) does.
+  function animOf(doing) {
+    if (/^waking/.test(doing || '')) return 'a-wake';
+    if (doing === 'thinking') return 'a-think';
+    if (doing === 'on PickiPedia') return 'a-wiki';
+    if (doing === 'remembering') return 'a-remember';
+    return '';
   }
   function peopleLine(slug) {
-    const { names, active, listening, tooled } = aroundIn(slug);
-    // At work, an agent pulses in its own colour (Justin, 21 Oct); a person, typing, as written their way.
-    return names.map(n => `<span class="nm${active.has(n) ? ' live' : ''}" data-who="${esc(n)}"`
-      + `${active.has(n) && human[n] === false ? ` style="color: ${agentColor(n)}"` : ''}>${nameHtml(n)}</span>`
+    const { names, active, listening, tooled, doing } = aroundIn(slug);
+    // At work, an agent pulses in its own colour (Justin, 21 Oct), or moves as what it's at says (animOf);
+    // a person, typing, as written their way.
+    return names.map(n => {
+      const agentAtWork = active.has(n) && human[n] === false;
+      const anim = agentAtWork ? animOf(doing.get(n)) : '';
+      const style = !agentAtWork ? '' : anim && anim !== 'a-wiki' ? ` style="--who: ${agentColor(n)}; --n: ${shown(n).length}"`
+        : ` style="color: ${agentColor(n)}; --who: ${agentColor(n)}"`;
+      const inner = anim === 'a-wiki' && !(looks[n] || {}).art
+        ? Array.from(shown(n)).map((ch, i) => `<span class="l${i % 2}">${esc(ch)}</span>`).join('') : nameHtml(n);
+      return `<span class="nm${active.has(n) ? ' live' : ''}${anim ? ' ' + anim : ''}" data-who="${esc(n)}"${style}>${inner}</span>`
       + (tooled.has(n) ? `<span class="tooled" title="${esc(shown(n))} is at work with its full tools">🔨</span>` : '')
-      + (listening.has(n) ? `<span class="hears" title="${esc(shown(n))} is listening by voice, ${listening.get(n) ? 'to every Mood' : 'to this Mood'}">🎧</span>` : '')).join(', ')
+      + (listening.has(n) ? `<span class="hears" title="${esc(shown(n))} is listening by voice, ${listening.get(n) ? 'to every Mood' : 'to this Mood'}">🎧</span>` : '');
+    }).join(', ')
       + watchingIn(slug);
   }
   // Who reads without signing in (services/watchers.py): 👁 and how many, on each

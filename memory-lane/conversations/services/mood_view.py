@@ -1407,7 +1407,8 @@ _TOOL_WORDS = {
     'ToolSearch': 'finding a tool', 'Skill': 'reading up', 'TodoWrite': 'planning',
 }
 _MCP_WORDS = {'playwright': 'using the browser', 'pickipedia': 'on PickiPedia',
-              'magenta-memory-v2': 'remembering', 'magenta-memory': 'remembering'}
+              'magenta-memory-v2': 'remembering', 'magenta-memory': 'remembering',
+              'magenta_memory_v2': 'remembering'}  # as pi spells it: its MCP names, '-' made '_'
 
 
 # What an agent is doing while one of Claude Code's own commands runs: asked
