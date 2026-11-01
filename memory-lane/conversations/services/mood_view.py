@@ -1925,6 +1925,7 @@ def mood_payload(mood, light=False):
     if light:
         return head
     from conversations.models import Message, Mood
+    from .containers import answered_by
     said = said_in(mood)
     return {
         **head,
@@ -1939,6 +1940,8 @@ def mood_payload(mood, light=False):
             'compacted': bool(mood.forked_at) and Message.objects.filter(
                 mood_id=mood.thread_of_id, is_continuation_message=True, created_at__gt=mood.forked_at).exists()}
            if mood.thread_of_id else {}),
+        # The container on hunter that answers it, its own or its Mood's (services/containers.py): pollers ask.
+        'container': answered_by(mood),
         # Threads opened from here, newest first (closing one archives it).
         'threads': [{'slug': s, 'title': t or s} for s, t in mood.threads.order_by('-created_at').values_list('slug', 'title')],
     }

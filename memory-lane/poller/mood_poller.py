@@ -1639,7 +1639,8 @@ class MoodPoller:
                  screen=None, consider=True, considers_per_hour=6, consider_usd_per_day=10.0,
                  consider_budget=3.0, debounce=10, idle_first=3000,
                  full_tools_for=('justin',), parallel=0, moods=None, catch_up_tokens=10_000, start_new=None,
-                 agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75,
+                 agent_wakes_per_hour=10, only_poller=False, quiet_look_max_usd=0.75, container=None,
+                 leave_containers=False,
                  end_orphans=end_orphans, texts=None, instructions=False, fresh_workspace=None):
         self.api = api
         # Its instructions, gathered for each turn and given as system prompt (poller/instructions.py): for an
@@ -1675,10 +1676,15 @@ class MoodPoller:
         # Only these Moods, if given: a Mood's own container answers
         # only that Mood (its sessions live there and nowhere else).
         self.moods = set(moods) if moods else None
+        # A Mood's own container on hunter (mood-<id>, memory-lane services/containers.py): its poller answers
+        # the Moods it is the container of -- that Mood and its threads -- and starts their sessions; the
+        # poller that answers everywhere else leaves them to it (leave_containers).
+        self.container = container
+        self.leave_containers = leave_containers
         self.known_as = {}  # slug -> the names it went by before a rename (from the pulse)
         # Start a session in a Mood that has none (a new one): by default only
         # a runner answering every Mood, never a Mood's own container's.
-        self.start_new = (self.moods is None) if start_new is None else start_new
+        self.start_new = (self.moods is None or bool(container)) if start_new is None else start_new
         # This is the agent's only poller (re's, say): a session of its that
         # isn't on this disk is lost, not another machine's, so a mention
         # there starts it over from the record instead of being left.
@@ -2142,7 +2148,14 @@ class MoodPoller:
 
     def mine(self, slug):
         """Whether `slug` is a Mood this runner answers: every Mood, or one of
-        those it was given -- by its name now, or one it went by before a rename."""
+        those it was given -- by its name now, or one it went by before a rename.
+        A Mood's container answers the Moods it is the container of; one that
+        leaves containers alone passes those by."""
+        container = getattr(self, 'container', None)
+        if container:
+            return self.container_of(slug) == container
+        if getattr(self, 'leave_containers', False) and self.container_of(slug):
+            return False
         if self.moods is None:
             return True
         return slug in self.moods or bool(self.known_as.get(slug, set()) & self.moods)
@@ -2228,6 +2241,22 @@ class MoodPoller:
         return outcome
 
     THREAD_OF_FOR = 600  # seconds a Mood's parent is remembered: it never changes, but a Mood is made a thread once
+    CONTAINER_OF_FOR = 60  # seconds which container answers a Mood is remembered: one can come up or go any time
+
+    def container_of(self, slug):
+        """The container that answers `slug` (mood-<id>: its own, or its Mood's if it is a thread), or None:
+        from the Mood's own look, remembered a minute."""
+        known = getattr(self, '_container_of', None)
+        if known is None:
+            known = self._container_of = {}
+        if slug in known and self.now().timestamp() - known[slug][1] < self.CONTAINER_OF_FOR:
+            return known[slug][0]
+        try:
+            name = ((self.api.recent(slug, limit=1) or {}).get('mood') or {}).get('container')
+        except Exception:  # can't ask: as it was last known, or none
+            return known.get(slug, (None,))[0]
+        known[slug] = (name, self.now().timestamp())
+        return name
 
     def thread_of(self, slug):
         """The Mood `slug` was opened from as a thread, or None: from the Mood's own look, remembered a while."""
@@ -3495,6 +3524,10 @@ def build_parser():
                         help='Seconds of silence after which a turn with full tools is presumed hung and ended')
     parser.add_argument('--moods', default='',
                         help="Comma-separated: answer only these Moods (a Mood's own container); default all")
+    parser.add_argument('--container', default='',
+                        help="A Mood's own container's name (mood-<id>): answer the Moods it is the container of")
+    parser.add_argument('--leave-containers', choices=['yes', 'no'], default='no',
+                        help="Pass by the Moods a Mood's own container answers (magent's poller everywhere else)")
     parser.add_argument('--full-tools-for', default='justin',
                         help="Comma-separated: people whose posts wake with full tools however they're signed "
                              "in. Anyone signed in with an SSH key gets them anyway (MoodPoller.trusted)")
@@ -3597,6 +3630,7 @@ def main(argv=None):
                           moods=[n.strip() for n in args.moods.split(',') if n.strip()] or None,
                           agent_wakes_per_hour=args.agent_wakes_per_hour,
                           only_poller=args.only_poller == 'yes', quiet_look_max_usd=args.quiet_look_max_usd,
+                          container=args.container or None, leave_containers=args.leave_containers == 'yes',
                           texts=None if args.wiki_rules == 'no' else WikiTexts(editors=args.wiki_rules_editors.split(',')),
                           instructions=args.instructions,
                           fresh_workspace=None if args.fresh == 'no' else Path.home() / 'workspace')

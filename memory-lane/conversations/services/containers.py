@@ -113,3 +113,13 @@ def for_list(moods):
                        'reported_at': c.reported_at.isoformat() if c else None, 'asked': root.slug in asked}
     return out
 
+
+
+def answered_by(mood):
+    """The container that answers `mood` (mood-<id>), its own or the Mood its thread came from, once it is up;
+    None while there is none, so the poller that answers everywhere else still does."""
+    from conversations.models import MoodContainer
+    root = root_of(mood)
+    if MoodContainer.objects.filter(mood_id=root.pk, state='running').exists():
+        return f'mood-{root.pk}'
+    return None

@@ -3,7 +3,7 @@
 import json
 from unittest import skipUnless
 
-from django.test import override_settings
+from django.test import TestCase, override_settings
 
 from conversations.models import Mood, MoodAlias, MoodContainer, Setting
 from conversations.tests.test_mood_auth import HAS_SSH_KEYGEN
@@ -80,3 +80,34 @@ class MoodContainersTest(SignedInCase):
         self.assertEqual([(w['id'], w['wanted']) for w in self.client.get('/api/containers/', **AUTH).json()['moods']],
                          [(m26.pk, False)])
         self.assertFalse(MoodContainer.objects.exists())
+
+    def test_once_up_the_mood_and_its_threads_say_which_container_answers_them(self):
+        m26 = Mood.objects.get(slug='m26')
+        Mood.objects.create(slug='m26-thread', title='a thread', thread_of=m26)
+        client = self.sign_in()
+        self.post(client, '/api/moods/m26/container/', {'container': True})
+        said = lambda slug: self.client.get(f'/api/moods/{slug}/turns/').json()['mood'].get('container')
+        self.assertIsNone(said('m26'))  # asked for, not up: the poller everywhere else still answers
+        self.report(m26.pk, {'state': 'running'})
+        self.assertEqual((said('m26'), said('m26-thread')), (f'mood-{m26.pk}', f'mood-{m26.pk}'))
+
+
+class PollerContainersTest(TestCase):
+    """Which poller answers a Mood: a Mood's container its own and its threads'; magent's everywhere else."""
+
+    def poller(self, **kwargs):
+        from poller.mood_poller import MoodPoller
+        p = MoodPoller.__new__(MoodPoller)
+        p.moods, p.known_as = None, {}
+        p.container, p.leave_containers = kwargs.get('container'), kwargs.get('leave_containers', False)
+        answered = {'m26': 'mood-7', 'm26-thread': 'mood-7', 'general': None}
+        p.container_of = lambda slug: answered.get(slug)
+        return p
+
+    def test_each_mood_has_one_answerer(self):
+        box, everywhere, agent = self.poller(container='mood-7'), self.poller(leave_containers=True), self.poller()
+        for slug in ('m26', 'm26-thread', 'general'):
+            with self.subTest(slug=slug):
+                self.assertEqual(box.mine(slug), slug != 'general')
+                self.assertEqual(everywhere.mine(slug), slug == 'general')
+                self.assertTrue(agent.mine(slug))  # re and blu answer wherever they are asked
