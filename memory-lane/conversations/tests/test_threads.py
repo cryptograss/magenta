@@ -254,3 +254,83 @@ class IncorporateThreadTest(TestCase):
         for text in ('/handoff #nowhere', '/handoff #jams', '/handoff'):
             with self.subTest(text=text):
                 self.assertEqual(self.say('jams', text).status_code, 400)
+
+
+@override_settings(MOOD_RUNNER_KEYS={'magent': KEY}, INTERFACE_WORDS_FROM_WIKI=False)
+class MoveThreadTest(TestCase):
+    """Moving a thread to another Mood (Justin, emergence, 1 Nov 2026): four boxes, in their order, in one call --
+    incorporate into the Mood it leaves, compact, the move (a line in it and both Moods), incorporate into the one
+    it joins, and a post telling the thread where it lives now. All or nothing."""
+
+    def setUp(self):
+        from conversations.services import mood_auth
+        self.justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
+        ThinkingEntity.objects.update_or_create(name='magent', defaults={'is_biological_human': False})
+        ThinkingEntity.objects.update_or_create(name='re', defaults={'is_biological_human': False})
+        self.jams = Mood.objects.create(slug='jams', title='jams')
+        self.shows = Mood.objects.create(slug='shows', title='shows')
+        self.thread = Mood.objects.create(slug='jams-setlist', thread_of=self.jams, forked_at=timezone.now())
+        Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=self.thread, content='Salt Creek opens.',
+                               timestamp=1)
+        _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
+        self.client.cookies[mood_auth.COOKIE] = token
+
+    def move(self, **body):
+        return self.client.post('/api/moods/jams-setlist/move-thread/', json.dumps(body), content_type='application/json')
+
+    def said(self, slug):
+        return [t['text'] for t in self.client.get(f'/api/moods/{slug}/turns/').json()['turns']
+                if t['sender'] == 'justin']
+
+    def test_every_box_in_its_order(self):
+        r = self.move(to='shows', incorporate_from=True, incorporate_to=True, compact=True, inform=True, note='the set')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual((r.json()['thread_of'], r.json()['from'], len(r.json()['posted'])), ('shows', 'jams', 4))
+        self.thread.refresh_from_db()
+        self.assertEqual(self.thread.thread_of, self.shows)
+        self.assertEqual(self.said('jams'), ['/incorporate #jams-setlist the set'])
+        self.assertEqual(self.said('shows'), ['/incorporate #jams-setlist the set'])
+        compact, inform = self.said('jams-setlist')
+        self.assertEqual(compact, '/compact re the set')  # who has spoken in it; magent hasn't
+        self.assertIn('moved from #jams to #shows', inform)
+        self.assertIn('/moods/shows/threads/jams-setlist/', inform)
+        # A line in it, and in both Moods; the ↩ mark doesn't outlive a move.
+        for slug in ('jams-setlist', 'jams', 'shows'):
+            events = self.client.get(f'/api/moods/{slug}/turns/').json()['events']
+            self.assertEqual([(e['thread'], e['from_mood'], e['to_mood']) for e in events if e['type'] == 'moved'],
+                             [('jams-setlist', 'jams', 'shows')])
+        listed = next(m for m in self.client.get('/api/moods/').json()['moods'] if m['slug'] == 'jams-setlist')
+        self.assertEqual(listed['thread_of'], 'shows')
+
+    def test_no_boxes_is_the_move_alone(self):
+        r = self.move(to='shows')
+        self.assertEqual((r.status_code, r.json()['posted']), (200, []))
+        self.assertEqual(self.said('jams-setlist') + self.said('jams') + self.said('shows'), [])
+
+    def test_its_worktrees_go_under_the_mood_its_turns_run_in(self):
+        Mood.objects.create(slug='shows-fall', thread_of=self.shows)
+        r = self.move(to='shows-fall', inform=True)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn('/moods/shows/threads/jams-setlist/', self.said('jams-setlist')[0])
+
+    def test_refused_and_nothing_done(self):
+        from conversations.services import settings as knobs
+        Mood.objects.create(slug='jams-setlist-encore', thread_of=self.thread)
+        knobs.change('archived', True, mood=Mood.objects.create(slug='old-shows'), by=self.justin)
+        for to, why in (('jams', 'already'), ('nowhere', 'no Mood'), ('jams-setlist', 'under itself'),
+                        ('jams-setlist-encore', 'under itself'), ('old-shows', 'archived')):
+            with self.subTest(to=to):
+                r = self.move(to=to, incorporate_from=True, inform=True)
+                self.assertEqual(r.status_code, 400)
+                self.assertIn(why, r.json()['error'])
+        self.thread.refresh_from_db()
+        self.assertEqual(self.thread.thread_of, self.jams)
+        self.assertEqual(self.said('jams') + self.said('jams-setlist'), [])
+        self.assertEqual(self.client.post('/api/moods/jams/move-thread/', json.dumps({'to': 'shows'}),
+                                          content_type='application/json').status_code, 400)  # not a thread
+
+    def test_only_with_a_key(self):
+        self.client.cookies.clear()
+        self.assertIn(self.move(to='shows').status_code, (401, 403))
+        self.thread.refresh_from_db()
+        self.assertEqual(self.thread.thread_of, self.jams)

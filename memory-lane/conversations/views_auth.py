@@ -1289,6 +1289,116 @@ def api_close_thread(request, slug):
     return JsonResponse({'slug': mood.slug, 'archived': True, 'incorporated': incorporated})
 
 
+def _root_of(mood):
+    """The Mood a thread's turns run in, and its worktrees live under: its Mood's, up to one that isn't a thread."""
+    seen = set()
+    while mood.thread_of_id and mood.pk not in seen:
+        seen.add(mood.pk)
+        mood = mood.thread_of
+    return mood
+
+
+@require_POST
+def api_move_thread(request, slug):
+    """Move a thread to another Mood: POST {"to": slug, "incorporate_from", "incorporate_to", "compact",
+    "inform": true|false, "note": text}. Justin, emergence, 1 Nov 2026: four boxes, in this order --
+    /incorporate #<it> in the Mood it leaves (while it is still that Mood's thread), /compact for each emergent
+    who has spoken in it, then the move itself (a line here and in both Moods), /incorporate #<it> in the Mood
+    it joins, and a post here, as the mover, saying where it lives now: each emergent reads it at its next wake.
+    The commands are posted as the mover, as the dialog's boxes would have them typed. No session moves: its
+    worktrees follow it to its new Mood's threads/<it>/ (Cryptograss:Moods as Directories)."""
+    from django.db import transaction
+    from .models import ConversationParticipant
+    from .services import agent_commands, interface_words
+    from .services.mood_view import NEW_MOOD_SOURCE, agent_names
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device, refused = mood_auth.key_device(request, 'move a thread')
+    if refused:
+        return refused
+    thread = Mood.by_slug_or_404(slug)
+    if thread.thread_of_id is None:
+        return JsonResponse({'error': 'not a thread'}, status=400)
+    try:
+        body = json.loads(request.body or b'{}')
+        to_slug = str(body.get('to') or '').lstrip('#').strip()
+        note = str(body.get('note') or '').replace('\x00', '').strip()[:2000]
+        ask = {k: body.get(k) is True for k in ('incorporate_from', 'incorporate_to', 'compact', 'inform')}
+    except (ValueError, AttributeError):
+        return JsonResponse({'error': 'expected {"to": "<mood>", ...}'}, status=400)
+    to = Mood.by_slug(to_slug)
+    if to is None:
+        return JsonResponse({'error': f'#{to_slug}: no Mood by that name'}, status=400)
+    old = thread.thread_of
+    if to.pk == old.pk:
+        return JsonResponse({'error': f'it is already a thread of #{to.slug}'}, status=400)
+    walk, seen = to, set()
+    while walk is not None and walk.pk not in seen:
+        if walk.pk == thread.pk:
+            return JsonResponse({'error': f"#{to.slug} is this thread or one of its own: it can't go under itself"},
+                                status=400)
+        seen.add(walk.pk)
+        walk = walk.thread_of
+    from .services import settings as knobs
+    if to.slug in knobs.archived_slugs():
+        return JsonResponse({'error': f'#{to.slug} is archived: open it again first'}, status=400)
+
+    tail = f' {note}' if note else ''
+    asked_from = f'/incorporate #{thread.slug}{tail}' if ask['incorporate_from'] else None
+    asked_to = f'/incorporate #{thread.slug}{tail}' if ask['incorporate_to'] else None
+    compact = None
+    if ask['compact']:
+        spoke = sorted(set(Message.objects.filter(mood=thread, sender_id__in=agent_names())
+                           .values_list('sender_id', flat=True)))
+        if spoke:
+            compact = f"/compact {','.join(spoke)}{tail}"
+    # Refused before anything is done, as each would be if typed: the move is all or nothing.
+    for text, where in ((asked_from, old.slug), (compact, thread.slug)):
+        if text:
+            refused = _say_checks(text, device, where)
+            if refused:
+                return refused
+    root = _root_of(to)
+    inform = None
+    if ask['inform']:  # Magenta:Interface's words, its {from}, {to} and {dir} filled in (any other braces left be)
+        inform = interface_words.words().get('move-inform') or interface_words.DEFAULTS['move-inform']
+        for field, value in (('from', f'#{old.slug}'), ('to', f'#{to.slug}'),
+                             ('dir', f'/moods/{root.slug}/threads/{thread.slug}/')):
+            inform = inform.replace('{' + field + '}', value)
+
+    client = web_client(request, device)
+    system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+
+    def say(mood, text):
+        text, _ = redact(text)
+        return Message.objects.create(id=uuid.uuid4(), sender=device.entity, content=text[:MAX_CHARS], mood=mood,
+                                      timestamp=int(time.time() * 1000), source_file=WEB_SOURCE, client_version=client)
+
+    def line(mood):
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=NEW_MOOD_SOURCE,
+                               content={'type': 'moved', 'by': device.entity_id, 'thread': thread.slug,
+                                        'from_mood': old.slug, 'to_mood': to.slug},
+                               timestamp=int(time.time() * 1000))
+
+    posted = []
+    with transaction.atomic():
+        if asked_from:
+            posted.append(str(say(old, asked_from).id))
+        if compact:
+            posted.append(str(say(thread, compact).id))
+        thread.thread_of = to
+        thread.save(update_fields=['thread_of'])
+        for mood in (thread, old, to):
+            line(mood)
+        if asked_to:
+            posted.append(str(say(to, asked_to).id))
+        if inform:
+            posted.append(str(say(thread, inform).id))
+    return JsonResponse({'slug': thread.slug, 'thread_of': to.slug, 'from': old.slug, 'posted': posted,
+                         'compacted': compact is not None})
+
+
 @require_POST
 def api_refork(request, slug):
     """Fork a thread again from its Mood (Justin, 29 Oct: "re-copy the mood's contexts into the thread"): each
