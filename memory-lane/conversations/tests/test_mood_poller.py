@@ -2286,6 +2286,73 @@ class NewMoodTest(TestCase):
         self.assertEqual(looked, ['live'])
 
 
+class MoodDirTest(TestCase):
+    """A new session starts in its Mood's directory, /moods/<slug> (Cryptograss:Moods as Directories, Justin,
+    emergence, 1 Nov 2026); a thread's, in the Mood it came from; one resumed stays where it ran."""
+
+    def setUp(self):
+        from unittest import mock
+        self.root = Path(tempfile.mkdtemp()) / 'moods'
+        self.root.mkdir()
+        patcher = mock.patch.object(MoodPoller, 'MOODS_ROOT', self.root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_for(self, sessions, parents=None):
+        api = FakeAPI([mention('fresh', dict(turn('a', 'justin', 10, '@magent hello, new place'), via='web'))],
+                      sessions={'fresh': sessions})
+        self.waker = FakeWaker()
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        state.write_text(json.dumps({'since': (T0 - timedelta(hours=1)).isoformat(), 'handled': [], 'wakes': []}))
+        poller = MoodPoller(api, self.waker, state_path=state, now=lambda: T0 + timedelta(minutes=30))
+        poller.thread_of = lambda slug: (parents or {}).get(slug)
+        poller.poll_once()
+        return poller
+
+    def test_a_new_session_starts_in_its_moods_directory(self):
+        self.run_for([])
+        self.assertEqual(self.waker.woken[0][0], None)
+        self.assertEqual(self.waker.options.get('cwd'), str(self.root / 'fresh'))
+        self.assertTrue((self.root / 'fresh').is_dir())  # made the first time
+
+    def test_a_resumed_session_stays_where_it_ran(self):
+        self.run_for(['s-local'])
+        self.assertEqual(self.waker.woken[0][0], 's-local')
+        self.assertNotIn('cwd', self.waker.options)
+
+    def test_a_thread_works_in_the_mood_it_came_from(self):
+        poller = self.run_for([], parents={'fresh': 'chartifacts'})
+        self.assertEqual(self.waker.options.get('cwd'), str(self.root / 'chartifacts'))
+        # A thread of a thread too; and a loop in the record can't hang it.
+        poller.thread_of = lambda slug: {'c': 'b', 'b': 'a'}.get(slug)
+        self.assertEqual(poller.mood_dir('c'), self.root / 'a')
+        poller.thread_of = lambda slug: {'x': 'y', 'y': 'x'}.get(slug)
+        self.assertIn(poller.mood_dir('x'), (self.root / 'x', self.root / 'y'))
+
+    def test_without_moods_new_sessions_start_where_they_always_have(self):
+        from unittest import mock
+        with mock.patch.object(MoodPoller, 'MOODS_ROOT', self.root / 'not-here'):
+            self.run_for([])
+        self.assertNotIn('cwd', self.waker.options)
+
+    def test_a_name_that_isnt_a_plain_slug_gets_no_directory(self):
+        poller = self.run_for(['s-local'])
+        for slug in ('../etc', '.hidden', 'a/b', ''):
+            with self.subTest(slug=slug):
+                self.assertIsNone(poller.mood_dir(slug))
+
+    def test_claude_code_runs_a_new_session_there(self):
+        from unittest import mock
+        waker = ClaudeCodeWaker(projects_dir=self.root / 'projects', new_cwd=str(self.root / 'elsewhere'))
+        waker.command = mock.Mock(return_value=['true'])
+        with mock.patch('poller.mood_poller.subprocess.Popen', side_effect=RuntimeError('stop here')) as popen:
+            for cwd, expected in ((str(self.root / 'fresh'), str(self.root / 'fresh')),
+                                  (None, str(self.root / 'elsewhere'))):
+                with self.subTest(cwd=cwd), self.assertRaises(RuntimeError):
+                    waker.wake(None, 'prompt', cwd=cwd)
+                self.assertEqual(popen.call_args.kwargs['cwd'], expected)
+
+
 class RunCostTest(TestCase):
     """A fork inherits its session's running total; a run's cost is what it added."""
 

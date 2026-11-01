@@ -275,6 +275,8 @@ except ImportError:  # run as a script, from poller/
 WIKI_MCP_TOOLS = tuple(f'mcp__{WIKI_MCP_SERVER}__{name}' for name in WIKI_READ_TOOLS)
 ALLOWED = (
     'Read(~/workspace/**)', 'Grep(~/workspace/**)', 'Glob(~/workspace/**)',
+    # Every Mood's directory (Cryptograss:Moods as Directories); // is an absolute path to Claude Code.
+    'Read(//moods/**)', 'Grep(//moods/**)', 'Glob(//moods/**)',
     'mcp__magenta-memory-v2',
     *WIKI_MCP_TOOLS,
 )
@@ -664,7 +666,7 @@ class ClaudeCodeWaker:
         return cmd + ['--', prompt]
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, grant=(), budget=None, effort=None,
-             model=None, full=False, stop=None, ultracode=False, system=None):
+             model=None, full=False, stop=None, ultracode=False, system=None, cwd=None):
         """Run one turn; (new session id, its reply). `on_event` sees every
         stream event as it comes out; `stop()`, if given, is asked now and
         then whether to end the turn. self.last_result keeps the run's
@@ -673,8 +675,8 @@ class ClaudeCodeWaker:
             from poller.pi_harness import LoopGuard
         except ImportError:  # running outside the repo's layout (tests import it directly)
             from pi_harness import LoopGuard
-        if session_id is None:  # a new session, where new ones start
-            cwd = str(Path(self.new_cwd).expanduser())
+        if session_id is None:  # a new session: in its Mood's directory (`cwd`), else where new ones start
+            cwd = cwd or str(Path(self.new_cwd).expanduser())
             spent_before = 0.0
         else:
             cwd = self.cwd_for(session_id)
@@ -2243,6 +2245,32 @@ class MoodPoller:
         known[slug] = (parent, self.now().timestamp())
         return parent
 
+    MOODS_ROOT = Path('/moods')  # every Mood's directory, on hunter's disk (Cryptograss:Moods as Directories)
+
+    def mood_dir(self, slug):
+        """The directory a new session in `slug` starts in: /moods/<its Mood>, made if it isn't there. A thread
+        works in the Mood it came from (threads of threads too), as its forked sessions already do; its worktrees
+        go under that Mood's threads/<thread>/. None where there is no /moods (before it's deployed, and tests):
+        new sessions start where they always have."""
+        if not self.MOODS_ROOT.is_dir():
+            return None
+        root, seen = slug, set()
+        while root not in seen:
+            seen.add(root)
+            parent = self.thread_of(root)
+            if not parent:
+                break
+            root = parent
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', root or ''):
+            return None
+        home = self.MOODS_ROOT / root
+        try:
+            home.mkdir(exist_ok=True)
+        except OSError as e:
+            logger.warning(f'{slug}: no directory at {home} ({e}); a new session starts where they always have')
+            return None
+        return home
+
     def instructions_for(self, slug):
         """(text, record): this agent's instructions for `slug`, as its harness takes them
         (--append-system-prompt), gathered fresh for each turn, so a page saved on PickiPedia holds
@@ -2549,6 +2577,10 @@ class MoodPoller:
         answers = options.pop('answers', None)
         crosstalk = options.pop('crosstalk', False)
         began = self.now().isoformat()
+        if session_id is None:  # a new session starts in its Mood's directory; one resumed stays where it ran
+            home = self.mood_dir(slug)
+            if home:
+                options['cwd'] = str(home)
         bundled = None
         self.refresh_fresh_soon()
         stale = self.fresh_line()
