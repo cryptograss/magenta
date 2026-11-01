@@ -850,9 +850,9 @@ def _inline(text, mentionable=()):
 # The team's saved clips (services/clips.py) are posts too: a save or a
 # forget shows as one line, without the clip; a use shows just the clip (its
 # name stays in the record). '🎬 name <link>' is how uses were first posted.
-_YARN_SAVED = re.compile(r'^/(?:clips|yarn) save ([a-z0-9][a-z0-9_-]{0,34}) (https?://\S+)$')
-_YARN_FORGOTTEN = re.compile(r'^/(?:clips|yarn) forget ([a-z0-9][a-z0-9_-]{0,34})$')
-_YARN_USED = re.compile(r'^(?:/clips|/yarn|🎬) [a-z0-9][a-z0-9_-]{0,34} (https://www\.yarn\.co/yarn-clip/[0-9a-f-]{36}'
+_YARN_SAVED = re.compile(r'^/(?:clips|yarn) save ([a-z0-9][a-z0-9_-]{0,79}) (https?://\S+)$')
+_YARN_FORGOTTEN = re.compile(r'^/(?:clips|yarn) forget ([a-z0-9][a-z0-9_-]{0,79})$')
+_YARN_USED = re.compile(r'^(?:/clips|/yarn|🎬) [a-z0-9][a-z0-9_-]{0,79} (https://www\.yarn\.co/yarn-clip/[0-9a-f-]{36}'
                         r'|https?://[a-z0-9.-]+(?::\d+)?/clips/[0-9a-f-]{36}/?)$')
 
 

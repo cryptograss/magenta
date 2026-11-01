@@ -6,6 +6,7 @@
     magenta.sh clips save talk.mp4 62.5 66 "That's the whole point." --name whole-point --mood jams
     magenta.sh clips save talk.mp4 62.5 66 "That's the whole point." --preview   # watch it, then save, retime or stop
     magenta.sh clips save talk.mp4 62.5 66 "That's the whole point." --out /tmp/clip.mp4   # cut only, to look first
+    magenta.sh clips list    # every clip, its link, and what it's for (Cryptograss:Clips)
 
 Times are seconds, or m:ss, or h:mm:ss, with decimals if you like. The clip is cut here, by ffmpeg, at
 up to 480 lines, with the subtitle burned in along the bottom as Yarn's are; a still from its middle
@@ -33,7 +34,7 @@ from mood_login import DEFAULT_BASE, call, default_key, sign, signed_message  # 
 
 MAX_SECONDS = 60
 MAX_BYTES = 12 * 1024 * 1024    # what memory-lane takes (views_auth.CLIP_MAX_BYTES)
-NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,34}$')
+NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,79}$')  # as the server's (services/clips.py): up to 80
 RESERVED = {'save', 'forget', 'list'}
 
 
@@ -146,9 +147,25 @@ def preview(args, caption, name, tmp):
         sys.exit('Not saved.')
 
 
+def list_clips(base):
+    """Every clip, as the composer suggests them: its name, what it's for (Cryptograss:Clips), its link."""
+    found = call(base.rstrip('/') + '/api/clips/')
+    clips = found.get('clips') or []
+    width = max((len(c['name']) for c in clips), default=0)
+    for c in clips:
+        print(f"{c['name']:<{width}}  {c.get('for') or '(no use written yet)'}\n{'':<{width}}  {c.get('link', '')}")
+    print(f"\n{len(clips)} clips. What each is for: {found.get('page', 'Cryptograss:Clips')} on PickiPedia.")
+
+
 def main():
+    if sys.argv[1:2] == ['list']:
+        base = os.environ.get('MEMORY_LANE_URL', DEFAULT_BASE)
+        if '--base' in sys.argv:
+            base = sys.argv[sys.argv.index('--base') + 1]
+        return list_clips(base)
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('action', choices=('save',), help='save: cut a clip from a local file and save it under a name')
+    parser.add_argument('action', choices=('save',), help='save: cut a clip from a local file and save it under a name '
+                                                          '(or: list, every clip and what it\'s for)')
     parser.add_argument('file')
     parser.add_argument('start', help='seconds, m:ss or h:mm:ss')
     parser.add_argument('end', help='seconds, m:ss or h:mm:ss')
@@ -176,9 +193,9 @@ def main():
     if end - start > MAX_SECONDS:
         sys.exit(f'a clip of up to {MAX_SECONDS} seconds')
     caption = ' '.join(' '.join(args.subtitle).split())
-    name = (args.name or name_from(caption, args.file)).lower()
+    name = re.sub(r"['’]", '', args.name or name_from(caption, args.file)).lower()  # as the server: apostrophes dropped
     if not NAME.match(name) or name in RESERVED:
-        sys.exit('--name: letters, digits, - and _, up to 35, and not save, forget or list')
+        sys.exit('--name: letters, digits, - and _, up to 80, and not save, forget or list')
 
     if args.preview and not sys.stdin.isatty():
         sys.exit('--preview asks you questions: run it in a terminal')

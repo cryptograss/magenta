@@ -74,6 +74,8 @@ SUBCOMMANDS:
                         with your SSH key. --name (default: the subtitle's
                         first words), --mood (default: general), --out FILE
                         to cut only and look first. Runs mood_clip.py.
+  clips list            Every clip: its name, what it's for (from the
+                        Cryptograss:Clips page on PickiPedia) and its link.
   kick <name> --all     Sign <name> out of Moods everywhere: every device
                         and every live login link of theirs. With --ban,
                         their key can't sign in again until `unban`. For a

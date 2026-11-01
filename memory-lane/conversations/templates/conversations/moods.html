@@ -7186,7 +7186,7 @@
         const still = wordAtCaret();
         if (!still || still.kind !== 'clips' || still.prefix !== prefix) return;  // they've typed on
         choices = clips.filter(c => c.name.startsWith(prefix)).slice(0, 8)
-          .map(c => ({ insert: c.name, html: `<span class="emo">🎬</span>${esc(c.name)}<small>${esc(shown(c.by))}</small>` }));
+          .map(c => ({ insert: c.name, html: `<span class="emo">🎬</span>${esc(c.name)}<small>${esc(c.for || shown(c.by))}</small>` }));  // its use, from Cryptograss:Clips
         if (!choices.length) return closeSuggest();
         chosen = Math.min(chosen, choices.length - 1);
         suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');

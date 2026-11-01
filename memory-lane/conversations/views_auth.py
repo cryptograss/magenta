@@ -805,13 +805,13 @@ def api_clip_make(request):
     try:
         body = json.loads(request.body)
         challenge, signature = body['challenge'], body['signature']
-        name, caption = str(body['name']).lower(), ' '.join(str(body.get('caption') or '').split())
+        name, caption = clips.name_of(str(body['name'])), ' '.join(str(body.get('caption') or '').split())
         video = base64.b64decode(body['video'], validate=True)
         still = base64.b64decode(body['still'], validate=True) if body.get('still') else None
     except (ValueError, KeyError, AttributeError, TypeError, binascii.Error):
         return JsonResponse({'error': 'expected challenge, signature, name, caption and video'}, status=400)
     if not clips.NAME.match(name) or name in clips.RESERVED:
-        return JsonResponse({'error': 'a name: letters, digits, - and _, up to 35, and not save, forget or list'},
+        return JsonResponse({'error': 'a name: letters, digits, - and _, up to 80, and not save, forget or list'},
                             status=400)
     if len(caption) > CLIP_CAPTION_MAX:
         return JsonResponse({'error': f'a caption of up to {CLIP_CAPTION_MAX} characters'}, status=400)
@@ -854,10 +854,13 @@ def api_clip_make(request):
 
 @require_GET
 def api_clips(request):
-    """The saved clips, by name: for the composer's /clips suggestions."""
+    """The saved clips, by name, each with what it's for (Cryptograss:Clips): for the composer's /clips
+    suggestions and `magenta.sh clips list`."""
     from .services import clips
-    return JsonResponse({'clips': [{'name': n, 'by': c['by'], 'clip': c['clip']}
-                                   for n, c in sorted(clips.library().items())]})
+    said = clips.uses()
+    return JsonResponse({'page': clips.PAGE, 'clips': [
+        {'name': n, 'by': c['by'], 'clip': c['clip'], 'link': clips.link_of(c), **({'for': said[n]} if n in said else {})}
+        for n, c in sorted(clips.every().items())]})
 
 
 _MOBILE_AGENT = re.compile(r'Mobi|Android|iPhone|iPad|iPod', re.I)
