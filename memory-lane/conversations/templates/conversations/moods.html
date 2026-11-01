@@ -455,6 +455,8 @@
   /* Who asked for tools here: a dot of each one's colour by the 🔨 (Justin, 29 Oct). */
   nav a.mood .toolsask { display: inline-flex; align-items: center; gap: 2px; }
   nav a.mood .toolsask .askdot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+  nav a.mood .toolsask .askgroup { display: inline-flex; align-items: center; gap: 1px; }
+  nav a.mood .toolsask .askgroup + .askgroup { margin-left: 4px; }
   header .block { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
   nav a.mood .toolsask { font-size: 12px; margin-left: 4px; }
@@ -1851,9 +1853,21 @@
   // The same, as an attribute for drawn HTML: --who, which the stylesheet's agent names and margins take.
   const whoStyle = name => ` style="--who: ${agentColor(name)}"`;
 
-  // Open asks (services/tools_ask.py): <tools/> 🔨 full tools, <merge/> 🔀 a merge, <deploy/> 🔄 a redeploy.
+  // Open asks (services/tools_ask.py): <tools/> 🔨 full tools, <merge/> 🪢 a merge, <deploy/> 🖥️ a redeploy.
   // The word after "requested" and "for/of" sets `line`; the emoji shows by the Mood's name until answered.
-  const ASK_EMOJI = { tools: '🔨', merge: '🔀', deploy: '🔄' };
+  const ASK_EMOJI = { tools: '🔨', merge: '🪢', deploy: '🖥️' };  // Justin, 1 Nov: 🪢 a merge, 🖥️ a redeploy
+  // Each kind of ask with the dots of the emergents asking it beside it (Justin, 1 Nov: "directly next to the
+  // request"): 🔨●● 🪢●, not every icon, then every dot. One icon a kind, however many asks.
+  function askGroups(asked) {
+    const kinds = new Map();
+    for (const t of asked) {
+      const icon = ASK_EMOJI[t.kind] || '🔨';
+      if (!kinds.has(icon)) kinds.set(icon, []);
+      kinds.get(icon).push(t.agent);  // a dot an ask: two merges asked, two dots (Justin, 30 Oct)
+    }
+    return [...kinds].map(([icon, agents]) => `<span class="askgroup">${icon}${
+      agents.map(a => `<span class="askdot" style="background: ${agentColor(a)}"></span>`).join('')}</span>`).join('');
+  }
   const askLine = t => `${esc(shown(t.agent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
     : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
 
@@ -2061,8 +2075,7 @@
       <a class="mood ${m.slug === current ? 'active' : ''}${onTrail ? ' on-trail' : ''}${depth ? ' sub' : ''}${depth && (!m.forked_at || m.compacted) ? ' fresh' : depth && m.incorporated ? ' back' : ''}" style="--depth: ${depth}; ${onTrail ? `--trail-pct: ${trailPct}%; --trail-op: ${trailOp};` : ''}" href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
         ${trailMark}
         <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${foldBtn}${(m.asked || []).length
-          ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${[...new Set(m.asked.map(t => ASK_EMOJI[t.kind] || '🔨'))].join('')}${
-              m.asked.map(t => `<span class="askdot" style="background: ${agentColor(t.agent)}"></span>`).join('')}</span>` : ''}${badgeHtml(m.slug)}</div>
+          ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${askGroups(m.asked)}</span>` : ''}${badgeHtml(m.slug)}</div>
         <div class="meta">${moodWarmth(m)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
@@ -6671,7 +6684,7 @@
   const typingEl = document.getElementById('typing');
   // Open asks here (/api/moods/ asked): each a link to its own message in the thread (Justin, 29 Oct:
   // "the notice at the bottom needs to be a link to that message"). Until the event lands -- a full-tools
-  // wake, a merged event, a deploy event -- they stay, with 🔨/🔀/🔄 by the Mood's name.
+  // wake, a merged event, a deploy event -- they stay, with 🔨/🪢/🖥️ by the Mood's name.
   function renderAsksOpen() {
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
     box.innerHTML = ((m && m.asked) || []).map(t =>
