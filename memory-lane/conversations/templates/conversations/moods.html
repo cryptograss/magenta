@@ -2131,10 +2131,22 @@
       </a>`;
     };
     // A thread under the Mood it came from, indented (Justin, 27 Oct); one whose Mood isn't in the same list stands alone.
+    // Each level by recent activity, as the server orders the list, but with what's come since (liveData's newest
+    // word in each Mood): a Mood or thread is as recent as the newest word in it or any thread under it (Justin, 1
+    // Nov: "threads need to be sorted by recent activity, just as moods are"). Pinned still first.
+    const recent = {};
+    for (const m of moods) {
+      let heard = '';
+      try { heard = (liveData[m.slug] || {}).last || ''; } catch (e) {}  // drawn before the live news is declared
+      const at = [m.active_at, m.last_at, heard].filter(Boolean).sort().pop() || '';
+      for (let x = m, n = 0; x && n < 50; x = moods.find(y => y.slug === x.thread_of), n++)
+        if (at > (recent[x.slug] || '')) recent[x.slug] = at;
+    }
+    const byRecent = (a, b) => (!!b.pinned - !!a.pinned) || (recent[b.slug] || '').localeCompare(recent[a.slug] || '');
     const nest = list => {
       const here = new Set(list.map(m => m.slug)), out = [];
-      const add = (m, depth) => { out.push([m, depth]); list.filter(t => t.thread_of === m.slug).forEach(t => add(t, depth + 1)); };
-      list.filter(m => !m.thread_of || !here.has(m.thread_of)).forEach(m => add(m, 0));
+      const add = (m, depth) => { out.push([m, depth]); list.filter(t => t.thread_of === m.slug).sort(byRecent).forEach(t => add(t, depth + 1)); };
+      list.filter(m => !m.thread_of || !here.has(m.thread_of)).sort(byRecent).forEach(m => add(m, 0));
       return out;
     };
     const live = nest(moods.filter(m => !m.archived)), archived = nest(moods.filter(m => m.archived));  // pinned come first, from the server
@@ -2279,6 +2291,8 @@
         const before = liveData;
         liveData = payload.moods || {};
         renderBanner(payload.banner || null);
+        // A word somewhere newer than the list knew: re-sorted (Justin, 1 Nov), else only who's around redrawn.
+        if (Object.entries(liveData).some(([slug, d]) => d.last && d.last !== (before[slug] || {}).last)) renderNav();
         markLive();
         noticeThinking(before);
         // One after another, not side by side: each is a stream of asks, and a primed Mood's agents are noted
