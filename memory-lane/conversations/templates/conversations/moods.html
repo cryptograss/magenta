@@ -462,17 +462,23 @@
   nav a.mood .toolsask { font-size: 12px; margin-left: 4px; }
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
   /* What an emergent is at, in how its name moves (Justin, 1 Nov); a tool, or anything else, pulses as above.
-     Waking: grey, its colour typing slowly across. Thinking: its colour, grey typing across, quicker.
+     Waking: grey, one letter of its colour stepping slowly across, grey left behind. Thinking: the inverse,
+     its colour with one grey letter stepping across, quicker (Justin, 1 Nov: a cursor, not a banner).
      PickiPedia: its letters alternating, grey and its colour, swapping. Remembering: its colour closing in
      from both ends, unevenly. */
   nav .nm.live.a-wake, nav .nm.live.a-think, nav .nm.live.a-remember {
     opacity: 1; color: transparent; -webkit-background-clip: text; background-clip: text; background-size: 200% 100%;
   }
-  nav .nm.live.a-wake { background-image: linear-gradient(90deg, var(--who) 50%, var(--muted) 50%);
-                        animation: typeAcross 3.2s steps(var(--n, 8)) infinite; }
-  nav .nm.live.a-think { background-image: linear-gradient(90deg, var(--muted) 50%, var(--who) 50%);
-                         animation: typeAcross 1.6s steps(var(--n, 8)) infinite; }
-  @keyframes typeAcross { from { background-position: 100% 0; } to { background-position: 0 0; } }
+  /* The cursor: a band a letter wide (100% / --n), its right edge at --at, which steps a letter at a time. */
+  @property --at { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+  nav .nm.live.a-wake, nav .nm.live.a-think { background-size: 100% 100%; --band: calc(100% / var(--n, 8)); }
+  nav .nm.live.a-wake { animation: cursor 3.2s steps(var(--n, 8), jump-start) infinite;
+    background-image: linear-gradient(90deg, var(--muted) calc(var(--at) - var(--band)), var(--who) calc(var(--at) - var(--band)),
+                                      var(--who) var(--at), var(--muted) var(--at)); }
+  nav .nm.live.a-think { animation: cursor 1.6s steps(var(--n, 8), jump-start) infinite;
+    background-image: linear-gradient(90deg, var(--who) calc(var(--at) - var(--band)), var(--muted) calc(var(--at) - var(--band)),
+                                      var(--muted) var(--at), var(--who) var(--at)); }
+  @keyframes cursor { from { --at: 0%; } to { --at: 100%; } }
   nav .nm.live.a-remember { background-size: 100% 100%; animation: closeIn 2.6s ease-in-out infinite;
     background-image: linear-gradient(90deg, var(--who) var(--inset), var(--muted) var(--inset),
                                       var(--muted) calc(100% - var(--inset)), var(--who) calc(100% - var(--inset))); }
