@@ -2144,7 +2144,7 @@
     const recent = {};
     for (const m of moods) {
       let heard = '';
-      try { heard = (liveData[m.slug] || {}).last || ''; } catch (e) {}  // drawn before the live news is declared
+      try { heard = (liveData[m.slug] || {}).said || ''; } catch (e) {}  // words only: not an /announce, landing everywhere  // drawn before the live news is declared
       const at = [m.active_at, m.last_at, heard].filter(Boolean).sort().pop() || '';
       for (let x = m, n = 0; x && n < 50; x = moods.find(y => y.slug === x.thread_of), n++)
         if (at > (recent[x.slug] || '')) recent[x.slug] = at;
@@ -2299,7 +2299,7 @@
         liveData = payload.moods || {};
         renderBanner(payload.banner || null);
         // A word somewhere newer than the list knew: re-sorted (Justin, 1 Nov), else only who's around redrawn.
-        if (Object.entries(liveData).some(([slug, d]) => d.last && d.last !== (before[slug] || {}).last)) renderNav();
+        if (Object.entries(liveData).some(([slug, d]) => d.said && d.said !== (before[slug] || {}).said)) renderNav();
         markLive();
         noticeThinking(before);
         // One after another, not side by side: each is a stream of asks, and a primed Mood's agents are noted
