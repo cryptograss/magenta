@@ -558,6 +558,13 @@
   #personCard li .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who); flex: none; }
   #personCard li .dot.unanswered { background: transparent; box-shadow: inset 0 0 0 1.5px var(--who); }
   #personCard .none { font-size: 12.5px; color: var(--muted); }
+  /* While it loads, a skeleton of what's coming (Justin, 1 Nov: nothing moved, so it looked like it wouldn't). */
+  #personCard .sk { display: block; height: .8em; margin: 7px 0; border-radius: 4px; width: var(--w, 100%);
+    background: linear-gradient(90deg, var(--code) 25%, var(--hover) 50%, var(--code) 75%); background-size: 300% 100%;
+    animation: shimmer 1.3s ease-in-out infinite; }
+  #personCard .sk.pill { display: inline-block; width: 5.5em; height: 1.2em; margin: 2px 4px 2px 0; border-radius: 10px; }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+  @media (prefers-reduced-motion: reduce) { #personCard .sk { animation: none; } }
   #lookBox p { margin: 0 0 10px; }
   #lookBox label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
   #lookBox input[type=text] { width: 100%; font: 15px ui-monospace, Menlo, Consolas, monospace; padding: 6px 8px;
@@ -7069,7 +7076,11 @@
   }
   async function openPersonCard(name) {
     hidePreview();
-    personCard.innerHTML = `<div class="head">${icon(name, true)}${nameHtml(name)}<button type="button" class="x" aria-label="Close">×</button></div><div class="none">…</div>`;
+    personCard.innerHTML = `<div class="head">${icon(name, true)}${nameHtml(name)}<button type="button" class="x" aria-label="Close">×</button></div>`
+      + `<div class="loading" aria-busy="true" aria-label="Loading their card"><span class="sk" style="--w: 80%"></span><span class="sk" style="--w: 55%"></span>`
+      + `<h4>Trail</h4>${'<span class="sk pill"></span>'.repeat(4)}<h4>Last messages</h4>`
+      + [92, 70, 84].map(w => `<span class="sk" style="--w: 35%"></span><span class="sk" style="--w: ${w}%"></span>`).join('')
+      + `<h4>Last edits on PickiPedia</h4><span class="sk" style="--w: 60%"></span><span class="sk" style="--w: 48%"></span></div>`;
     if (!personCard.open) personCard.showModal();
     let c = null;
     try {
@@ -7077,7 +7088,7 @@
       if (r.ok) c = await r.json();
     } catch (e) { /* said below */ }
     if (!personCard.open) return;
-    if (!c) { personCard.querySelector('.none').textContent = "Couldn't load their card."; return; }
+    if (!c) { personCard.querySelector('.loading').outerHTML = `<div class="none">Couldn't load their card.</div>`; return; }
     personCard.innerHTML = cardHtml(c);
   }
   personCard.addEventListener('click', e => {
