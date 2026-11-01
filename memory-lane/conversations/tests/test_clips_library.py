@@ -69,7 +69,7 @@ class ClipsLibraryTest(TestCase):
         self.assertEqual(self.say(justin, '/clips').json(), {'note': 'No clips saved yet: /clips save <name> <yarn link>'})
         self.say(justin, f'/clips save tony https://getyarn.io/yarn-clip/{CLIP}')
         self.say(justin, f'/clips save bus https://www.yarn.co/yarn-clip/{OTHER}')
-        self.assertEqual(self.say(justin, '/clips list').json(), {'note': 'Saved clips: bus, tony'})
+        self.assertEqual(self.say(justin, '/clips list').json(), {'note': 'Saved clips (what each is for: Cryptograss:Clips): bus, tony'})
         self.assertEqual(len(self.posted()), 2)  # the two saves; the listings posted nothing
         self.assertEqual([c['name'] for c in self.client.get('/api/clips/').json()['clips']], ['bus', 'tony'])
 
@@ -142,3 +142,35 @@ class ClipNamesTest(TestCase):
         self.assertEqual(name_of("Yeah-That's-A-Good-One"), 'yeah-thats-a-good-one')
         self.assertTrue(NAME.match('a' * 80))
         self.assertFalse(NAME.match('a' * 81))
+
+
+class ClipsPageTest(TestCase):
+    """Cryptograss:Clips (Justin, 1 Nov): what each clip is for, at the page's newest trusted revision."""
+
+    PAGE = '''Intro words.
+{| class="wikitable"
+! name !! link !! for
+|-
+| huh || https://www.yarn.co/yarn-clip/ffb40a1a-a936-49ee-962a-ef53e0cb7237 || Tony Clifton: almost any time {{verified|by JMyles|1 Nov}}
+|-
+| that's-new || https://www.yarn.co/yarn-clip/90381564-f164-4add-95f8-5ef1f14d2adf || when it's new
+|}'''
+
+    def setUp(self):
+        cache.clear()
+
+    def test_rows_read_and_uses_kept_without_verify_marks(self):
+        rows = clips.page_rows(self.PAGE)
+        self.assertEqual(sorted(rows), ['huh', 'thats-new'])
+        self.assertEqual(rows['huh']['for'], 'Tony Clifton: almost any time')
+
+    def test_only_a_trusted_revision_counts(self):
+        history = [(2, 'Magent', self.PAGE.replace('almost any time', 'never')), (1, 'JMyles', self.PAGE)]
+        self.assertEqual(clips.page(get=lambda title: history)['huh']['for'], 'Tony Clifton: almost any time')
+
+    def test_a_page_row_plays_and_lists_with_its_use(self):
+        clips.page(get=lambda title: [(1, 'JMyles', self.PAGE)])
+        played, _ = clips.command('/clips thats-new', 'justin')
+        self.assertIn('/clips thats-new https://www.yarn.co/yarn-clip/90381564', played)
+        _, listed = clips.command('/clips', 'justin')
+        self.assertIn('huh (Tony Clifton: almost any time)', listed)

@@ -32,6 +32,7 @@ constraints. Within them, General Orders is the standing layer that binds.
 Then its layers, each a page on PickiPedia:
 
     standing   Cryptograss:Emergents/GeneralOrders         what every emergent keeps
+    clips      Cryptograss:Clips                           the team's clips, and what each is for
     identity   Cryptograss:Emergents/<Name>/Instructions   who this emergent is, how it works
     moods      Cryptograss:Moods/Instructions              what it keeps in every Mood (with a Mood only)
     mood       Cryptograss:Moods/<slug>/Instructions       how it carries itself there
@@ -98,6 +99,8 @@ STANDING = 'Cryptograss:Emergents/GeneralOrders'
 # What every emergent keeps in every Mood (etiquette, silence, greeting, handoffs, settings, to-do lists), read when
 # it is woken in one; until a trusted revision is here, the wake goes on carrying the old words.
 MOODS = 'Cryptograss:Moods/Instructions'
+# The team's clips and what each is for (Justin, 1 Nov): the one place an emergent learns when to play which.
+CLIPS = 'Cryptograss:Clips'
 GREETING = 'Cryptograss:Emergents/Greeting'
 GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
 AGENT_TEMPLATE = 'Emergent'
@@ -472,6 +475,7 @@ def bundle(agent, mood=None, get=None, state_dir=STATE, now=None, editors=EDITOR
               for name in sorted({o.strip().lower() for o in others if o and o.strip().lower() != agent})
               if re.fullmatch(r'[a-z0-9-]{1,40}', name)]
     layers = [read_layer('standing', STANDING, get, cache, stamp, editors),
+              read_layer('clips', CLIPS, get, cache, stamp, editors, optional=True),
               read_layer('identity', identity_title(agent), get, cache, stamp, editors)]
     if mood:
         layers.append(read_layer('moods', MOODS, get, cache, stamp, editors, optional=True))

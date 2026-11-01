@@ -854,10 +854,13 @@ def api_clip_make(request):
 
 @require_GET
 def api_clips(request):
-    """The saved clips, by name: for the composer's /clips suggestions."""
+    """The saved clips, by name, each with what it's for (Cryptograss:Clips): for the composer's /clips
+    suggestions and `magenta.sh clips list`."""
     from .services import clips
-    return JsonResponse({'clips': [{'name': n, 'by': c['by'], 'clip': c['clip']}
-                                   for n, c in sorted(clips.library().items())]})
+    said = clips.uses()
+    return JsonResponse({'page': clips.PAGE, 'clips': [
+        {'name': n, 'by': c['by'], 'clip': c['clip'], 'link': clips.link_of(c), **({'for': said[n]} if n in said else {})}
+        for n, c in sorted(clips.every().items())]})
 
 
 _MOBILE_AGENT = re.compile(r'Mobi|Android|iPhone|iPad|iPod', re.I)

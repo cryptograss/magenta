@@ -71,7 +71,7 @@ def played_by(text):
         last = AGENT_PLAY.match(lines[-1].strip()) if len(lines) > 1 else None
         if last:
             played, first, rest = last, lines[-1], '\n'.join(lines[:-1])
-    found = library().get(name_of(played[1])) if played else None
+    found = every().get(name_of(played[1])) if played else None
     return f'/clips {name_of(played[1])} {link_of(found)}' + (f'\n{rest.strip()}' if rest.strip() else '') if found else None
 
 
@@ -135,11 +135,13 @@ def command(text, who):
     first, _, rest = text.strip().partition('\n')
     if rest.strip() and len(first.split()) == 2 and first.split()[1].lower() not in RESERVED | {'list'}:
         args = first.split()[1:]
-    found = library()
+    found, playable = library(), every()
 
     if not args or args == ['list']:
-        names = sorted(found)
-        return None, ('Saved clips: ' + ', '.join(names)) if names else \
+        said = uses()
+        names = sorted(playable)
+        return None, ('Saved clips (what each is for: Cryptograss:Clips): '
+                      + ', '.join(f'{n} ({said[n]})' if n in said else n for n in names)) if names else \
             'No clips saved yet: /clips save <name> <yarn link>'
 
     def owner_check(name):
@@ -171,8 +173,74 @@ def command(text, who):
 
     if len(args) == 1:
         name = name_of(args[0])
-        if name not in found:
+        if name not in playable:
             raise Refused(f'No clip called "{name}": save one with /clips save {name} <yarn link>')
-        return f'/clips {name} {link_of(found[name])}' + (f'\n{rest.strip()}' if rest.strip() else ''), ''
+        return f'/clips {name} {link_of(playable[name])}' + (f'\n{rest.strip()}' if rest.strip() else ''), ''
 
     raise Refused(USAGE)
+
+
+# --- the clips page: what each clip is for (Justin, 1 Nov) ------------------------------------------------------
+# Cryptograss:Clips is where the team says what each clip is for: one row a clip, name || link || for. The
+# emergents are told it whole, as a layer of their bundle (poller/instructions.py), and the page here shows each
+# use beside its name (/clips, the composer's suggestions, `magenta.sh clips list`). A row whose name isn't saved
+# here yet plays too: the page can add a clip. Only a trusted revision counts, as for every page the emergents are
+# told: a link or a use is only as good as who wrote it.
+PAGE = 'Cryptograss:Clips'
+USES_KEY = 'clips-page'
+USES_FOR = 600       # seconds the page is kept
+USES_FAILED = 120    # and how soon a failed read is tried again
+_ROW = re.compile(r'^\|(?![-}+])\s*(.+?)\s*\|\|\s*(\S*)\s*\|\|\s*(.*?)\s*$')
+
+
+def page_rows(wikitext):
+    """{name: {'link', 'for'}} from the page's table rows: | name || link || for."""
+    rows = {}
+    for line in (wikitext or '').splitlines():
+        m = _ROW.match(line.strip())
+        if not m:
+            continue
+        name, link, use = name_of(m[1].strip('`<>[] ')), m[2].strip('[]'), m[3]
+        use = re.sub(r'\{\{\s*(?:verified|source)\s*\|[^{}]*\}\}', '', use).strip()
+        if NAME.match(name) and name not in RESERVED:
+            rows[name] = {'link': link, 'for': use}
+    return rows
+
+
+def page(get=None):
+    """The clips page's rows, at its newest trusted revision; kept a while, and the last read stands if it fails."""
+    kept = cache.get(USES_KEY)
+    if kept is not None and get is None:
+        return kept
+    try:
+        try:
+            from poller.wiki_rules import EDITORS, WikiTexts
+        except ImportError:
+            from wiki_rules import EDITORS, WikiTexts
+        trusted = {e.lower().replace('_', ' ') for e in EDITORS}
+        history = (get or WikiTexts().get)(PAGE)
+        text = next((w for _, editor, w in history if (editor or '').lower().replace('_', ' ') in trusted), '')
+        found = page_rows(text)
+        cache.set(USES_KEY, found, USES_FOR)
+        cache.set(USES_KEY + ':last', found, None)
+    except Exception:
+        found = cache.get(USES_KEY + ':last') or {}
+        cache.set(USES_KEY, found, USES_FAILED)
+    return found
+
+
+def uses():
+    """{name: what it's for}, as the clips page says."""
+    return {name: row['for'] for name, row in page().items() if row['for']}
+
+
+def every():
+    """The library with the page's rows that aren't saved here yet: name -> {'clip', 'by', ...}."""
+    found = dict(library())
+    for name, row in page().items():
+        if name in found:
+            continue
+        clip, own = yarn_clip(row['link']), own_clip(row['link'])
+        if clip or own:
+            found[name] = {'clip': clip or own, 'by': 'the clips page', **({'link': row['link']} if own else {})}
+    return found
