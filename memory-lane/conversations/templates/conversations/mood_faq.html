@@ -28,11 +28,11 @@
   a { color: var(--accent); }
   .stage { flex: 1; position: relative; min-height: 0; }
   .slide { position: absolute; inset: 0; display: flex; flex-direction: column;
+           max-width: 820px; margin: 0 auto; padding: 32px 28px 48px; overflow-y: auto;
+           opacity: 0; transform: translateX(40px); transition: opacity .35s ease, transform .35s ease; pointer-events: none; }
   /* Centred while it fits; when it doesn't, it starts at the top and scrolls (justify-content: center would cut the top off). */
   .slide > :first-child { margin-top: auto; }
   .slide > :last-child { margin-bottom: auto; }
-           max-width: 820px; margin: 0 auto; padding: 32px 28px 48px; overflow-y: auto;
-           opacity: 0; transform: translateX(40px); transition: opacity .35s ease, transform .35s ease; pointer-events: none; }
   .slide.here { opacity: 1; transform: none; pointer-events: auto; }
   .slide.gone { transform: translateX(-40px); }
   .slide .num { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 700;
