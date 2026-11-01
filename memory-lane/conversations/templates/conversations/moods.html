@@ -462,7 +462,6 @@
   nav a.mood .toolsask { font-size: 12px; margin-left: 4px; }
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
   nav .nmf { white-space: nowrap; }
-  nav .nmf .frame { color: var(--muted); opacity: .7; font-weight: 400; letter-spacing: -.05em; }  /* still: framed() */
   /* What an emergent is at, in how its name moves (Justin, 1 Nov); a tool, or anything else, pulses as above.
      Waking: grey, one letter of its colour stepping slowly across, grey left behind. Thinking: the inverse,
      its colour with one grey letter stepping across, quicker (Justin, 1 Nov: a cursor, not a banner).
@@ -2192,16 +2191,17 @@
     if (doing === 'remembering') return 'a-remember';
     return '';
   }
-  // A name at work stands in a frame (Justin, re and blu, 1 Nov), still while the name moves inside it: the one
+  // A name at work stands in a frame (Justin, re and blu, 1 Nov), moving with it: the one
   // its owner chose on their User page (the Name frame template, with ~ as its parameter: `~re~`), else dots up to FRAME_WIDTH, so a short name
   // gives the cursor room (`··re··`). Bare when idle.
   const framesOf = {}, FRAME_WIDTH = 7;
-  function framed(n, html) {
+  // The frame is part of what moves (Justin, 1 Nov: still, it gave a two-letter name's cursor no more room).
+  function frameOf(n) {
     const len = Array.from((looks[n] || {}).art || shown(n)).length, own = framesOf[n];
-    if (!own && len >= FRAME_WIDTH) return html;
+    if (!own && len >= FRAME_WIDTH) return ['', ''];
     const left = own || '·'.repeat(Math.ceil((FRAME_WIDTH - len) / 2));
     const right = own ? Array.from(own).reverse().join('').replace(/[()[\]{}<>]/g, c => ({ '(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{', '<': '>', '>': '<' })[c]) : left;
-    return `<span class="frame">${esc(left)}</span>${html}<span class="frame">${esc(right)}</span>`;
+    return [left, right];
   }
   function peopleLine(slug) {
     const { names, active, listening, tooled, doing, typing, recording } = aroundIn(slug);
@@ -2213,13 +2213,15 @@
       const art = (looks[n] || {}).art, personTyping = human[n] !== false && typing.has(n) && !recording.has(n);
       const anim = agentAtWork ? animOf(doing.get(n)) : personTyping ? (art ? 'a-think-art' : 'a-think') : '';
       const own = /^#[0-9a-f]{6}$/.test((looks[n] || {}).colour || '') ? looks[n].colour : 'var(--human)';
-      const style = personTyping ? ` style="--who: ${own}; --n: ${Array.from(art || shown(n)).length}"`
-        : !agentAtWork ? '' : anim && anim !== 'a-wiki' ? ` style="--who: ${agentColor(n)}; --n: ${shown(n).length}"`
+      const [left, right] = active.has(n) ? frameOf(n) : ['', ''];
+      const steps = Array.from(left + (art || shown(n)) + right).length;  // the cursor walks the frame too
+      const style = personTyping ? ` style="--who: ${own}; --n: ${steps}"`
+        : !agentAtWork ? '' : anim && anim !== 'a-wiki' ? ` style="--who: ${agentColor(n)}; --n: ${steps}"`
         : ` style="color: ${agentColor(n)}; --who: ${agentColor(n)}"`;
-      const inner = anim === 'a-wiki' && !(looks[n] || {}).art
-        ? Array.from(shown(n)).map((ch, i) => `<span class="l${i % 2}">${esc(ch)}</span>`).join('') : nameHtml(n);
-      const name = `<span class="nm${active.has(n) ? ' live' : ''}${anim ? ' ' + anim : ''}"${active.has(n) ? '' : ` data-who="${esc(n)}"`}${style}>${inner}</span>`;
-      return (active.has(n) ? `<span class="nmf" data-who="${esc(n)}">${framed(n, name)}</span>` : name)
+      const inner = anim === 'a-wiki' && !art
+        ? Array.from(left + shown(n) + right).map((ch, i) => `<span class="l${i % 2}">${esc(ch)}</span>`).join('')
+        : esc(left) + nameHtml(n) + esc(right);
+      return `<span class="nm${active.has(n) ? ' live nmf' : ''}${anim ? ' ' + anim : ''}" data-who="${esc(n)}"${style}>${inner}</span>`
       + (tooled.has(n) ? `<span class="tooled" title="${esc(shown(n))} is at work with its full tools">🔨</span>` : '')
       + (listening.has(n) ? `<span class="hears" title="${esc(shown(n))} is listening by voice, ${listening.get(n) ? 'to every Mood' : 'to this Mood'}">🎧</span>` : '');
     }).join(', ')
