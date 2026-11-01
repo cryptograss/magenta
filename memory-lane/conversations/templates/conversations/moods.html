@@ -461,6 +461,8 @@
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
   nav a.mood .toolsask { font-size: 12px; margin-left: 4px; }
   nav .nm.live { color: var(--ink); font-weight: 600; animation: pulse 1.2s ease-in-out infinite; }
+  nav .nmf { white-space: nowrap; }
+  nav .nmf .frame { color: var(--muted); opacity: .7; font-weight: 400; letter-spacing: -.05em; }  /* still: framed() */
   /* What an emergent is at, in how its name moves (Justin, 1 Nov); a tool, or anything else, pulses as above.
      Waking: grey, one letter of its colour stepping slowly across, grey left behind. Thinking: the inverse,
      its colour with one grey letter stepping across, quicker (Justin, 1 Nov: a cursor, not a banner).
@@ -479,6 +481,13 @@
     background-image: linear-gradient(90deg, var(--who) calc(var(--at) - var(--band)), var(--muted) calc(var(--at) - var(--band)),
                                       var(--muted) var(--at), var(--who) var(--at)); }
   @keyframes cursor { from { --at: 0%; } to { --at: 100%; } }
+  /* A person typing: thinking's cursor, in their colour (Justin, 1 Nov); recording a memo pulses, as a tool does.
+     A name written as art keeps its colours: the cursor is a faded letter instead (a mask), stepping the same. */
+  nav .nm.live.a-think-art { opacity: 1; --band: calc(100% / var(--n, 8)); animation: cursor 1.6s steps(var(--n, 8), jump-start) infinite;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(var(--at) - var(--band)), rgba(0,0,0,.25) calc(var(--at) - var(--band)),
+                                        rgba(0,0,0,.25) var(--at), #000 var(--at));
+    mask-image: linear-gradient(90deg, #000 calc(var(--at) - var(--band)), rgba(0,0,0,.25) calc(var(--at) - var(--band)),
+                                rgba(0,0,0,.25) var(--at), #000 var(--at)); }
   nav .nm.live.a-remember { background-size: 100% 100%; animation: closeIn 2.6s ease-in-out infinite;
     background-image: linear-gradient(90deg, var(--who) var(--inset), var(--muted) var(--inset),
                                       var(--muted) calc(100% - var(--inset)), var(--who) calc(100% - var(--inset))); }
@@ -2171,7 +2180,9 @@
     const tooled = new Set((slug === current ? acts : (d.activities || [])).filter(a => (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) && a.tools === 'full').map(a => a.agent));
     // What each agent is at (mood_view._doing's words), for how its name moves (Justin, 1 Nov).
     const doing = new Map((slug === current ? acts : (d.activities || [])).map(a => [a.agent, a.doing || '']));
-    return { names, active: new Set([...typing, ...busy]), listening, tooled, doing };
+    // Of those typing, who's recording a voice memo (views_moods.recording_in): they pulse, the others type.
+    const recording = new Set(slug === current ? recordingNow : (d.recording || []));
+    return { names, active: new Set([...typing, ...busy]), listening, tooled, doing, typing, recording };
   }
   // mood_view._doing's words -> how the name moves; '' pulses, as a tool (or anything else) does.
   function animOf(doing) {
@@ -2181,18 +2192,34 @@
     if (doing === 'remembering') return 'a-remember';
     return '';
   }
+  // A name at work stands in a frame (Justin, re and blu, 1 Nov), still while the name moves inside it: the one
+  // its owner chose on their User page ({{Name frame|~}}: `~re~`), else dots up to FRAME_WIDTH, so a short name
+  // gives the cursor room (`··re··`). Bare when idle.
+  const framesOf = {}, FRAME_WIDTH = 7;
+  function framed(n, html) {
+    const len = Array.from((looks[n] || {}).art || shown(n)).length, own = framesOf[n];
+    if (!own && len >= FRAME_WIDTH) return html;
+    const left = own || '·'.repeat(Math.ceil((FRAME_WIDTH - len) / 2));
+    const right = own ? Array.from(own).reverse().join('').replace(/[()[\]{}<>]/g, c => ({ '(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{', '<': '>', '>': '<' })[c]) : left;
+    return `<span class="frame">${esc(left)}</span>${html}<span class="frame">${esc(right)}</span>`;
+  }
   function peopleLine(slug) {
-    const { names, active, listening, tooled, doing } = aroundIn(slug);
+    const { names, active, listening, tooled, doing, typing, recording } = aroundIn(slug);
     // At work, an agent pulses in its own colour (Justin, 21 Oct), or moves as what it's at says (animOf);
     // a person, typing, as written their way.
     return names.map(n => {
       const agentAtWork = active.has(n) && human[n] === false;
-      const anim = agentAtWork ? animOf(doing.get(n)) : '';
-      const style = !agentAtWork ? '' : anim && anim !== 'a-wiki' ? ` style="--who: ${agentColor(n)}; --n: ${shown(n).length}"`
+      // A person typing (not recording): thinking's cursor in their colour (Justin, 1 Nov).
+      const art = (looks[n] || {}).art, personTyping = human[n] !== false && typing.has(n) && !recording.has(n);
+      const anim = agentAtWork ? animOf(doing.get(n)) : personTyping ? (art ? 'a-think-art' : 'a-think') : '';
+      const own = /^#[0-9a-f]{6}$/.test((looks[n] || {}).colour || '') ? looks[n].colour : 'var(--human)';
+      const style = personTyping ? ` style="--who: ${own}; --n: ${Array.from(art || shown(n)).length}"`
+        : !agentAtWork ? '' : anim && anim !== 'a-wiki' ? ` style="--who: ${agentColor(n)}; --n: ${shown(n).length}"`
         : ` style="color: ${agentColor(n)}; --who: ${agentColor(n)}"`;
       const inner = anim === 'a-wiki' && !(looks[n] || {}).art
         ? Array.from(shown(n)).map((ch, i) => `<span class="l${i % 2}">${esc(ch)}</span>`).join('') : nameHtml(n);
-      return `<span class="nm${active.has(n) ? ' live' : ''}${anim ? ' ' + anim : ''}" data-who="${esc(n)}"${style}>${inner}</span>`
+      const name = `<span class="nm${active.has(n) ? ' live' : ''}${anim ? ' ' + anim : ''}"${active.has(n) ? '' : ` data-who="${esc(n)}"`}${style}>${inner}</span>`;
+      return (active.has(n) ? `<span class="nmf" data-who="${esc(n)}">${framed(n, name)}</span>` : name)
       + (tooled.has(n) ? `<span class="tooled" title="${esc(shown(n))} is at work with its full tools">🔨</span>` : '')
       + (listening.has(n) ? `<span class="hears" title="${esc(shown(n))} is listening by voice, ${listening.get(n) ? 'to every Mood' : 'to this Mood'}">🎧</span>` : '');
     }).join(', ')
@@ -5043,6 +5070,7 @@
     groups = body.groups || [];
     people.forEach(p => { if (p.for) powers[p.name] = { for: p.for, short: p.for_short || p.for };
                           if (p.pronouns) pronounsOf[p.name] = p.pronouns;
+                          if (p.frame) framesOf[p.name] = p.frame;
                           human[p.name] = p.is_human; looks[p.name] = { art: p.art || '', colours: p.colours || '', backs: p.backs || '', colour: p.colour || '' }; });
     moods.forEach(m => m.participants.forEach(p => names.add(p)));
     renderMe(); renderAsksOpen();

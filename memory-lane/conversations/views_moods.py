@@ -199,15 +199,17 @@ def _build_moods_list():
     people = ThinkingEntity.objects.order_by('name')
     look = knobs.looks()
     from .services.mood_view import GROUPS, group_members
-    from .services.emergent_powers import powers, pronouns
+    from .services.emergent_powers import frames, powers, pronouns
     people = list(people)
     power = clock('powers', powers, [p.name for p in people if not p.is_biological_human])
     said = clock('pronouns', pronouns, [(p.name, p.is_biological_human) for p in people])
+    framed = clock('frames', frames, [(p.name, p.is_biological_human) for p in people])
     body = {'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
          **(look[p.name] if p.is_biological_human and p.name in look else {}),
          **({'for': power[p.name]['for'], 'for_short': power[p.name]['short']} if p.name in power else {}),
-         **({'pronouns': said[p.name]} if p.name in said else {})}
+         **({'pronouns': said[p.name]} if p.name in said else {}),
+         **({'frame': framed[p.name]} if p.name in framed else {})}
         for p in people],
         # Tags for a group (@core): what each is, and who it mentions now.
         'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]}
@@ -1703,6 +1705,7 @@ def api_moods_live(request):
     for mood in Mood.objects.all():
         entry = live.setdefault(mood.slug, {'speakers': [], 'typing': [], 'busy': None})
         entry['typing'] = typing_in(mood.slug)
+        entry['recording'] = recording_in(mood.slug)  # of those typing, who's speaking a memo: pulsing, not typing
         last = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at) index
         entry['last'] = last.isoformat() if last else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way

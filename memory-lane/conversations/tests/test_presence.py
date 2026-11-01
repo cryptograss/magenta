@@ -51,6 +51,16 @@ class PresenceTest(TestCase):
         self.client_for(self.justin).post('/api/moods/m26/here/')
         self.assertEqual(self.live(), {'m26': ['justin']})
 
+    def test_the_list_knows_who_is_recording_not_typing(self):
+        # Justin, 1 Nov: a person typing moves as thinking does in the Moods list; recording a memo, pulses.
+        self.client_for(self.justin).post('/api/moods/jams/typing/', json.dumps({'typing': True, 'how': 'recording'}),
+                                          content_type='application/json')
+        self.client_for(self.skyler).post('/api/moods/jams/typing/', json.dumps({'typing': True}),
+                                          content_type='application/json')
+        cache.delete('moods-live')
+        jams = Client().get('/api/moods/live/').json()['moods']['jams']
+        self.assertEqual((sorted(jams['typing']), jams['recording']), (['justin', 'skyler'], ['justin']))
+
     def test_three_minutes_then_hidden(self):
         self.client_for(self.justin).post('/api/moods/jams/here/')
         later = presence.time.time() + presence.SHOWN_FOR + 1
