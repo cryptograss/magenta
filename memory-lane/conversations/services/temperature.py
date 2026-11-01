@@ -15,7 +15,8 @@ NOT_SPEAKERS = ('system', 'tool-result', 'mood-poller', 'harness')
 
 
 def temperatures(now=None):
-    """{mood_id: {'humans': {'day', 'warm', 'last_at'}, 'emergents': {...}}}."""
+    """{mood_id: {'humans': {'day', 'warm', 'last_at', 'last_by'}, 'emergents': {...}}}. `last_by`: who spoke at
+    `last_at`, so the list can write that time in their colour (Justin, 1 Nov)."""
     from django.db.models import Count, Max, Q
     from django.utils import timezone
 
@@ -36,10 +37,11 @@ def temperatures(now=None):
         kind = kinds.get(r['sender_id'])
         if kind is None:
             continue  # a participant that isn't a person or an emergent
-        t = found.setdefault(r['mood_id'], {}).setdefault(kind, {'day': 0, 'warm': 0, 'last_at': None})
+        t = found.setdefault(r['mood_id'], {}).setdefault(kind, {'day': 0, 'warm': 0, 'last_at': None, 'last_by': None})
         t['day'] += r['day']
         t['warm'] += r['warm']
         last = r['last'].isoformat() if r['last'] else None
         if last and (t['last_at'] is None or last > t['last_at']):
             t['last_at'] = last
+            t['last_by'] = r['sender_id']
     return found
