@@ -611,9 +611,10 @@ class PiWaker:
         return cmd
 
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, model=None, effort=None, full=False,
-             stop=None, system=None, cwd=None, **ignored):
+             stop=None, system=None, cwd=None, news=None, **ignored):
         """Run one turn; (new session id, its reply). '/compact <what to keep>' compacts instead.
-        The prompt goes in on stdin (RPC mode), and LoopGuard's tool-budget warning is steered in mid-turn."""
+        The prompt goes in on stdin (RPC mode), and LoopGuard's tool-budget warning is steered in mid-turn,
+        as is `news()`, what was said in the Mood meanwhile (MoodPoller.news_check), asked at each tool call."""
         keep = COMPACT.match(prompt or '')
         if keep and session_id:
             instructions = keep.group(1).strip() if (keep and keep.group(1)) else ''
@@ -679,7 +680,19 @@ class PiWaker:
                                     proc.terminate()
                                 except (OSError, ProcessLookupError, AttributeError):
                                     pass
-                        elif guard.warn and not steered:
+                        elif news and not killed:
+                            try:
+                                said = news()
+                            except Exception as e:  # can't ask: the turn goes on
+                                logger.debug(f'news check failed: {e}')
+                                said = None
+                            if said:
+                                try:
+                                    proc.stdin.write(json.dumps({'type': 'steer', 'message': said}) + '\n')
+                                    proc.stdin.flush()
+                                except (BrokenPipeError, OSError, AttributeError):
+                                    pass
+                        if not killed and guard.warn and not steered:
                             # The tool budget's wrap-up warning: pi delivers a steer before the
                             # next model call, and the record keeps it as the poller's user message.
                             steered = True
