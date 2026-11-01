@@ -464,6 +464,37 @@
   #lookBox { max-width: min(460px, 92vw); max-height: 92vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
              color: var(--ink); padding: 16px 18px; }
   #lookBox::backdrop { background: rgba(0,0,0,.35); }
+  /* A person's card, opened by clicking their name (Justin, 31 Oct; services/person_card.py). */
+  #personCard { width: min(520px, 94vw); max-height: 88vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px;
+                background: var(--panel); color: var(--ink); padding: 14px 18px 16px; }
+  #personCard::backdrop { background: rgba(0,0,0,.35); }
+  #personCard .head { display: flex; align-items: baseline; gap: 10px; font-size: 17px; font-weight: 700; color: var(--human); }
+  #personCard .head a { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--accent); text-decoration: none; }
+  #personCard .head .x { font: inherit; font-size: 18px; line-height: 1; border: none; background: none; color: var(--muted); cursor: pointer; }
+  #personCard .profile { display: flex; gap: 10px; margin: 8px 0 2px; font-size: 13px; }
+  #personCard .profile img { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; flex: none; }
+  #personCard .profile pre.art { margin: 0; flex: none; font-size: 1.7px; line-height: 1.05; letter-spacing: 0; }
+  #personCard .profile p { margin: 0; }
+  #personCard .profile dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; font-size: 11.5px; }
+  #personCard .profile dt { color: var(--muted); }
+  #personCard .profile dd { margin: 0; overflow-wrap: anywhere; }
+  #personCard h4 { margin: 14px 0 5px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  #personCard .trail { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+  #personCard .trail a { font-size: 12.5px; padding: 1px 8px; border-radius: 10px; background: var(--code); color: inherit; text-decoration: none;
+                         opacity: var(--op, 1); }
+  #personCard .trail a:hover { opacity: 1; background: var(--hover); }
+  #personCard .trail .n { font-size: 10px; font-weight: 700; color: var(--muted); margin-right: 3px; font-variant-numeric: tabular-nums; }
+  #personCard .trail .pen { color: var(--accent); margin-left: 2px; }
+  #personCard ul { list-style: none; margin: 0; padding: 0; }
+  #personCard li { padding: 4px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  #personCard li:first-child { border-top: none; }
+  #personCard li a { color: inherit; text-decoration: none; }
+  #personCard li a:hover .snip, #personCard li a:hover .ttl { text-decoration: underline; }
+  #personCard li .meta { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+  #personCard li .meta .spend { margin-left: auto; font-variant-numeric: tabular-nums; }
+  #personCard li .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who); flex: none; }
+  #personCard li .dot.unanswered { background: transparent; box-shadow: inset 0 0 0 1.5px var(--who); }
+  #personCard .none { font-size: 12.5px; color: var(--muted); }
   #lookBox p { margin: 0 0 10px; }
   #lookBox label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
   #lookBox input[type=text] { width: 100%; font: 15px ui-monospace, Menlo, Consolas, monospace; padding: 6px 8px;
@@ -1574,6 +1605,7 @@
   <p>Take <span class="who"></span> out of your message and send it again. To wake an emergent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
   <button type="button">OK</button>
 </dialog>
+<dialog id="personCard" aria-label="A person's card"></dialog>
 <dialog id="lookBox">
   <form method="dialog">
     <p><b>How your name will be displayed</b></p>
@@ -2382,7 +2414,7 @@
     </div>`;
   }
   moodbar.addEventListener('click', e => {
-    if (!e.target.closest('.mbar') || e.target.closest('a, button:not(.mtoggle)')) return;
+    if (!e.target.closest('.mbar') || e.target.closest('a, button:not(.mtoggle), .who.human')) return;  // a person's name opens their card
     headOpen = !headOpen;
     store.set('headOpen', headOpen);
     drawMoodbar(headMood);
@@ -6742,6 +6774,81 @@
     if (a && a === previewFor && !a.contains(e.relatedTarget)) hidePreview();
   });
   addEventListener('scroll', hidePreview, true);
+
+  // A person's card: click their name (Justin, 31 Oct). Their User page in brief, as the hover shows; their
+  // trail across the Moods, latest first (✎ where they posted); their last messages, with a dot for each
+  // emergent asked (hollow if it hasn't answered) and what answering took; their last PickiPedia edits.
+  const personCard = document.getElementById('personCard');
+  const blocksAgo = iso => {
+    const n = Math.max(0, Math.round((Date.now() - new Date(iso)) / 12000));
+    return n < 1000 ? `${n} blocks ago` : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k blocks ago`;
+  };
+  function cardHtml(c) {
+    const p = c.profile;
+    const profile = p ? `<div class="profile">${p.art ? `<pre class="art">${esc(p.art)}</pre>` : p.image ? `<img src="${esc(p.image)}" alt="">` : ''}`
+      + `<div>${p.summary ? `<p>${esc(p.summary)}</p>` : ''}`
+      + ((p.facts || []).length ? `<dl>${p.facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '')
+      + '</div></div>' : '';
+    const trail = c.trail.length ? `<div class="trail">${c.trail.map((t, i) =>
+      `<a href="/moods/${encodeURIComponent(t.mood)}/" data-card-mood="${esc(t.mood)}" style="--op: ${(1 - i * 0.08).toFixed(2)}" `
+      + `title="${esc(blocksAgo(new Date(t.at * 1000).toISOString()))} · ${esc(stamp(new Date(t.at * 1000).toISOString()))}${t.posted ? ' · posted here' : ''}">`
+      + `<span class="n">${i + 1}</span>#${esc(t.title)}${t.posted ? '<span class="pen">✎</span>' : ''}</a>`).join('')}</div>`
+      : '<div class="none">Nowhere lately.</div>';
+    const spendOf = m => {
+      if (!m.turns.length) return '';
+      const costs = m.turns.map(t => t.cost).filter(Boolean);
+      return m.turns.map(t => t.tokens).join(' + ') + (costs.length ? ' · ' + costs.join(' + ') : '');
+    };
+    const dots = m => {
+      const answered = new Set(m.turns.map(t => t.agent));
+      return [...new Set([...m.asked, ...answered])].map(a =>
+        `<span class="dot${answered.has(a) ? '' : ' unanswered'}" style="--who: ${agentColor(a)}" title="${esc(a)}${answered.has(a) ? ' answered' : ' was asked'}"></span>`).join('');
+    };
+    const messages = c.messages.length ? `<ul>${c.messages.map(m =>
+      `<li><a href="/moods/${encodeURIComponent(m.mood)}/#m-${esc(m.id)}" data-card-mood="${esc(m.mood)}" data-card-id="${esc(m.id)}">`
+      + `<div class="meta"><span>#${esc(m.mood_title)}</span><span title="${esc(stamp(m.at))}${m.block ? ' · block ' + m.block.toLocaleString() : ''}">${esc(blocksAgo(m.at))}</span>`
+      + `${dots(m)}<span class="spend" title="tokens in→out, and cost, of each answer">${esc(spendOf(m))}</span></div>`
+      + `<div class="snip">${esc(m.snippet)}</div></a></li>`).join('')}</ul>` : '<div class="none">No messages yet.</div>';
+    const edits = c.edits.length ? `<ul>${c.edits.map(e =>
+      `<li><a href="${esc(e.url)}" target="_blank" rel="noopener"><div class="ttl">${esc(e.title)}</div>`
+      + `<div class="meta"><span title="${esc(e.at ? stamp(e.at) : '')}">${e.at ? esc(blocksAgo(e.at)) : ''}</span>${e.comment ? `<span>${esc(e.comment)}</span>` : ''}</div></a></li>`).join('')}</ul>`
+      : '<div class="none">No edits on PickiPedia.</div>';
+    return `<div class="head">${icon(c.name, true)}${nameHtml(c.name)}<a href="${esc(c.page)}" target="_blank" rel="noopener">User page ↗</a>`
+      + `<button type="button" class="x" aria-label="Close">×</button></div>${profile}`
+      + `<h4>Trail</h4>${trail}<h4>Last messages</h4>${messages}<h4>Last edits on PickiPedia</h4>${edits}`;
+  }
+  async function openPersonCard(name) {
+    hidePreview();
+    personCard.innerHTML = `<div class="head">${icon(name, true)}${nameHtml(name)}<button type="button" class="x" aria-label="Close">×</button></div><div class="none">…</div>`;
+    if (!personCard.open) personCard.showModal();
+    let c = null;
+    try {
+      const r = await fetch('/api/people/' + encodeURIComponent(name) + '/card/');
+      if (r.ok) c = await r.json();
+    } catch (e) { /* said below */ }
+    if (!personCard.open) return;
+    if (!c) { personCard.querySelector('.none').textContent = "Couldn't load their card."; return; }
+    personCard.innerHTML = cardHtml(c);
+  }
+  personCard.addEventListener('click', e => {
+    if (e.target === personCard || e.target.closest('.x')) { personCard.close(); return; }
+    const a = e.target.closest('a[data-card-mood]');
+    if (!a) return;
+    e.preventDefault();
+    personCard.close();
+    a.dataset.cardId ? openAndReveal(a.dataset.cardMood, a.dataset.cardId) : open(a.dataset.cardMood, true);
+  });
+  // A person's name in a turn's heading, or among the people here; an emergent's still opens its User page.
+  document.addEventListener('click', e => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;  // a new tab still gets the User page
+    const at = e.target.closest && e.target.closest('.turn.human > .who .name, .people .who.human');
+    if (!at) return;
+    const turn = at.closest('.turn');
+    const name = turn ? (turn.querySelector('.badges[data-for]') || {}).dataset?.for : (at.dataset.who || at.textContent || '').trim();
+    if (!name || human[name] === false) return;
+    e.preventDefault();
+    openPersonCard(name);
+  });
 
   const wikiCache = new Map();
   let wikiTimer = null;

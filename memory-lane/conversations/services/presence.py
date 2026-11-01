@@ -36,3 +36,26 @@ def places(said=(), now=None):
         if name not in latest or at > latest[name][0]:
             latest[name] = (at, slug)
     return {name: slug for name, (at, slug) in latest.items() if now - at < SHOWN_FOR}
+
+
+# The Moods each person has opened, latest first (Justin, 31 Oct: "_their_ breadcrumb trail across the
+# moods", on their card). A Mood opened again moves to the front rather than standing twice, as the
+# page's own trail does. Kept a week from their last move; posts fill it in too (services/person_card).
+TRAIL_KEPT = 8
+TRAIL_FOR = 7 * 24 * 3600
+
+
+def trail_key(name):
+    return f'trail:{name}'
+
+
+def walked(name, slug, now=None):
+    """`name` opened `slug`: it's first on their trail."""
+    now = now or time.time()
+    trail = [step for step in (cache.get(trail_key(name)) or []) if step['mood'] != slug]
+    cache.set(trail_key(name), [{'mood': slug, 'at': now}, *trail][:TRAIL_KEPT], TRAIL_FOR)
+
+
+def trail(name):
+    """[{'mood', 'at'}], latest first: the Moods `name` has opened lately."""
+    return list(cache.get(trail_key(name)) or [])
