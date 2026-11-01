@@ -350,7 +350,7 @@ def api_mood_turns(request, slug):
                                **{k: text.get(k) for k in ('type', 'server', 'state', 'commit', 'by', 'note', 'took', 'agent',
                                                    'kind', 'title', 'user', 'comment', 'delta', 'revid', 'at', 'thumb',
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
-                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'into', 'was', 'about', 'context',
+                                                   'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'thread', 'into', 'was', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
                                                    'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools', 'lines')},
                                # A deploy's server, linked to its page; a release, with its player.

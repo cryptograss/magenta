@@ -36,6 +36,14 @@ DEFAULTS = {
     'close-ask': 'Have {agent} incorporate it into {parent}: one full account there of what was settled here, and what is still open',
     'close-note': 'Anything to be sure of (optional)',
     'close-button': 'Close the thread',
+    # Moving a thread to another Mood (Justin, emergence, 1 Nov 2026: four boxes).
+    'move-to': 'Move it to',
+    'move-incorporate-from': 'Have {agent} incorporate it into {parent}, the Mood it leaves',
+    'move-incorporate-to': 'Have {agent} incorporate it into the Mood it joins',
+    'move-compact': 'Compact the emergents who have spoken here',
+    'move-inform': 'This thread moved from {from} to {to}, and belongs to {to} now. Its worktrees go under {dir}',
+    'move-inform-ask': "Tell the thread: a line here, from you, that its emergents read at their next wake",
+    'move-button': 'Move the thread',
 }
 
 _SHOWN = re.compile(r'<!--.*?-->|<nowiki>.*?</nowiki>|<pre>.*?</pre>', re.S | re.I)

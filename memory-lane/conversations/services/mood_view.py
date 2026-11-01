@@ -511,6 +511,8 @@ def event_line(content):
         return f"↩ {by or 'someone'} closed this thread: handed to #{c.get('into', '')} to incorporate"
     if kind == 'reforked':
         return f"⑂ {by or 'someone'} forked this thread again from #{c.get('from_mood', '')}"
+    if kind == 'moved':
+        return f"⇢ {by or 'someone'} moved #{c.get('thread', '')} from #{c.get('from_mood', '')} to #{c.get('to_mood', '')}"
     if kind in ('handoff', 'handoff-sent'):
         where = c.get('from_mood') if kind == 'handoff' else c.get('to_mood')
         return f"🔀 {by or 'someone'} {'brought this from' if kind == 'handoff' else 'took this to'} #{where}: {c.get('about', '')}"
@@ -1902,7 +1904,7 @@ def said_in(mood):
         'last_at': last.isoformat() if last else None,
         'participants': sorted(e.name for e in mood.thinking_entities()),
         'incorporated': bool(mood.thread_of_id) and mood.messages.filter(
-            sender_id='system', content__type__in=['incorporated', 'reforked'])
+            sender_id='system', content__type__in=['incorporated', 'reforked', 'moved'])
             .order_by('-created_at').values_list('content__type', flat=True).first() == 'incorporated',
     }
     cache.set(key, {'stamp': stamp, 'said': said}, 7 * 86400)

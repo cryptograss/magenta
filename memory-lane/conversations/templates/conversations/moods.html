@@ -367,14 +367,14 @@
   #promotePick .cancel { background: none; color: var(--muted); }
   #noAgents p { margin: 0 0 10px; }
   #noAgents button { font: inherit; border: 0; border-radius: 6px; padding: 6px 16px; background: var(--accent); color: #fff; cursor: pointer; }
-  #renameBox, #newBox, #closeBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
+  #renameBox, #newBox, #closeBox, #moveBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
                background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.18);
                padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-  #renameBox[hidden], #newBox[hidden], #closeBox[hidden] { display: none; }
+  #renameBox[hidden], #newBox[hidden], #closeBox[hidden], #moveBox[hidden] { display: none; }
   #renameBox .archive { float: right; color: var(--muted); }
-  #newBox .hint, #closeBox .hint { font-size: 12.5px; color: var(--muted); }
-  #closeBox label { display: flex; gap: 6px; align-items: baseline; font-size: 13.5px; }
-  #closeBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  #newBox .hint, #closeBox .hint, #moveBox .hint { font-size: 12.5px; color: var(--muted); }
+  #closeBox label, #moveBox label { display: flex; gap: 6px; align-items: baseline; font-size: 13.5px; }
+  #closeBox textarea, #moveBox textarea, #moveBox select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
   #closeBox textarea[hidden], #closeBox #closeModel[hidden] { display: none; }
   #closeBox #closeModel select { font: inherit; font-size: 12.5px; }
   #renameBox input, #renameBox textarea, #newBox input, #newBox textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
@@ -1710,6 +1710,17 @@
   <span class="hint" id="closeModel"></span>
   <span><button type="submit" id="closeGo"></button> <button type="button" id="closeCancel">Cancel</button></span>
 </form>
+<!-- Moving a thread to another Mood (Justin, emergence, 1 Nov 2026): four boxes, done in one call (api_move_thread). -->
+<form id="moveBox" hidden>
+  <b id="moveTitle"></b>
+  <label><span id="moveToWords"></span> <select id="moveTo" required></select></label>
+  <label><input type="checkbox" id="moveFrom"> <span id="moveFromWords"></span></label>
+  <label><input type="checkbox" id="moveInto" checked> <span id="moveIntoWords"></span></label>
+  <label><input type="checkbox" id="moveCompact"> <span id="moveCompactWords"></span></label>
+  <label><input type="checkbox" id="moveInform" checked> <span id="moveInformWords"></span></label>
+  <textarea id="moveNote" rows="2" maxlength="2000" aria-label="A note for them"></textarea>
+  <span><button type="submit" id="moveGo"></button> <button type="button" id="moveCancel">Cancel</button></span>
+</form>
 <div id="locked"></div>
 <div id="search" hidden role="search">
   <div class="bar">
@@ -2534,7 +2545,8 @@
         ? `forked ${esc(stamp(m.forked_at))}: its emergents went on from where they were there`
         : 'started fresh') + (m.compacted ? ` · an emergent compacted in ${link(m.thread_of)} since` : '') + (m.incorporated ? ` · handed back to ${link(m.thread_of)}` : '') + (shut ? ' · closed' : '')
         + (keyHolder ? `<button type="button" class="closethread" title="${shut ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${shut ? 'reopen' : 'close thread'}</button>`
-          + `<button type="button" class="refork" title="Each emergent's next wake here goes on from where it is in #${esc(m.thread_of)} now. What was said here stays on the page, but leaves their context.">⑂ fork again</button>` : ''));
+          + `<button type="button" class="refork" title="Each emergent's next wake here goes on from where it is in #${esc(m.thread_of)} now. What was said here stays on the page, but leaves their context.">⑂ fork again</button>`
+          + (shut ? '' : `<button type="button" class="movethread" title="Make it a thread of another Mood: its worktrees follow it, and no session moves">⇢ move</button>`) : ''));
     }
     const open = (m.threads || []).filter(t => !isArchived(t.slug)), shut = (m.threads || []).filter(t => isArchived(t.slug));
     if (open.length) parts.push('threads: ' + open.map(t => `<a href="/moods/${encodeURIComponent(t.slug)}/" title="${esc(t.title)}">#${esc(t.slug)}</a>`).join(', ')
@@ -4022,6 +4034,15 @@
       prev = null;
       return;
     }
+    if (e.type === 'moved') {  // a thread moved to another Mood (Justin, emergence, 1 Nov): said in it and in both Moods
+      el.className = 'event';
+      const link = slug => `<a href="/moods/${encodeURIComponent(slug)}/">#${esc(slug)}</a>`;
+      el.innerHTML = `⇢ <b>${esc(e.by || 'someone')}</b> moved ${e.thread === current ? 'this thread' : link(e.thread)} from `
+        + `${link(e.from_mood)} to ${link(e.to_mood)} · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'reforked') {  // its emergents go on from where they are in its Mood now (Justin, 29 Oct)
       el.className = 'event';
       el.innerHTML = `⑂ <b>${esc(e.by || 'someone')}</b> forked this thread again from `
@@ -4423,6 +4444,27 @@
       closeBox._was = closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
       drawCloseModel(parent);
       closeBox.hidden = false;
+    } else if (e.target.closest('.mood-head .movethread')) {
+      // Moving: to any open Mood but its own and those under it (the server says no to those too).
+      const parent = (headMood || {}).thread_of || '';
+      const under = slug => { for (let m = moods.find(x => x.slug === slug), n = 0; m && n < 50; m = moods.find(x => x.slug === m.thread_of), n++) if (m.slug === current) return true; return false; };
+      const choices = moods.filter(m => !m.archived && m.slug !== parent && !under(m.slug)).map(m => m.slug).sort();
+      document.getElementById('moveTitle').textContent = `#${current}`;
+      wordsFrom(document.getElementById('moveToWords'), 'move-to').innerHTML = said('move-to');
+      document.getElementById('moveTo').innerHTML = '<option value="">…</option>'
+        + choices.map(slug => `<option value="${esc(slug)}">#${esc(slug)}</option>`).join('');
+      const handoffAgent = `<b style="color: ${agentColor(HANDOFF_AGENT)}">${esc(HANDOFF_AGENT)}</b>`;
+      wordsFrom(document.getElementById('moveFromWords'), 'move-incorporate-from').innerHTML = said('move-incorporate-from', { agent: handoffAgent, parent: `<b>#${esc(parent)}</b>` });
+      wordsFrom(document.getElementById('moveIntoWords'), 'move-incorporate-to').innerHTML = said('move-incorporate-to', { agent: handoffAgent });
+      wordsFrom(document.getElementById('moveCompactWords'), 'move-compact').innerHTML = said('move-compact');
+      wordsFrom(document.getElementById('moveInformWords'), 'move-inform-ask').innerHTML = said('move-inform-ask');
+      const note = document.getElementById('moveNote');
+      note.value = ''; note.placeholder = WORDS['close-note'] || '';
+      wordsFrom(document.getElementById('moveGo'), 'move-button').textContent = WORDS['move-button'] || 'Move';
+      document.getElementById('moveBox').hidden = false;
+      document.getElementById('moveTo').focus();
+    } else if (e.target.closest('#moveCancel')) {
+      document.getElementById('moveBox').hidden = true;
     } else if (e.target.closest('#closeCancel')) {
       closeBox.hidden = true; delete vendorPicked[HANDOFF_AGENT];
     } else if (e.target.closest('.mood-head .closethread')) {
@@ -4503,6 +4545,30 @@
     const r = await post(`/api/moods/${encodeURIComponent(slug)}/close-thread/`, { incorporated: !!ask });
     if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     closeBox.hidden = true;
+    await loadMoods();
+    drawMoodbar(headMood);
+    poll(false);
+  });
+  // Move the thread: one call does the four boxes in their order (api_move_thread), or none of them.
+  document.getElementById('moveBox').addEventListener('submit', async e => {
+    e.preventDefault();
+    const go = document.getElementById('moveGo');
+    if (go.disabled) return;
+    const to = document.getElementById('moveTo').value;
+    if (!to) return;
+    go.disabled = true;
+    const r = await fetch(`/api/moods/${encodeURIComponent(current)}/move-thread/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ to, note: document.getElementById('moveNote').value.trim(),
+        incorporate_from: document.getElementById('moveFrom').checked, incorporate_to: document.getElementById('moveInto').checked,
+        compact: document.getElementById('moveCompact').checked, inform: document.getElementById('moveInform').checked }),
+    }).finally(() => { go.disabled = false; });
+    if (!r.ok) { showError('move: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+    document.getElementById('moveBox').hidden = true;
+    const m = moods.find(x => x.slug === current);
+    if (m) m.thread_of = to;
+    if (headMood) headMood.thread_of = to;
+    drawMoodbar(headMood);
     await loadMoods();
     drawMoodbar(headMood);
     poll(false);
