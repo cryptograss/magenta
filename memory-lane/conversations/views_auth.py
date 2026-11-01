@@ -1323,6 +1323,17 @@ def api_pin(request, slug):
     return _mood_flag(request, slug, 'pinned')
 
 
+@require_POST
+def api_container(request, slug):
+    """Ask for this Mood's own container on hunter, or let it go: POST {"container": true|false}. Recorded as a
+    setting row (who, and when); hunter brings it up as mood-<id> and reports back (services/containers.py).
+    A thread shares its Mood's, so it can't ask for one of its own."""
+    mood = Mood.by_slug_or_404(slug)
+    if mood.thread_of_id:
+        return JsonResponse({'error': "a thread shares its Mood's container; ask there"}, status=400)
+    return _mood_flag(request, slug, 'container')
+
+
 def _mood_flag(request, slug, key):
     from .services import settings as knobs
     from .views_admin import locked_response

@@ -408,6 +408,10 @@
                           color: var(--muted); cursor: pointer; }
   nav #archived a.mood { opacity: .75; }
   nav a.mood .pin { font-size: 11px; margin-right: -4px; }
+  nav a.mood .box { font-size: 11px; margin-left: 4px; }
+  nav a.mood .box.asked, nav a.mood .box.starting { opacity: .45; }
+  nav a.mood .box.failed { filter: grayscale(1) sepia(1) hue-rotate(-50deg) saturate(5); }
+  nav a.mood .box.stopped { opacity: .25; }
   nav a.mood {
     display: block; padding: 5px 12px 5px 24px; text-decoration: none; color: inherit;
     border-left: 3px solid transparent; position: relative;
@@ -1653,7 +1657,8 @@
   <a id="renameDoc" class="hint" target="_blank" rel="noopener">Its description and instructions: one page on PickiPedia →</a>
   <span><button type="submit">Rename</button> <button type="button" id="renameCancel">Cancel</button>
     <button type="button" id="archiveBtn" class="archive" title="Out of the Moods list, into Archived. It stays readable, its sessions and container untouched, and a mention there is still answered.">Archive</button>
-    <button type="button" id="pinBtn" class="archive" title="At the top of the Moods list, for everyone">Pin</button></span>
+    <button type="button" id="pinBtn" class="archive" title="At the top of the Moods list, for everyone">Pin</button>
+    <button type="button" id="boxBtn" class="archive" title="A container of its own on hunter: its previews, its clones, no docker.sock; its threads share it">Give it a container</button></span>
 </form>
 <dialog id="promotePick">
   <form method="dialog">
@@ -1908,6 +1913,16 @@
     return [...kinds].map(([icon, agents]) => `<span class="askgroup">${icon}${
       agents.map(a => `<span class="askdot" style="background: ${agentColor(a)}"></span>`).join('')}</span>`).join('');
   }
+  // 📦 by a Mood with a container on hunter: its state in the hover, faded until it's running; a thread's says
+  // it shares its Mood's.
+  function boxMark(m) {
+    const c = m.container;
+    if (!c) return '';
+    const said = { asked: 'asked for, not up yet', starting: 'starting', running: 'running', failed: 'failed', stopped: 'stopped' }[c.state] || c.state;
+    const where = c.shared_from ? `#${c.shared_from}'s container (${c.name}), shared with its threads` : `its own container on hunter (${c.name})`;
+    const title = `${where}: ${said}${c.detail ? ' · ' + c.detail : ''}${(c.hosts || []).length ? ' · previews at ' + c.hosts[0] + '…' : ''}`;
+    return `<span class="box ${esc(c.state)}" title="${esc(title)}">📦</span>`;
+  }
   const askLine = t => `${esc(shown(t.agent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
     : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
 
@@ -2114,7 +2129,7 @@
       return `
       <a class="mood ${m.slug === current ? 'active' : ''}${onTrail ? ' on-trail' : ''}${depth ? ' sub' : ''}${depth && (!m.forked_at || m.compacted) ? ' fresh' : depth && m.incorporated ? ' back' : ''}" style="--depth: ${depth}; ${onTrail ? `--trail-pct: ${trailPct}%; --trail-op: ${trailOp};` : ''}" href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
         ${trailMark}
-        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${foldBtn}${(m.asked || []).length
+        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${boxMark(m)}${foldBtn}${(m.asked || []).length
           ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${askGroups(m.asked)}</span>` : ''}${badgeHtml(m.slug)}</div>
         <div class="meta">${moodWarmth(m)}</div>
         <div class="meta people-line">${peopleLine(m.slug)}</div>
@@ -4330,6 +4345,9 @@
   // What the server just said, before the list comes back with it (Justin, 29 Oct: reopening "took quite a while").
   const markArchived = (slug, archived) => { const m = moods.find(x => x.slug === slug); if (m) m.archived = !!archived; };
   const isPinned = slug => !!(moods.find(m => m.slug === slug) || {}).pinned;
+  // Its own container on hunter, mood-<id>, or the one its Mood shares with it (services/containers.py).
+  const hasBox = slug => !!((moods.find(m => m.slug === slug) || {}).container || {}).asked;
+  const isThread = slug => !!(moods.find(m => m.slug === slug) || {}).thread_of;
   const newBox = document.getElementById('newBox');
   // The words people read here, as Magenta:Interface has them (services/interface_words.py): escaped, then any
   // {field} filled with the HTML given for it.
@@ -4352,6 +4370,9 @@
       document.getElementById('renameDoc').href = headMood.document || '#';
       document.getElementById('archiveBtn').textContent = isArchived(current) ? 'Unarchive' : 'Archive';
       document.getElementById('pinBtn').textContent = isPinned(current) ? 'Unpin' : 'Pin';
+      const boxBtn = document.getElementById('boxBtn');
+      boxBtn.hidden = isThread(current);  // a thread shares its Mood's
+      boxBtn.textContent = hasBox(current) ? 'Let its container go' : 'Give it a container';
       renameBox.hidden = false;
       document.getElementById('renameTitle').focus();
     } else if (e.target.closest('#renameCancel')) {
@@ -4362,6 +4383,14 @@
         body: JSON.stringify({ archived: !isArchived(current) }),
       });
       if (!r.ok) { showError('archive: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+      renameBox.hidden = true;
+      loadMoods();
+    } else if (e.target.closest('#boxBtn')) {
+      const r = await fetch(`/api/moods/${encodeURIComponent(current)}/container/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ container: !hasBox(current) }),
+      });
+      if (!r.ok) { showError('container: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
       renameBox.hidden = true;
       loadMoods();
     } else if (e.target.closest('#pinBtn')) {

@@ -52,7 +52,7 @@ def pictures_posted(sender, instance, created, **kwargs):
 @receiver(post_delete, sender=Setting)
 def mood_flags_changed(sender, instance, **kwargs):
     """Archiving or pinning a Mood invalidates the cached Moods list."""
-    if getattr(instance, 'key', None) in ('archived', 'pinned'):
+    if getattr(instance, 'key', None) in ('archived', 'pinned', 'container'):
         from .services.mood_cache import bust_moods_cache
         bust_moods_cache()
 

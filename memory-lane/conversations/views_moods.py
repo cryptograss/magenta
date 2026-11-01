@@ -173,13 +173,16 @@ def _build_moods_list():
     asked = clock('tools', open_requests)  # 🔨 🪢 🖥️: emergents' open asks there
     from .services.temperature import temperatures
     warmth = clock('temperature', temperatures)  # each Mood's past day, people and emergents apart
+    from .services.containers import for_list
+    boxes = clock('containers', lambda: for_list(moods))  # each Mood's container on hunter, or its Mood's
     clock.lap('_')
     each, payloads = [], []
     for m in moods:
         began = clock.now()
         payloads.append({**mood_payload(m), 'archived': m.slug in archived, 'pinned': m.slug in pinned,
                          'temperature': warmth.get(m.pk, {}),
-                         **({'asked': asked[m.slug]} if m.slug in asked else {})})
+                         **({'asked': asked[m.slug]} if m.slug in asked else {}),
+                         **({'container': boxes[m.slug]} if m.slug in boxes else {})})
         each.append((clock.now() - began, m.slug))
     clock.lap('payloads')
     # A Mood nobody has spoken in yet ranks by when it was started: a new one first.

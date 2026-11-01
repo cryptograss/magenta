@@ -445,6 +445,48 @@ def api_deploys(request):
     return JsonResponse({'server': name, 'state': state, 'moods': told}, status=201)
 
 
+def _access_refused(request):
+    """None when the request carries hunter's access key (the one its SSH router reports with); else a response."""
+    key = getattr(settings, 'MOOD_ACCESS_KEY', '')
+    if not key:
+        return JsonResponse({'error': 'no access key is configured'}, status=503)
+    if not hmac.compare_digest(request.headers.get('Authorization', '').encode(), f'Bearer {key}'.encode()):
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    return None
+
+
+@require_GET
+def api_containers(request):
+    """For hunter's mood-containers process: the Moods that want a container of their own, and any still up that
+    no longer do (services/containers.py). Authenticated by hunter's access key."""
+    from .services import containers
+    refused = _access_refused(request)
+    if refused:
+        return refused
+    return JsonResponse({'moods': containers.wanted()})
+
+
+@csrf_exempt  # authenticated by the access key, not a browser session
+@require_POST
+def api_container_state(request, mood_id):
+    """hunter says how mood-<id> stands: {"state": "starting"|"running"|"failed"|"stopped", "detail": "...",
+    "hosts": [...], "ssh_port": n}. Kept (MoodContainer), and shown by the Mood in the Moods list."""
+    from .services import containers
+    refused = _access_refused(request)
+    if refused:
+        return refused
+    try:
+        body = json.loads(request.body)
+        if not isinstance(body, dict):
+            raise ValueError
+        mood = containers.report(mood_id, body)
+    except LookupError as e:
+        return JsonResponse({'error': str(e)}, status=404)
+    except (ValueError, containers.Invalid) as e:
+        return JsonResponse({'error': str(e) or 'expected {"state": ...}'}, status=400)
+    return JsonResponse({'id': mood_id, 'slug': mood.slug, 'state': body['state']})
+
+
 _SSH_NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
 _SSH_KEY = re.compile(r'^SHA256:[A-Za-z0-9+/]{43}$')
 

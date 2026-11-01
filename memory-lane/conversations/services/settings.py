@@ -206,6 +206,10 @@ def art_name(person):
 MOOD_KEYS = {
     'archived': (False, 'Out of the Moods list, into "Archived"; still readable, and still answers mentions.'),
     'pinned': (False, 'At the top of the Moods list, whatever was said where lately.'),
+    # A container of its own on hunter, mood-<id> (Justin, emergence, 1 Nov 2026): its previews, its clones, a
+    # poller answering it and its threads, and no docker.sock. Asked for here; hunter's mood-containers process
+    # brings it up and says how it stands (MoodContainer). Off again: hunter stops it, and its files stay on disk.
+    'container': (False, 'A container of its own on hunter: its previews, its clones; its threads share it.'),
 }
 
 
@@ -276,7 +280,7 @@ def clean(key, value):
         if str(value).lower() in ('false', 'off', '0', 'no', ''):
             return False
         raise Invalid('ultracode: on or off')
-    if key in ('archived', 'pinned'):
+    if key in ('archived', 'pinned', 'container'):
         if isinstance(value, bool):
             return value
         raise Invalid(f'{key}: true or false')
@@ -515,7 +519,7 @@ def change(key, value, mood=None, agent=None, by=None, note=''):
         raise Invalid(f'{key} is set for one person or agent, everywhere')
     row = Setting.objects.create(mood=mood, agent=agent, key=key, value=clean(key, value), set_by=by,
                                  note=str(note or '')[:200])
-    if key in ('archived', 'pinned'):
+    if key in ('archived', 'pinned', 'container'):
         from .mood_cache import bust_moods_cache
         bust_moods_cache()
     return row

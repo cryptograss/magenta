@@ -1724,6 +1724,32 @@ class Setting(models.Model):
 
 
 
+class MoodContainer(models.Model):
+    """
+    How a Mood's own container on hunter stands, as hunter's mood-containers process last said: asked for with
+    the Mood's 'container' setting, named mood-<id> after the Mood's id (which never changes, so a renamed Mood
+    keeps it). A report of the machine, not a choice anyone made, so it is kept apart from Setting, as
+    HarnessModels is. Replaced whole each time it reports.
+    """
+
+    STATES = ('starting', 'running', 'failed', 'stopped')
+
+    mood = models.OneToOneField('Mood', models.CASCADE, primary_key=True, related_name='container')
+    state = models.CharField(max_length=20)
+    detail = models.CharField(max_length=300, blank=True, default='')
+    # Where its previews are served: ['uploads-and-embeds0.hunter.cryptograss.live', ...]
+    hosts = models.JSONField(default=list)
+    ssh_port = models.PositiveIntegerField(null=True, blank=True)
+    reported_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mood_containers'
+
+    @property
+    def name(self):
+        return f'mood-{self.mood_id}'
+
+
 class HarnessModels(models.Model):
     """
     What an agent's harness can run: every model it knows, by vendor, and
