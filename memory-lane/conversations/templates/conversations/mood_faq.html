@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAQ · magenta</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
+    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --glow: rgba(255,103,253,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
+            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --glow: rgba(255,103,253,.10); }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); background: radial-gradient(ellipse at 50% 0%, var(--glow), transparent 60%), var(--bg);
+         display: flex; flex-direction: column; overflow: hidden; }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex: none; }
+  header .brand { font-weight: 700; color: var(--accent); text-decoration: none; }
+  header .where { color: var(--muted); font-size: 13px; }
+  header .source { margin-left: auto; font-size: 13px; color: var(--muted); text-decoration: none; }
+  header .source:hover { color: var(--accent); }
+  a { color: var(--accent); }
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .slide { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center;
+           max-width: 820px; margin: 0 auto; padding: 32px 28px 48px; overflow-y: auto;
+           opacity: 0; transform: translateX(40px); transition: opacity .35s ease, transform .35s ease; pointer-events: none; }
+  .slide.here { opacity: 1; transform: none; pointer-events: auto; }
+  .slide.gone { transform: translateX(-40px); }
+  .slide .num { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 700;
+                margin-bottom: 10px; }
+  .slide h2 { font-size: clamp(26px, 4.5vw, 44px); line-height: 1.15; margin: 0 0 24px; font-weight: 750; }
+  .slide .answer { font-size: clamp(16px, 2.1vw, 21px); line-height: 1.5; }
+  .slide .answer .point { margin: 0 0 12px; }
+  .slide .answer .point.d1 { padding-left: 18px; border-left: 3px solid var(--accent); }
+  .slide .answer .point.d2, .slide .answer .point.d3 { position: relative; padding-left: 44px; font-size: .9em; margin-bottom: 8px; }
+  .slide .answer .point.d3 { padding-left: 66px; }
+  .slide .answer .point.d2::before, .slide .answer .point.d3::before { content: "✦"; position: absolute; left: 22px;
+                                                                       color: var(--accent); font-size: .8em; top: .25em; }
+  .slide .answer .point.d3::before { left: 44px; }
+  .slide.cover { text-align: center; align-items: center; }
+  .slide.cover h2 { font-size: clamp(40px, 8vw, 84px); color: var(--accent); margin-bottom: 12px; }
+  .slide.cover p { color: var(--muted); font-size: 18px; margin: 0; }
+  .slide.cover .hint { margin-top: 28px; font-size: 13px; }
+  .bar { flex: none; display: flex; align-items: center; justify-content: center; gap: 14px; padding: 10px 16px 16px; }
+  .bar button { font: inherit; font-size: 18px; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
+                background: var(--panel); color: var(--ink); cursor: pointer; }
+  .bar button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .bar button:disabled { opacity: .35; cursor: default; }
+  .dots { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; max-width: 60vw; }
+  .dots button { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: none; background: var(--line); }
+  .dots button[aria-current="true"] { background: var(--accent); transform: scale(1.3); }
+  .empty { margin: auto; color: var(--muted); text-align: center; padding: 40px; }
+  #source-html { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/moods/">magenta</a>
+  <span class="where">FAQ</span>
+  <a class="source" href="{{ source }}" target="_blank" rel="noopener">edit on PickiPedia ↗</a>
+</header>
+<div class="stage" id="stage">
+  {% if not faq.html %}<div class="empty">{{ faq.error|default:"The FAQ is empty." }}<br><a href="{{ source }}">Read it on PickiPedia</a></div>{% endif %}
+</div>
+<div class="bar" id="bar" hidden>
+  <button id="prev" aria-label="previous">←</button>
+  <div class="dots" id="dots"></div>
+  <button id="next" aria-label="next">→</button>
+</div>
+{# MediaWiki's own rendering of Magenta:FAQ (sanitized by the parser); split into slides below. #}
+<div id="source-html">{{ faq.html|safe }}</div>
+<script>
+(function () {
+  const stage = document.getElementById('stage');
+  const root = document.querySelector('#source-html .mw-parser-output') || document.getElementById('source-html');
+  // Links as the wiki writes them (/wiki/...) point back at the wiki.
+  root.querySelectorAll('a[href^="/"]').forEach(a => { a.href = 'https://pickipedia.xyz' + a.getAttribute('href'); });
+  root.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+
+  // Each top-level bullet is a question; the deeper bullets after it, its answer. Read bullet by bullet with
+  // their depth, since a blank line in the wikitext ends one list and starts another.
+  const items = [];
+  const isList = n => n.nodeType === 1 && ['UL', 'OL', 'DL'].includes(n.tagName);
+  root.querySelectorAll('li, dd').forEach(li => {
+    let depth = 0;
+    for (let p = li.parentElement; p && p !== root; p = p.parentElement) if (isList(p)) depth++;
+    const own = document.createElement('span');
+    Array.from(li.childNodes).forEach(n => { if (!isList(n)) own.appendChild(n.cloneNode(true)); });
+    if (!own.textContent.trim()) return;  // only holds a deeper list
+    if (depth === 1) items.push({ question: own, answer: [] });
+    else if (items.length) items[items.length - 1].answer.push({ depth: depth - 1, node: own });
+  });
+  if (!items.length) return;
+
+  const slides = [];
+  const cover = document.createElement('section');
+  cover.className = 'slide cover';
+  cover.innerHTML = '<h2>magenta</h2><p>frequently asked questions</p><p class="hint">→ or swipe</p>';
+  slides.push(cover);
+  items.forEach((it, i) => {
+    const s = document.createElement('section');
+    s.className = 'slide';
+    const num = document.createElement('div');
+    num.className = 'num';
+    num.textContent = (i + 1) + ' / ' + items.length;
+    const h = document.createElement('h2');
+    h.append(...it.question.childNodes);
+    const a = document.createElement('div');
+    a.className = 'answer';
+    it.answer.forEach(b => {
+      const p = document.createElement('div');
+      p.className = 'point d' + Math.min(b.depth, 3);
+      p.appendChild(b.node);
+      a.appendChild(p);
+    });
+    s.append(num, h, a);
+    slides.push(s);
+  });
+  slides.forEach(s => stage.appendChild(s));
+
+  const dots = document.getElementById('dots');
+  slides.forEach((_, i) => {
+    const d = document.createElement('button');
+    d.setAttribute('aria-label', i ? 'question ' + i : 'start');
+    d.onclick = () => go(i);
+    dots.appendChild(d);
+  });
+  document.getElementById('bar').hidden = false;
+  const prev = document.getElementById('prev'), next = document.getElementById('next');
+  prev.onclick = () => go(at - 1);
+  next.onclick = () => go(at + 1);
+
+  let at = -1;
+  function go(n, quiet) {
+    n = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, i) => { s.classList.toggle('here', i === n); s.classList.toggle('gone', i < n); });
+    Array.from(dots.children).forEach((d, i) => d.setAttribute('aria-current', i === n ? 'true' : 'false'));
+    prev.disabled = n === 0;
+    next.disabled = n === slides.length - 1;
+    at = n;
+    if (!quiet) history.replaceState(null, '', n ? '#' + n : location.pathname + location.search);
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(at + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(at - 1); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(slides.length - 1);
+  });
+  let x0 = null;
+  stage.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+  stage.addEventListener('touchend', e => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 50) go(at + (dx < 0 ? 1 : -1));
+    x0 = null;
+  });
+  go(parseInt(location.hash.slice(1), 10) || 0, true);
+})();
+</script>
+</body>
+</html>

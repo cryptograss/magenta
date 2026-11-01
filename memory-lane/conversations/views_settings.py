@@ -108,6 +108,12 @@ def api_todo(request):
     return JsonResponse(todo.all_todos())
 
 
+def faq_page(request):
+    """The FAQ (PickiPedia's Magenta:FAQ) as slides: one question at a time (services/faq.py)."""
+    from .services import faq
+    return render(request, 'conversations/mood_faq.html', {'faq': faq.state(), 'source': faq.page_url()})
+
+
 @section('verify')
 def verify_page(request):
     """The pages the emergents are told from, and which wait for a verify (services/verify.py).
