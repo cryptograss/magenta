@@ -4934,6 +4934,9 @@
     const sending = [...container.querySelectorAll(':scope > .turn.pending')];
     sending.forEach(el => el.remove());
     for (const it of items) {
+      // Drawn once: a turn can arrive by two roads (a Mood's background poll and its own), and a kept
+      // page carried the second copy across Mood switches until a reload (Justin, 1 Nov).
+      if (it.v && it.v.id && container.querySelector(`#m-${CSS.escape(it.v.id)}, .step[data-id="${CSS.escape(it.v.id)}"]`)) continue;
       const agent = agentOf(it);
       if (agent && holdThought(container, agent, it)) continue;
       if (agent) {
