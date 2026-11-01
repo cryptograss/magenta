@@ -38,6 +38,15 @@ class TemperatureTest(TestCase):
         self.assertEqual((t['emergents']['day'], t['emergents']['warm']), (1, 1))
         self.assertLess(timezone.now() - timezone.datetime.fromisoformat(t['emergents']['last_at']), timedelta(minutes=10))
 
+    def test_who_spoke_last_on_each_side(self):
+        # The list writes each side's time in its speaker's colour (Justin, 1 Nov).
+        ThinkingEntity.objects.get_or_create(name='blu', defaults={'is_biological_human': False})
+        self.say('re', 0.5)
+        self.say('blu', 0.2)
+        self.say('justin', 1)
+        t = temperatures()[self.mood.pk]
+        self.assertEqual((t['emergents']['last_by'], t['humans']['last_by']), ('blu', 'justin'))
+
     def test_the_moods_list_carries_it(self):
         self.say('justin', 1)
         mood = next(m for m in self.client.get('/api/moods/').json()['moods'] if m['slug'] == 'jams')

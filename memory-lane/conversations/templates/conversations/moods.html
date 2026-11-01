@@ -20,6 +20,7 @@
     --human: #2a5d9f; --agent: #b8106b; --code: #f3efe8; --mention: #fff3c4; --for-me: #d9a400;
     --hover: #f6f3ee; --warn-ink: #7a4b00; --warn-bg: #ffe9b0; --dot-edge: #d6cfc2; --err: #b3261e;
     --heat-1: #b26800; --heat-2: #c62828;  /* a Mood's warmth: amber, then red (moodWarmth) */
+    --spoke-h: #2e7d32;  /* a person spoke lately: green (moodWarmth; Justin, 1 Nov) */
   }
   /* Dark, when the system is: the same tokens, night colours. */
   @media (prefers-color-scheme: dark) {
@@ -29,6 +30,7 @@
       --human: #86b4f0; --agent: #ef5aa6; --code: #29252c; --mention: #4a3f12; --for-me: #c99a1e;
       --hover: #262228; --warn-ink: #ffd27a; --warn-bg: #3b2c08; --dot-edge: #4d4652; --err: #ff8a80;
       --heat-1: #f0b347; --heat-2: #ff7a6b;
+      --spoke-h: #6fcf7a;
     }
   }
   * { box-sizing: border-box; }
@@ -445,8 +447,8 @@
   /* How warm a Mood is (moodWarmth): its past day's count, coloured by how much of it came in the past 3 hours;
      how long since a person and an emergent spoke, in their colours while it's under half an hour. */
   nav a.mood .meta .fresh { font-weight: 700; }
-  nav a.mood .meta .fresh.h { color: var(--human); }
-  nav a.mood .meta .fresh.e { color: var(--agent); }
+  nav a.mood .meta .fresh.h { color: var(--spoke-h); }
+  nav a.mood .meta .fresh.e { color: var(--who, var(--agent)); }  /* the emergent who spoke, in its colour */
   nav a.mood .people-line:empty { display: none; }
   nav a.mood .people-line .hears { font-size: .85em; margin-left: 1px; }  /* listening by voice (services/listening.py) */
   nav a.mood .people-line .tooled { font-size: .8em; margin-left: 2px; }
@@ -2006,9 +2008,10 @@
     const since = (x, cls) => {
       if (!x || !x.last_at) return '–';
       const fresh = Date.now() - new Date(x.last_at) < 30 * 60000;
-      return `<span${fresh ? ` class="fresh ${cls}"` : ''}>${blocksAgo(x.last_at)}</span>`;
+      const who = fresh && cls === 'e' && x.last_by ? ` style="--who: ${agentColor(x.last_by)}"` : '';
+      return `<span${fresh ? ` class="fresh ${cls}"` : ''}${who}>${blocksAgo(x.last_at)}</span>`;
     };
-    const when = (x, who) => `${who} last spoke ` + (x && x.last_at ? `${stamp(x.last_at)} (${blocksAgo(x.last_at, true)} blocks ago)` : 'not in 30 days');
+    const when = (x, who) => `${x && x.last_by ? `${who} (${shown(x.last_by)})` : who} last spoke ` + (x && x.last_at ? `${stamp(x.last_at)} (${blocksAgo(x.last_at, true)} blocks ago)` : 'not in 30 days');
     const ages = `<span title="${esc(when(h, 'a person') + '\n' + when(e, 'an emergent'))}">${since(h, 'h')}/${since(e, 'e')}</span>`;
     return `${counts} · ${ages}`;  // no "blocks": the hover says (Justin, 31 Oct)
   }
@@ -6838,10 +6841,7 @@
   // trail across the Moods, latest first (✎ where they posted); their last messages, with a dot for each
   // emergent asked (hollow if it hasn't answered) and what answering took; their last PickiPedia edits.
   const personCard = document.getElementById('personCard');
-  const blocksAgo = iso => {
-    const n = Math.max(0, Math.round((Date.now() - new Date(iso)) / 12000));
-    return n < 1000 ? `${n} blocks ago` : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k blocks ago`;
-  };
+  const cardAgo = iso => blocksAgo(iso) + ' blocks ago';  // the Moods list's own count (moodWarmth)
   function cardHtml(c) {
     const p = c.profile;
     const profile = p ? `<div class="profile">${p.art ? `<pre class="art">${esc(p.art)}</pre>` : p.image ? `<img src="${esc(p.image)}" alt="">` : ''}`
@@ -6850,7 +6850,7 @@
       + '</div></div>' : '';
     const trail = c.trail.length ? `<div class="trail">${c.trail.map((t, i) =>
       `<a href="/moods/${encodeURIComponent(t.mood)}/" data-card-mood="${esc(t.mood)}" style="--op: ${(1 - i * 0.08).toFixed(2)}" `
-      + `title="${esc(blocksAgo(new Date(t.at * 1000).toISOString()))} · ${esc(stamp(new Date(t.at * 1000).toISOString()))}${t.posted ? ' · posted here' : ''}">`
+      + `title="${esc(cardAgo(new Date(t.at * 1000).toISOString()))} · ${esc(stamp(new Date(t.at * 1000).toISOString()))}${t.posted ? ' · posted here' : ''}">`
       + `<span class="n">${i + 1}</span>#${esc(t.title)}${t.posted ? '<span class="pen">✎</span>' : ''}</a>`).join('')}</div>`
       : '<div class="none">Nowhere lately.</div>';
     const spendOf = m => {
@@ -6865,12 +6865,12 @@
     };
     const messages = c.messages.length ? `<ul>${c.messages.map(m =>
       `<li><a href="/moods/${encodeURIComponent(m.mood)}/#m-${esc(m.id)}" data-card-mood="${esc(m.mood)}" data-card-id="${esc(m.id)}">`
-      + `<div class="meta"><span>#${esc(m.mood_title)}</span><span title="${esc(stamp(m.at))}${m.block ? ' · block ' + m.block.toLocaleString() : ''}">${esc(blocksAgo(m.at))}</span>`
+      + `<div class="meta"><span>#${esc(m.mood_title)}</span><span title="${esc(stamp(m.at))}${m.block ? ' · block ' + m.block.toLocaleString() : ''}">${esc(cardAgo(m.at))}</span>`
       + `${dots(m)}<span class="spend" title="tokens in→out, and cost, of each answer">${esc(spendOf(m))}</span></div>`
       + `<div class="snip">${esc(m.snippet)}</div></a></li>`).join('')}</ul>` : '<div class="none">No messages yet.</div>';
     const edits = c.edits.length ? `<ul>${c.edits.map(e =>
       `<li><a href="${esc(e.url)}" target="_blank" rel="noopener"><div class="ttl">${esc(e.title)}</div>`
-      + `<div class="meta"><span title="${esc(e.at ? stamp(e.at) : '')}">${e.at ? esc(blocksAgo(e.at)) : ''}</span>${e.comment ? `<span>${esc(e.comment)}</span>` : ''}</div></a></li>`).join('')}</ul>`
+      + `<div class="meta"><span title="${esc(e.at ? stamp(e.at) : '')}">${e.at ? esc(cardAgo(e.at)) : ''}</span>${e.comment ? `<span>${esc(e.comment)}</span>` : ''}</div></a></li>`).join('')}</ul>`
       : '<div class="none">No edits on PickiPedia.</div>';
     return `<div class="head">${icon(c.name, true)}${nameHtml(c.name)}<a href="${esc(c.page)}" target="_blank" rel="noopener">User page ↗</a>`
       + `<button type="button" class="x" aria-label="Close">×</button></div>${profile}`
