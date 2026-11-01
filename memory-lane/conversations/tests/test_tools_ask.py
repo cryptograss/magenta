@@ -1,5 +1,5 @@
 """Asks from a look-only turn (Justin, 28 Oct-29 Oct): <tools/>, <merge/>, <deploy/> are lines in the Mood and
-🔨/🔀/🔄 by its name in the list, until their event lands there -- a full-tools wake answers the tools ask, a
+🔨/🪢/🖥️ by its name in the list, until their event lands there -- a full-tools wake answers the tools ask, a
 merged event the merge ask, a deploy event the deploy ask."""
 
 import uuid
@@ -82,8 +82,8 @@ class AskTest(TestCase):
         page = self.client.get('/api/moods/jams/turns/').json()
         self.assertEqual(page['quiet'], [])
         self.assertEqual([t['text'] for t in page['turns']],
-                         ['Reviewed and green.\n\n🔀 requested a merge for #313, the loop guard\n'
-                          '🔀 requested a merge for #310\n🔄 requested a redeploy of hunter'])
+                         ['Reviewed and green.\n\n🪢 requested a merge for #313, the loop guard\n'
+                          '🪢 requested a merge for #310\n🖥️ requested a redeploy of hunter'])
         self.assertEqual([(t['kind'], t['for']) for t in self.asked()],
                          [('merge', '#313, the loop guard; #310'), ('deploy', 'hunter')])
 
@@ -174,5 +174,7 @@ class AskTest(TestCase):
         from pathlib import Path
         template = Path(__file__).resolve().parent.parent / 'templates' / 'conversations' / 'moods.html'
         html = template.read_text()
-        self.assertIn("[...new Set(m.asked.map(t => ASK_EMOJI[t.kind] || '🔨'))].join('')", html)
+        # Justin, 1 Nov: each kind's dots beside its icon (askGroups): one icon a kind, a dot an ask.
+        self.assertIn("if (!kinds.has(icon)) kinds.set(icon, []);", html)
+        self.assertIn("kinds.get(icon).push(t.agent);", html)
 

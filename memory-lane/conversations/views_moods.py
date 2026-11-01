@@ -170,7 +170,7 @@ def _build_moods_list():
     archived, pinned = clock('flags', lambda: (knobs.archived_slugs(), knobs.mood_flagged('pinned')))
     moods = list(Mood.objects.all())
     from .services.tools_ask import KINDS, open_requests
-    asked = clock('tools', open_requests)  # 🔨 🔀 🚀: emergents' open asks there
+    asked = clock('tools', open_requests)  # 🔨 🪢 🖥️: emergents' open asks there
     from .services.temperature import temperatures
     warmth = clock('temperature', temperatures)  # each Mood's past day, people and emergents apart
     clock.lap('_')

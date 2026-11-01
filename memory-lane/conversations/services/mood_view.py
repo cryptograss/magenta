@@ -87,8 +87,8 @@ _TAKE = re.compile(r'^\s*<take\s+to="([^"<>]{1,200})"\s*/>\s*$')
 # A look-only turn asking for its full tools (Justin, 28 Oct: "{emergent} requested tools for {purpose}"): a line in
 # the Mood, and 🔨 by its title in the Moods list until a full-tools turn of that emergent there (services/tools_ask.py).
 _TOOLS = re.compile(r'^\s*<tools\s+to="([^"<>]{1,200})"\s*/>\s*$')
-# The same shape, other asks (Justin, 29 Oct): <merge to="…"/> -> a merge asked of a person (🔀),
-# <deploy to="…"/> -> a redeploy (🔄). Both posted as a line in the Mood and an icon by its title,
+# The same shape, other asks (Justin, 29 Oct): <merge to="…"/> -> a merge asked of a person (🪢),
+# <deploy to="…"/> -> a redeploy (🖥️). Both posted as a line in the Mood and an icon by its title,
 # as the tools ask is, until the event lands (a full-tools wake, a merged event, a deploy event).
 _MERGE = re.compile(r'^\s*<merge\s+to="([^"<>]{1,200})"\s*/>\s*$')
 _DEPLOY = re.compile(r'^\s*<deploy\s+to="([^"<>]{1,200})"\s*/>\s*$')
@@ -96,7 +96,7 @@ _DEPLOY = re.compile(r'^\s*<deploy\s+to="([^"<>]{1,200})"\s*/>\s*$')
 # ask that night went out as text, since each came with a sentence saying what it was for). The words are said,
 # and each ask stands as it would alone; only the tags are taken out of the words.
 _ASK_TAIL = re.compile(r'\s*<(tools|merge|deploy)\s+to="([^"<>]{1,200})"\s*/>\s*$')
-ASK_EMOJI = {'tools': '🔨', 'merge': '🔀', 'deploy': '🔄'}
+ASK_EMOJI = {'tools': '🔨', 'merge': '🪢', 'deploy': '🖥️'}  # Justin, 1 Nov
 
 
 def _ask_reason(kind, to):
