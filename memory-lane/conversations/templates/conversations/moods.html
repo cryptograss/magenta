@@ -1715,7 +1715,7 @@
         <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
         <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
         <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
-        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
+        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; repo: or re/ names a mergeable (repo:branch); / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <!-- ✕: throw away what's under way -- a recording, unsent; the words typed (Skyler, 31 Oct: "an x in the right corner to quick delete"). -->
         <button type="button" id="discardBtn" title="Discard: stops a recording without sending it, and clears the box" aria-label="Discard what you're writing or recording" hidden>✕</button>
@@ -6974,11 +6974,43 @@
     // #mood, as mood_view._HASH links it: not after a word, an & or a / (a URL's #anchor, &#39;).
     m = upto.match(/(^|[^\w&#\/;=])#([a-z0-9][a-z0-9-]{0,79})?$/i);
     if (m) return { kind: 'mood', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
+    // A mergeable, <repo>:<branch>: after a repository's name and a colon, or an owner's name and a
+    // slash (re/…), once githouse's branches are here. Not inside a URL or a path: only after a space,
+    // a bracket or a backtick.
+    m = upto.match(/(^|[\s(`])([a-z][\w.-]*)([:\/])([\w.\/-]*)$/i);
+    if (m && (m[3] === ':' ? mergeables.repos.has(m[2]) : mergeables.owners.has(m[2]))) {
+      return { kind: 'mergeable', start: upto.length - m[2].length - 1 - m[4].length,
+               repo: m[3] === ':' ? m[2] : '', prefix: m[3] === ':' ? m[4] : m[2] + '/' + m[4] };
+    }
+    if (m && !mergeables.asked) loadMergeables();
     // `:` starting a word -- so 10:30 doesn't open it.
     m = upto.match(/(^|[\s(]):([a-z0-9_+-]{0,30})$/);
     if (m) return { kind: 'emoji', start: upto.length - m[2].length - 1, prefix: m[2] };
     return null;
   }
+  // Mergeables: every repository's branches as githouse has them (maybelle-config hunter/githouse),
+  // live, merged and closed. A name is used once, so a merged one is still worth naming.
+  const GITHOUSE_BRANCHES = 'https://git.hunter.cryptograss.live/branches.json';
+  const OWNED_BRANCH = /^(main|master|production|release\/.*)$/;
+  const mergeables = { asked: false, repos: new Set(), owners: new Set(), list: [] };
+  function loadMergeables() {
+    mergeables.asked = true;
+    return fetch(GITHOUSE_BRANCHES, { signal: AbortSignal.timeout(5000) }).then(r => r.ok ? r.json() : {}).then(d => {
+      for (const [repo, kinds] of Object.entries(d || {})) {
+        mergeables.repos.add(repo);
+        for (const [state, branches] of [['live', kinds.live], ['merged', kinds.merged], ['closed', kinds.closed]]) {
+          for (const branch of Object.keys(branches || {})) {
+            if (OWNED_BRANCH.test(branch) || !branch.includes('/')) continue;
+            mergeables.owners.add(branch.split('/')[0]);
+            mergeables.list.push({ repo, branch, state });
+          }
+        }
+      }
+      const at = wordAtCaret();
+      if (at && at.kind === 'mergeable') showSuggest();
+    }).catch(() => {});
+  }
+  setTimeout(loadMergeables, 4000);  // after the page has what it needs first
   function closeSuggest() { suggest.classList.remove('on'); choices = []; }
   function showSuggest() {
     const at = wordAtCaret();
@@ -7028,7 +7060,16 @@
       });
       return;
     }
-    if (at.kind === 'command') {
+    if (at.kind === 'mergeable') {
+      // Live first, then merged, then closed; within each, by name. Words after a slash match too (fix-mtime).
+      const p = at.prefix.toLowerCase(), order = { live: 0, merged: 1, closed: 2 };
+      const mark = { live: '🟢', merged: '🟣', closed: '⚫' };
+      choices = mergeables.list.filter(b => (!at.repo || b.repo === at.repo)
+          && (b.branch.toLowerCase().startsWith(p) || (at.repo && b.branch.toLowerCase().includes(p))))
+        .sort((a, b) => (order[a.state] - order[b.state]) || a.branch.localeCompare(b.branch) || a.repo.localeCompare(b.repo))
+        .slice(0, 8)
+        .map(b => ({ insert: `${b.repo}:${b.branch} `, html: `<span class="emo">${mark[b.state]}</span>${esc(b.repo)}:<b>${esc(b.branch)}</b><small>${b.state}</small>` }));
+    } else if (at.kind === 'command') {
       choices = SLASH_COMMANDS.filter(([name]) => name.startsWith(at.prefix))
         .map(([name, form, what]) => ({ insert: name + ' ', html: `<span class="emo">${name === 'clips' ? '🎬' : name === 'poll' ? '🗳' : '⚙️'}</span><b>${esc(form)}</b><small>${esc(what)}</small>` }));
     } else if (at.kind === 'command-agent') {
