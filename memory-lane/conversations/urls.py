@@ -19,6 +19,7 @@ urlpatterns = [
     path('moods/prompts/', views_settings.prompts_page, name='mood_prompts'),
     path('moods/polls/', views_settings.polls_page, name='mood_polls'),
     path('moods/todo/', views_settings.todo_page, name='mood_todo'),
+    path('moods/faq/', views_settings.faq_page, name='mood_faq'),
     path('moods/verify/', views_settings.verify_page, name='mood_verify'),
     path('moods/<slug:slug>/instructions/', views_settings.instructions_page, name='mood_instructions'),
     path('moods/<slug:slug>/rules/', views_settings.rules_page, name='mood_rules'),
