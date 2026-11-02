@@ -115,7 +115,7 @@ class PiCatalogTest(TestCase):
                 return mock.Mock(status_code=200)
 
         self.assertTrue(MoodAPI('http://ml', http=HTTP, key=KEY).report_models('re', REPORT))
-        self.assertEqual(sent['url'], 'http://ml/api/agents/re/models/')
+        self.assertEqual(sent['url'], 'http://ml/api/emergents/re/models/')  # /api/agents/... answers too, until the rename's last step
         self.assertEqual(sent['headers'], {'Authorization': f'Bearer {KEY}'})
         self.assertFalse(MoodAPI('http://ml', http=HTTP).report_models('re', REPORT))  # no key, no report
 

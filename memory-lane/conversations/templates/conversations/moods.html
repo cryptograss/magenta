@@ -1648,7 +1648,7 @@
       <span class="textsize">text size <button type="button" data-step="-1" aria-label="Smaller text">A−</button><span id="textSizeVal">100%</span><button type="button" data-step="1" aria-label="Larger text">A+</button></span>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an emergent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
       <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
-      <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: emergents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: agents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
+      <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: emergents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: emergents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
       <a href="/moods/settings/#voices" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
@@ -3450,7 +3450,7 @@
     const answers = t.reply ? `<a class="replyto" href="#m-${esc(t.reply.id)}" data-reveal="${esc(t.reply.id)}" title="Go to the message this replies to">`
       + (t.reply.event ? `↩ ${esc(t.reply.snippet || '(an event)')}</a>`
         : `↩ ${icon(t.reply.sender, human[t.reply.sender] !== false)}<b>${esc(shown(t.reply.sender))}</b> ${esc(t.reply.snippet || '(a message)')}</a>`) : '';
-    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}${tokenBadges(t.sender)}</span>${t.is_human ? '' : wakeMark(t.tools)}${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an agent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${onTidings}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
+    el.innerHTML = `<div class="who"><span class="name">${icon(t.sender, t.is_human)}${named}${tokenBadges(t.sender)}</span>${t.is_human ? '' : wakeMark(t.tools)}${tier}${phone}<a class="permalink" href="#m-${esc(t.id)}" title="This message's link: click to copy (paste it with an @mention to have an emergent read from here)"><time datetime="${t.created_at}">${stamp(t.created_at)}</time></a>${cont ? '' : edited}${how(t)}${signed}${onTidings}${cont ? '' : replyBtn + reactBtn + moreBtn}</div>`
       + answers
       + `<a class="permalink mini" href="#m-${esc(t.id)}" title="${esc(stamp(t.created_at))} · this message's link: click to copy">#</a>`
       + (voiceOn && viewer && !t.deleted ? speakButton(t, true) : '')
@@ -5011,7 +5011,7 @@
     const title = `Its instructions this turn: bundle ${x.id}, sha256 ${x.sha}…, `
       + (x.new ? 'new since its last turn in this Mood (✱).' : 'the same as its last turn in this Mood.')
       + ' Click to read them, rebuilt from PickiPedia and checked.';
-    return ` <span class="bundlemark" data-href="https://pickipedia.xyz/wiki/Special:AgentBundles/${esc(x.id)}" title="${esc(title)}">`
+    return ` <span class="bundlemark" data-href="https://pickipedia.xyz/wiki/Special:EmergentBundles/${esc(x.id)}" title="${esc(title)}">`
       + `${esc(x.sha)}${x.new ? '✱' : ''}</span>`;
   }
   // Which tools a turn had (mood_view.turn_tools): 👀 it could only look, 🔨 its full tools.
@@ -5467,7 +5467,7 @@
       const key = sub && sub.options && sub.options.applicationServerKey;
       if (sub && key && b64url(key) !== PUSH_KEY) { await sub.unsubscribe(); sub = null; }
       sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromB64url(PUSH_KEY) });
-      const body = { ...sub.toJSON(), people: !!tellAll.person, agents: !!tellAll.agent };  // every message from them too
+      const body = { ...sub.toJSON(), people: !!tellAll.person, emergents: !!tellAll.agent };  // every message from them too
       const r = await fetch('/api/push/subscribe/', { method: 'POST', body: JSON.stringify(body),
                                                      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() } });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
@@ -6606,7 +6606,7 @@
     if (a.catalog == null) return null;
     if (catalogs[agent] === undefined) {
       catalogs[agent] = 'loading';
-      fetch(`/api/agents/${encodeURIComponent(agent)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
+      fetch(`/api/emergents/${encodeURIComponent(agent)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
         .then(c => { catalogs[agent] = c; if (c) { agentsShown = ''; poll(false); } });
     }
     return catalogs[agent] === 'loading' ? null : catalogs[agent];

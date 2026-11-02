@@ -430,7 +430,7 @@ Every change is kept at the bottom, with who made it.</p>
   async function load() {
     state = await (await fetch('/api/settings/')).json();
     await Promise.all(state.agents.filter(a => catalogs[a] === undefined).map(a =>
-      fetch(`/api/agents/${encodeURIComponent(a)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
+      fetch(`/api/emergents/${encodeURIComponent(a)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
         .then(c => { catalogs[a] = c; })));
     render();
     loadVoices();

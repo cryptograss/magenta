@@ -155,7 +155,7 @@ class PollerRecordsTest(SimpleTestCase):
         given = poller.waker.options['system']
         self.assertNotIn(record['id'], given)
         self.assertTrue(poller.waker.woken[0][1].endswith(
-            f"It's block 26,260,600. Your instructions this turn are bundle {record['id']} (Special:AgentBundles)."))
+            f"It's block 26,260,600. Your instructions this turn are bundle {record['id']} (Special:EmergentBundles)."))
         self.assertTrue(record['session_id'])  # the session the turn ran as
         self.assertEqual(sorted(record['stamps']['greeting']['roster']), ['blu', 're'])  # magenta's list, less magent
         self.assertTrue(record['requested_at'] <= record['produced_at'] <= record['delivered_at'])
@@ -198,6 +198,9 @@ class BundleAPITest(TestCase):
         self.assertEqual(listed[0]['delivered_at'], '2026-10-24T06:30:03+00:00')
         self.assertEqual([p['revision'] for p in listed[0]['pages']], [101, 104, 103])
         self.assertEqual(self.client.get('/api/bundles/', {'agent': 'blu'}).json()['bundles'], [])
+        # the emergent rename's name for the same filter (the wiki's Special:EmergentBundles sends either)
+        self.assertEqual([b['id'] for b in self.client.get('/api/bundles/', {'emergent': 're'}).json()['bundles']], [record['id']])
+        self.assertEqual(self.client.get('/api/bundles/', {'emergent': 'blu'}).json()['bundles'], [])
         one = self.client.get(f'/api/bundles/{record["id"]}/').json()
         self.assertEqual(one['parts'], record['parts'])
 
@@ -258,7 +261,7 @@ class EveryMoodTest(SimpleTestCase):
             self.assertNotIn(gone, wake)
         self.assertIn('This turn has your full tools', wake)
         self.assertIn('[justin] hi', wake)
-        self.assertTrue(wake.endswith('(Special:AgentBundles).\n</mood-wake>'))  # inside the wake, last
+        self.assertTrue(wake.endswith('(Special:EmergentBundles).\n</mood-wake>'))  # inside the wake, last
         self.assertNotIn('\n\n\n', wake)
 
     def test_untrusted_it_is_left_out(self):

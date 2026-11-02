@@ -127,6 +127,12 @@ def parse_time(iso):
     return datetime.fromisoformat(iso.replace('Z', '+00:00'))
 
 
+def either(d, new, old):
+    """d[new], or d[old] from a memory-lane that still says the name before the emergent rename
+    (User:Magent/Emergent rename on PickiPedia); the rename's last step drops the old name."""
+    return d.get(new) if d.get(new) is not None else d.get(old)
+
+
 class MoodAPI:
     def __init__(self, base_url, http=requests, key=''):
         self.base = base_url.rstrip('/')
@@ -161,7 +167,7 @@ class MoodAPI:
         """Every Mood at a glance -- newest message, newest web post, typing,
         activity, and how `agent` is to carry itself there -- plus the scram
         and the day's budget."""
-        return self._get('/api/moods/pulse/', agent=agent)
+        return self._get('/api/moods/pulse/', emergent=agent, agent=agent)
 
     def recent(self, slug, limit=40):
         """A Mood's newest turns (and its title and description), for context."""
@@ -190,7 +196,7 @@ class MoodAPI:
     def agents(self):
         """Every agent magenta knows ('blu', 'magent', 're', ...), or None if it can't be asked."""
         try:
-            return list(self._get('/api/settings/').get('agents') or [])
+            return list(either(self._get('/api/settings/'), 'emergents', 'agents') or [])
         except Exception:  # noqa: BLE001 -- instructions without a roster, not a turn without instructions
             return None
 
@@ -208,7 +214,7 @@ class MoodAPI:
         """Tell memory-lane what the agent's harness can run, for the Mood's model menu."""
         if not self.key:
             return False
-        response = self.http.post(f'{self.base}/api/agents/{agent}/models/', json=catalog,
+        response = self.http.post(f'{self.base}/api/emergents/{agent}/models/', json=catalog,
                                   headers={'Authorization': f'Bearer {self.key}'}, timeout=60)
         if response.status_code != 200:  # memory-lane says why (never the key); say it here too
             logger.warning(f'reporting models: {response.status_code} {response.text[:200]}')
@@ -217,7 +223,7 @@ class MoodAPI:
     def interrupt(self, slug, agent):
         """{'scram', 'interrupt'}: whether an AZ5 is in force, and the newest
         time someone stopped `agent` in `slug` ({'by', 'at', ...} or None)."""
-        return self._get(f'/api/moods/{slug}/interrupt/', agent=agent)
+        return self._get(f'/api/moods/{slug}/interrupt/', emergent=agent, agent=agent)
 
     def plan(self, info):
         """Say how much of the Claude plan's rolling windows a turn found used (Claude Code's rate_limit_info)."""
@@ -1281,8 +1287,8 @@ def also_asked(owed, agent, page, may_wait=True, texts=None):
     With one of them taking it (TAKE_OFFER, taking_on), told so, and offered the wait on that one; else, when it
     may wait, offered the take too."""
     page = page or {}
-    working = {a.get('agent'): a.get('doing') for a in page.get('activities') or [] if a.get('agent')}
-    agents = set(page.get('agents') or {}) | set(working)
+    working = {either(a, 'emergent', 'agent'): a.get('doing') for a in page.get('activities') or [] if either(a, 'emergent', 'agent')}
+    agents = set(either(page, 'emergents', 'agents') or {}) | set(working)
     asked = []
     for turn in owed:
         for name in turn.get('mentions') or []:
@@ -1334,7 +1340,7 @@ SETTINGS_CHANGED = recovered('line', 'settings-changed')  # words: Cryptograss:E
 def settings_changed(agent, page, texts=None):
     """Lines telling a woken agent its settings here changed since its last word here, and who changed them
     (re, 24 Oct: told, with a place to object). `page`: the Mood's turns API."""
-    changed = (((page or {}).get('agents') or {}).get(agent) or {}).get('changed')
+    changed = ((either(page or {}, 'emergents', 'agents') or {}).get(agent) or {}).get('changed')
     if not changed or not changed.get('changes'):
         return []
     said = ', '.join(f"{SETTING_WORDS.get(c['key'], c['key'])} {c.get('was') or 'default'} → {c.get('now') or 'default'}"
@@ -2350,9 +2356,9 @@ class MoodPoller:
                                      + '; the recovery instructions stand in'])
             recovery = Path(__file__).with_name('recovery_instructions.md')
             words = recovery.read_text() if recovery.exists() else 'Your instructions could not be gathered.'
-            text = (f'<instructions agent="{self.agent}" mood="{slug}">\n<recovery>\n{words}\n'
+            text = (f'<instructions emergent="{self.agent}" mood="{slug}">\n<recovery>\n{words}\n'
                     '</recovery>\n</instructions>')
-            record = {'id': record_id, 'agent': self.agent, 'mood': slug, 'parts': [text], 'stamps': {},
+            record = {'id': record_id, 'emergent': self.agent, 'agent': self.agent, 'mood': slug, 'parts': [text], 'stamps': {},
                       'sha256': hashlib.sha256(text.encode()).hexdigest(), 'error': f'{type(e).__name__}: {e}'[:300]}
         block = self.api.block() if hasattr(self.api, 'block') else None
         record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit,
@@ -2376,7 +2382,7 @@ class MoodPoller:
         """The last line of a wake given instructions: the block, and which recorded bundle they are, so
         the agent can say. In the wake, not the instructions, which stay the same from turn to turn."""
         block = f"It's block {record['block']:,}. " if isinstance(record.get('block'), int) else ''
-        return f"\n\n{block}Your instructions this turn are bundle {record['id']} (Special:AgentBundles)."
+        return f"\n\n{block}Your instructions this turn are bundle {record['id']} (Special:EmergentBundles)."
 
 
     def other_agents(self, ttl=600):
@@ -2472,7 +2478,7 @@ class MoodPoller:
                 page = self.api.recent(slug, limit=1)
             except Exception:
                 page = {}
-        doing = {a.get('agent'): a.get('doing') for a in page.get('activities') or [] if a.get('agent')}
+        doing = {either(a, 'emergent', 'agent'): a.get('doing') for a in page.get('activities') or [] if either(a, 'emergent', 'agent')}
         typing = set(page.get('typing') or ())  # a person typing, or recording a memo, is at work too (Justin, 28 Oct)
         return [n for n in names if doing.get(n) not in (None, 'held') or n in typing]
 
@@ -2500,7 +2506,7 @@ class MoodPoller:
                     page = self.api.recent(slug, limit=60)
                 except Exception:
                     page = {}
-                doing = {a.get('agent'): a for a in page.get('activities') or [] if a.get('agent')}
+                doing = {either(a, 'emergent', 'agent'): a for a in page.get('activities') or [] if either(a, 'emergent', 'agent')}
                 said = [t for t in page.get('turns') or []
                         if t.get('sender') in names and parse_time(t['created_at']) > since and ended(t)]
                 busy = self.at_work(slug, names, page)
@@ -2532,7 +2538,7 @@ class MoodPoller:
 
     def handed_on(self, slug, said, names, page):
         """What an answer waited for handed on: agents it mentioned who are at work here now, to wait for in turn."""
-        agents = set(page.get('agents') or {})
+        agents = set(either(page, 'emergents', 'agents') or {})
         named = [n for t in said for n in t.get('mentions') or []
                  if n not in names and n != self.agent and n != t.get('sender') and n in agents]
         busy = [n for n in dict.fromkeys(named) if n in self.at_work(slug, named, page)]
@@ -3555,7 +3561,7 @@ def runner_key():
 
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('--agent', default='magent')
+    parser.add_argument('--emergent', '--agent', dest='agent', default='magent')  # --agent: the name before the rename
     parser.add_argument('--base', default=os.environ.get('MEMORY_LANE_URL', DEFAULT_BASE))
     parser.add_argument('--state', default='~/.local/state/magenta/mood_poller.json')
     parser.add_argument('--log', default='~/.local/state/magenta/mood_poller.log',
@@ -3607,7 +3613,7 @@ def build_parser():
                         help="The dials' texts from PickiPedia (Cryptograss:Moods/Dials); no: this file's own only")
     parser.add_argument('--wiki-rules-editors', default=','.join(EDITORS),
                         help="PickiPedia names whose revisions of that page count (comma-separated)")
-    parser.add_argument('--agent-wakes-per-hour', type=int, default=10,
+    parser.add_argument('--emergent-wakes-per-hour', '--agent-wakes-per-hour', dest='agent_wakes_per_hour', type=int, default=10,
                         help="Wakes per Mood per hour owed only to other agents' mentions")
     parser.add_argument('--only-poller', choices=('yes', 'no'), default='no',
                         help="This is the agent's only poller: a session of its not on this disk was lost "

@@ -17,6 +17,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .models import Mood, Setting, ThinkingEntity
 from .services import mood_auth
 from .services import settings as knobs
+from .services.emergent_names import named  # emergent or, until the rename's last step, agent
 
 
 def settings_state():
@@ -343,17 +344,17 @@ def api_settings(request):
         body = json.loads(request.body)
         key = str(body['key'])
     except (ValueError, KeyError, TypeError):
-        return JsonResponse({'error': 'expected {"key": ..., "value": ..., "mood": slug|null, "agent": name|null}'},
+        return JsonResponse({'error': 'expected {"key": ..., "value": ..., "mood": slug|null, "emergent": name|null}'},
                             status=400)
     mood = agent = None
     if body.get('mood'):
         mood = Mood.objects.filter(slug=body['mood']).first()
         if mood is None:
             return JsonResponse({'error': f"no Mood {body['mood']}"}, status=400)
-    if body.get('agent'):
-        agent = ThinkingEntity.objects.filter(name=body['agent'], is_biological_human=False).first()
+    if named(body):
+        agent = ThinkingEntity.objects.filter(name=named(body), is_biological_human=False).first()
         if agent is None:
-            return JsonResponse({'error': f"no agent {body['agent']}"}, status=400)
+            return JsonResponse({'error': f"no emergent {named(body)}"}, status=400)
     try:
         if body.get('all_emergents'):  # all emergents' setting in every Mood at once (e.g. mention-only)
             if mood is not None or key not in knobs.KNOBS:
@@ -443,7 +444,7 @@ def instructions_page(request, slug):
     from poller.mood_poller import wake_frames
 
     mood = Mood.by_slug_or_404(slug)
-    agent = request.GET.get('agent', 'magent').lower()
+    agent = named(request.GET, 'magent').lower()
     if not ThinkingEntity.objects.filter(name=agent, is_biological_human=False).exists():
         agent = 'magent'  # an agent's name only: it names the pages read
     resolved = knobs.resolve(slug, agent)
@@ -461,7 +462,7 @@ def instructions_page(request, slug):
             return "(the harness's default)"
         return value
     shown = [(knobs.KNOBS[k][1], k, plain(k, resolved[k])) for k in knobs.KNOBS]
-    bundles = 'https://pickipedia.xyz/wiki/Special:AgentBundles?' + urllib.parse.urlencode({'agent': agent, 'mood': slug})
+    bundles = 'https://pickipedia.xyz/wiki/Special:EmergentBundles?' + urllib.parse.urlencode({'emergent': agent, 'mood': slug})
     return render(request, 'conversations/mood_instructions.html', {
         'mood': mood, 'agent': agent, 'instructions': instructions_now(agent, slug), 'bundles_url': bundles,
         'settings': shown, 'frames': frames, 'standing': standing_instructions(), 'standing_source': STANDING_SOURCE,

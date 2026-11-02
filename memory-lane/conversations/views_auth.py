@@ -20,6 +20,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .models import Message, Mood, ThinkingEntity
 from .services import mood_auth
+from .services.emergent_names import named  # emergent or, until the rename's last step, agent
 from .services.redaction import redact
 
 MAX_CHARS = 20_000
@@ -1104,7 +1105,7 @@ def api_interrupt(request, slug):
     from .views_admin import locked_response
     mood = Mood.by_slug_or_404(slug)
     if request.method == 'GET':
-        return JsonResponse({'scram': knobs.scram(), 'interrupt': latest_interrupt(mood, request.GET.get('agent'))})
+        return JsonResponse({'scram': knobs.scram(), 'interrupt': latest_interrupt(mood, named(request.GET))})
     if locked_response():
         return locked_response()
     device, refused = mood_auth.key_device(request, 'stop an agent')
@@ -1811,9 +1812,9 @@ def api_narrate(request):
         except voice.VoiceError as e:
             return JsonResponse({'error': str(e)}, status=e.status)
         return JsonResponse({'url': url}) if url else JsonResponse({'error': 'only a finished or failed redeploy is said'}, status=400)
-    agent = ThinkingEntity.objects.filter(name=str(body.get('agent') or ''), is_biological_human=False).first()
+    agent = ThinkingEntity.objects.filter(name=str(named(body) or ''), is_biological_human=False).first()
     if mood is None or agent is None:
-        return JsonResponse({'error': 'no such Mood, or no such agent'}, status=404)
+        return JsonResponse({'error': 'no such Mood, or no such emergent'}, status=404)
     if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
     still = None
@@ -2064,7 +2065,7 @@ def api_push_subscribe(request):
         return JsonResponse({'error': 'not a push subscription'}, status=400)
     PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={
         'device': device, 'p256dh': p256dh, 'auth': auth,
-        'from_people': body.get('people') is True, 'from_agents': body.get('agents') is True})
+        'from_people': body.get('people') is True, 'from_agents': body.get('emergents', body.get('agents')) is True})
     # A browser has one subscription at a time: one it made before (under an old key, or
     # before its storage was cleared) can still be delivered to, and each would show the
     # same notice again (Justin, 19 Oct: three at once for one message).

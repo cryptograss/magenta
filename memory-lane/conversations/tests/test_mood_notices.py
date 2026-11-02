@@ -161,7 +161,7 @@ class NoticesTest(TestCase):
             page = self.client.get('/moods/m26/instructions/').content.decode()
         self.assertIn('Keep it short after midnight.', page)
         self.assertIn('none yet, which is ordinary', page)
-        self.assertIn('Special:AgentBundles?agent=magent&amp;mood=m26', page)
+        self.assertIn('Special:EmergentBundles?emergent=magent&amp;mood=m26', page)
         for title in ('full tools', 'look, not touch', 'nobody asks it', 'quiet a long while', 'The screen'):
             self.assertIn(title, page)
         self.assertIn('This turn has your full tools', page)  # the wake's own words

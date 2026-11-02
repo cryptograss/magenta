@@ -35,7 +35,8 @@ DIALS = 'Cryptograss:Moods/Dials'
 # The wake's own lines (Justin, 31 Oct: "get all these instructions out of the business logic"): on the page that
 # describes the wake, each beside what it's for. Dials keeps what tunes a setting (discretion, verbosity).
 WAKE = 'Cryptograss:Emergents/Wake'
-TEMPLATE = 'Sent to agents'
+TEMPLATE = 'Sent to emergents'
+TEMPLATES = (TEMPLATE, 'Sent to agents')  # both, while trusted revisions still say {{Sent to agents|...}} (the emergent rename)
 TTL = 300  # seconds between looks at a page
 HISTORY = 20  # revisions looked back through for the newest trusted one
 EDITORS = ('JMyles', 'SkymanJenkins')  # PickiPedia names whose revisions the agents are told
@@ -70,13 +71,14 @@ _SHOWN = re.compile(r'<!--.*?-->|<nowiki>.*?</nowiki>|<pre>.*?</pre>', re.S | re
 
 
 def blocks(wikitext):
-    """Every {{Sent to agents|...}} on a page, as {'dial', 'value', 'text'} (dial and value '' if not a dial's)."""
+    """Every {{Sent to emergents|...}} (or {{Sent to agents|...}}) on a page, in order, as {'dial', 'value', 'text'}
+    (dial and value '' if not a dial's)."""
     out, text, i = [], _SHOWN.sub('', wikitext or ''), 0
-    head = '{{' + TEMPLATE
     while True:
-        at = text.find(head, i)
-        if at < 0:
+        found = [(at, '{{' + name) for name in TEMPLATES for at in [text.find('{{' + name, i)] if at >= 0]
+        if not found:
             return out
+        at, head = min(found)
         depth, single, j = 0, 0, at
         while j < len(text):
             two = text[j:j + 2]

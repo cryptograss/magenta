@@ -479,7 +479,7 @@
     for (const h of state.harnesses || []) {
       if (catalogs[h.agent] === undefined) {
         catalogs[h.agent] = null;
-        fetch(`/api/agents/${encodeURIComponent(h.agent)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
+        fetch(`/api/emergents/${encodeURIComponent(h.agent)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
           .then(c => { if (c) { catalogs[h.agent] = c; render(); } });
       }
     }
