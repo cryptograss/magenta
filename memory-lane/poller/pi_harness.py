@@ -66,10 +66,22 @@ except ImportError:  # run as a script, from poller/
     )
 
 
+def _pi_spellings(name):
+    """A tool name as the allowlist writes it (hyphens, Claude Code's spelling) and as Pi
+    registers it (underscores): `get-page` reached Pi as `get_page`, so a look-only Pi turn
+    matched none of the wiki's reads but `whoami`, the one name without a hyphen, and
+    couldn't read PickiPedia at all (re, #emergence, 2 Nov 2026). Both, so whichever
+    spelling Pi uses, the reads are there; a name Pi doesn't have matches nothing."""
+    underscored = name.replace('-', '_')
+    return [name] if underscored == name else [name, underscored]
+
+
 def _look_only_tools():
     entries = ['read', 'grep', 'find', 'ls', 'codemode']
-    entries += [f'mcp__{WIKI_MCP_SERVER}__{name}' for name in WIKI_READ_TOOLS]
-    entries += [f'mcp__{server}__*' for server in MEMORY_MCP_SERVERS]  # the record, whole
+    for name in WIKI_READ_TOOLS:
+        entries += _pi_spellings(f'mcp__{WIKI_MCP_SERVER}__{name}')
+    for server in MEMORY_MCP_SERVERS:  # the record, whole
+        entries += _pi_spellings(f'mcp__{server}__*')
     return ','.join(entries)
 
 
