@@ -854,7 +854,7 @@ def api_clip_make(request):
 
 @require_GET
 def api_clips(request):
-    """The saved clips, by name, each with what it's for (Cryptograss:Clips): for the composer's /clips
+    """The saved clips, by name, each with what it's for (Magenta:Clips): for the composer's /clips
     suggestions and `magenta.sh clips list`."""
     from .services import clips
     said = clips.uses()

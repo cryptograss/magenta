@@ -6,7 +6,7 @@
     magenta.sh clips save talk.mp4 62.5 66 "That's the whole point." --name whole-point --mood jams
     magenta.sh clips save talk.mp4 62.5 66 "That's the whole point." --preview   # watch it, then save, retime or stop
     magenta.sh clips save talk.mp4 62.5 66 "That's the whole point." --out /tmp/clip.mp4   # cut only, to look first
-    magenta.sh clips list    # every clip, its link, and what it's for (Cryptograss:Clips)
+    magenta.sh clips list    # every clip, its link, and what it's for (Magenta:Clips)
 
 Times are seconds, or m:ss, or h:mm:ss, with decimals if you like. The clip is cut here, by ffmpeg, at
 up to 480 lines, with the subtitle burned in along the bottom as Yarn's are; a still from its middle
@@ -148,13 +148,13 @@ def preview(args, caption, name, tmp):
 
 
 def list_clips(base):
-    """Every clip, as the composer suggests them: its name, what it's for (Cryptograss:Clips), its link."""
+    """Every clip, as the composer suggests them: its name, what it's for (Magenta:Clips), its link."""
     found = call(base.rstrip('/') + '/api/clips/')
     clips = found.get('clips') or []
     width = max((len(c['name']) for c in clips), default=0)
     for c in clips:
         print(f"{c['name']:<{width}}  {c.get('for') or '(no use written yet)'}\n{'':<{width}}  {c.get('link', '')}")
-    print(f"\n{len(clips)} clips. What each is for: {found.get('page', 'Cryptograss:Clips')} on PickiPedia.")
+    print(f"\n{len(clips)} clips. What each is for: {found.get('page', 'Magenta:Clips')} on PickiPedia.")
 
 
 def main():

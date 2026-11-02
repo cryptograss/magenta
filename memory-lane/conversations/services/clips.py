@@ -140,7 +140,7 @@ def command(text, who):
     if not args or args == ['list']:
         said = uses()
         names = sorted(playable)
-        return None, ('Saved clips (what each is for: Cryptograss:Clips): '
+        return None, ('Saved clips (what each is for: Magenta:Clips): '
                       + ', '.join(f'{n} ({said[n]})' if n in said else n for n in names)) if names else \
             'No clips saved yet: /clips save <name> <yarn link>'
 
@@ -181,12 +181,12 @@ def command(text, who):
 
 
 # --- the clips page: what each clip is for (Justin, 1 Nov) ------------------------------------------------------
-# Cryptograss:Clips is where the team says what each clip is for: one row a clip, name || link || for. The
+# Magenta:Clips is where the team says what each clip is for: one row a clip, name || link || for. The
 # emergents are told it whole, as a layer of their bundle (poller/instructions.py), and the page here shows each
 # use beside its name (/clips, the composer's suggestions, `magenta.sh clips list`). A row whose name isn't saved
 # here yet plays too: the page can add a clip. Only a trusted revision counts, as for every page the emergents are
 # told: a link or a use is only as good as who wrote it.
-PAGE = 'Cryptograss:Clips'
+PAGE = 'Magenta:Clips'
 USES_KEY = 'clips-page'
 USES_FOR = 600       # seconds the page is kept
 USES_FAILED = 120    # and how soon a failed read is tried again

@@ -69,7 +69,7 @@ class ClipsLibraryTest(TestCase):
         self.assertEqual(self.say(justin, '/clips').json(), {'note': 'No clips saved yet: /clips save <name> <yarn link>'})
         self.say(justin, f'/clips save tony https://getyarn.io/yarn-clip/{CLIP}')
         self.say(justin, f'/clips save bus https://www.yarn.co/yarn-clip/{OTHER}')
-        self.assertEqual(self.say(justin, '/clips list').json(), {'note': 'Saved clips (what each is for: Cryptograss:Clips): bus, tony'})
+        self.assertEqual(self.say(justin, '/clips list').json(), {'note': 'Saved clips (what each is for: Magenta:Clips): bus, tony'})
         self.assertEqual(len(self.posted()), 2)  # the two saves; the listings posted nothing
         self.assertEqual([c['name'] for c in self.client.get('/api/clips/').json()['clips']], ['bus', 'tony'])
 
@@ -145,7 +145,7 @@ class ClipNamesTest(TestCase):
 
 
 class ClipsPageTest(TestCase):
-    """Cryptograss:Clips (Justin, 1 Nov): what each clip is for, at the page's newest trusted revision."""
+    """Magenta:Clips (Justin, 1 Nov): what each clip is for, at the page's newest trusted revision."""
 
     PAGE = '''Intro words.
 {| class="wikitable"

@@ -32,7 +32,7 @@ constraints. Within them, General Orders is the standing layer that binds.
 Then its layers, each a page on PickiPedia:
 
     standing   Cryptograss:Emergents/GeneralOrders         what every emergent keeps
-    clips      Cryptograss:Clips                           the team's clips, and what each is for
+    clips      Magenta:Clips                               the team's clips, and what each is for
     identity   Cryptograss:Emergents/<Name>/Instructions   who this emergent is, how it works
     moods      Cryptograss:Moods/Instructions              what it keeps in every Mood (with a Mood only)
     mood       Cryptograss:Moods/<slug>/Instructions       how it carries itself there
@@ -100,7 +100,7 @@ STANDING = 'Cryptograss:Emergents/GeneralOrders'
 # it is woken in one; until a trusted revision is here, the wake goes on carrying the old words.
 MOODS = 'Cryptograss:Moods/Instructions'
 # The team's clips and what each is for (Justin, 1 Nov): the one place an emergent learns when to play which.
-CLIPS = 'Cryptograss:Clips'
+CLIPS = 'Magenta:Clips'
 GREETING = 'Cryptograss:Emergents/Greeting'
 GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
 AGENT_TEMPLATE = 'Emergent'
