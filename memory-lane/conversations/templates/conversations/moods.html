@@ -35,6 +35,12 @@
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
+  /* The page itself never scrolls: only main (the thread), nav and the panels do. A phone's toolbars can make
+     100% a little taller than what shows; once the page slid by that much, every swipe went to the thread
+     and only a sliver of the top bar was left to drag it back. dvh is what shows; overscroll stops the
+     thread handing its swipes on to the page. */
+  html { overflow: hidden; overscroll-behavior: none; }
+  body { height: 100dvh; overflow: hidden; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 15px; line-height: 1.5; color: var(--ink); background: var(--bg);
@@ -599,7 +605,7 @@
   /* From emergents: hollow, so a person's solid badge stands out from it (Justin, 29 Oct). */
   .badge.bot, header .badge.bot { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
 
-  main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 0 0; container-type: inline-size; }  /* no bottom padding: it would hold the sticky footer off the bottom */
+  main { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 22px 0 0; container-type: inline-size; }  /* no bottom padding: it would hold the sticky footer off the bottom */
   /* --gutter: what the jump strip takes at the right (25px + margins). When the
      window leaves room beside the column the text never reaches it; when the
      column fills the width (a phone, zoomed in), its text stops short of it. */
@@ -7457,6 +7463,8 @@
   const unslide = () => { if (window.scrollY && document.activeElement?.tagName !== 'TEXTAREA') window.scrollTo(0, 0); };
   document.addEventListener('focusout', () => setTimeout(unslide, 300));
   window.visualViewport?.addEventListener('resize', unslide);
+  // And if it was left slid anyway, the next touch on the thread puts it back: no hunting for the bar's last pixel.
+  document.querySelector('main')?.addEventListener('touchstart', unslide, {passive: true});
   // On a phone: one line until there's more to say, growing with the text (to 40% of the screen).
   const phone = matchMedia(PHONE).matches;
   function fitSay() {
