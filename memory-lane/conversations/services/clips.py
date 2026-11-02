@@ -37,7 +37,12 @@ from django.core.cache import cache
 
 from .mood_view import own_clip, yarn_clip
 
-NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,34}$')
+NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,79}$')  # up to 80 (Justin, 1 Nov; was 35)
+
+
+def name_of(said):
+    """A clip's name as said: lower case, apostrophes dropped (Justin, 1 Nov: "yeah-that's-a-good-one")."""
+    return re.sub(r"['’]", '', said).lower()
 RESERVED = {'save', 'forget', 'list'}
 SAVED = re.compile(r'^/(?:clips|yarn) save (\S+) (\S+)$')
 FORGOTTEN = re.compile(r'^/(?:clips|yarn) forget (\S+)$')
@@ -46,7 +51,7 @@ COMMANDS = ('/clips', '/yarn')  # /yarn: what it was first called
 USAGE = '/clips <name> posts a saved clip; /clips save <name> <yarn link>; /clips forget <name>; /clips lists them'
 
 
-AGENT_PLAY = re.compile(r'^/clips? ([a-z0-9][a-z0-9_-]{0,34})$', re.I)
+AGENT_PLAY = re.compile(r"^/clips? ([a-z0-9][a-z0-9_'’-]{0,90})$", re.I)
 
 
 class Refused(ValueError):
@@ -66,8 +71,8 @@ def played_by(text):
         last = AGENT_PLAY.match(lines[-1].strip()) if len(lines) > 1 else None
         if last:
             played, first, rest = last, lines[-1], '\n'.join(lines[:-1])
-    found = library().get(played[1].lower()) if played else None
-    return f'/clips {played[1].lower()} {link_of(found)}' + (f'\n{rest.strip()}' if rest.strip() else '') if found else None
+    found = library().get(name_of(played[1])) if played else None
+    return f'/clips {name_of(played[1])} {link_of(found)}' + (f'\n{rest.strip()}' if rest.strip() else '') if found else None
 
 
 def clip_link(clip):
@@ -145,9 +150,9 @@ def command(text, who):
     if args[0].lower() == 'save':
         if len(args) != 3:
             raise Refused('/clips save <name> <yarn link>')
-        name = args[1].lower()
+        name = name_of(args[1])
         if not NAME.match(name) or name in RESERVED:
-            raise Refused('a name: letters, digits, - and _, up to 35, and not save, forget or list')
+            raise Refused('a name: letters, digits, - and _, up to 80, and not save, forget or list')
         link = args[2].rstrip('.,;:!?)')
         clip = yarn_clip(link)
         if not clip and not own_clip(link):
@@ -158,14 +163,14 @@ def command(text, who):
     if args[0].lower() == 'forget':
         if len(args) != 2:
             raise Refused('/clips forget <name>')
-        name = args[1].lower()
+        name = name_of(args[1])
         if name not in found:
             raise Refused(f'No clip called "{name}"')
         owner_check(name)
         return f'/clips forget {name}', f'Forgot "{name}"'
 
     if len(args) == 1:
-        name = args[0].lower()
+        name = name_of(args[0])
         if name not in found:
             raise Refused(f'No clip called "{name}": save one with /clips save {name} <yarn link>')
         return f'/clips {name} {link_of(found[name])}' + (f'\n{rest.strip()}' if rest.strip() else ''), ''

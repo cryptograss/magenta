@@ -132,3 +132,13 @@ class ClipsLibraryTest(TestCase):
         justin = self.client_for(self.justin)
         self.assertEqual(self.say(justin, '/yarn huh').status_code, 201)
         self.assertEqual(self.posted()[-1], f'/clips huh https://www.yarn.co/yarn-clip/{CLIP}')  # written the new way
+
+
+class ClipNamesTest(TestCase):
+    """Justin, 1 Nov: apostrophes dropped, names up to 80."""
+
+    def test_apostrophes_dropped_and_long_names(self):
+        from conversations.services.clips import NAME, name_of
+        self.assertEqual(name_of("Yeah-That's-A-Good-One"), 'yeah-thats-a-good-one')
+        self.assertTrue(NAME.match('a' * 80))
+        self.assertFalse(NAME.match('a' * 81))
