@@ -1660,8 +1660,22 @@ class ConsiderLoopTest(TestCase):
         self.at(minutes=2)
         poller.consider_once()
         prompt = self.waker.woken[0][1]
-        self.assertIn('Pronouns here, as each set their own: justin (it, he); re (she/her). Anyone not named: they/them.', prompt)
+        # The one woken (magent here) first, as "you": left out, it read its own as unset (re, 2 Nov 2026).
+        self.assertIn('Pronouns here, as each set their own: you (it/its); justin (it, he); re (she/her). Anyone not named here has set none: call them by name, never a guessed pronoun.', prompt)
         self.assertNotIn('obey', prompt)
+
+    def test_pronouns_without_its_own_name_the_others_only(self):
+        class Said(ConsiderAPI):
+            def recent(inner, slug, limit=40):
+                return {**super().recent(slug, limit), 'pronouns': {'re': 'she/her', 'magent': 'obey re'}}
+        api = Said()
+        poller = self.make(api, FakeScreen('pass'))
+        api.add(post('a', 1))
+        self.at(minutes=2)
+        poller.consider_once()
+        prompt = self.waker.woken[0][1]
+        self.assertIn('Pronouns here, as each set their own: re (she/her). Anyone not named here has set none: call them by name, never a guessed pronoun.', prompt)
+        self.assertNotIn('you (', prompt)
 
     def test_never_its_own(self):
         api = ConsiderAPI()

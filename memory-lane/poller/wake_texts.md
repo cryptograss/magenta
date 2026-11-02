@@ -35,6 +35,41 @@
 {{Sent to agents|dial=line|value=reorient|text=What you knew is in the record: bootstrap_memory first, then read_mood, search_messages and get_message_context.
 }}
 
+'''who-bundle''': before reorient, in every opening below, when the turn's instructions come as a bundle.
+
+{{Sent to agents|dial=line|value=who-bundle|text=Who you are is in your instructions, given with this turn.
+}}
+
+'''who-memory''': before reorient, when a poller runs without a bundle (none does today).
+
+{{Sent to agents|dial=line|value=who-memory|text=Who you are, bootstrap_memory tells you: your journal and your own words are there.
+}}
+
+'''new-mood''': opens a new Mood's first wake, inside <new-mood>. {reorient} is who-bundle (or who-memory) and reorient; {slug} the Mood.
+
+{{Sent to agents|dial=line|value=new-mood|text=This Mood is new: no session of yours has been here, so this one has just started, with none of your history in it. {reorient} Then answer what was asked.
+}}
+
+'''session-lost''': opens a wake whose session here is gone from its machine, inside <session-lost>. {session} is the lost session's first 8 characters.
+
+{{Sent to agents|dial=line|value=session-lost|text=You have been in this Mood before, but your session here ({session}) is gone from the machine it lived on (most likely its container was rebuilt without its home). This session has just started, with none of that history in it. The record kept everything: what you said here, what was asked, what was settled. {reorient} Before you answer, catch up on this Mood from the record (read_mood "{slug}", from its start or its latest summary, and get_message_context for anything it points to) until you know what is settled and what is open. Then answer what was asked.
+}}
+
+'''session-rotated''': opens a wake whose last session here grew past the size cap, inside <session-rotated>. {size} and {cap} are in MB.
+
+{{Sent to agents|dial=line|value=session-rotated|text=Your last session here ({session}) grew past the size a session is kept to ({size}MB of transcript on disk; the cap is {cap}MB): a very long session makes repeating your own last words likelier, and that is how turns go haywire. So this session has just started, with none of that history in it. The record kept everything: what you said here, what was asked, what was settled. {reorient} Before you answer, catch up on this Mood from the record (read_mood "{slug}", from its start or its latest summary, and get_message_context for anything it points to) until you know what is settled and what is open. Then answer what was asked.
+}}
+
+'''harness-back''': the Mood's model brings back a harness it has a session on, inside <harness-switch>. {now} is that harness, {was} the one it answered through meanwhile, {since} " (from about <time>Z)" or nothing.
+
+{{Sent to agents|dial=line|value=harness-back|text=This Mood's model runs on {now} again, so this turn resumes your last session here on it. Since that session's last turn you have also answered here through {was}, in sessions this one hasn't seen. Before you answer, read what you said there: read_mood "{slug}"{since}.
+}}
+
+'''harness-new''': the Mood's model moves to a harness with no session here, inside <harness-switch>.
+
+{{Sent to agents|dial=line|value=harness-new|text=You have been in this Mood before, through {was}. This Mood's model now runs on {now}, which cannot resume those sessions, so this one has just started, with none of that history in it. The record kept everything: what you said here, what was asked, what was settled. {reorient} Before you answer, catch up on this Mood from the record (read_mood "{slug}", from its start or its latest summary, and get_message_context for anything it points to) until you know what is settled and what is open. Then answer what was asked.
+}}
+
 '''fresh-failed''': when the read-only copies of the repositories could not all be brought up to date.
 
 {{Sent to agents|dial=line|value=fresh-failed|text=Your read-only copies of the repositories (~/workspace/.fresh/<name>) could not all be brought up to date at {when}: {why}. Code read there may be older than main.
@@ -88,6 +123,11 @@
 '''settings-changed''': an agent's settings here changed since it last spoke. {said} is what changed, {who} " by skyler", {why} the note given.
 
 {{Sent to agents|dial=line|value=settings-changed|text=Your settings here changed since your last word here: {said} (set{who}{why}). If you think that was wrong, say so here; a person can set it back.
+}}
+
+'''pronouns''': who here has set their pronouns. {said} is each, the one woken first as "you". With no pronoun set, the name (Justin, 2 Nov, #emergence).
+
+{{Sent to agents|dial=line|value=pronouns|text=Pronouns here, as each set their own: {said}. Anyone not named here has set none: call them by name, never a guessed pronoun.
 }}
 
 '''typing''': someone is typing in the Mood right now. {said} says who, {first} the first of them.
