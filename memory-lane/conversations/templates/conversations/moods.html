@@ -969,6 +969,10 @@
   .runhead .runfold { flex: 1; min-width: 0; overflow: hidden; display: flex; gap: 6px; align-items: baseline; text-align: left; border: 0;
                       background: none; padding: 5px 0 3px; font: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
   .runhead .runfold b { font-weight: 600; }
+  /* A round still going: lit in the accent, its edge pulsing (Justin, 2 Nov). */
+  .runhead.ongoing { background: var(--accent-soft); border-left: 3px solid var(--accent); border-radius: 4px; padding-top: 2px; padding-bottom: 2px;
+                     animation: roundlit 2s ease-in-out infinite; }
+  @keyframes roundlit { 50% { border-left-color: transparent; } }
   .runhead .caret { width: 10px; flex: none; }
   .runhead .preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font-size: 13.5px; }
   .runhead .runall { flex: none; border: 0; background: none; font: inherit; font-size: 12px; color: var(--accent);
@@ -5158,6 +5162,13 @@
     // One left inside a longer run (an earlier page joined to it) goes; the run's first speaks for it.
     container.querySelectorAll(':scope > .runhead').forEach(h => { if (!heads.has(h)) h.remove(); });
   }
+  function roundOngoing(head) {
+    let after = head._members[head._members.length - 1].nextElementSibling;
+    while (after && !after.classList.contains('turn')) after = after.nextElementSibling;
+    let busy = false;
+    try { busy = acts.some(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')); } catch (e) {}  // drawn before it's declared
+    return head._turns.some(b => !b._ended && isWorking(b)) || (!after && busy);
+  }
   function drawRunHead(head) {
     const turns = head._turns, shut = !!head._shut;
     const seq = [];
@@ -5174,9 +5185,13 @@
     const dots = head._members.reduce((n, el) => n + (el.classList.contains('quiet') ? el.querySelectorAll('.dot').length : 0), 0);
     const last = [...turns].reverse().find(b => b._final);
     const allOpen = !shut && turns.every(b => !b.classList.contains('folded'));
+    // Still going (Justin, 2 Nov): a turn of it at work, or it's the newest round and an emergent is at work now.
+    // Lit, and its count "so far".
+    const ongoing = roundOngoing(head);
+    head.classList.toggle('ongoing', ongoing);
     head.innerHTML = `<button type="button" class="runfold" aria-expanded="${!shut}" title="${shut ? 'Show these turns' : 'Fold these turns away'}">`
       + `<span class="caret">${shut ? '▸' : '▾'}</span><span>${who}</span>`
-      + `<span>· ${turns.length} turns${took ? ' · ' + esc(elapsed(Date.now() / 1000 - took)) : ''}`
+      + `<span>· ${turns.length} turns${ongoing ? ' so far' : ''}${took ? ' · ' + esc(elapsed(Date.now() / 1000 - took)) : ''}`
       + (priced ? ` · <span title="At API list prices, all these turns together">${esc(usdText(usd))}</span>` : '')
       + (dots ? ` · ${dots} quiet` : '')
       + (turns.some(b => !b._ended && isWorking(b)) ? ' · working…' : '') + '</span>'
@@ -7027,6 +7042,8 @@
     const turnsEl = document.getElementById('turns');
     const newest = turnsEl && turnsEl.lastElementChild;
     if (newest && newest.classList.contains('aturn')) drawBlockHead(newest);
+    const lastHead = turnsEl && [...turnsEl.querySelectorAll(':scope > .runhead')].pop();
+    if (lastHead && lastHead._turns && roundOngoing(lastHead) !== lastHead.classList.contains('ongoing')) drawRunHead(lastHead);  // lit while its round goes on
     const isHeld = a => a.doing === 'held' && !/a turn is under way/i.test(a.why || '');
     const working = acts.filter(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || ''));
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('busy', working.some(a => el.dataset.who === a.agent)));
