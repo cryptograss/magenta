@@ -49,6 +49,7 @@ the Mood's model: Anthropic's on Claude Code, other vendors' on Pi.
 """
 
 import argparse
+import collections
 import hashlib
 import json
 import logging
@@ -349,11 +350,50 @@ def end_process_group(proc):
 
 
 # Events worth posting to the Mood: what was said and done, and the end.
-STREAMED = ('assistant', 'user', 'result')
+STREAMED = ('assistant', 'user', 'result', 'usage')
 # System events worth posting too: a background task's end. A turn run with
 # -p stops whatever it left running when it ends, and says so only here,
 # after its result -- the transcript never hears of it.
 STREAMED_SYSTEM = ('task_notification',)
+
+
+class FinalUsage:
+    """A response's real usage, for the record, from Claude Code's partial messages.
+
+    Each assistant event of a stream carries its message's usage as it stood
+    when the response began: output tokens in single figures (8 recorded where
+    the transcript said 210, #interfaces 2 Nov). The transcript gets the final
+    count; a stream gets it only in the response's message_delta. This keeps
+    which uuids each response was posted as, and on its message_delta gives a
+    `usage` event naming them, which the Mood writes over theirs
+    (views_runner.final_usage).
+    """
+
+    FIELDS = ('input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens')
+
+    def __init__(self):
+        self.current = {}  # the response under way, by helper (None: the agent itself)
+        self.uuids = collections.defaultdict(list)  # a response's id: the uuids it was posted as
+
+    def said(self, event):
+        message = event.get('message') or {}
+        if message.get('id') and event.get('uuid'):
+            self.uuids[message['id']].append(event['uuid'])
+
+    def see(self, event):
+        """The `usage` event to post for a stream_event, or None."""
+        inner = event.get('event') or {}
+        helper = event.get('parent_tool_use_id')
+        if inner.get('type') == 'message_start':
+            self.current[helper] = (inner.get('message') or {}).get('id')
+            return None
+        if inner.get('type') != 'message_delta' or not isinstance(inner.get('usage'), dict):
+            return None
+        uuids = self.uuids.pop(self.current.get(helper), None)
+        usage = {k: inner['usage'][k] for k in self.FIELDS if isinstance(inner['usage'].get(k), int)}
+        if not uuids or 'output_tokens' not in usage:
+            return None
+        return {'type': 'usage', 'uuids': uuids, 'usage': usage, 'session_id': event.get('session_id')}
 
 
 class StreamPoster:
@@ -640,7 +680,12 @@ class ClaudeCodeWaker:
                '--system-prompt-snapshot', 'off',
                # Every event on stdout as it happens: what the runner posts to
                # the Mood, and the turn's exact end (the result event).
-               '--output-format', 'stream-json', '--verbose']
+               '--output-format', 'stream-json', '--verbose',
+               # Each response's own end (message_delta), with its real output tokens: the assistant events
+               # carry the count from its start, a handful of tokens (FinalUsage).
+               '--include-partial-messages',
+               # A helper's words and thinking too, not only its tool calls (#interfaces, 2 Nov).
+               '--forward-subagent-text']
         if full:
             # A wake only trusted people asked for: the agent's own tools and
             # MCP servers, as in its terminal (MoodPoller.full_tools_for).
@@ -706,6 +751,7 @@ class ClaudeCodeWaker:
         # per-turn ceiling is a 150-call budget that still ends the turn -- Claude Code's `-p`
         # has no stdin, so unlike pi there is no mid-turn warning here (pi_harness, 31 Oct).
         guard, killed = LoopGuard(), None
+        final = FinalUsage()
         try:
             for raw in proc.stdout:
                 heard[0] = time.monotonic()
@@ -715,6 +761,13 @@ class ClaudeCodeWaker:
                     continue
                 if not isinstance(event, dict):
                     continue
+                if event.get('type') == 'stream_event':
+                    # A response's pieces as they come: not posted, only its closing usage.
+                    event = final.see(event)
+                    if event is None:
+                        continue
+                elif event.get('type') == 'assistant':
+                    final.said(event)
                 if event.get('type') == 'assistant' and not event.get('parent_tool_use_id'):
                     blocks = (event.get('message') or {}).get('content') or []
                     # Same tripwire as pi_harness's LoopGuard: a machine attractor repeats the exact
