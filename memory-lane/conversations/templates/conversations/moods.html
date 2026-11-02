@@ -7036,7 +7036,7 @@
     // the button named only one of them).
     const several = working.length > 1;
     stopBtn.hidden = !(keyHolder && act && (act.doing !== 'held' || /a turn is under way/i.test(act.why || ''))) || several;
-    stopBtn.textContent = '■ stop';
+    stopBtn.textContent = act && act.agent ? `■ stop ${act.agent}` : '■ stop';  // which one (Justin, 2 Nov)
     const stopOne = a => keyHolder && several && (a.doing !== 'held' || /a turn is under way/i.test(a.why || ''))
       ? `<button type="button" class="stopone" data-agent="${esc(a.agent)}" title="Stop ${esc(a.agent)}" aria-label="Stop ${esc(a.agent)}">🛑</button>` : '';
     if (!acts.length) return;
