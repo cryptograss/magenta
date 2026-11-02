@@ -948,10 +948,19 @@
   .aturn.folded > .ahead { flex: 1; min-width: 0; }
   .aturn.folded > .speak.block { display: inline-block; flex: none; }
   .abody { padding-left: 10px; }
+  /* A turn's first words straight under its head: the head already says who, when and on what model, and links it.
+     Its thinking and steps, folded, ride at the right of the words rather than on a line above them. */
+  .ahead { padding-top: 4px; padding-bottom: 0; }
+  .abody > article.turn:first-of-type > .who { display: none; }
+  .abody > .turn { padding-top: 2px; padding-bottom: 6px; border-top: 0; }
+  .abody > .work:not(.open) { float: right; margin: 0 0 0 8px; position: relative; z-index: 1; }
+  .abody > .work:not(.open) > .work-head { font-size: 12px; padding: 0; }
+  .abody::after { content: ''; display: block; clear: both; }
+  .ahead .how, .ahead .spent { white-space: pre; margin-left: -6px; }  /* the · in each is its gap */
   /* The agents' turns between two people's words, under one heading (drawRuns): folded to it, or open. */
   .runhead { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 2px -10px; padding: 0 10px;
              border-top: 1px dashed var(--line); font-size: 12.5px; color: var(--muted); }
-  .runhead .runfold { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: baseline; text-align: left; border: 0;
+  .runhead .runfold { flex: 1; min-width: 0; overflow: hidden; display: flex; gap: 6px; align-items: baseline; text-align: left; border: 0;
                       background: none; padding: 5px 0 3px; font: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
   .runhead .runfold b { font-weight: 600; }
   .runhead .caret { width: 10px; flex: none; }
@@ -1572,6 +1581,9 @@
     #send svg { display: inline-block; }
     .hush:has(.fold[aria-expanded="true"]) { max-height: 40vh; overflow-y: auto; }
     .hush .agentgrid { overflow-x: auto; }
+    /* A turn's head, one line on a phone: who, when and what it cost; the rest on a wider screen. */
+    .ahead { white-space: nowrap; overflow: hidden; }
+    .ahead .how, .ahead .spent.extra, .ahead .whymark, .ahead .bundlemark, .ahead .cachemark { display: none; }
   }
   /* Signed in, you are who you are: no need to choose whose view to see. */
 </style>
@@ -5056,18 +5068,21 @@
     b.querySelector('.ahead').innerHTML = `<span class="caret">${open ? '▾' : '▸'}</span>`
       + `${icon(b._agent, false)}<b>${esc(b._agent)}</b>${wakeMark(b._tools)}${whyMark(b._why)}${cacheMark(b)}${open ? bundleMark(b) : ''}`
       + (b._firstId ? ` <a class="turnlink" href="/messages/${esc(b._firstId)}" data-href="#m-${esc(b._firstId)}" title="${esc(stamp(b._firstAt))}${began.est ? ' (about this block: its own is stamped a few minutes on)' : ''} · this turn's link: click to copy">${esc(began.text)}</a>` : '')
-      + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => ' · ' + esc(x)).join('')
-      + (open && added !== null ? ` · <span class="spent" title="${esc(addedTitle)}">+${esc(kTokens(added))} context</span>` : '')
-      + (b._priced ? ` · <span class="spent" title="${esc(costTitle)}">${esc(usdText(b._usd))}</span>` : '')
+      + [took ? elapsed(Date.now() / 1000 - took) : '', how].filter(Boolean).map(x => `<span class="how"> · ${esc(x)}</span>`).join('')
+      + (open && added !== null ? `<span class="spent extra" title="${esc(addedTitle)}"> · +${esc(kTokens(added))} context</span>` : '')
+      + (b._priced ? `<span class="spent" title="${esc(costTitle)}"> · ${esc(usdText(b._usd))}</span>` : '')
       + (!b._ended && isWorking(b) ? ' · working…' : '')
       + `<span class="preview">${esc(b._final)}</span>`;
     // The tokens themselves, on a line of their own while the turn is open.
     const spent = b._out || b._ctx ? `This turn: ${b._calls} call${b._calls === 1 ? '' : 's'} to the model. Wrote ${b._out.toLocaleString()} tokens; `
       + `read ${b._read.toLocaleString()} in all (${b._cached.toLocaleString()} from the cache, ${(b._read - b._cached).toLocaleString()} not), `
       + `each call reading its whole context again. Its context at the end: ${b._ctx.toLocaleString()}.` : '';
-    b.querySelector('.aspent').innerHTML = spent
-      ? `<span title="${esc(spent)}">${esc(kTokens(b._out))} out · ${esc(kTokens(b._read))} read (${esc(kTokens(b._cached))} from the cache) `
-        + `· ${esc(kTokens(b._ctx))} context · ${b._calls} call${b._calls === 1 ? '' : 's'}</span>` : '';
+    // On the head line, beside the cost: one line for a turn, however little it said (Justin, 2 Nov: "the
+    // metadata takes up more vertical height than the message"). The rest is its title.
+    const cost = b.querySelector('.ahead .preview');
+    if (spent && open) cost.insertAdjacentHTML('beforebegin', `<span class="spent extra" title="${esc(spent)}"> · ${esc(kTokens(b._out))} out`
+      + ` · ${b._calls} call${b._calls === 1 ? '' : 's'}</span>`);
+    b.querySelector('.aspent').innerHTML = '';
     // Its answer, read aloud without unfolding it (shown only while folded).
     if (voiceOn && viewer && b._ended && b._finalId && !b.querySelector(':scope > .speak.block')) {
       b.querySelector('.ahead').insertAdjacentHTML('afterend',
