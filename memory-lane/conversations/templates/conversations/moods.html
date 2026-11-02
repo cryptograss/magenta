@@ -637,6 +637,11 @@
   .mood-head .mdesc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mood-head .macts { flex: none; display: flex; align-items: baseline; gap: 6px; }
   .mood-head .macts a { color: var(--muted); }
+  /* The bar folded away: a handle at its middle, the Moods list's turned on its side. */
+  .headfold { display: flex; justify-content: center; padding: 2px 0; position: relative; z-index: 2; }
+  .headfold .headhandle { width: 38px; height: 12px; padding: 0; border: 1px solid var(--line); border-radius: 7px;
+                          background: var(--panel); color: var(--muted); font-size: 10px; line-height: 1; cursor: pointer; }
+  .headfold .headhandle:hover { color: var(--accent); border-color: var(--accent); }
   .mood-head .mbody { padding: 4px 0 6px 1.6em; }
   .mood-head .mbody[hidden] { display: none; }
   .mood-head .desc { color: var(--muted); margin: 0 0 4px; font-size: 13.5px; }
@@ -2632,8 +2637,14 @@
   // The head lives in #moodbar, outside the thread's own nodes (stash keeps those per Mood); drawn by showMoodName.
   const moodbar = document.getElementById('moodbar');
   let headOpen = !!store.get('headOpen', false);
+  // Folded away by default to a handle at its middle, as the Moods list's (Justin, 2 Nov: "completely
+  // collapsed by default, with just a handle in the center").
+  let headShown = !!store.get('headShown', false);
   function drawMoodbar(m) {
     if (!m) { moodbar.innerHTML = ''; return; }
+    const handle = `<button type="button" class="headhandle" aria-expanded="${headShown}" title="${headShown
+      ? 'Fold the bar away' : `#${esc(m.slug)}: its name, description and instructions`}" aria-label="${headShown ? 'Fold the Mood\'s bar away' : 'Show the Mood\'s bar'}">${headShown ? '⌃' : '⌄'}</button>`;
+    if (!headShown) { moodbar.innerHTML = `<div class="headfold">${handle}</div>`; return; }
     const block = m.eth_blockheight ? 'opened at block ' + m.eth_blockheight.toLocaleString() : '';
     const thread = threadLine(m);
     moodbar.innerHTML = `<div class="mood-head${headOpen ? ' open' : ''}">
@@ -2650,9 +2661,15 @@
         <div class="people" id="people">${(m.participants || []).map(n =>
           `<span class="who ${human[n] ? 'human' : 'agent'}" data-who="${esc(n)}"${human[n] ? '' : whoStyle(n)}>${icon(n)}${nameHtml(n)}${tokenBadges(n)}</span>`).join('')}</div>
       </div>
-    </div>`;
+    </div><div class="headfold">${handle}</div>`;
   }
   moodbar.addEventListener('click', e => {
+    if (e.target.closest('.headhandle')) {
+      headShown = !headShown;
+      store.set('headShown', headShown);
+      drawMoodbar(headMood);
+      return;
+    }
     if (!e.target.closest('.mbar') || e.target.closest('a, button:not(.mtoggle), .who.human')) return;  // a person's name opens their card
     headOpen = !headOpen;
     store.set('headOpen', headOpen);
