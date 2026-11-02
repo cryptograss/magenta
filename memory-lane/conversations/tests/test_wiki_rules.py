@@ -49,6 +49,15 @@ class ParseTest(TestCase):
         ending_blank = '{{Sent to agents|dial=line|value=others-asked|text=Others: {said}.{wait}}}'
         self.assertEqual(blocks(ending_blank)[0]['text'], 'Others: {said}.{wait}')
 
+    def test_both_template_names_in_page_order(self):
+        # The emergent rename: {{Sent to emergents|...}} is the name now; {{Sent to agents|...}} is read too while
+        # trusted revisions still say it, and a page may hold both while it's moved over.
+        page = ('{{Sent to agents|dial=discretion|value=reserved|text=Old name.}} '
+                '{{Sent to emergents|dial=verbosity|value=brief|text=New name.}} '
+                '{{Sent to agents|dial=line|value=x|text=Old again.}}')
+        self.assertEqual([b['text'] for b in blocks(page)], ['Old name.', 'New name.', 'Old again.'])
+        self.assertEqual([b['dial'] for b in blocks(page)], ['discretion', 'verbosity', 'line'])
+
     def test_examples_and_comments_are_never_sent(self):
         shown = ('Write one like this: <pre><nowiki>{{Sent to agents|dial=discretion|value=normal|text=an example}}'
                  '</nowiki></pre> <!-- {{Sent to agents|dial=discretion|value=normal|text=x}} -->')
