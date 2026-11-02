@@ -779,6 +779,31 @@ class RealProcessTest(TestCase):
         self.assertEqual([e['type'] for e in seen], ['system', 'assistant', 'result'])
         self.assertEqual(waker.last_result['total_cost_usd'], 0.02)
 
+    def test_a_response_s_final_usage_follows_its_words_and_its_pieces_are_not_posted(self):
+        # 2 Nov: the stream's assistant events carry a response's usage from its start (8 output tokens where
+        # the transcript said 210); its message_delta has the real count.
+        def part(inner, helper=None):
+            return {'type': 'stream_event', 'event': inner, 'parent_tool_use_id': helper, 'session_id': 's-new'}
+        stream = [part({'type': 'message_start', 'message': {'id': 'msg_1', 'usage': {'output_tokens': 8}}}),
+                  part({'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'hi'}}),
+                  {'type': 'assistant', 'uuid': 'a1', 'message': {'id': 'msg_1', 'content': [{'type': 'thinking', 'thinking': ''}]}},
+                  {'type': 'assistant', 'uuid': 'a2', 'message': {'id': 'msg_1', 'content': [{'type': 'text', 'text': 'hi'}]}},
+                  part({'type': 'message_delta', 'usage': {'output_tokens': 210, 'input_tokens': 3}}),
+                  part({'type': 'message_start', 'message': {'id': 'msg_2'}}),
+                  part({'type': 'message_delta', 'usage': {'output_tokens': 5}}),  # nothing posted for it: nothing to fix
+                  {'type': 'result', 'subtype': 'success', 'result': 'hi', 'total_cost_usd': 0.02}]
+        body = ''.join(f"echo '{json.dumps(e)}'\n" for e in stream)
+        seen = []
+        self.waker(body).wake('s-old', 'prompt', new_session_id='s-new', on_event=seen.append)
+        self.assertEqual([e['type'] for e in seen], ['assistant', 'assistant', 'usage', 'result'])
+        self.assertEqual(seen[2], {'type': 'usage', 'uuids': ['a1', 'a2'], 'session_id': 's-new',
+                                   'usage': {'output_tokens': 210, 'input_tokens': 3}})
+
+    def test_wakes_ask_for_partial_messages_and_helpers_words(self):
+        cmd = ClaudeCodeWaker(projects_dir=self.projects).command('s-old', 's-new', 'prompt')
+        self.assertIn('--include-partial-messages', cmd)
+        self.assertIn('--forward-subagent-text', cmd)
+
     def test_a_run_over_its_budget_still_says_what_it_said(self):
         # 2026-10-03: a cold read of a long session passed the $3 cap; the result
         # ended error_max_budget_usd with no text, and the silence was read as speech.

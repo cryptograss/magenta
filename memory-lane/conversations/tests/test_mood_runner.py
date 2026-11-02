@@ -57,6 +57,23 @@ class StreamTest(TestCase):
 
     # --- who may stream ------------------------------------------------------------
 
+    def test_a_response_s_final_usage_is_written_over_its_rows(self):
+        use, result, reply, done = self.turn()
+        self.post([use, result, reply])
+        ours = [use['uuid'], reply['uuid'], str(uuid.uuid4())]  # one not imported: left alone
+        self.assertEqual(self.post([{'type': 'usage', 'uuids': ours, 'usage': {'output_tokens': 210, 'input_tokens': 'x'}},
+                                    done]).status_code, 200)
+        rows = Message.objects.filter(id__in=[use['uuid'], reply['uuid']])
+        self.assertEqual({r.output_tokens for r in rows}, {210})
+        self.assertEqual({r.input_tokens for r in rows}, {3})  # not an int: not taken
+
+    def test_final_usage_touches_only_the_posting_agent_s_rows_in_its_session(self):
+        use, *_ = self.turn()
+        self.post([use])
+        self.session = str(uuid.uuid4())  # another session names it
+        self.post([{'type': 'usage', 'uuids': [use['uuid']], 'usage': {'output_tokens': 999}}])
+        self.assertEqual(Message.objects.get(id=use['uuid']).output_tokens, 40)
+
     def test_without_runner_keys_nobody_streams(self):
         with override_settings(MOOD_RUNNER_KEYS={}):
             self.assertEqual(self.post([]).status_code, 503)

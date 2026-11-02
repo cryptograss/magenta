@@ -101,6 +101,30 @@ def task_notice_line(event, now_iso):
                        'content': content})
 
 
+USAGE_FIELDS = ('input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens')
+
+
+def final_usage(session_id, agent, events):
+    """A response's real usage, over what its assistant events carried (the poller's FinalUsage): those
+    hold the count from the response's start, the output tokens in single figures. Only the posting
+    agent's rows in this session; a row not yet imported is left alone."""
+    for event in events:
+        if not isinstance(event, dict) or event.get('type') != 'usage':
+            continue
+        uuids, usage = event.get('uuids'), event.get('usage')
+        if not isinstance(uuids, list) or not isinstance(usage, dict):
+            continue
+        fields = {k: usage[k] for k in USAGE_FIELDS if isinstance(usage.get(k), int) and usage[k] >= 0}
+        ids = []
+        for u in uuids[:200]:
+            try:
+                ids.append(uuid.UUID(str(u)))
+            except ValueError:
+                pass
+        if fields and ids:
+            Message.objects.filter(id__in=ids, session_id=session_id, sender_id=agent).update(**fields)
+
+
 def finish_turn(mood, session_id, agent, result, asked=()):
     """The run is over: stamp the turn's last message, and keep what it cost; its answer to Tidings, if
     something there asked it (`asked`: what woke it)."""
@@ -203,6 +227,8 @@ def api_stream(request, slug):
     if re.fullmatch(r'[a-z]{2,12}', effort):
         Message.objects.filter(session_id=session_id, sender_id=agent, model_backend__isnull=False,
                                effort__isnull=True).update(effort=effort)
+
+    final_usage(session_id, agent, events)
 
     finished = False
     for event in events:
