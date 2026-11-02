@@ -110,11 +110,18 @@ class CommandTest(TestCase):
         # playwright: on a look-only turn they are not present, not merely denied.
         mcp = [t for t in tools.split(',') if t.startswith('mcp__')]
         from poller.wake_policy import WIKI_READ_TOOLS
-        self.assertEqual(sorted(mcp), sorted(
-            [f'mcp__pickipedia__{name}' for name in WIKI_READ_TOOLS]
-            + ['mcp__magenta-memory-v2__*']))
+        # Each in both spellings: the allowlist's hyphens and Pi's underscores. With
+        # hyphens alone, Pi matched only `whoami` and a look-only turn couldn't read
+        # the wiki (re, #emergence, 2 Nov 2026).
+        self.assertEqual(sorted(set(mcp)), sorted(
+            {f'mcp__pickipedia__{name}' for name in WIKI_READ_TOOLS}
+            | {f'mcp__pickipedia__{name.replace("-", "_")}' for name in WIKI_READ_TOOLS}
+            | {'mcp__magenta-memory-v2__*', 'mcp__magenta_memory_v2__*'}))
+        for read in ('get_page', 'search_page', 'smw_query', 'get_pages'):
+            self.assertIn(f'mcp__pickipedia__{read}', mcp)
         self.assertFalse([t for t in mcp if any(w in t for w in
                          ('create', 'update', 'delete', 'move', 'protect', 'upload', 'browser'))])
+        self.assertNotIn('mcp__pickipedia__update_page', mcp)
         self.assertEqual(cmd[cmd.index('--thinking') + 1], 'xhigh')
         self.assertNotIn('--tools', waker.command(None, 'new', full=True))
         self.assertEqual(cmd[1:3], ['--mode', 'rpc'])
