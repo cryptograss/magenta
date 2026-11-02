@@ -237,4 +237,6 @@ def refresh_releases(http=None):
             added += 1
     if added:
         cache.delete('embeds:releases')  # its player, at once: the release list is kept ten minutes
+        from conversations.services.tidings import releases_changed
+        releases_changed()  # and on Tidings
     return added
