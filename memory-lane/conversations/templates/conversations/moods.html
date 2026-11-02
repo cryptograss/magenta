@@ -407,6 +407,10 @@
   nav #archived summary { padding: 4px 16px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
                           color: var(--muted); cursor: pointer; }
   nav #archived a.mood { opacity: .75; }
+  nav #coldThreads { margin-top: 8px; }
+  nav #coldThreads summary { padding: 4px 16px; font-size: 11px; letter-spacing: .04em; color: var(--muted); cursor: pointer; }
+  nav #coldThreads a.mood { opacity: .7; }
+  nav #coldThreads a.mood .people-line { display: none; }
   nav a.mood .pin { font-size: 11px; margin-right: -4px; }
   nav a.mood {
     display: block; padding: 5px 12px 5px 24px; text-decoration: none; color: inherit;
@@ -982,6 +986,12 @@
   .event.wiki .wthumb img { height: 32px; max-width: 64px; object-fit: cover; border-radius: 3px; border: 1px solid var(--line);
                             vertical-align: middle; margin: 0 5px 0 1px; }
   .event code { font-size: 11.5px; }
+  /* Redeploys in a row: one line, each server and how many times; each redeploy's own line on a click. */
+  .event.deployrun summary { cursor: pointer; list-style: none; }
+  .event.deployrun summary::-webkit-details-marker { display: none; }
+  .event.deployrun summary::after { content: ' ▸'; }
+  .event.deployrun details[open] > summary::after { content: ' ▾'; }
+  .event.deployrun .each .event { margin: 3px 0; }
   /* A link's preview card (services/unfurl.py): its picture at the left, its title and a line. */
   .turn .cards { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; max-width: 520px; }
   .turn .card { display: flex; gap: 10px; text-decoration: none; color: var(--ink); border: 1px solid var(--line);
@@ -1248,7 +1258,14 @@
           text-align: center; cursor: pointer; }
   .tdot.on, .tdot:hover { background: var(--who, var(--agent)); color: #fff; }
   .tdot.empty { min-width: 12px; width: 12px; height: 12px; padding: 0; }
-  .work-head .what { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .work-head .what { display: none; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .work.open > .work-head .what { display: flex; flex: 1; min-width: 0; }
+  .work-head .brief { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .work-head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; max-width: 100%; }
+  .work-head .tally, .work.open > .work-head .brief { display: none; }
+  .work.mid > .work-head .tally { display: flex; flex-wrap: wrap; gap: 3px 10px; flex-basis: 100%; padding-left: 1.4em; font-size: 12.5px; }
+  .work-head .tally b { font-weight: 600; color: var(--who, var(--agent)); font-variant-numeric: tabular-nums; }
+  .work.mid > .work-head .caret { transform: rotate(45deg); }
   .work .steps .trow { margin: 4px 0; }
   /* What the agent said on its way to a tool call (stop: tool_use): a lead-in, folded with the steps it led to,
      so a turn reads as one answer, not two near-identical posts (Justin and re, 27 Oct). */
@@ -2096,11 +2113,26 @@
   }
 
   const foldedThreads = new Set(store.get('foldedThreads', []));
-  let archivedOpen = false;
+  let archivedOpen = false, coldOpen = false;
+  const COLD_BLOCKS = 15000;
   function renderNav() {
+    const recent = {};
+    for (const m of moods) {
+      let heard = '';
+      try { heard = (liveData[m.slug] || {}).said || ''; } catch (e) {}  // words only: not an /announce, landing everywhere  // drawn before the live news is declared
+      const at = [m.active_at, m.last_at, heard].filter(Boolean).sort().pop() || '';
+      for (let x = m, n = 0; x && n < 50; x = moods.find(y => y.slug === x.thread_of), n++)
+        if (at > (recent[x.slug] || '')) recent[x.slug] = at;
+    }
+    // A thread nobody has said a word in for 15,000 blocks (about two days) goes down to "quiet, cold
+    // threads" at the bottom of the list, folded (Justin, 2 Nov). Its Mood keeps its place.
+    let blockSeconds = 12;
+    try { if (blockAnchor && blockAnchor.seconds) blockSeconds = blockAnchor.seconds; } catch (e) {}  // drawn before it's declared
+    const coldBefore = new Date(Date.now() - COLD_BLOCKS * blockSeconds * 1000).toISOString();
+    const isCold = m => !!m.thread_of && !m.archived && !m.pinned && !!recent[m.slug] && recent[m.slug] < coldBefore;
     const threadsByParent = {};
     for (const m of moods) {
-      if (m.thread_of) threadsByParent[m.thread_of] = (threadsByParent[m.thread_of] || 0) + 1;
+      if (m.thread_of && !m.archived && !isCold(m)) threadsByParent[m.thread_of] = (threadsByParent[m.thread_of] || 0) + 1;
     }
     const cur = moods.find(x => x.slug === current);
     if (cur && cur.thread_of && foldedThreads.has(cur.thread_of)) {
@@ -2141,14 +2173,6 @@
     // Each level by recent activity, as the server orders the list, but with what's come since (liveData's newest
     // word in each Mood): a Mood or thread is as recent as the newest word in it or any thread under it (Justin, 1
     // Nov: "threads need to be sorted by recent activity, just as moods are"). Pinned still first.
-    const recent = {};
-    for (const m of moods) {
-      let heard = '';
-      try { heard = (liveData[m.slug] || {}).said || ''; } catch (e) {}  // words only: not an /announce, landing everywhere  // drawn before the live news is declared
-      const at = [m.active_at, m.last_at, heard].filter(Boolean).sort().pop() || '';
-      for (let x = m, n = 0; x && n < 50; x = moods.find(y => y.slug === x.thread_of), n++)
-        if (at > (recent[x.slug] || '')) recent[x.slug] = at;
-    }
     const byRecent = (a, b) => (!!b.pinned - !!a.pinned) || (recent[b.slug] || '').localeCompare(recent[a.slug] || '');
     const nest = list => {
       const here = new Set(list.map(m => m.slug)), out = [];
@@ -2156,16 +2180,23 @@
       list.filter(m => !m.thread_of || !here.has(m.thread_of)).sort(byRecent).forEach(m => add(m, 0));
       return out;
     };
-    const live = nest(moods.filter(m => !m.archived)), archived = nest(moods.filter(m => m.archived));  // pinned come first, from the server
-    // The one open stays in view: an archived Mood opened shows its fold open.
+    const live = nest(moods.filter(m => !m.archived && !isCold(m))), archived = nest(moods.filter(m => m.archived));  // pinned come first, from the server
+    const cold = nest(moods.filter(isCold));
+    // The one open stays in view: an archived Mood or a cold thread opened shows its fold open.
     const open = archivedOpen || archived.some(([m]) => m.slug === current);
+    const coldOpenNow = coldOpen || cold.some(([m]) => m.slug === current);
+    const parentTitle = m => (moods.find(x => x.slug === m.thread_of) || {}).title || m.thread_of;
     document.getElementById('moodList').innerHTML =
       `<div class="label">Moods${hasAnyThreads ? `<button type="button" id="foldAllThreads" title="${allFolded ? 'Unfold all threads' : 'Fold all threads'}">${allFolded ? 'unfold all' : 'fold all'}</button>` : ''}${keyHolder ? '<button type="button" id="newMood" title="Start a Mood" aria-label="Start a Mood">＋</button>' : ''}</div>`
       + live.map(item).join('')
+      + (cold.length ? `<details id="coldThreads"${coldOpenNow ? ' open' : ''}><summary title="Threads with no word in them for ${COLD_BLOCKS.toLocaleString()} blocks">Quiet, cold threads (${cold.length})</summary>`
+         + cold.map(([m, depth]) => item([m, depth]).replace('<div class="meta">', `<div class="meta"><span class="of">in ${esc(parentTitle(m))}</span> · `)).join('') + '</details>' : '')
       + (archived.length ? `<details id="archived"${open ? ' open' : ''}><summary>Archived (${archived.length})</summary>`
          + archived.map(item).join('') + '</details>' : '');
     const fold = document.getElementById('archived');
     if (fold) fold.addEventListener('toggle', () => { archivedOpen = fold.open; });
+    const coldFold = document.getElementById('coldThreads');
+    if (coldFold) coldFold.addEventListener('toggle', () => { coldOpen = coldFold.open; });
     markLive();
     if (navReveal === current) revealInNav();
   }
@@ -3726,7 +3757,7 @@
       ? `<a class="permalink" href="#m-${esc(s.id)}" title="This step's link: click to copy it"><time datetime="${esc(s.created_at)}">${stamp(s.created_at)}</time></a>`
       : `<time datetime="${esc(s.created_at)}">${stamp(s.created_at)}</time>`;
     el.innerHTML = `<div class="who"><span class="name">${icon(s.sender, false)}${esc(s.sender)}</span>${when}${how(s)}</div>`
-      + `<button class="work-head" type="button"><span class="caret">▸</span><span class="what"></span></button><div class="steps"></div>`;
+      + `<button class="work-head" type="button"><span class="caret">▸</span><span class="brief"></span><span class="tally"></span><span class="what"></span></button><div class="steps"></div>`;
     container.appendChild(el);
     return el;
   }
@@ -3756,6 +3787,26 @@
     });
     said();
     el.querySelector('.what').innerHTML = parts.join('');
+    // Three levels, a click each (Justin, 2 Nov: a run "sometimes goes on for pages"): folded, one short line
+    // of how much; then each tool and how many times, and the thinking; open, all of it in order, and the steps.
+    const rows = [...el.querySelector('.steps').children];
+    const steps = rows.filter(r => r.classList.contains('step'));
+    const thoughts = rows.filter(r => r.classList.contains('trow') && !r.querySelector('.harness'));
+    const leads = rows.filter(r => r.classList.contains('lead')).length;
+    const words = thoughts.reduce((n, r) => n + (Number(r.dataset.words) || 0), 0);
+    const ats = rows.map(r => r.dataset.at).filter(Boolean).sort();
+    const mins = ats.length > 1 ? Math.round((new Date(ats[ats.length - 1]) - new Date(ats[0])) / 60000) : 0;
+    const counted = (n, one) => `${n.toLocaleString()} ${one}${n === 1 ? '' : 's'}`;
+    el.querySelector('.brief').textContent = [
+      steps.length ? counted(steps.length, 'tool call') : '',
+      thoughts.length ? `${counted(thoughts.length, 'thought')}${words ? ` (${kTokens(words)} words)` : ''}` : '',
+      leads ? `${leads} said on the way` : '',
+      mins ? `${mins}m` : ''].filter(Boolean).join(' · ') || 'working';
+    const tools = {};
+    steps.forEach(r => { tools[r.dataset.verb] = (tools[r.dataset.verb] || 0) + 1; });
+    el.querySelector('.tally').innerHTML = Object.entries(tools).sort((a, b) => b[1] - a[1])
+      .map(([v, n]) => `<span class="t">${esc(v)}${n > 1 ? ` <b>×${n}</b>` : ''}</span>`).join('')
+      + (thoughts.length ? `<span class="t">∴ <b>${thoughts.length}</b> thought${thoughts.length === 1 ? '' : 's'}</span>` : '');
   }
   function wordsIn(text) { return (text || '').split(/\s+/).filter(Boolean).length; }
   // A thought among the steps, opened or closed (from its ring there, or its ring in the folded line).
@@ -3767,7 +3818,7 @@
     const work = workEl(s, container);
     const row = document.createElement('div');
     row.className = 'step';
-    row.dataset.id = s.id; row.dataset.verb = s.verb;
+    row.dataset.id = s.id; row.dataset.verb = s.verb; row.dataset.at = s.created_at || '';
     row.innerHTML = `<button class="step-head" type="button"><code>${esc(s.tool.replace(/^mcp__/, ''))}</code><span class="sum">${esc(s.summary || s.verb)}</span></button><div class="step-detail"></div>`;
     work.querySelector('.steps').appendChild(row);
     if (s.images && s.images.length) {
@@ -3811,8 +3862,11 @@
     if (head) {
       const ring = e.target.closest('.tdot');
       const row = ring && head.parentElement.querySelector('.steps').children[+ring.dataset.i];
-      if (row) { head.parentElement.classList.add('open'); pressThought(row, true); }  // straight to that thought
-      else head.parentElement.classList.toggle('open');
+      const work = head.parentElement;
+      if (row) { work.classList.add('open'); pressThought(row, true); }  // straight to that thought
+      else if (work.classList.contains('open')) work.classList.remove('open', 'mid');  // all the way back
+      else if (work.classList.contains('mid')) { work.classList.remove('mid'); work.classList.add('open'); }
+      else work.classList.add('mid');
       return;
     }
     const ring = e.target.closest('.steps .tdot');
@@ -3840,6 +3894,7 @@
     const work = workEl(t, container);
     const row = document.createElement('div');
     row.className = 'lead';
+    row.dataset.at = t.created_at || '';
     row.dataset.text = (t.text || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     prev = null;
     row.appendChild(turnEl(t, isNew));
@@ -3861,6 +3916,7 @@
       const words = wordsIn(t.text);
       const row = document.createElement('div');
       row.className = 'trow';
+      row.dataset.words = words; row.dataset.at = t.created_at || '';
       const what = words ? `${words.toLocaleString()} word${words === 1 ? '' : 's'}` : 'no words kept';
       row.innerHTML = (t.harness ? '<span class="harness" aria-hidden="true">⚙️</span>' : '')
         + `<button type="button" class="tdot${words ? '' : ' empty'}" title="${esc(`${said} · ${what} · ${stamp(t.created_at)}`)}"`
@@ -3888,9 +3944,9 @@
   // replied to, as a message can: its line has its anchor, and ↩ for anyone signed in.
   function addEvent(e, container) {
     const before = container.lastElementChild;
-    drawEvent(e, container);
-    const el = container.lastElementChild;
-    if (!el || el === before || !e.id || el.id) return;  // a run folded into the line before keeps that one's
+    const made = drawEvent(e, container);  // a redeploy's own line, even inside a run of them
+    const el = made || container.lastElementChild;
+    if (!el || (!made && el === before) || !e.id || el.id) return;  // a run folded into the line before keeps that one's
     el.id = 'm-' + e.id;
     el.dataset.id = e.id;
     if (viewer) el.insertAdjacentHTML('beforeend', `<button type="button" class="replybtn event-reply" data-reply="${esc(e.id)}" title="Reply to this" aria-label="Reply to this">↩</button>`);
@@ -4165,10 +4221,12 @@
     const by = e.by ? ` · by ${deployer(e.by)}` : '';
     const log = deployLog(e.note);
     const started = e.state === 'started' ? null
-      : [...container.querySelectorAll(':scope > .event.started')].filter(x => x.dataset.server === (e.server || '')).pop();
+      : [...container.querySelectorAll(':scope > .event.started, :scope > .deployrun .event.started')]
+          .filter(x => x.dataset.server === (e.server || '')).pop();
     const line = started || el;
-    line.className = 'event ' + (e.state || '');
+    line.className = 'event deploy ' + (e.state || '');
     line.dataset.server = e.server || '';
+    if (!started) line.dataset.at = e.created_at || '';
     const unheard = e.state === 'started' && Date.now() - new Date(e.created_at).getTime() > DEPLOY_PATIENCE_MS;
     line.innerHTML = e.state === 'started'
       ? (unheard ? `⚙ ${server} began redeploying${by}${commit}; no word of how it ended · ${esc(stamp(e.created_at))}`
@@ -4176,9 +4234,42 @@
       : e.state === 'failed' ? `✗ ${server} redeploy failed${took(e.took)}${by}${log} · ${esc(stamp(e.created_at))}`
       : `✓ ${server} redeployed${took(e.took)}${commit}${by}${log} · ${esc(stamp(e.created_at))}`;
     if (unheard) line.classList.remove('started');  // over, presumed: a finish that comes late gets a line of its own
-    if (!started) container.appendChild(line);
+    if (!started) deployInRun(line, container);
+    const run = line.closest('.deployrun');
+    if (run) sayRun(run);
     prev = null;
     refreshServers(true);  // the dots, now
+    return started ? null : line;
+  }
+  // Redeploys in a row, nothing said between them, fold into one line: how many times each server
+  // was redeployed, and each line a click away (Justin, 2 Nov: "collapse them, and just say how many
+  // times each server was deployed in the header").
+  function deployInRun(line, container) {
+    const last = container.lastElementChild;
+    if (last && last.classList.contains('deployrun')) { last.querySelector('.each').appendChild(line); return; }
+    if (!last || !last.classList.contains('deploy')) { container.appendChild(line); return; }
+    const run = document.createElement('div');
+    run.className = 'event deployrun';
+    run.innerHTML = '<details><summary></summary><div class="each"></div></details>';
+    container.replaceChild(run, last);
+    run.querySelector('.each').append(last, line);
+  }
+  function sayRun(run) {
+    const lines = [...run.querySelectorAll('.each > .event.deploy')];
+    const times = {};
+    lines.forEach(l => { times[l.dataset.server] = (times[l.dataset.server] || 0) + 1; });
+    const failed = lines.filter(l => l.classList.contains('failed')).length;
+    const going = lines.filter(l => l.classList.contains('started')).map(l => l.dataset.server);
+    run.classList.toggle('failed', failed > 0 && !going.length);
+    const from = lines[0].dataset.at, to = lines[lines.length - 1].dataset.at;
+    const sameDay = new Date(from).toDateString() === new Date(to).toDateString();
+    const span = from === to ? stamp(to) : `${stamp(from)} – ${sameDay
+      ? new Date(to).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : stamp(to)}`;
+    run.querySelector('summary').innerHTML = `${going.length ? '⚙' : failed ? '✗' : '✓'} ${lines.length} redeploys: `
+      + Object.entries(times).map(([sv, n]) => `<b>${esc(sv || 'a server')}</b>${n > 1 ? ` ×${n}` : ''}`).join(', ')
+      + (failed ? ` · ${failed} failed` : '')
+      + (going.length ? ` · ${going.map(esc).join(', ')} redeploying…` : '')
+      + ` · ${esc(span)}`;
   }
   const DEPLOY_PATIENCE_MS = 90 * 60 * 1000;
   // Who deployed, by their PickiPedia name and linked to their page: a deploy script
