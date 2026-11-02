@@ -327,12 +327,116 @@ def picture_scan(limit=PICTURES):
     return out
 
 
+# --- releases: what delivery-kid has pinned, beside the pictures (Justin, 2 Nov: "the latest Releases on
+# tidings, interspersed with latest uploaded photos") ----------------------------------------------------------
+#
+# A Release: page is made once, when a release is finalized (by Blue Railroad Imports, for delivery-kid), so
+# the wiki's page-creation log is its release date: kept for good, unlike recent changes (90 days). Its YAML,
+# read for the lot in one more ask, says what it is and who uploaded it. A track a record was split into is
+# the record's, not news of its own, and one record would bury the pictures under its tracks; a release
+# marked deleted or unpinned isn't offered. Asked of the wiki at most every RELEASES_KEPT (a new release
+# clears it: wiki_feed.refresh_releases); a wiki that doesn't answer in time is no releases, never a broken
+# page, and isn't asked again for RELEASES_MISS.
+
+RELEASES = 12
+RELEASES_KEPT = 600   # seconds
+RELEASES_MISS = 60
+RELEASE_GATEWAY = 'https://ipfs.delivery-kid.cryptograss.live/ipfs'
+NOT_NEWS = {'track'}
+
+
+def releases_changed():
+    from django.core.cache import cache
+    cache.delete('tidings:releases')
+
+
+def release_tidings(limit=RELEASES, http=None):
+    """release_scan, kept RELEASES_KEPT (RELEASES_MISS if the wiki didn't answer)."""
+    from django.core.cache import cache
+    found = cache.get('tidings:releases')
+    if found is None:
+        try:
+            found = release_scan(limit, http=http)
+            cache.set('tidings:releases', found, RELEASES_KEPT)
+        except Exception:
+            found = []
+            cache.set('tidings:releases', found, RELEASES_MISS)
+    return found[:limit]
+
+
+def _cid(title):
+    cid = title.partition(':')[2].strip().replace(' ', '_')
+    return cid.lower() if cid[:4] == 'Bafy' else cid  # base32 CIDv1: MediaWiki capitalised it
+
+
+def release_scan(limit=RELEASES, http=None):
+    """The newest `limit` releases, newest first: {'cid', 'title', 'kind', 'by', 'at', 'page', 'poster'}."""
+    import requests
+    import yaml
+    from django.utils.dateparse import parse_datetime
+    http = http or requests
+    api, headers = f'{pickipedia_url()}/api.php', {'User-Agent': 'memory-lane (magenta; tidings)'}
+    made = http.get(api, timeout=4, headers=headers, params={
+        'action': 'query', 'list': 'logevents', 'letype': 'create', 'lenamespace': 3004,
+        'leprop': 'title|timestamp|user', 'lelimit': 50, 'format': 'json'}).json()['query']['logevents']
+    made = [e for e in made if (e.get('title') or '').startswith('Release:') and '/' not in e['title']]
+    if not made:
+        return []
+    pages = http.get(api, timeout=4, headers=headers, params={
+        'action': 'query', 'prop': 'revisions', 'rvprop': 'content', 'rvslots': 'main', 'format': 'json',
+        'formatversion': 2, 'titles': '|'.join(dict.fromkeys(e['title'] for e in made))}).json()['query']['pages']
+    yamls = {}
+    for page in pages:
+        try:
+            yamls[page['title']] = yaml.safe_load(page['revisions'][0]['slots']['main']['content'])
+        except Exception:
+            continue
+    out, seen = [], set()
+    for event in made:
+        title = event['title']
+        data = yamls.get(title)
+        if title in seen or not isinstance(data, dict):
+            continue
+        seen.add(title)
+        kind = str(data.get('release_type') or '').strip().lower()
+        if kind in NOT_NEWS or data.get('delete') or data.get('unpin'):
+            continue
+        file_type = str(data.get('file_type') or '').lower()
+        video = kind in ('video', 'blue-railroad') or file_type == 'video' or file_type.startswith('video/')
+        cid = _cid(title)
+        out.append({
+            'cid': cid,
+            'title': str(data.get('title') or '').strip()[:200] or cid,
+            'kind': kind or ('video' if video else 'release'),
+            'video': video,
+            'by': str(data.get('uploaded_by') or '').removeprefix('wiki:')[:80],
+            'at': parse_datetime(event.get('timestamp') or ''),
+            'page': f"{pickipedia_url()}/wiki/{title.replace(' ', '_')}",
+            # Pinned beside the stream since delivery-kid made posters; older ones have none, and say so by hiding it.
+            'poster': f'{RELEASE_GATEWAY}/{cid}/poster.jpg' if video else '',
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
+def stream(pictures, releases):
+    """The pictures and releases as one list, newest first: each {'kind': 'picture'|'release', 'at', 'item'}."""
+    from datetime import datetime, timezone as tz
+    never = datetime.min.replace(tzinfo=tz.utc)
+    both = ([{'kind': 'picture', 'at': p['at'], 'item': p} for p in pictures]
+            + [{'kind': 'release', 'at': r['at'], 'item': r} for r in releases])
+    return sorted(both, key=lambda entry: entry['at'] or never, reverse=True)
+
+
 def tidings_state(viewer=None, order='top'):
     """What /moods/tidings/ shows: the links promoted from the Moods (services/tiding_links.py), then the
-    pictures. (Each picture's `preview` is its small form for the gallery; see views_moods.media_preview.)
+    pictures and the latest releases, which the page shows as one stream (`stream`). (Each picture's
+    `preview` is its small form for the gallery; see views_moods.media_preview.)
     `viewer` is who's looking: each link says whether they voted for it. `order`: top (pinned, then ranked) or new."""
     from conversations.services import tiding_links
-    return {'links': tiding_links.listed(viewer=viewer, order=order), 'pictures': picture_tidings()}
+    return {'links': tiding_links.listed(viewer=viewer, order=order), 'pictures': picture_tidings(),
+            'releases': release_tidings()}
 
 
 def prompts_state():

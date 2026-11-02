@@ -30,7 +30,7 @@ class TidingsPageTests(TidingsTests):
     def test_api_tidings_lists_the_links_and_pictures_and_naught_else(self):
         self.image(3, added_by=self.justin)
         body = self.client.get('/api/tidings/').json()
-        self.assertEqual(set(body), {'links', 'pictures'})  # the prompts have their own (/api/prompts/)
+        self.assertEqual(set(body), {'links', 'pictures', 'releases'})  # the prompts have their own (/api/prompts/)
         self.assertEqual(len(body['pictures']), 1)
 
     # --- pictures ---------------------------------------------------------------

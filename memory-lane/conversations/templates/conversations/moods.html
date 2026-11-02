@@ -3042,7 +3042,7 @@
   // The CID isn't a stream after all (a release pinned as one file): the file itself.
   function plainRelease(v) {
     if (v._hls) { v._hls.destroy(); v._hls = null; }
-    const bar = v.closest('.embed') && v.closest('.embed').querySelector('.quality');
+    const bar = v.closest('.embed') && v.closest('.embed').querySelector('.quality:not(.speed)');
     if (bar) bar.remove();  // one file: nothing to choose between
     v._plain = true;
     v.src = v.dataset.src;
@@ -3105,7 +3105,7 @@
   // releases (someone on a phone's data picks Audio only once and means it for the evening).
   function addQualities(Hls, v, levels) {
     const embed = v.closest('.embed');
-    if (!embed || levels.length < 2 || embed.querySelector('.quality')) return;
+    if (!embed || levels.length < 2 || embed.querySelector('.quality:not(.speed)')) return;
     const choices = [{ name: 'Auto', index: -1 }, ...levels.map((level, index) => ({ name: levelName(level), index, level }))
       .sort((a, b) => (b.level.width || 0) * (b.level.height || 0) - (a.level.width || 0) * (a.level.height || 0))];
     const audio = choices.find(c => c.name === 'Audio only');
@@ -3127,9 +3127,34 @@
       const b = e.target.closest('button');
       if (b) choose(choices.find(c => c.name === b.dataset.name), true);
     });
-    v.closest('.player').after(bar);
+    v.closest('.player').after(bar);  // under the video, above its speeds
     const wanted = choices.find(c => c.name === store.get('releaseQuality', 'Auto')) || choices[0];
     if (wanted.index === -1) paint('Auto'); else choose(wanted, false);
+  }
+  // How fast it plays (Justin, 2 Nov): a row under the qualities, on every path -- hls.js, the browser's own HLS,
+  // the plain file -- so it's made as the player is, not when a playlist is read. Slowed down, it keeps its
+  // pitch (preservesPitch, the browser's default): a break learned at half speed is still in its key.
+  // Remembered across releases, as the quality is. A new source (Audio only, a plain file) starts at the
+  // video's defaultPlaybackRate, so that's set too; a speed picked in the browser's own menu shows here.
+  const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+  function addSpeeds(v) {
+    const embed = v.closest('.embed');
+    if (!embed || embed.querySelector('.speed')) return;
+    const bar = Object.assign(document.createElement('div'), { className: 'quality speed' });
+    bar.innerHTML = '<span>Speed</span>' + SPEEDS.map(r => `<button type="button" data-rate="${r}">${r}×</button>`).join('');
+    const paint = () => { for (const b of bar.querySelectorAll('button')) b.setAttribute('aria-pressed', String(Number(b.dataset.rate) === v.playbackRate)); };
+    const set = rate => { v.defaultPlaybackRate = rate; v.playbackRate = rate; paint(); };
+    bar.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      store.set('releaseSpeed', Number(b.dataset.rate));
+      set(Number(b.dataset.rate));
+    });
+    v.addEventListener('ratechange', paint);
+    v.addEventListener('loadedmetadata', () => { if (v.playbackRate !== v.defaultPlaybackRate) v.playbackRate = v.defaultPlaybackRate; paint(); });
+    v.closest('.player').after(bar);
+    const wanted = Number(store.get('releaseSpeed', 1));
+    set(SPEEDS.includes(wanted) ? wanted : 1);
   }
   // delivery-kid's mark, shown over the video on hover: its ASCII portrait from its PickiPedia
   // page (as in the servers popover), and where the release lives.
@@ -3174,6 +3199,7 @@
         if (!pre) { player.querySelector('.dkmask').replaceWith(dkMask()); }
       });
     }
+    addSpeeds(v);
     v.addEventListener('play', () => { v._started = true; }, { once: true });
     const mse = 'MediaSource' in window || 'ManagedMediaSource' in window;
     if (!mse && nativeHls(v)) { v.src = v.dataset.hls; return; }  // iOS: the browser's own (it picks the quality)

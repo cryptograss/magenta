@@ -180,6 +180,7 @@ def tidings_page(request):
         _rights(link, device)
     return render(request, 'conversations/mood_tidings.html', {
         'tidings': state,
+        'stream': tidings.stream(state['pictures'], state['releases']),
         'order': order,
         'picture_cap': tidings.PICTURES,
         'viewer': device.entity_id if device else '',

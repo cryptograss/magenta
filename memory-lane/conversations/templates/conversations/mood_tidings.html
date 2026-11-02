@@ -62,6 +62,21 @@
   .pic .meta .people { margin-bottom: 2px; overflow-wrap: anywhere; }
   .pic a.thumb { cursor: zoom-in; }
   .none { color: var(--muted); font-size: 13px; }
+  /* A release among the pictures (tidings.release_tidings): its poster, ▶, its title, who uploaded it. A release
+     without a poster (an older one, a record) is its tile's colour, with its kind written on it. */
+  .pic.release { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .pic.release a.poster { display: block; line-height: 0; cursor: pointer; position: relative; height: 68px; overflow: hidden;
+                         background: linear-gradient(135deg, var(--accent-soft), var(--code)); }
+  .pic.release a.poster .kind { position: absolute; left: 6px; bottom: 5px; font: 600 10px/1 ui-monospace, Menlo, monospace;
+                               letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+  .pic.release a.poster .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                               font-size: 20px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.7); }
+  .pic.release a.poster img { position: absolute; inset: 0; height: 100%; z-index: 1; }  /* over its kind, which shows if it fails */
+  .pic.release a.poster .play { z-index: 2; }
+  .pic.release .rtitle { display: block; font-weight: 600; color: var(--ink); margin-bottom: 2px;
+                         overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .pic.release .chip.rel { border-color: var(--accent); color: var(--accent); }
+  .pic.release .who { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Top: pinned, then ranked by votes, talk and age (tiding_links.rank); new: newest first (Justin, 22 Oct). */
   .order { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
   .order b { color: var(--ink); }
@@ -122,9 +137,19 @@
   <p class="none">No links yet: promote one from a message's ⋯ menu.</p>
   {% endif %}
 
-  <h2>Pictures (last {{ picture_cap }})</h2>
+  <h2>Pictures and releases</h2>
   <div class="pics">
-  {% for pic in tidings.pictures %}
+  {% for entry in stream %}{% with pic=entry.item %}
+  {% if entry.kind == 'release' %}
+    <div class="pic release">
+      <a class="poster" href="{{ pic.page }}" target="_top" title="{{ pic.title }}, on PickiPedia">{% if pic.poster %}<img loading="lazy" src="{{ pic.poster }}" alt="" onerror="this.remove()">{% endif %}<span class="kind">{{ pic.kind }}</span>{% if pic.video %}<span class="play" aria-hidden="true">▶</span>{% endif %}</a>
+      <div class="meta">
+        <div class="marks"><span class="chip rel">release</span></div>
+        <a class="rtitle" href="{{ pic.page }}" target="_top">{{ pic.title }}</a>
+        <span class="muted"><span class="who" title="uploaded by {{ pic.by }}">{{ pic.by|default:"unknown" }}</span>{{ pic.at|date:"M j, g:i A" }}</span>
+      </div>
+    </div>
+  {% else %}
     <div class="pic">
       <a class="thumb" href="{{ pic.url }}" data-sha="{{ pic.sha256 }}" data-message="{{ pic.message }}" data-mood="{{ pic.mood }}"
          data-sharer="{{ pic.shared_by }}" data-onwiki="{{ pic.wiki.page|default:'' }}"><img loading="lazy" src="{{ pic.preview }}" alt=""></a>
@@ -138,8 +163,9 @@
         <a href="/moods/{{ pic.mood }}/#m-{{ pic.message }}" title="the post it appeared in">{{ pic.at|date:"M j, g:i A" }}</a></span>
       </div>
     </div>
-  {% empty %}
-    <p class="none">No pictures on record yet.</p>
+  {% endif %}
+  {% endwith %}{% empty %}
+    <p class="none">No pictures or releases on record yet.</p>
   {% endfor %}
   </div>
 </main>
