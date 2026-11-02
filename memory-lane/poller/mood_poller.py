@@ -363,8 +363,11 @@ class StreamPoster:
     (conversations/views_runner.py), claimed outright and live. A thread of
     its own, so reading the agent's output never waits on the network:
     events queue here and leave in batches. If memory-lane can't be reached
-    they're dropped after a few tries -- the transcript still brings the
-    conversation in, just later.
+    they're dropped after a few tries, and `failed` counts them (the log's
+    "lost N"). Nothing else brings them in: the watcher that read transcripts
+    is retired (maybelle-config#254). They're still in the session's
+    transcript on this disk, under the same uuids, so sending those lines
+    again is safe: the import skips what it already has.
     """
 
     def __init__(self, base, key, slug, session_id, http=requests, retries=3, pause=1.0, effort=None):
@@ -3582,7 +3585,7 @@ def main(argv=None):
             print(f'not logging to {log}: {e}', file=sys.stderr)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s', handlers=handlers)
     # The runner's key, from the vault via the hunter deploy. Without it,
-    # woken turns still reach their Mood through the transcript watcher.
+    # woken turns run but reach no Mood: the transcript watcher is retired.
     key = runner_key()
 
     def harness(name, model):
@@ -3594,7 +3597,7 @@ def main(argv=None):
                 from pi_harness import EventsPoster, PiWaker
             waker = PiWaker(pi=args.pi, model=model, session_dir=args.pi_sessions, new_cwd=args.new_cwd,
                             quiet_limit=args.quiet_limit)
-            # No transcript watcher reads Pi's sessions: without a key, nothing reaches the Mood.
+            # Without a key, nothing reaches the Mood.
             logger.info(f'waking {args.agent} through {waker.harness()}, streaming its turns to their Moods'
                         if key else 'no runner key: a Pi turn reaches no Mood without one')
             return waker, ((lambda slug, session, forked_from=None: EventsPoster(
@@ -3602,7 +3605,7 @@ def main(argv=None):
         waker = ClaudeCodeWaker(model=model, full_timeout=args.full_timeout, quiet_limit=args.quiet_limit,
                                 new_cwd=args.new_cwd)
         logger.info('streaming Claude Code turns straight to their Moods' if key else
-                    'no MEMORY_LANE_RUNNER_KEY: woken turns reach Moods through the transcript watcher')
+                    'no MEMORY_LANE_RUNNER_KEY: a Claude Code turn reaches no Mood without one')
         return waker, ((lambda slug, session, forked_from=None: StreamPoster(args.base, key, slug, session))
                        if key else None)
 
