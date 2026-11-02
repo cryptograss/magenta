@@ -2924,14 +2924,17 @@ class MoodPoller:
                 + (wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts) if length else []))
 
     def pronoun_lines(self, page):
-        """Who's here (the Mood's emergents and people) and their pronouns, those that pass the allowlist."""
+        """Who's here (the Mood's emergents and people) and their pronouns, those that pass the allowlist.
+        The one woken comes first, as "you": left out, its own read as unset under "Anyone not named"
+        (re, #emergence, 2 Nov 2026)."""
         said = (page or {}).get('pronouns') or {}
         if not said:
             return []
         listed = self.texts.listed(PRONOUNS_PAGE) if self.texts is not None and hasattr(self.texts, 'listed') else None
         known = listed or PRONOUNS_KNOWN
+        mine = pronouns_shown(said.get(self.agent), known)
         shown = [(n, pronouns_shown(p, known)) for n, p in sorted(said.items()) if n != self.agent]
-        shown = [f'{n} ({p})' for n, p in shown if p]
+        shown = ([f'you ({mine})'] if mine else []) + [f'{n} ({p})' for n, p in shown if p]
         return ['', PRONOUNS_NOTE.format(said='; '.join(shown))] if shown else []
 
     def typing_lines(self, page):
