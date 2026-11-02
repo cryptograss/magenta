@@ -53,10 +53,10 @@ class RulesBundleTest(TestCase):
     def test_three_layers_each_named_with_its_page_and_revision(self):
         b = self.gather(wiki())
         self.assertEqual(b.degraded, [])
-        self.assertTrue(b.text.startswith('<instructions agent="magent" mood="magent-self">\n'))
+        self.assertTrue(b.text.startswith('<instructions emergent="magent" mood="magent-self">\n'))
         self.assertIn('<standing page="Cryptograss:Emergents/GeneralOrders" revision="101" by="JMyles">\n'
                       'Never merge a pull request.\n</standing>', b.text)
-        self.assertIn('<identity agent="magent" page="Cryptograss:Emergents/Magent/Instructions" revision="102"', b.text)
+        self.assertIn('<identity emergent="magent" page="Cryptograss:Emergents/Magent/Instructions" revision="102"', b.text)
         self.assertIn('<mood slug="magent-self" page="Cryptograss:Moods/magent-self/Instructions" revision="103"', b.text)
         # Broadest first, and the precedence said once.
         self.assertLess(b.text.index('<standing'), b.text.index('<identity'))
@@ -95,7 +95,7 @@ class RulesBundleTest(TestCase):
         b = bundle('magent', None, get=wiki().get, state_dir=self.state, now=T0)
         self.assertEqual([layer.name for layer in b.layers], ['standing', 'clips', 'identity'])
         self.assertNotIn('<mood', b.text)
-        self.assertTrue(b.text.startswith('<instructions agent="magent">\n'))
+        self.assertTrue(b.text.startswith('<instructions emergent="magent">\n'))
 
     def test_pickipedia_down_the_last_copy_stands_and_it_says_so_loudly(self):
         w = wiki()

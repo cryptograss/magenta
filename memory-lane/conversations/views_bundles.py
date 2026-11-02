@@ -24,6 +24,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
 from .models import BundleRecord
+from .services.emergent_names import named  # emergent or, until the rename's last step, agent
 from .views_runner import runner_agent
 
 MAX_PARTS_CHARS = 400_000  # a bundle is an argument to a harness, which Linux caps far below this
@@ -59,8 +60,8 @@ def parsed(body, agent):
         record_id = uuid.UUID(str(body.get('id')))
     except ValueError:
         raise ValueError('id: not a uuid') from None
-    if body.get('agent') != agent:
-        raise ValueError(f"agent: this key speaks for {agent}")
+    if named(body) != agent:
+        raise ValueError(f"emergent: this key speaks for {agent}")
     parts = body.get('parts')
     if not isinstance(parts, list) or not parts:
         raise ValueError('parts: a list')
@@ -111,7 +112,9 @@ def api_bundles(request):
     if request.method != 'GET':
         return JsonResponse({'error': 'GET or POST'}, status=405)
     found = BundleRecord.objects.all()
-    for name in ('agent', 'mood', 'session_id', 'sha256'):
+    if named(request.GET):
+        found = found.filter(agent=named(request.GET))
+    for name in ('mood', 'session_id', 'sha256'):
         if request.GET.get(name):
             found = found.filter(**{name: request.GET[name]})
     try:

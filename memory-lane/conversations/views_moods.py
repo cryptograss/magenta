@@ -23,6 +23,7 @@ from django.views.decorators.http import require_GET, require_POST
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_feed, wiki_ledger, wiki_upload
 from .services import agent_commands, mood_auth
+from .services.emergent_names import named  # emergent or, until the rename's last step, agent
 from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.mood_view import (
     from_wiki_tier,
@@ -698,7 +699,7 @@ def api_pulse(request):
     from .services import settings as knobs
 
     humans = set(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True))
-    agent = request.GET.get('agent', 'magent')
+    agent = named(request.GET, 'magent')
     rows = list(Setting.objects.exclude(key__in=knobs.MODERATION_KEYS))
     archived = knobs.archived_slugs()
     wiki_feed.nudge()  # asked every second by the runner: the wiki feed's clock (at most once a minute)

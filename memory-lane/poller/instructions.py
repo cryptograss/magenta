@@ -221,7 +221,7 @@ class Bundle:
 
     def record(self):
         """What is kept of this bundle: enough to rebuild it, and its sha256 to prove the rebuild."""
-        return {'id': self.id, 'agent': self.agent, 'mood': self.mood or '', 'gathered': self.gathered,
+        return {'id': self.id, 'emergent': self.agent, 'agent': self.agent, 'mood': self.mood or '', 'gathered': self.gathered,
                 'block': self.block, 'sha256': self.sha256, 'parts': self.parts, 'transform': TRANSFORM,
                 'stamps': self.stamps()}
 
@@ -433,7 +433,7 @@ def render(b, degraded_path=DEGRADED):
     # harness sends, and a provider's prompt cache matches it byte for byte, so a bundle that differed each
     # turn (its id, when it was gathered, the block) would make every wake re-read the whole session at
     # full price. Those go in the wake instead (mood_poller.MoodPoller.run_turn_for), and in the record.
-    out = [f'<instructions agent="{b.agent}"' + (f' mood="{b.mood}"' if b.mood else '') + '>']
+    out = [f'<instructions emergent="{b.agent}"' + (f' mood="{b.mood}"' if b.mood else '') + '>']
     if b.greeting_line:
         g = b.greeting
         where = f' {attrs(g)}' if g and g.revision is not None and not g.problem else ''
@@ -447,7 +447,7 @@ def render(b, degraded_path=DEGRADED):
             if layer.name == 'mood':
                 out += [f'<mood slug="{b.mood}" page="{layer.title}">This Mood has no instructions of its own.</mood>', '']
         elif layer.text:
-            tag = {'mood': f'mood slug="{b.mood}"', 'identity': f'identity agent="{b.agent}"'}.get(layer.name,
+            tag = {'mood': f'mood slug="{b.mood}"', 'identity': f'identity emergent="{b.agent}"'}.get(layer.name,
                                                                                                    layer.name)
             out += [f'<{tag} {attrs(layer)}>', layer, f'</{layer.name}>', '']
     if b.recovery:
