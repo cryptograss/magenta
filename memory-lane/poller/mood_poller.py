@@ -930,76 +930,74 @@ class Harnesses:
 REORIENT = recovered('line', 'reorient')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
 
 
-def reorient(instructions=True):
+def reorient(instructions=True, texts=None):
     """Where who it is comes from, then where what it knew is. A poller without --instructions
     (none runs so today) mustn't be told its instructions came with the turn (blu, emergence, 26 Oct)."""
-    who = ('Who you are is in your instructions, given with this turn. ' if instructions
-           else 'Who you are, bootstrap_memory tells you: your journal and your own words are there. ')
-    return who + REORIENT
+    who = (wake_line(texts, 'who-bundle', WHO_BUNDLE) if instructions
+           else wake_line(texts, 'who-memory', WHO_MEMORY))
+    return who + ' ' + wake_line(texts, 'reorient', REORIENT)
 
 
-def new_mood_opening(slug, instructions=True):
+# The openings a session is told before the wake, when it starts without its history here or comes back to one.
+# Their words are Cryptograss:Emergents/Wake's (poller/wake_texts.md), like every other line of a wake: the code
+# holds no words (Justin, 31 Oct; again 2 Nov, #emergence: "stray instructions in the codebase"). Only the tags
+# around them stay here, since the record reads those back.
+WHO_BUNDLE = recovered('line', 'who-bundle')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+WHO_MEMORY = recovered('line', 'who-memory')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+NEW_MOOD = recovered('line', 'new-mood')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+SESSION_LOST = recovered('line', 'session-lost')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+HARNESS_BACK = recovered('line', 'harness-back')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+SESSION_ROTATED = recovered('line', 'session-rotated')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+HARNESS_NEW = recovered('line', 'harness-new')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+
+
+def new_mood_opening(slug, instructions=True, texts=None):
     """What a new Mood's first session is told before the mention: where it
     is, and how to find what it knew."""
     return [f'<new-mood mood="{slug}">',
-            'This Mood is new: no session of yours has been here, so this one has just started, '
-            'with none of your history in it. ' + reorient(instructions) + ' Then answer what was asked.',
+            wake_line(texts, 'new-mood', NEW_MOOD, slug=slug, reorient=reorient(instructions, texts)),
             '</new-mood>', '']
 
 
-def lost_session_opening(slug, session_id, instructions=True):
+def lost_session_opening(slug, session_id, instructions=True, texts=None):
     """What a session started over is told, when the agent's own session in
     a Mood is gone from the only machine it could have been on (its home was
     lost with its container): that it has been here, and where to find what
     it knew -- this Mood in the record."""
     return [f'<session-lost mood="{slug}">',
-            f'You have been in this Mood before, but your session here ({session_id[:8]}) is gone from the '
-            'machine it lived on (most likely its container was rebuilt without its home). This session has just '
-            'started, with none of that history in it. The record kept everything: what you said here, what '
-            'was asked, what was settled. ' + reorient(instructions) + ' Before you answer, '
-            f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest '
-            'summary, and get_message_context for anything it points to) until you know what is settled and '
-            'what is open. Then answer what was asked.', '</session-lost>', '']
+            wake_line(texts, 'session-lost', SESSION_LOST, slug=slug, session=session_id[:8],
+                      reorient=reorient(instructions, texts)),
+            '</session-lost>', '']
 
 
-def harness_back_opening(slug, was, now, since=None):
+def harness_back_opening(slug, was, now, since=None, texts=None):
     """What a session is told when the Mood's model brings its harness back:
     that it spoke here meanwhile, through the other, in sessions it hasn't seen."""
     since_text = f' (from about {since:%Y-%m-%d %H:%M}Z)' if since else ''
     return [f'<harness-switch mood="{slug}">',
-            f"This Mood's model runs on {HARNESS_NAMES.get(now, now)} again, so this turn resumes your last "
-            f'session here on it. Since that session\'s last turn you have also answered here through '
-            f"{HARNESS_NAMES.get(was, was)}, in sessions this one hasn't seen. Before you answer, read what you "
-            f'said there: read_mood "{slug}"{since_text}.', '</harness-switch>', '']
+            wake_line(texts, 'harness-back', HARNESS_BACK, slug=slug, since=since_text,
+                      now=HARNESS_NAMES.get(now, now), was=HARNESS_NAMES.get(was, was)),
+            '</harness-switch>', '']
 
 
-def oversized_session_opening(slug, session_id, size, cap, instructions=True):
+def oversized_session_opening(slug, session_id, size, cap, instructions=True, texts=None):
     """What a session started over is told, when the agent's last session here grew past the size a session
     is kept to: it has been here, the record kept everything, and this one starts clean (30 Oct: a very long
     session makes repeating its own last words likelier, and repeating them is how turns go haywire)."""
     return [f'<session-rotated mood="{slug}">',
-            f'Your last session here ({session_id[:8]}) grew past the size a session is kept to '
-            f'({size // 1048576}MB of transcript on disk; the cap is {max(1, cap // 1048576)}MB): a very long '
-            'session makes repeating your own last words likelier, and that is how turns go haywire. So this '
-            'session has just started, with none of that history in it. The record kept everything: what you '
-            'said here, what was asked, what was settled. ' + reorient(instructions) + ' Before you answer, '
-            f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest '
-            'summary, and get_message_context for anything it points to) until you know what is settled and '
-            'what is open. Then answer what was asked.', '</session-rotated>', '']
+            wake_line(texts, 'session-rotated', SESSION_ROTATED, slug=slug, session=session_id[:8],
+                      size=size // 1048576, cap=max(1, cap // 1048576), reorient=reorient(instructions, texts)),
+            '</session-rotated>', '']
 
 
-def harness_new_opening(slug, was, now, instructions=True):
+def harness_new_opening(slug, was, now, instructions=True, texts=None):
     """What a session is told when the Mood's model moves it to a harness that
     has no session of its here: that it has been here, through the other, and
     where to find what it knew."""
     return [f'<harness-switch mood="{slug}">',
-            f"You have been in this Mood before, through {HARNESS_NAMES.get(was, was)}. This Mood's model now "
-            f'runs on {HARNESS_NAMES.get(now, now)}, which cannot resume those sessions, so this one has just '
-            'started, with none of that history in it. The record kept everything: what you said here, what '
-            'was asked, what was settled. ' + reorient(instructions) + ' Before you answer, '
-            f'catch up on this Mood from the record (read_mood "{slug}", from its start or its latest summary, '
-            'and get_message_context for anything it points to) until you know what is settled and what is '
-            'open. Then answer what was asked.', '</harness-switch>', '']
+            wake_line(texts, 'harness-new', HARNESS_NEW, slug=slug, now=HARNESS_NAMES.get(now, now),
+                      was=HARNESS_NAMES.get(was, was), reorient=reorient(instructions, texts)),
+            '</harness-switch>', '']
 
 
 # Mentions with no live session behind them: typed into the web composer,
@@ -1347,11 +1345,11 @@ def settings_changed(agent, page, texts=None):
 # Pronouns in a wake (Justin, re, blu and magent, 29 Oct): each one's own, as set on their own account -- shown only if
 # every word of it is a pronoun on the allowlist (Cryptograss:Pronouns, trusted revisions only; this list when the wiki
 # can't be read), so an account's preference can't carry a sentence into a prompt. Anything else: nothing, and the
-# they/them default holds. In the wake (content, weighed), never in the bundle's roster (obeyed).
+# line's default holds: call them by name (Justin, 2 Nov, #emergence). In the wake (content, weighed), never in the bundle's roster (obeyed).
 PRONOUNS_PAGE = 'Cryptograss:Pronouns'
 PRONOUNS_KNOWN = {'he', 'him', 'his', 'she', 'her', 'hers', 'it', 'its', 'they', 'them', 'their', 'theirs',
                   'xe', 'xem', 'xyr', 'ze', 'zir', 'hir', 'any', 'all'}
-PRONOUNS_NOTE = 'Pronouns here, as each set their own: {said}. Anyone not named: they/them.'
+PRONOUNS_NOTE = recovered('line', 'pronouns')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
 
 
 def pronouns_shown(said, known):
@@ -2154,9 +2152,9 @@ class MoodPoller:
         if commands:
             session = sessions[0]
         if fresh:
-            prompt = '\n'.join(new_mood_opening(slug, self.instructions)) + prompt
+            prompt = '\n'.join(new_mood_opening(slug, self.instructions, self.texts)) + prompt
         elif lost:
-            prompt = '\n'.join(lost_session_opening(slug, sessions[0], self.instructions)) + prompt
+            prompt = '\n'.join(lost_session_opening(slug, sessions[0], self.instructions, self.texts)) + prompt
         elif switched:
             prompt = '\n'.join(switched) + prompt
         if self.dry_run:
@@ -2925,7 +2923,7 @@ class MoodPoller:
 
     def pronoun_lines(self, page):
         """Who's here (the Mood's emergents and people) and their pronouns, those that pass the allowlist.
-        The one woken comes first, as "you": left out, its own read as unset under "Anyone not named"
+        The one woken comes first, as "you": left out, its own read as unset under the line's default
         (re, #emergence, 2 Nov 2026)."""
         said = (page or {}).get('pronouns') or {}
         if not said:
@@ -2935,7 +2933,7 @@ class MoodPoller:
         mine = pronouns_shown(said.get(self.agent), known)
         shown = [(n, pronouns_shown(p, known)) for n, p in sorted(said.items()) if n != self.agent]
         shown = ([f'you ({mine})'] if mine else []) + [f'{n} ({p})' for n, p in shown if p]
-        return ['', PRONOUNS_NOTE.format(said='; '.join(shown))] if shown else []
+        return ['', wake_line(self.texts, 'pronouns', PRONOUNS_NOTE, said='; '.join(shown))] if shown else []
 
     def typing_lines(self, page):
         """Who is typing or recording here right now (Justin, 28 Oct: "the emergents are able to see both and
@@ -3168,7 +3166,7 @@ class MoodPoller:
         if size > cap:
             logger.info(f'{slug}: session {newest[:8]} is {size / 1048576:.1f}MB, past the '
                         f'{cap / 1048576:.0f}MB cap: starting a fresh session')
-            return None, oversized_session_opening(slug, newest, size, cap, self.instructions)
+            return None, oversized_session_opening(slug, newest, size, cap, self.instructions, self.texts)
         harness_for = getattr(self.waker, 'harness_for', None)
         if harness_for is None:
             return newest, []
@@ -3178,9 +3176,9 @@ class MoodPoller:
         own = next((s for s in sessions if self.waker.wakers[harness].can_wake(s)), None)
         if own:
             logger.info(f'{slug}: back on {harness}, from {own}')
-            return own, harness_back_opening(slug, was, harness, self.waker.last_touched(own))
+            return own, harness_back_opening(slug, was, harness, self.waker.last_touched(own), self.texts)
         logger.info(f'{slug}: moving to {harness}: a new session there')
-        return None, harness_new_opening(slug, was, harness, self.instructions)
+        return None, harness_new_opening(slug, was, harness, self.instructions, self.texts)
 
     def ours(self, slug):
         """Whether this runner can wake the agent in `slug`: its newest session there
