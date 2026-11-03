@@ -152,7 +152,8 @@
   #bellList a.note { display: block; padding: 5px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; }
   #bellList a.note .who { font-size: 12.5px; }
   #bellList a.note .where { color: var(--muted); font-size: 11.5px; }
-  #bellList a.note .said { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Up to three lines of what was said, about 2.5 times the one line it had (Justin, 3 Nov). */
+  #bellList a.note .said { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; color: var(--muted); font-size: 12px; overflow: hidden; }
   #bellList a.note.seen { opacity: .6; }
   #bellList .sep { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 6px 6px 2px; }
   #bellMenu .belltoggle { padding: 2px 6px; }
@@ -5403,7 +5404,7 @@
       return `<a class="note${old ? ' seen' : ''}" href="/moods/${encodeURIComponent(n.mood)}/#m-${esc(n.turn.id)}" data-mood="${esc(n.mood)}" data-id="${esc(n.turn.id)}">`
         + `<span class="who">${icon(n.turn.sender, n.from !== 'agent')}<b>${esc(shown(n.turn.sender))}</b>${what ? ' ' + what : ''}</span>`
         + ` <span class="where">#${esc(title)} · ${esc(ago(n.turn.created_at))}</span>`
-        + `<span class="said">${esc(plainText(n.turn.text).slice(0, 120))}</span></a>`;
+        + `<span class="said">${esc(plainText(n.turn.text).slice(0, 300))}</span></a>`;
     };
     document.getElementById('bellList').innerHTML = (rows.length ? rows.map(n => row(n, false)).join('') : '<div class="none">Nothing new for you.</div>')
       + (seen.length ? '<div class="sep">seen</div>' + seen.map(n => row(n, true)).join('') : '');
