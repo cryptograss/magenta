@@ -3300,6 +3300,8 @@ class FreshCopiesTest(TestCase):
         calls = []
         def run(args):
             calls.append(args)
+            if args[1] == 'ls-remote':
+                return subprocess.run(args, capture_output=True, text=True, timeout=120)
             raise subprocess.TimeoutExpired(args, 120)
         problems = refresh_fresh(ws, run=run)
         self.assertTrue(any('magenta' in p for p in problems))
@@ -3337,12 +3339,12 @@ class FreshCopiesTest(TestCase):
 
     def test_a_repo_with_a_production_branch_refreshes_to_production_not_head(self):
         # magent, re, 3 Nov: maybelle-config and pickipedia serve production from a branch of that name; .fresh
-        # tracks it where the branch exists. A clone lands on the default branch (the first refresh), and the
-        # second refresh's ls-remote moves the copy onto production.
+        # tracks it where the branch exists. Here production appears after the first clone, and the next
+        # refresh's ls-remote moves the copy onto it.
         import subprocess
         from poller.mood_poller import refresh_fresh
         ws, seed = self.make_workspace()
-        self.assertEqual(refresh_fresh(ws), [])   # first refresh clones the default branch
+        self.assertEqual(refresh_fresh(ws), [])   # no production yet: the clone takes the default branch
         for args in (['config', 'user.email', 't@t'], ['config', 'user.name', 't'],
                      ['checkout', '-qb', 'production']):
             subprocess.run(['git', '-C', str(seed)] + args, check=True, capture_output=True)
@@ -3354,17 +3356,47 @@ class FreshCopiesTest(TestCase):
         self.assertEqual(refresh_fresh(ws), [])   # ls-remote says production exists: it is fetched, not HEAD
         self.assertEqual((ws / '.fresh' / 'magenta' / 'a.txt').read_text(), 'production\n')
 
+    def test_a_first_clone_lands_on_production_when_the_branch_exists(self):
+        # re, magent, 3 Nov: a plain clone takes the default branch, so a new copy of maybelle-config would show
+        # dead main until its second refresh. ls-remote runs before the clone too, and the clone takes production.
+        import subprocess
+        from poller.mood_poller import refresh_fresh
+        ws, seed = self.make_workspace()
+        for args in (['config', 'user.email', 't@t'], ['config', 'user.name', 't'], ['checkout', '-qb', 'production']):
+            subprocess.run(['git', '-C', str(seed)] + args, check=True, capture_output=True)
+        (seed / 'a.txt').write_text('production\n')
+        for args in (['commit', '-qam', 'prod'], ['push', '-q', 'origin', 'production']):
+            subprocess.run(['git', '-C', str(seed)] + args, check=True, capture_output=True)
+        self.assertEqual(refresh_fresh(ws), [])
+        self.assertEqual((ws / '.fresh' / 'magenta' / 'a.txt').read_text(), 'production\n')
+
+    def test_a_failing_ls_remote_before_a_first_clone_makes_no_copy(self):
+        from poller.mood_poller import refresh_fresh
+        ws, _ = self.make_workspace()
+        class Done:
+            returncode = 128
+            stderr = 'fatal: network down'
+            stdout = ''
+        calls = []
+        def run(args):
+            calls.append(args)
+            return Done()
+        problems = refresh_fresh(ws, run=run)
+        self.assertTrue(any('network down' in p for p in problems))
+        self.assertEqual([a[1] for a in calls], ['ls-remote'])          # no clone tried
+        self.assertFalse((ws / '.fresh' / 'magenta').exists())
+
     def test_an_ls_remote_zero_exit_with_no_output_fetches_head_the_branch_is_absent(self):
         # magent, re, 3 Nov: ls-remote exit 0 with no output says the branch is absent -- an older repo's case.
         # HEAD is fetched, exactly as before the production check existed.
         import subprocess
         from poller.mood_poller import refresh_fresh
         ws, _ = self.make_workspace()
-        self.assertEqual(refresh_fresh(ws), [])   # first refresh clones: no ls-remote runs yet
+        self.assertEqual(refresh_fresh(ws), [])   # first refresh clones the default branch
         ls_remote, fetch_refs = [], []
         def run(args):
             done = subprocess.run(args, capture_output=True, text=True, timeout=120)
-            if args[3] == 'ls-remote':
+            if args[1] == 'ls-remote':
                 ls_remote.append((done.returncode, done.stdout))
             elif args[3] == 'fetch':
                 fetch_refs.append(args[8])
@@ -3378,7 +3410,7 @@ class FreshCopiesTest(TestCase):
         # in .fresh as if it were live. The refresh reports the failure and skips the repo; nothing runs after it.
         from poller.mood_poller import refresh_fresh
         ws, _ = self.make_workspace()
-        self.assertEqual(refresh_fresh(ws), [])   # the copy exists now; the next refresh decides by ls-remote
+        self.assertEqual(refresh_fresh(ws), [])   # the copy exists now; a failing ls-remote must leave it be
         class Done:
             returncode = 128
             stderr = "fatal: unable to access 'https://github.com/c/origin.git/': network down"
@@ -3386,12 +3418,12 @@ class FreshCopiesTest(TestCase):
         calls = []
         def run(args):
             calls.append(args)
-            if args[3] == 'ls-remote':
+            if args[1] == 'ls-remote':
                 return Done()
             raise AssertionError(f'nothing runs past a failing ls-remote: {args}')
         problems = refresh_fresh(ws, run=run)
         self.assertTrue(any('magenta' in p and 'network down' in p for p in problems))
-        self.assertEqual([a[3] for a in calls], ['ls-remote'])   # reported, skipped, nothing after it
+        self.assertEqual([a[1] for a in calls], ['ls-remote'])   # reported, skipped, nothing after it
 
 
 

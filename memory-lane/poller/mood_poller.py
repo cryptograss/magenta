@@ -1056,22 +1056,23 @@ def refresh_fresh(workspace, run=None):
         copy = fresh / name
         cloning = not (copy / '.git').exists()
         try:
+            # magent, re, 3 Nov: maybelle-config and pickipedia serve production from a branch of that name, so
+            # .fresh tracks it where it exists; an older repo has no production branch, and HEAD is its default.
+            # ls-remote --heads tells the two apart: a zero exit with no output says the branch is absent; a
+            # nonzero exit says the network or the remote is down, and HEAD must not be a fallback for that -- a
+            # failing network must never quietly hand back the dead default branch, so the refresh reports the
+            # failure and skips the repo instead. Asked of the origin URL, so a first clone lands on it too.
+            remote = run(['git', 'ls-remote', '--heads', url, 'production'])
+            if remote.returncode != 0:
+                problems.append(f'{name}: {_fresh_error(remote)}'[:200])
+                continue
+            branch = 'production' if (remote.stdout or '').strip() else None
             if cloning:
                 fresh.mkdir(parents=True, exist_ok=True)
-                done = run(['git', 'clone', '-q', '--depth', '1', url, str(copy)])
+                done = run(['git', 'clone', '-q', '--depth', '1'] + (['--branch', branch] if branch else [])
+                           + [url, str(copy)])
             else:
-                # magent, re, 3 Nov: maybelle-config and pickipedia serve production from a branch of that name,
-                # so .fresh should track it where it exists; an older repo has no production branch, and HEAD is
-                # its default. ls-remote --heads tells the two apart: a zero exit with no output says the branch
-                # is absent; a nonzero exit says the network or the remote is down, and HEAD must not be a
-                # fallback for that -- a failing network must never quietly hand back the dead default branch,
-                # so the refresh reports the failure and skips the repo instead.
-                remote = run(['git', '-C', str(copy), 'ls-remote', '--heads', 'origin', 'production'])
-                if remote.returncode != 0:
-                    problems.append(f'{name}: {_fresh_error(remote)}'[:200])
-                    continue
-                done = run(['git', '-C', str(copy), 'fetch', '-q', '--depth', '1', 'origin',
-                            'production' if remote.stdout.strip() else 'HEAD'])
+                done = run(['git', '-C', str(copy), 'fetch', '-q', '--depth', '1', 'origin', branch or 'HEAD'])
                 if done.returncode == 0:
                     done = run(['git', '-C', str(copy), 'reset', '-q', '--hard', 'FETCH_HEAD'])
             if done.returncode != 0:
