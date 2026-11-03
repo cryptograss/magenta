@@ -90,6 +90,13 @@ class AgentsOnTidingsTest(TestCase):
         self.assertIn(f"/moods/tidings/{self.tiding.id}/#c-{asked['id']}", turn['text'])
         self.assertEqual(self.mentions('re'), [])                            # only who was asked
 
+    def test_the_turns_cost_row_keeps_what_woke_it(self):
+        # A task's cap counts only the turns its own lines woke (tasks.spent_today).
+        woke = str(uuid.uuid4())
+        session = self.turn_ends('Done.', [woke])
+        row = Message.objects.get(session_id=session, sender_id='system', content__type='turn-result')
+        self.assertEqual(row.content['answers'], [woke])
+
     def test_a_comment_answering_the_moods_reply_carries_it_without_a_link_to_read_from(self):
         from poller.mood_poller import linked_message
         reply = self.say(self.justin, f'↩ #m-{self.said.id}\nCamping passes sold out last year.')

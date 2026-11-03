@@ -306,13 +306,21 @@ def last_slot(schedule, now, block=None):
 
 # --- what it has cost --------------------------------------------------------------
 
-def spent_today(agent, mood, now):
-    """Dollars the agent's turns in this Mood cost over the past day (the runner's turn-result rows)."""
+def spent_today(agent, mood, now, task=None):
+    """Dollars the agent's turns in this Mood cost over the past day (the runner's turn-result rows). With
+    `task`, only the turns that task's own lines woke (the row's `answers`): the cap is the task's, and the
+    Mood's conversation mustn't spend it (magent, #ops 1 Nov: a busy Mood refused every journal for days)."""
     from conversations.models import Message
+    since = now - timedelta(days=1)
     rows = Message.objects.filter(mood=mood, sender_id='system', content__type='turn-result',
-                                  content__agent=agent, created_at__gte=now - timedelta(days=1))
-    return sum(float(c.get('cost_usd') or 0) for c in rows.values_list('content', flat=True)
-               if isinstance(c, dict))
+                                  content__agent=agent, created_at__gte=since)
+    costs = [c for c in rows.values_list('content', flat=True) if isinstance(c, dict)]
+    if task is not None:
+        lines = {str(i) for i in Message.objects.filter(
+            source_file=SOURCE, mood=mood, content__for=agent, content__task=task,
+            created_at__gte=since - timedelta(hours=1)).values_list('id', flat=True)}
+        costs = [c for c in costs if lines & {str(a) for a in c.get('answers') or []}]
+    return sum(float(c.get('cost_usd') or 0) for c in costs)
 
 
 # --- starting it --------------------------------------------------------------------
@@ -334,9 +342,9 @@ def start(task, by, params=None, mood=None, slot=None, now=None):
     try:
         content['text'] = fill(task, params)
         if task.cap is not None:
-            spent = spent_today(task.agent, where, now)
+            spent = spent_today(task.agent, where, now, task=task.name)
             if spent >= task.cap:
-                raise Refused(f"{task.agent} has spent ${spent:.2f} here in the past day; its cap is ${task.cap:.2f}")
+                raise Refused(f"{task.agent}'s {task.name} has spent ${spent:.2f} here in the past day; its cap is ${task.cap:.2f}")
         content['state'] = 'asked'
     except Refused as e:
         content.update(state='refused', reason=str(e))
