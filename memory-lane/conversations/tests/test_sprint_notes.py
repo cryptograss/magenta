@@ -132,3 +132,14 @@ class WikiEmbedTest(TestCase):
         self.assertIn('|text=a &#124; b &#123;&#123;c&#125;&#125; &#91;&#91;d&#93;&#93; &#126;&#126;&#126;&#126; '
                       'x&#61;y &amp; &lt;i&gt;\n}}', got)
         self.assertEqual(Client().get(f'/api/messages/{said.id}/wiki/?chars=lots').status_code, 400)
+
+    def test_the_inline_citation(self):
+        """?inline=1: one line, no words, for citing in prose (Justin, 3 Nov, #docs-tests-qa)."""
+        said = Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, timestamp=1,
+                                      eth_blockheight=26266736, content='words that stay out of it')
+        with mock.patch('conversations.services.wiki_auth.names', return_value={'justin': 'JMyles'}):
+            got = Client().get(f'/api/messages/{said.id}/wiki/?inline=1').json()['wikitext']
+        self.assertTrue(got.startswith(f'{{{{Magenta message|id={said.id}|who=justin|user=JMyles|mood=rh|at='))
+        self.assertTrue(got.endswith('|block=26266736|inline=yes}}'))
+        self.assertNotIn('\n', got)
+        self.assertNotIn('words', got)

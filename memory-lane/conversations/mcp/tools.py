@@ -110,6 +110,10 @@ async def handle_get_message_by_id(arguments):
         f"Message Number: {message.message_number}",
         f"\nContent:\n{str(message.content)}"
     ]
+    if message.mood_id:  # how a PickiPedia page cites it in a line of prose (services/wiki_embed.py)
+        from conversations.services.wiki_embed import template_call
+        cite = await sync_to_async(with_fresh_connection(lambda: template_call(message, inline=True)))()
+        lines.insert(1, f"Cite on PickiPedia: {cite}")
 
     return [types.TextContent(type="text", text='\n'.join(lines))]
 
