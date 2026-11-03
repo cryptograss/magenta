@@ -23,9 +23,11 @@ def words_of(message):
     return reply_to(prose(message.content) or '')[1].strip()
 
 
-def template_call(message, chars=None):
+def template_call(message, chars=None, inline=False):
     """{{Magenta message|...}} for `message`; `chars`: how many characters to show ('all', a number, or the
-    template's own default when None)."""
+    template's own default when None). `inline`: a citation in a line of prose instead of a card (Justin, 3 Nov,
+    #docs-tests-qa: journals cite the record this way), on one line and without the words: who, when, in which
+    Mood, linked to the message."""
     from .wiki_auth import names
     sender = message.sender_id
     fields = [('id', str(message.id)), ('who', sender)]
@@ -36,6 +38,8 @@ def template_call(message, chars=None):
     fields.append(('at', message.created_at.strftime('%Y-%m-%dT%H:%M:%SZ')))
     if message.eth_blockheight:
         fields.append(('block', str(message.eth_blockheight)))
+    if inline:
+        return '{{Magenta message' + ''.join(f'|{k}={v}' for k, v in fields) + '|inline=yes}}'
     if chars is not None:
         fields.append(('chars', str(chars)))
     fields.append(('text', escaped(words_of(message))))
