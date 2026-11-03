@@ -90,10 +90,9 @@ class FrontPageTest(FrontBase):
         self.say(self.magent, self.dev, [{'type': 'text', 'text': '<silent>nothing to add</silent>'}])  # a silence
         self.say(self.skyler, self.jams, 'see you there')
         self.assertEqual([(s['who'], s['mood']) for s in front.lately()],
-                         [('skyler', 'jams'), ('magent', 'magenta-interface'), ('justin', 'jams')])
+                         [('skyler', 'jams'), ('justin', 'jams')])  # people only (Justin, 3 Nov)
         html = self.client.get('/').content.decode()
-        self.assertIn('#magenta interface', html)
-        self.assertIn('--agent: #ff67fd', html)  # magent in its own colour
+        self.assertNotIn('Built it.', html)
         self.assertIn('a secret-ish thing said in jams', html)  # its first 80 characters (Justin, 23 Oct)
         self.assertIn('>latest</h2>', html)
         self.assertNotIn('what is this?', html)  # no links at the foot, for now
@@ -183,7 +182,7 @@ class RankingAndPinsTest(FrontBase):
         self.say(self.justin, self.jams, 'again')  # justin in jams again: still one line, at its latest
         cache.delete('front:state')
         self.assertEqual([(s['who'], s['mood']) for s in front.lately()],
-                         [('justin', 'jams'), ('skyler', 'magenta-interface'), ('skyler', 'jams')])
+                         [('justin', 'jams'), ('skyler', 'magenta-interface')])  # each person once, at their latest
         html = self.client.get('/').content.decode()
         self.assertIn('class="enter" href="/moods/tidings/"', html)                      # come in: Tidings
         self.assertIn('class="title" href="https://example.org/x"', html)              # a link's title: out to it
