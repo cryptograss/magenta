@@ -962,7 +962,16 @@
   /* A turn's first words straight under its head: the head already says who, when and on what model, and links it.
      Its thinking and steps, folded, ride at the right of the words rather than on a line above them. */
   .ahead { padding-top: 4px; padding-bottom: 0; }
-  .abody > article.turn:first-of-type > .who { display: none; }
+  /* Its own head line is gone, but not its ↩ 🙂 ⋯ (Justin, 3 Nov: "I can't seem to get it at all"): a toolbar on
+     its top edge while hovered, as a follow-on message's; on a touch screen, floated at its right. */
+  .abody > article.turn:first-of-type > .who { position: absolute; right: 2px; top: -22px; z-index: 2; margin: 0; gap: 0; visibility: hidden;
+      padding: 1px 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+  .abody > article.turn:first-of-type > .who > :not(.replybtn, .addreact, .morebtn, .speak, .readfrom) { display: none; }
+  .abody > article.turn:first-of-type > .who:not(:has(.replybtn, .addreact, .morebtn, .speak)) { display: none; }
+  .abody > article.turn:first-of-type:hover > .who, .abody > article.turn:first-of-type > .who:focus-within { visibility: visible; }
+  .abody > article.turn:first-of-type:hover > .who button { opacity: 1; }
+  @media (pointer: coarse) { .abody > article.turn:first-of-type > .who { position: static; float: right; visibility: visible; margin: 0 0 2px 4px;
+      background: none; border: 0; box-shadow: none; padding: 0; } }
   .abody > .turn { padding-top: 2px; padding-bottom: 6px; border-top: 0; }
   .abody > .work:not(.open) { float: right; margin: 0 0 0 8px; position: relative; z-index: 1; }
   .abody > .work:not(.open) > .work-head { font-size: 12px; padding: 0; }
