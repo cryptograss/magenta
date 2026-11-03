@@ -1326,6 +1326,25 @@
   .turn .body .hearagain:disabled { color: var(--muted); cursor: default; }
   .turn .body img { display: block; max-width: 100%; max-height: 420px; border-radius: 6px; border: 1px solid var(--line); }
   /* A picture, large, over everything: its caption, and its page. */
+  /* The small player that follows you (Justin, 3 Nov): a video playing on a Tidings page, carried along when
+     you browse away, playing on from the same moment. Its title takes you back there; ✕ closes it; its bar
+     moves it. Above the Mood's own box when a Mood is open. */
+  .miniplayer { position: fixed; right: 16px; bottom: 16px; z-index: 45; width: 340px; max-width: calc(100vw - 24px);
+                background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; overflow: hidden;
+                box-shadow: 0 10px 34px rgba(0, 0, 0, .35); }
+  body:not(.in-section) .miniplayer:not(.moved) { bottom: 104px; }
+  .miniplayer.portrait { width: 210px; }
+  .miniplayer .minibar { display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; font-size: 12.5px;
+                         cursor: grab; touch-action: none; user-select: none; }
+  .miniplayer .miniback { all: unset; cursor: pointer; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+                          text-overflow: ellipsis; color: var(--accent); font-weight: 600; }
+  .miniplayer .miniback:hover span, .miniplayer .miniback:focus-visible span { text-decoration: underline; }
+  .miniplayer .miniclose { all: unset; cursor: pointer; flex: none; width: 26px; height: 26px; text-align: center; line-height: 26px;
+                           border-radius: 50%; color: var(--muted); font-size: 15px; }
+  .miniplayer .miniclose:hover, .miniplayer .miniclose:focus-visible { background: var(--accent-soft); color: var(--ink); }
+  .miniplayer .embed, .miniplayer .player { display: block; margin: 0; position: relative; }
+  .miniplayer video { display: block; width: 100%; max-height: 56vh; background: #000; }
+  .miniplayer .quality, .miniplayer .dkmask { display: none !important; }
   #lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.86); display: flex; flex-direction: column;
               align-items: center; justify-content: center; gap: 10px; padding: 16px; }
   #lightbox[hidden] { display: none; }
@@ -3269,6 +3288,111 @@
     for (const c of changes) for (const n of c.addedNodes) if (n.nodeType === 1) watchReleases(n);
   }).observe(document.body, { childList: true, subtree: true });
   watchReleases(document);
+
+  // The small player that follows you (Justin, 3 Nov: "If I browse away from that tidings page, where the
+  // video is playing, I want it to follow me and keep playing (and make it obvious how to close it or browse
+  // back to the tiding)"). A Tidings page hands its playing video here as it's left (mood_tiding.html,
+  // magentaHandoff): to another page of Tidings, or out of Tidings altogether. It plays on from that moment, at
+  // its speed and quality (the same remembered choices), captions too. Its title goes back to the page; that
+  // page takes the video back from here, from where it is now. ✕ closes it. Playing another video ends it.
+  const mini = { el: null, state: null };
+  function miniVideo() { return mini.el && mini.el.querySelector('video'); }
+  function miniClose() {
+    const v = miniVideo();
+    if (v) { if (v._hls) v._hls.destroy(); v.pause(); v.removeAttribute('src'); v.load(); }
+    if (mini.el) mini.el.remove();
+    mini.el = mini.state = null;
+  }
+  function miniNow() {
+    const v = miniVideo();
+    return v ? { ...mini.state, t: v.currentTime, rate: v.playbackRate, muted: v.muted } : null;
+  }
+  async function miniShow(state) {
+    miniClose();
+    if (!state || typeof state.back !== 'string' || !state.back.startsWith('/moods/tidings/')) return;
+    mini.state = state;
+    const el = mini.el = Object.assign(document.createElement('div'), { className: 'miniplayer' + (state.portrait ? ' portrait' : '') });
+    el.setAttribute('role', 'region');
+    el.setAttribute('aria-label', 'Playing: ' + state.title);
+    el.innerHTML = '<div class="minibar"><button type="button" class="miniback" title="Back to its page on Tidings">↩ <span></span></button>'
+      + '<button type="button" class="miniclose" title="Close" aria-label="Close the player">✕</button></div>'
+      + '<div class="embed"><video controls playsinline data-watched="1"></video></div>';
+    el.querySelector('.miniback span').textContent = state.title || 'back to it';
+    const v = el.querySelector('video');
+    if (state.poster) v.poster = state.poster;
+    if (state.captions) {
+      const track = Object.assign(document.createElement('track'), { kind: 'subtitles', label: 'Captions', srclang: 'en',
+        src: URL.createObjectURL(new Blob([state.captions], { type: 'text/vtt' })) });
+      v.append(track);
+      track.addEventListener('load', () => { if (track.track) track.track.mode = state.cc ? 'showing' : 'hidden'; });
+      if (track.track) track.track.mode = state.cc ? 'showing' : 'hidden';
+    }
+    document.body.append(el);
+    v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(state.t || 0, v.duration || state.t || 0); }, { once: true });
+    if (state.hls) {
+      v.dataset.hls = state.hls;
+      v.dataset.src = state.src || '';
+      await attachRelease(v);
+    } else {
+      v.src = state.src;
+    }
+    if (mini.el !== el) return;  // closed while it loaded
+    v.defaultPlaybackRate = v.playbackRate = state.rate || 1;
+    v.muted = !!state.muted;
+    v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });  // no sound allowed yet: its own controls unmute it
+  }
+  function tidingsFrame() { return sectionFrames.querySelector('iframe[data-section="tidings"]:not([data-fresh])'); }
+  function miniBack() {
+    const state = mini.state;
+    if (!state) return;
+    showSection('tidings', true);  // which takes it back, if Tidings is still at its page
+    const frame = tidingsFrame();
+    if (mini.state && frame) frame.src = state.back + '?embed=1';  // elsewhere in Tidings: there, and it takes it on arrival
+  }
+  // Coming back to Tidings while it's still at the page this came from: that page plays on, this goes.
+  function miniHome() {
+    const frame = tidingsFrame();
+    if (!mini.state || !frame) return;
+    try {
+      if (frame.contentWindow.location.pathname === mini.state.back && frame.contentWindow.magentaResume) {
+        const now = miniNow();
+        miniClose();
+        frame.contentWindow.magentaResume(now);
+      }
+    } catch (e) {}
+  }
+  document.addEventListener('click', e => {
+    if (!mini.el || !mini.el.contains(e.target)) return;
+    if (e.target.closest('.miniclose')) miniClose();
+    else if (e.target.closest('.miniback')) miniBack();
+  });
+  // Its bar moves it, out of the way of whatever it covers.
+  document.addEventListener('pointerdown', e => {
+    const bar = mini.el && e.target.closest('.miniplayer .minibar');
+    if (!bar || e.target.closest('button')) return;
+    const box = mini.el.getBoundingClientRect(), dx = e.clientX - box.left, dy = e.clientY - box.top;
+    const move = m => {
+      mini.el.classList.add('moved');
+      mini.el.style.left = Math.max(0, Math.min(innerWidth - box.width, m.clientX - dx)) + 'px';
+      mini.el.style.top = Math.max(0, Math.min(innerHeight - 40, m.clientY - dy)) + 'px';
+      mini.el.style.right = mini.el.style.bottom = 'auto';
+    };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+  });
+  // Another video played here ends it: one at a time.
+  document.addEventListener('play', e => { if (mini.el && e.target.tagName === 'VIDEO' && !mini.el.contains(e.target)) miniClose(); }, true);
+  window.magentaMini = {
+    show: miniShow,
+    close: miniClose,
+    take(id) {  // a Tidings page arriving: if this is its video, where it is now, and this goes
+      if (!mini.state || mini.state.id !== id) return null;
+      const now = miniNow();
+      miniClose();
+      return now;
+    },
+  };
 
   // A memo recorded in a browser doesn't say how long it is (MediaRecorder writes no
   // duration), so its player can't place its bar: it races ahead, then crawls.
@@ -9632,12 +9756,17 @@
   }
   function showSection(name, push) {
     const left = sectionNow;
+    // Leaving Tidings with a video playing there: it follows (the small player, above).
+    if (left === 'tidings' && name !== 'tidings') {
+      try { const w = tidingsFrame() && tidingsFrame().contentWindow; if (w && w.magentaHandoff) w.magentaHandoff(); } catch (e) {}
+    }
     sectionNow = name;
     if (left !== name && left === 'tidings') markTidingsSeen();  // what came while they read it is seen too
     if (left !== name && sectionPending[left]) { delete sectionPending[left]; refreshSection(left); }
     document.body.classList.toggle('in-section', name !== 'moods');
     sectionFrames.hidden = name === 'moods';
     if (name === 'tidings') markTidingsSeen();  // the badges count from this visit on
+    if (name === 'tidings' && left !== 'tidings') miniHome();
     if (name !== 'moods') {
       const frame = frameFor(name);
       frame.hidden = false;

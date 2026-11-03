@@ -391,7 +391,19 @@ def tree_of(tiding, message_id, index=None, viewer=None):
             node['replies'] = splice(node.get('replies', []),
                                      ('m:' if node['kind'] == 'mood' else 'c:') + node['id'])
         return nodes
-    return _snippets_and_votes(splice(mood_under(str(message_id)), 'm:' + str(message_id)), viewer)
+    return _without_gone(_snippets_and_votes(splice(mood_under(str(message_id)), 'm:' + str(message_id)), viewer))
+
+
+def _without_gone(nodes):
+    """A deleted comment nothing answers is gone from the page, not left as '[deleted]' (Justin, 3 Nov); one
+    that was answered stays, marked, so its replies still answer something."""
+    out = []
+    for node in nodes:
+        node['replies'] = _without_gone(node.get('replies', []))
+        if node.get('changed') == 'deleted' and not node['replies']:
+            continue
+        out.append(node)
+    return out
 
 
 def _tree(message_id, index=None):
@@ -884,7 +896,7 @@ def listed(limit=LISTED, viewer=None, order='top'):
     from django.db.models import Q
     from .mood_view import agent_names
     said, people = {}, {}
-    for tid, c, by_people in (TidingComment.objects.filter(tiding__in=rows).values('tiding_id')
+    for tid, c, by_people in (TidingComment.objects.filter(tiding__in=rows).exclude(changed='deleted').values('tiding_id')
                               .annotate(c=Count('id'), p=Count('id', filter=Q(by__is_biological_human=True)))
                               .values_list('tiding_id', 'c', 'p')):
         said[str(tid)], people[str(tid)] = c, by_people

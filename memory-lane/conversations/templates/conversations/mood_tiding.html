@@ -64,6 +64,12 @@
   .stage .embed video { display: block; width: 100%; max-height: calc(100vh - 120px); background: #000; border-radius: 12px;
                         box-shadow: 0 6px 28px rgba(0, 0, 0, .22); }
   .stage.portrait .embed video { aspect-ratio: 9 / 16; object-fit: contain; }
+  .embed .quality { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; font-size: 12px; }
+  .embed .quality[hidden] { display: none; }
+  .embed .quality span { color: var(--muted); margin-right: 2px; }
+  .embed .quality button { font: inherit; padding: 1px 8px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .embed .quality button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
   .stage .embed .controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
   .stage .embed .controls .speed { margin-top: 0; }
   .embed button.cc { font: 600 12px/1 inherit; padding: 3px 9px; border-radius: 10px; cursor: pointer;
@@ -523,6 +529,7 @@
         <video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
         <!-- Each comment that names a moment ("2:14 that slide!") is a mark on this line, and a link that plays from it. -->
         <div class="moments" aria-label="Moments people talked about" hidden></div>
+        <div class="quality" aria-label="Quality" hidden></div>
         <div class="controls"><div class="speed" aria-label="Speed"></div><button type="button" class="cc" hidden title="Captions on or off">CC</button></div>
         {% if r.captions %}{{ r.captions|json_script:"captionsVtt" }}{% endif %}
       </div>
@@ -611,6 +618,7 @@
   {% if tiding.release %}</div></div>{% endif %}
 
 </main>
+{{ tiding.title|json_script:"tidingTitle" }}
 <script>
   // Talking about a video by the moment (Justin, 3 Nov: "timecoded comments first"). A time said in a comment
   // -- 2:14, or 1:02:03 -- is a link that plays the video from there; each is a mark on a line under the
@@ -657,13 +665,63 @@
       let Hls = null;
       try { Hls = await loadHls(); } catch (e) { Hls = null; }
       if (!Hls || !Hls.isSupported()) { if (native) v.src = v.dataset.hls; else plain(); return; }
-      const hls = v._hls = new Hls({ maxBufferLength: 12 });
+      const hls = v._hls = hlsFor(Hls, plain);
+      hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => addQualities(Hls, plain, data.levels || hls.levels));
+      hls.loadSource(v.dataset.hls);
+      hls.attachMedia(v);
+    }
+    function hlsFor(Hls, plain, options) {
+      const hls = new Hls({ maxBufferLength: 12, ...(options || {}) });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) cantPlay(); else plain();  // no playlist there: one plain file
       });
-      hls.loadSource(v.dataset.hls);
+      return hls;
+    }
+
+    // --- quality, as the Moods' player has it (Justin, 3 Nov: "I don't see a quality selector"): Auto, each
+    // picture largest first, Audio only; remembered with the Moods' own choice (moods.releaseQuality) ---
+    const levelName = l => l.width && l.height ? Math.min(l.width, l.height) + 'p' : 'Audio only';
+    function reload(Hls, plain, url, level) {  // Audio only is its own playlist; hls.js can't drop the picture in place
+      const at = v.currentTime, playing = !v.paused, rate = v.playbackRate;
+      if (v._hls) v._hls.destroy();
+      const hls = v._hls = hlsFor(Hls, plain, { startPosition: at, startLevel: level });
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (level >= 0) hls.currentLevel = level;
+        v.playbackRate = rate;
+        if (playing) v.play().catch(() => {});
+      });
+      hls.loadSource(url);
       hls.attachMedia(v);
+    }
+    function addQualities(Hls, plain, levels) {
+      const row = embed.querySelector('.quality');
+      if (!row || levels.length < 2 || row.dataset.made) return;
+      row.dataset.made = '1';
+      const choices = [{ name: 'Auto', index: -1 }, ...levels.map((level, index) => ({ name: levelName(level), index, level }))
+        .sort((a, b) => (b.level.width || 0) * (b.level.height || 0) - (a.level.width || 0) * (a.level.height || 0))];
+      const audio = choices.find(c => c.name === 'Audio only');
+      row.innerHTML = '<span>Quality</span>';
+      for (const c of choices) row.append(Object.assign(document.createElement('button'), { type: 'button', textContent: c.name, value: c.name }));
+      const paint = name => { for (const b of row.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.value === name)); };
+      function choose(choice, remember) {
+        if (remember) store.set('releaseQuality', choice.name);
+        paint(choice.name);
+        if (choice === audio) {
+          if (!v._audioOnly) { v._audioOnly = true; reload(Hls, plain, choice.level.uri || [].concat(choice.level.url)[0], -1); }
+          return;
+        }
+        if (v._audioOnly) { v._audioOnly = false; reload(Hls, plain, v.dataset.hls, choice.index); return; }
+        v._hls.currentLevel = choice.index;  // -1: hls.js picks by bandwidth; a level: switched at once
+      }
+      row.addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (b) choose(choices.find(c => c.name === b.value), true);
+      });
+      row.hidden = false;
+      const wanted = choices.find(c => c.name === store.get('releaseQuality', 'Auto')) || choices[0];
+      if (wanted.index === -1) paint('Auto'); else choose(wanted, false);
+      v._quality = () => (row.querySelector('[aria-pressed="true"]') || {}).value || 'Auto';
     }
     if (v && v.dataset.hls) {
       attach();
@@ -848,6 +906,48 @@
     if (asked && v) {
       const t = secs(asked[1]);
       v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(t, v.duration || t); }, { once: true });
+    }
+
+    // --- it follows you (Justin, 3 Nov: "If I browse away from that tidings page, where the video is playing, I
+    // want it to follow me and keep playing"). Leaving this page while it plays -- another page of Tidings, or
+    // another part of magenta -- hands it to the one page's small player (moods.html, magentaMini), which
+    // plays on from the same moment; coming back here takes it back from there. ---
+    const mini = (() => { try { return parent !== window && parent.magentaMini ? parent.magentaMini : null; } catch (e) { return null; } })();
+    const tidingId = '{{ tiding.id }}';
+    if (v && mini && (v.dataset.hls || v.getAttribute('src'))) {
+      let gone = false;
+      window.magentaHandoff = () => {  // asked by the one page as it leaves Tidings, and on our way out
+        if (gone || v.paused || v.ended) return false;
+        gone = true;
+        mini.show({ id: tidingId, title: JSON.parse(document.getElementById('tidingTitle').textContent),
+                    back: `/moods/tidings/${tidingId}/`, hls: v.dataset.hls || '', src: v.dataset.src || v.currentSrc || v.getAttribute('src') || '',
+                    poster: v.getAttribute('poster') || '', t: v.currentTime, rate: v.playbackRate, muted: v.muted,
+                    captions: vtt ? JSON.parse(vtt.textContent) : '', cc: !!(v.textTracks[0] && v.textTracks[0].mode === 'showing'),
+                    portrait: !!(v.videoHeight > v.videoWidth) });
+        v.pause();
+        return true;
+      };
+      // Back here, by its button or by any link: what it's played since is where this one goes on.
+      window.magentaResume = state => {
+        gone = false;
+        const go = () => { v.currentTime = state.t; v.playbackRate = state.rate || v.playbackRate; v.play().catch(() => { v.muted = true; v.play().catch(() => {}); }); };
+        if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
+        embed.scrollIntoView({ block: 'nearest' });
+      };
+      // Only when it's in front of them: a copy of Tidings redrawn out of sight (moods.html, refreshSection)
+      // leaves the small player be; coming back to Tidings brings it here then (moods.html, miniHome).
+      const seen = () => {
+        try {
+          if (!frameElement) return true;
+          const box = frameElement.closest('#sectionFrames');  // out of sight: the Moods are showing instead
+          return !frameElement.hidden && !frameElement.dataset.fresh && !(box && box.hidden);
+        } catch (e) { return true; }
+      };
+      const back = seen() ? mini.take(tidingId) : null;
+      if (back) window.magentaResume(back);
+      window.addEventListener('pagehide', () => window.magentaHandoff());
+      // One video at a time: playing this one ends whatever the small player was playing.
+      v.addEventListener('play', () => { gone = false; mini.close(tidingId); });
     }
   })();
 </script>
