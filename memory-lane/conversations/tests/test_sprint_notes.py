@@ -114,6 +114,25 @@ class SprintNotesTest(TestCase):
         self.assertEqual(gen_events.count(), 1)
 
 
+class SprintShownTest(TestCase):
+    """The current sprint in the header's menu (Justin, 3 Nov), with /api/servers/."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.delete('current-sprint')
+
+    def test_named_linked_and_kept_none_when_the_wiki_cant_say(self):
+        from django.test import override_settings
+        with override_settings(INTERFACE_WORDS_FROM_WIKI=True, PICKIPEDIA_URL='https://wiki.test'):
+            with mock.patch.object(sprint_notes, 'current', return_value=('Jellyfish', 'Cryptograss/Jellyfish')):
+                self.assertEqual(sprint_notes.shown(), {'name': 'Jellyfish', 'url': 'https://wiki.test/wiki/Cryptograss/Jellyfish'})
+            from django.core.cache import cache
+            cache.delete('current-sprint')
+            with mock.patch.object(sprint_notes, 'current', side_effect=sprint_notes.Refused('none', 409)):
+                self.assertIsNone(sprint_notes.shown())
+        self.assertIn('sprint', Client().get('/api/servers/').json())
+
+
 class WikiEmbedTest(TestCase):
     """⧉ Copy for PickiPedia: {{Magenta message}}, words and all (services/wiki_embed.py; Justin, 25 Oct)."""
 

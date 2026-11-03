@@ -519,7 +519,9 @@ def api_servers(request):
     """
     from .services import servers
     from .views_moods import page_version
-    return JsonResponse({'servers': servers.status(), 'page': page_version()})
+    from .services import sprint_notes
+    # The current sprint rides along, for the header's menu (Justin, 3 Nov): asked every minute, kept ten.
+    return JsonResponse({'servers': servers.status(), 'page': page_version(), 'sprint': sprint_notes.shown()})
 
 
 VENDOR_NAME = re.compile(r'[A-Za-z0-9._\-]{1,60}')
