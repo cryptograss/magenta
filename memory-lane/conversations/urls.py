@@ -126,6 +126,7 @@ urlpatterns = [
     path('api/agents/<str:name>/tasks/<str:task>/', views_auth.api_task, name='api_task'),
     path('api/deploys/', views_runner.api_deploys, name='api_deploys'),
     path('api/access/ssh/', views_runner.api_ssh, name='api_ssh'),
+    path('api/alarms/', views_runner.api_alarms, name='api_alarms'),
     path('api/servers/', views_runner.api_servers, name='api_servers'),
     path('api/bundles/', views_bundles.api_bundles, name='api_bundles'),
     path('api/bundles/<str:record_id>/', views_bundles.api_bundle, name='api_bundle'),

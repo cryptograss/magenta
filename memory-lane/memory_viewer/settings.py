@@ -229,6 +229,10 @@ MOOD_DEPLOY_KEY = os.getenv('MOOD_DEPLOY_KEY', '')
 # with this key from the vault (memory_lane_access_key). It can announce an SSH
 # session and nothing else. Unset, nobody can.
 MOOD_ACCESS_KEY = os.getenv('MOOD_ACCESS_KEY', '')
+# maybelle's Jenkins jobs (maybelle-config's report-alarm.sh) say in #ops when a check
+# turns red or green, with this key from the vault (memory_lane_alarm_key). It can post
+# an alarm and nothing else. Unset, nobody can.
+MOOD_ALARM_KEY = os.getenv('MOOD_ALARM_KEY', '')
 # Voice (conversations/services/voice.py): ElevenLabs, for voice memos
 # (speech to text) and reading messages aloud. Unset: no voice, and the
 # page offers none.

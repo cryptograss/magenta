@@ -473,6 +473,37 @@ def api_deploys(request):
     return JsonResponse({'server': name, 'state': state, 'moods': told}, status=201)
 
 
+@csrf_exempt  # authenticated by the alarm key, not a browser session
+@require_POST
+def api_alarms(request):
+    """A Jenkins job on maybelle says one of its checks turned red, or green again.
+
+    Body: {"job": "cron-health", "stage": "maybelle disk", "state": "red"|"green",
+           "url": "<the build>", "note": "..."}. Said in #ops (services/alarms.py).
+    """
+    from .services import alarms
+
+    key = getattr(settings, 'MOOD_ALARM_KEY', '')
+    if not key:
+        return JsonResponse({'error': 'no alarm key is configured'}, status=503)
+    if not hmac.compare_digest(request.headers.get('Authorization', '').encode(), f'Bearer {key}'.encode()):
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    try:
+        body = json.loads(request.body)
+        job, stage, state = str(body['job']).strip(), str(body['stage']).strip(), str(body['state'])
+    except (ValueError, KeyError, TypeError):
+        return JsonResponse({'error': 'expected {"job": ..., "stage": ..., "state": ...}'}, status=400)
+    if not job or not stage or state not in alarms.STATES:
+        return JsonResponse({'error': f'job and stage: words; state: one of {alarms.STATES}'}, status=400)
+    url = str(body.get('url') or '')
+    if url and not url.startswith('https://'):
+        return JsonResponse({'error': 'url: https:// only'}, status=400)
+    row = alarms.record(job, stage, state, url=url, note=str(body.get('note') or ''))
+    if row is None:
+        return JsonResponse({'error': 'no #ops to say it in'}, status=503)
+    return JsonResponse({'job': job, 'stage': stage, 'state': state}, status=201)
+
+
 _SSH_NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
 _SSH_KEY = re.compile(r'^SHA256:[A-Za-z0-9+/]{43}$')
 
