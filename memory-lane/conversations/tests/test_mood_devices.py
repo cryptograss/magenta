@@ -221,18 +221,18 @@ class InterruptTest(SignedInCase):
         client = self.sign_in()
         post = lambda body: client.post('/api/moods/m26/interrupt/', json.dumps(body), content_type='application/json',
                                         HTTP_X_CSRFTOKEN=client.cookies['csrftoken'].value)
-        self.assertEqual(post({'agent': 'justin'}).status_code, 400)  # a person, not an agent
-        stopped = post({'agent': 'magent'}).json()['interrupt']
-        self.assertEqual((stopped['agent'], stopped['by']), ('magent', 'justin'))
+        self.assertEqual(post({'emergent': 'justin'}).status_code, 400)  # a person, not an agent
+        stopped = post({'emergent': 'magent'}).json()['interrupt']
+        self.assertEqual((stopped['emergent'], stopped['by']), ('magent', 'justin'))
 
     def test_what_a_runner_reads_and_the_line_in_the_thread(self):
         from conversations.services import settings as knobs
-        self.assertEqual(self.client.get('/api/moods/m26/interrupt/', {'agent': 'magent'}).json(),
+        self.assertEqual(self.client.get('/api/moods/m26/interrupt/', {'emergent': 'magent'}).json(),
                          {'scram': knobs.scram(), 'interrupt': None})
         client = self.sign_in()
-        client.post('/api/moods/m26/interrupt/', '{"agent": "magent"}', content_type='application/json',
+        client.post('/api/moods/m26/interrupt/', '{"emergent": "magent"}', content_type='application/json',
                     HTTP_X_CSRFTOKEN=client.cookies['csrftoken'].value)
-        state = self.client.get('/api/moods/m26/interrupt/', {'agent': 'magent'}).json()
+        state = self.client.get('/api/moods/m26/interrupt/', {'emergent': 'magent'}).json()
         self.assertEqual(state['interrupt']['by'], 'justin')
         events = self.client.get('/api/moods/m26/turns/').json()['events']
         self.assertEqual([(e['type'], e['agent'], e['by']) for e in events], [('interrupt', 'magent', 'justin')])
@@ -249,7 +249,7 @@ class InterruptTest(SignedInCase):
                                content='@magent fix the', timestamp=int(now * 1000))
         self.assertEqual(activity(mood, now=now + 1)['doing'], 'waking')
         client = self.sign_in()
-        client.post('/api/moods/m26/interrupt/', '{"agent": "magent"}', content_type='application/json',
+        client.post('/api/moods/m26/interrupt/', '{"emergent": "magent"}', content_type='application/json',
                     HTTP_X_CSRFTOKEN=client.cookies['csrftoken'].value)
         self.assertIsNone(activity(mood, now=time.time() + 1))
         # What's posted after the stop wakes as usual.

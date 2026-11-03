@@ -45,7 +45,7 @@ class AgentSettingsTest(TestCase):
                         session=session)
 
     def rows(self, agent='re'):
-        return {r.key: r for r in Setting.objects.filter(agent_id=agent, mood=self.m26)}
+        return {r.key: r for r in Setting.objects.filter(emergent_id=agent, mood=self.m26)}
 
     def refusals(self):
         return [m.content['note'] for m in Message.objects.filter(source_file='agent-settings',
@@ -62,17 +62,17 @@ class AgentSettingsTest(TestCase):
         said = self.client.get('/api/moods/m26/turns/').json()['turns']
         self.assertEqual([t['text'] for t in said if t['sender'] == 'magent'], ['On it.'])
         emergent_settings.from_message(reply)  # its transcript, after the stream: once only
-        self.assertEqual(Setting.objects.filter(agent_id='re').count(), 2)
+        self.assertEqual(Setting.objects.filter(emergent_id='re').count(), 2)
 
     def test_another_mood_and_listening_for_a_while(self):
         self.turn('re: listening off for 2h\nin: jams')
-        row = Setting.objects.get(agent_id='re', mood=self.jams, key='listening')
+        row = Setting.objects.get(emergent_id='re', mood=self.jams, key='listening')
         self.assertEqual(row.value['mode'], 'off')
         self.assertTrue(row.value['until'])
 
     def test_only_who_the_grant_names(self):
         self.turn('magent: verbosity brief', agent=self.re)
-        self.assertFalse(Setting.objects.filter(agent_id='magent').exists())
+        self.assertFalse(Setting.objects.filter(emergent_id='magent').exists())
         self.assertIn('re may not set', self.refusals()[0])
         knobs.change('settings_may_set', ['magent', 're'], by=self.justin)  # a person grants it: a value, not code
         self.turn('magent: verbosity brief', agent=self.re)

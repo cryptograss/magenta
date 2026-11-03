@@ -33,7 +33,7 @@ class UsageTest(TidingsTests):
                          (6.11, 6.11))
         self.assertEqual(state['models'], ['Opus 5.5', 'Fable 5.1'])
         top = state['top']['openrouter'][0]
-        self.assertEqual((top['agent'], top['mood'], top['models'], top['usd'], top['paid']),
+        self.assertEqual((top['emergent'], top['mood'], top['models'], top['usd'], top['paid']),
                          ('re', 'docs-tests-qa', ['Fable 5.1'], 6.1085, True))
         self.assertEqual(state['top']['anthropic'][0]['turn'], str(turn_a))
 

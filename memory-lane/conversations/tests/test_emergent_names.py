@@ -23,7 +23,7 @@ class UrlsTest(TestCase):
                 resolve(path)
 
     def test_the_old_paths_are_not_found(self):
-        ThinkingEntity.objects.create(name='re', is_biological_human=False)
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
         self.assertEqual(self.client.get('/api/agents/re/models/').status_code, 404)
         self.assertEqual(self.client.post('/api/agents/re/models/', '{}', content_type='application/json').status_code, 404)
         self.assertEqual(self.client.post('/api/agents/re/tasks/Journal/', '{}', content_type='application/json').status_code, 404)
@@ -71,13 +71,13 @@ class PollerTest(SimpleTestCase):
 class ServerKeysTest(TestCase):
     @classmethod
     def setUpTestData(cls):
-        ThinkingEntity.objects.create(name='justin', is_biological_human=True)
-        ThinkingEntity.objects.create(name='re', is_biological_human=False)
+        ThinkingEntity.objects.get_or_create(name='justin', defaults={'is_biological_human': True})
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
         Mood.objects.create(slug='m26')
 
     def test_settings_say_emergents(self):
         state = self.client.get('/api/settings/').json()
-        self.assertEqual(state['emergents'], ['re'])
+        self.assertIn('re', state['emergents'])
         self.assertNotIn('agents', state)
 
     def test_the_pulse_says_whose_it_is_as_emergent(self):

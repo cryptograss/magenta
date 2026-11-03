@@ -308,7 +308,7 @@ class StreamTest(TestCase):
         self.post([table, done])
         turns = self.client.get('/api/moods/m26/turns/').json()
         self.assertIn('Context Usage', turns['turns'][-1]['text'])
-        self.assertEqual(turns['agents']['magent']['context']['tokens'], 400_003)
+        self.assertEqual(turns['emergents']['magent']['context']['tokens'], 400_003)
 
     def test_a_compaction_streams_in_as_one_and_is_the_session_to_resume(self):
         # `/compact` run by the poller: no reply, just the summary the session
@@ -336,7 +336,7 @@ class StreamTest(TestCase):
         self.assertIn('Banjo setlist', turns['compactions'][0]['html'])
         self.assertEqual([t['text'] for t in turns['turns']], ['Before.'])  # no stray "Compacted" turn
         # The pie: about the summary's size, until a turn measures it.
-        context = turns['agents']['magent']['context']
+        context = turns['emergents']['magent']['context']
         self.assertTrue(context['compacted'])
         self.assertLess(context['tokens'], 100)
 
@@ -404,7 +404,7 @@ class PulseAndQuietTest(TestCase):
         self.assertFalse(post({'lines': []}).json()['said'])
         rows = list(Message.objects.filter(mood=self.mood, source_file='instructions').order_by('created_at'))
         self.assertEqual([len(r.content['lines']) for r in rows], [1, 2, 0])
-        self.assertEqual(rows[0].content['agent'], 'magent')
+        self.assertEqual(rows[0].content['agent'], 'magent')  # a stored line keeps the key it was written with
         self.assertTrue(event_line(rows[0].content).startswith("⚠ magent's instructions are degraded: standing ("))
         self.assertEqual(event_line(rows[2].content), "✓ magent's instructions are whole again")
         page = self.client.get('/api/moods/m26/turns/').json()
@@ -459,13 +459,13 @@ class PulseAndQuietTest(TestCase):
                                content=[{'type': 'text', 'text': '<wait for="re"/>'}], stop_reason='end_turn')
         self.assertEqual(self.client.post('/api/moods/m26/held/', json.dumps({'reason': 'waiting for re'}),
                                           content_type='application/json', **AUTH).status_code, 200)
-        mine = [a for a in activities(self.mood) if a['agent'] == 'magent']
+        mine = [a for a in activities(self.mood) if a['emergent'] == 'magent']
         self.assertEqual([(a['doing'], a['why']) for a in mine], [('held', 'waiting for re')])
         quiet = self.client.get('/api/moods/m26/turns/').json()['quiet']
         self.assertEqual([q['reason'] for q in quiet], ['waiting for re'])  # its reply: a silence, not a turn
         cache.delete('moods-live')
         live = self.client.get('/api/moods/live/').json()['moods']['m26']
-        self.assertEqual(live['waiting'], [{'agent': 'magent', 'for': 're'}])  # for the page to say aloud
+        self.assertEqual(live['waiting'], [{'emergent': 'magent', 'for': 're'}])  # for the page to say aloud
 
     def test_a_wait_says_what_for(self):
         # Justin, 24 Oct: "waiting for re to <1-5 word summary>".
@@ -485,7 +485,7 @@ class PulseAndQuietTest(TestCase):
                          content_type='application/json', **AUTH)
         cache.delete('moods-live')
         live = self.client.get('/api/moods/live/').json()['moods']['m26']
-        self.assertEqual(live['waiting'], [{'agent': 'magent', 'for': 're', 'to': 'settle the schema'}])
+        self.assertEqual(live['waiting'], [{'emergent': 'magent', 'for': 're', 'to': 'settle the schema'}])
 
     def test_recent_context_only_when_asked(self):
         for i in range(5):

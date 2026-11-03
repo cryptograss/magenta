@@ -27,14 +27,14 @@ class ReportTest(TestCase):
         ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False})
 
     def post(self, body, key=KEY, agent='re'):
-        return self.client.post(f'/api/agents/{agent}/models/', data=json.dumps(body), content_type='application/json',
+        return self.client.post(f'/api/emergents/{agent}/models/', data=json.dumps(body), content_type='application/json',
                                 HTTP_AUTHORIZATION=f'Bearer {key}')
 
     def test_a_runner_reports_and_the_menu_reads_it(self):
-        self.assertEqual(self.client.get('/api/agents/re/models/').status_code, 404)
+        self.assertEqual(self.client.get('/api/emergents/re/models/').status_code, 404)
         r = self.post(REPORT)
         self.assertEqual((r.status_code, r.json()['models']), (200, 3))
-        got = self.client.get('/api/agents/re/models/').json()
+        got = self.client.get('/api/emergents/re/models/').json()
         self.assertEqual(got['harness'], 'pi 1.1.0')
         self.assertEqual([(v['name'], v['usable']) for v in got['vendors']], [('anthropic', False), ('openrouter', True)])
         self.assertEqual(got['vendors'][1]['models'][1], ['~anthropic/claude-fable-latest', None])
@@ -59,7 +59,7 @@ class ReportTest(TestCase):
     def test_the_mood_says_which_agents_have_a_menu_of_their_own(self):
         Mood.objects.create(slug='docs-tests-qa')
         self.post(REPORT)
-        agents = self.client.get('/api/moods/docs-tests-qa/turns/').json()['agents']
+        agents = self.client.get('/api/moods/docs-tests-qa/turns/').json()['emergents']
         self.assertEqual((agents['re']['catalog'], agents['magent']['catalog']), ('pi 1.1.0', None))
 
 
@@ -115,7 +115,7 @@ class PiCatalogTest(TestCase):
                 return mock.Mock(status_code=200)
 
         self.assertTrue(MoodAPI('http://ml', http=HTTP, key=KEY).report_models('re', REPORT))
-        self.assertEqual(sent['url'], 'http://ml/api/emergents/re/models/')  # /api/agents/... answers too, until the rename's last step
+        self.assertEqual(sent['url'], 'http://ml/api/emergents/re/models/')  # /api/emergents/... answers too, until the rename's last step
         self.assertEqual(sent['headers'], {'Authorization': f'Bearer {KEY}'})
         self.assertFalse(MoodAPI('http://ml', http=HTTP).report_models('re', REPORT))  # no key, no report
 
@@ -138,7 +138,7 @@ class ModelsOffTest(TestCase):
         from conversations.models import HarnessModels
         re_ = ThinkingEntity.objects.update_or_create(name='re', defaults={'is_biological_human': False})[0]
         self.justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
-        HarnessModels.objects.update_or_create(agent=re_, defaults=dict(harness='pi 1.1.0', vendors=[
+        HarnessModels.objects.update_or_create(emergent=re_, defaults=dict(harness='pi 1.1.0', vendors=[
             {'name': 'openrouter', 'usable': True, 'models': [['anthropic/claude-opus-5-5', 1000000],
                                                               ['~anthropic/claude-fable-latest', 1000000],
                                                               ['moonshotai/kimi-k3', 256000]]},
@@ -147,9 +147,9 @@ class ModelsOffTest(TestCase):
     def test_off_through_openrouter_only(self):
         from conversations.services import settings as knobs
         knobs.change('models_off', knobs.clean('models_off', {'openrouter': ['anthropic']}), by=self.justin)
-        got = self.client.get('/api/agents/re/models/').json()['vendors']
+        got = self.client.get('/api/emergents/re/models/').json()['vendors']
         self.assertEqual([[m[0] for m in v['models']] for v in got], [['moonshotai/kimi-k3'], ['claude-opus-5-5']])
-        self.assertEqual(len(self.client.get('/api/agents/re/models/?all=1').json()['vendors'][0]['models']), 3)
+        self.assertEqual(len(self.client.get('/api/emergents/re/models/?all=1').json()['vendors'][0]['models']), 3)
         with self.assertRaises(knobs.Invalid):
             knobs.clean('model', 'openrouter/anthropic/claude-opus-5-5')
         self.assertEqual(knobs.clean('model', 'anthropic/claude-opus-5-5'), 'anthropic/claude-opus-5-5')

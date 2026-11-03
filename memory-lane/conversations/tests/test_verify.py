@@ -10,7 +10,7 @@ from conversations.services import verify
 
 
 def bundle(**layers):
-    BundleRecord.objects.create(id=uuid.uuid4(), agent='re', mood='jams', requested_at=timezone.now(), sha256='0' * 64,
+    BundleRecord.objects.create(id=uuid.uuid4(), emergent='re', mood='jams', requested_at=timezone.now(), sha256='0' * 64,
                                 stamps={'greeting': {'page': 'Cryptograss:Emergents/Greeting',
                                                      'agent_page': {'page': 'Cryptograss:Emergents/Re'}},
                                         'layers': layers})
