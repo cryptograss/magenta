@@ -192,6 +192,18 @@
   #bellMenu #alerts .hint[hidden] { display: none; }
   #bellMenu #alerts.bell-off [data-tell] { opacity: .5; }  /* chosen, but nothing tells until the bell's on */
   #bellMenu #alerts label[hidden] { display: none; }
+  /* The block, the servers and the sprint: one button, its menu under it (Justin, 3 Nov). */
+  header .statewrap { position: relative; display: inline-flex; align-items: center; }
+  #stateBtn { border: 1px solid var(--line); border-radius: 10px; background: none; padding: 2px 6px; cursor: pointer; display: inline-flex;
+              align-items: center; gap: 4px; color: var(--muted); font: inherit; font-size: 11px; }
+  #stateBtn:hover { border-color: var(--accent); color: var(--ink); }
+  #stateMenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 380px; max-width: calc(100vw - 20px); background: var(--panel);
+               border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 13px; }
+  #stateMenu[hidden] { display: none; }
+  #stateMenu .block, #stateMenu .sprint { padding: 2px 0 6px; color: var(--ink); }
+  #stateMenu .sprint[hidden] { display: none; }
+  #stateMenu .sprint a { color: var(--accent); }
+  #stateMenu #serverPop { position: static; min-width: 0; border: 0; box-shadow: none; padding: 0; background: none; border-top: 1px solid var(--line); }
   /* The servers: four dots, pulsing while one is being redeployed. */
   .servers { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
   .servers .srv { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
@@ -1625,8 +1637,14 @@
   <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls">polls</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a><a href="/moods/todo/" data-section="todo">todo</a><a href="/moods/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">bundle segments</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
-  <span class="block" id="block" title="Ethereum mainnet's block height"></span>
-  <span class="servers" id="servers" title="Servers"></span>
+  <!-- The block, the servers and the sprint, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
+  <span class="statewrap">
+    <button type="button" id="stateBtn" aria-haspopup="true" aria-expanded="false" title="The block, the servers and the sprint"><span class="servers" id="servers"></span><span class="caret">▾</span></button>
+    <div id="stateMenu" hidden>
+      <div class="block" id="block" title="Ethereum mainnet's block height"></div>
+      <div class="sprint" id="sprintLine" hidden></div>
+    </div>
+  </span>
   <button id="reloadNudge" type="button" title="This page changed since you opened it: reload for the new one" hidden>↻ new version</button>
   <button id="searchBtn" type="button" title="Search what was said (/)">⌕</button>
   <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
@@ -4383,7 +4401,9 @@
   const serversEl = document.getElementById('servers');
   const serverPop = document.createElement('div');
   serverPop.id = 'serverPop'; serverPop.hidden = true;
-  document.querySelector('header').appendChild(serverPop);
+  const stateMenu = document.getElementById('stateMenu'), stateBtn = document.getElementById('stateBtn');
+  const sprintLine = document.getElementById('sprintLine');
+  stateMenu.appendChild(serverPop);
   let serversAt = 0, serverList = [];
   const PAGE_VERSION = "{{ page_version|escapejs }}";
   const reloadNudge = document.getElementById('reloadNudge');
@@ -4391,19 +4411,23 @@
   async function refreshServers(force) {
     if (!force && Date.now() - serversAt < 60000) return;
     serversAt = Date.now();
+    let got;
     try {
       const r = await fetch('/api/servers/');
       if (!r.ok) return;
-      const got = await r.json();
+      got = await r.json();
       serverList = got.servers;
       if (got.page && got.page !== PAGE_VERSION) reloadNudge.hidden = false;
     } catch (e) { return; }
-    serversEl.innerHTML = serverList.map(sv => {
-      const state = sv.deploying ? 'deploying' : sv.up ? 'up' : 'down';
-      const words = sv.deploying ? 'redeploying' : sv.up ? 'up' : 'not answering';
-      return `<span class="srv ${state}" title="${esc(sv.name)}: ${esc(words)}"></span>`;
-    }).join('');
-    if (!serverPop.hidden) renderServerPop();
+    // Folded, one dot: red if any isn't answering, amber if one is redeploying, else green.
+    const states = serverList.map(sv => sv.deploying ? 'deploying' : sv.up ? 'up' : 'down');
+    const worst = states.includes('down') ? 'down' : states.includes('deploying') ? 'deploying' : 'up';
+    serversEl.innerHTML = serverList.length ? `<span class="srv ${worst}"></span>` : '';
+    stateBtn.title = serverList.map((sv, i) => `${sv.name}: ${states[i] === 'deploying' ? 'redeploying' : states[i] === 'up' ? 'up' : 'not answering'}`).join('\n')
+      + (got.sprint ? `\nsprint: ${got.sprint.name}` : '');
+    sprintLine.hidden = !got.sprint;
+    if (got.sprint) sprintLine.innerHTML = `sprint: <a href="${esc(got.sprint.url)}" target="_blank" rel="noopener"><b>${esc(got.sprint.name)}</b></a>`;
+    renderServerPop();
   }
   // A server's portrait, light and dark where its page has both. The light one as it always was
   // (2.6px, #serverPop pre.art); the dark one, a drawing of its own (maybelle's: 50 columns, the
@@ -4429,17 +4453,21 @@
         : `${d.state === 'failed' ? 'redeploy failed' : 'redeployed'} ${ago(d.at)}${d.commit ? ' · ' + d.commit.slice(0, 8) : ''}`) : 'no redeploy told yet';
       const logLink = d && d.state !== 'started' ? deployLog(d.note) : '';
       const name = sv.url ? `<a href="${esc(sv.url)}" target="_blank" rel="noopener" title="${esc(sv.name)} on PickiPedia"><b>${esc(sv.name)}</b></a>` : `<b>${esc(sv.name)}</b>`;
-      return `<div>${portraits(sv)}<span>${name}`
+      const dot = `<span class="servers"><span class="srv ${sv.deploying ? 'deploying' : sv.up ? 'up' : 'down'}"></span></span>`;
+      return `<div>${dot}${portraits(sv)}<span>${name}`
         + `${sv.role ? ` <span class="role">${esc(sv.role)}</span>` : ''} · ${sv.deploying ? 'redeploying' : sv.up ? 'up' : '<b>not answering</b>'}`
         + `<br><span class="note">${esc(sv.about)} · ${esc(last)}${logLink}</span></span></div>`;
     }).join('');
   }
-  serversEl.addEventListener('click', e => {
+  serverPop.hidden = false;
+  stateBtn.addEventListener('click', e => {
     e.stopPropagation();
-    serverPop.hidden = !serverPop.hidden;
-    if (!serverPop.hidden) renderServerPop();
+    stateMenu.hidden = !stateMenu.hidden;
+    stateBtn.setAttribute('aria-expanded', String(!stateMenu.hidden));
   });
-  document.addEventListener('click', e => { if (!serverPop.hidden && !e.target.closest('#serverPop')) serverPop.hidden = true; });
+  document.addEventListener('click', e => {
+    if (!stateMenu.hidden && !e.target.closest('#stateMenu')) { stateMenu.hidden = true; stateBtn.setAttribute('aria-expanded', 'false'); }
+  });
   setInterval(() => refreshServers(false), 60000);
   refreshServers(true);
 
