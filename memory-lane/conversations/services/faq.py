@@ -3,7 +3,7 @@ presentation"). Kept on PickiPedia (Magenta:FAQ), where it's written; read here 
 and formatting come through, and split into slides in the page: each top-level bullet is a question, what's nested
 under it the answer.
 
-Read with plain HTTP at most every KEEP seconds; if the wiki can't be reached, the last copy read stands.
+Read with plain HTTP at most every KEEP (30) seconds; if the wiki can't be reached, the last copy read stands.
 """
 
 import json
@@ -16,7 +16,7 @@ PAGE = 'Magenta:FAQ'
 API = 'https://pickipedia.xyz/api.php'
 KEY = 'faq-page'
 LAST = 'faq-page-last'
-KEEP = 300  # seconds
+KEEP = 30  # seconds: an edit shows within half a minute (Justin, 3 Nov: edits weren't showing)
 USER_AGENT = 'magenta-faq/1 (https://github.com/cryptograss/magenta; memory-lane/conversations/services/faq.py)'
 
 
