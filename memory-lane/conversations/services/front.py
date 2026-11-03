@@ -14,7 +14,7 @@ import re
 from django.core.cache import cache
 
 TOP = 5       # links from Tidings (Justin, 23 Oct: five)
-LATELY = 5    # who spoke lately, and where
+LATELY = 5    # the people who spoke lately, each at their latest
 KEEP_FOR = 30  # seconds
 _KEY = 'front:state'
 SLOGANS_PAGE = 'Magenta:Slogans'
@@ -63,12 +63,12 @@ def name_html(name, wiki_names, looks):
     return f'<span class="agent" style="--agent: {colour}">{shown}</span>' if colour else shown
 
 
-def lately(limit=LATELY, scan=300):
+def lately(limit=LATELY, scan=2000):
     """Who spoke last, and in which Mood, newest first: [{'who', 'name', 'mood', 'title', 'said', 'at', 'ago'}].
     What was said (a person's post, an agent speaking), not an agent's thinking or tool calls, its silences,
-    the poller's wakes or the system's lines. Each person in each Mood once, at their latest (Justin,
-    22 Oct: "the five most recent user-mood combos"), with its first 80 characters (23 Oct). Archived Moods
-    aren't shown."""
+    the poller's wakes or the system's lines. People only, each once, at their latest word in any Mood (Justin,
+    3 Nov: "the one most recent message each from the five most recent humans"), with its first 80 characters
+    (23 Oct). Archived Moods aren't shown."""
     from django.utils.timesince import timesince
     from conversations.models import Message, ThinkingEntity
     from . import settings as knobs
@@ -76,7 +76,7 @@ def lately(limit=LATELY, scan=300):
     from .mood_view import is_wrapper, prose, quiet_reason, reply_to, snippet_of
     archived = knobs.archived_slugs()
     wiki_names, looks = wiki_auth.names(), knobs.looks()
-    people = set(ThinkingEntity.objects.values_list('name', flat=True))
+    people = set(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True))
     rows = (Message.objects.filter(mood__isnull=False, is_sidechain=False, thought__isnull=True, tooluse__isnull=True,
                                    toolresult__isnull=True, sender_id__in=people)
             .select_related('mood').order_by('-created_at').only('content', 'created_at', 'sender_id', 'mood')[:scan])
@@ -87,8 +87,8 @@ def lately(limit=LATELY, scan=300):
         text = prose(msg.content)
         if not text or is_wrapper(text) or quiet_reason(text) is not None:
             continue
-        if any((said['who'], said['mood']) == (msg.sender_id, msg.mood.slug) for said in out):
-            continue  # this voice in this Mood is here already, at its latest
+        if any(said['who'] == msg.sender_id for said in out):
+            continue  # this person is here already, at their latest
         words = snippet_of(reply_to(text)[1])
         out.append({'who': msg.sender_id, 'name': name_html(msg.sender_id, wiki_names, looks),
                     'mood': msg.mood.slug, 'title': msg.mood.title or msg.mood.slug,
