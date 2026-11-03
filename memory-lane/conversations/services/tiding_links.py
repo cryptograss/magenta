@@ -67,10 +67,101 @@ def host_of(url):
     return host[4:] if host.startswith('www.') else host
 
 
+RELEASE_LINE = 'release'   # a new release's line in a feed Mood (services/wiki_feed.refresh_releases)
+RELEASE_GATEWAY = 'https://ipfs.delivery-kid.cryptograss.live/ipfs'
+
+
+def said_of(message):
+    """What a message says, as Tidings reads it: its words. A release's line in a feed Mood is no one's words
+    but says one thing -- the release, by its title and its Release page -- so it can be promoted and talked
+    about like any link (Justin, 3 Nov: "get that new video posted as a tiding")."""
+    from .mood_view import pickipedia_url, prose
+    content = message.content
+    if message.source_file == RELEASE_LINE and isinstance(content, dict) and content.get('page'):
+        page = str(content['page']).replace(' ', '_')
+        return f"{content.get('title') or page} {pickipedia_url()}/wiki/{page}"
+    return prose(content)
+
+
+def said_by(message):
+    """Who said it: a release's line is the release's uploader's (as the wiki names them), not the system's."""
+    if message.source_file == RELEASE_LINE and isinstance(message.content, dict) and message.content.get('by'):
+        return str(message.content['by'])
+    return message.sender_id
+
+
+def norm_cid(cid):
+    """A CID as it's pinned: the wiki capitalises a base32 CIDv1's first letter (Bafy...), the pin doesn't."""
+    return cid.lower() if cid[:4].lower() == 'bafy' else cid
+
+
+def release_cid(url):
+    """The CID a PickiPedia Release page's address names, as pinned; else None."""
+    from .mood_view import pickipedia_url
+    base = f'{pickipedia_url()}/wiki/Release:'
+    if not (url or '').startswith(base):
+        return None
+    cid = url[len(base):].split('#')[0].split('?')[0]
+    return norm_cid(cid) if re.fullmatch(r'[A-Za-z0-9]{30,100}', cid) else None
+
+
+def release_embed(cid):
+    """A release's player, as delivery-kid pins it: its HLS ladder, the plain file if it isn't one, its still."""
+    cid = norm_cid(cid)
+    return {'kind': 'release', 'cid': cid, 'hls': f'{RELEASE_GATEWAY}/{cid}/master.m3u8',
+            'src': f'{RELEASE_GATEWAY}/{cid}', 'poster': f'{RELEASE_GATEWAY}/{cid}/poster.jpg'}
+
+
+def release_tiding(cid):
+    """The one Tiding a release has, if it's on Tidings: the first promoted, however it was (Justin, 3 Nov:
+    promoting a Release "whether from its pickipedia url or from the mood message" is one outcome)."""
+    from conversations.models import Tiding
+    cid = norm_cid(cid)
+    for tiding in Tiding.objects.filter(url__icontains=cid[1:]).order_by('at'):
+        if release_cid(tiding.url) == cid:
+            return tiding
+    return None
+
+
+def promote_release(cid, by, title=None, tags=None):
+    """Put a release on Tidings by its CID: the Tiding it has already, if it has one (promoted from its line,
+    or from its link said in any Mood); else its line in a feed Mood is the message promoted (the first, if
+    several feed Moods have one), so what's said about it is that line's replies and the comments here.
+    (Tiding, whether it's new). A release made before the feed began, never linked in a Mood: Refused."""
+    from conversations.models import Message
+    already = release_tiding(cid)
+    if already:
+        return already, False
+    cid = norm_cid(cid)
+    # A feed line names the CID as the wiki titles it, so a CIDv1's first letter is capitalised there.
+    line = (Message.objects.filter(source_file=RELEASE_LINE, content__cid__in=[cid, cid[:1].upper() + cid[1:]],
+                                   mood__isnull=False)
+            .order_by('created_at').first())
+    if line is None:
+        raise Refused('this release came before the release feed: post its link in a Mood and promote that',
+                      status=404)
+    content = line.content if isinstance(line.content, dict) else {}
+    return promote(line, by, title=title or content.get('title') or None, tags=tags, with_news=True)
+
+
+def released():
+    """{CID: Tiding id} for each release on Tidings."""
+    from conversations.models import Tiding
+    out = {}
+    for tid, url in Tiding.objects.filter(url__contains='/wiki/Release:').order_by('at').values_list('id', 'url'):
+        cid = release_cid(url)
+        if cid:
+            out.setdefault(cid, str(tid))
+    return out
+
+
 def embed_of(url):
     """How a link's page can be played in place, if it's a video Justin (21 Oct): {"kind", "src"} for
     the players we know -- YouTube and Vimeo pages, and a bare media file -- else None. Downloading and
     keeping a copy of a yt-dlp-supported video is a separate job, not yet built."""
+    cid = release_cid(url)
+    if cid:
+        return release_embed(cid)
     parts = urlsplit(url)
     host = (parts.hostname or '').lower().removeprefix('www.')
     if host in ('youtube.com', 'm.youtube.com', 'youtu.be'):
@@ -156,7 +247,7 @@ def promote(message, by, url=None, title=None, tags=None, http=None, with_news=F
     from .retract import DELETED
     if message.mood_id is None or message.is_sidechain:
         raise Refused('only what was said in a Mood', status=404)
-    text = prose(message.content) or ''
+    text = said_of(message) or ''
     if text == DELETED:
         raise Refused('that message was deleted', status=404)
     found = links_in(text)
@@ -166,6 +257,9 @@ def promote(message, by, url=None, title=None, tags=None, http=None, with_news=F
     if url not in found:
         raise Refused('that link isn\'t in that message')
     already = Tiding.objects.filter(message=message, url=url).first()
+    cid = release_cid(url)
+    if already is None and cid:
+        already = release_tiding(cid)  # a release is one Tiding, wherever its link was said
     if already:
         return (already, False) if with_news else already
     tiding = Tiding.objects.create(message=message, url=url, by=by,
@@ -457,7 +551,7 @@ def comment(tiding, by, text, parent=None, client_version=''):
     message = tiding.message
     if message.mood_id is None:
         raise Refused('only what was said in a Mood', status=404)
-    if prose(message.content) == DELETED:
+    if said_of(message) == DELETED:
         raise Refused('that message was deleted', status=404)
     kind, parent_id = parent or (None, None)
     comment_parent, parent_message_id = None, None
@@ -686,6 +780,15 @@ def change_said(tiding, device, kind, node_id, text=None, delete=False):
     return {'id': str(row.id), 'changed': kind}
 
 
+def _release_of(url):
+    """A release's page on Tidings: what its Release page says (tidings.release_info), with its CID; else None."""
+    cid = release_cid(url)
+    if not cid:
+        return None
+    from .tidings import release_info
+    return {**release_info(cid), 'cid': cid}
+
+
 def discussion(tiding_id, viewer=None):
     """One link's page: itself, then what's been said about it. Missing or deleted: Refused."""
     from conversations.models import Tiding
@@ -695,9 +798,10 @@ def discussion(tiding_id, viewer=None):
     if tiding is None:
         raise Refused('no such link on Tidings', status=404)
     message = tiding.message
-    text = prose(message.content) or ''
+    text = said_of(message) or ''
     if text == DELETED or message.mood_id is None:
         raise Refused('that message was deleted', status=404)
+    is_line = message.source_file == RELEASE_LINE  # nobody's words: nothing besides its link to show
     scored, mines = _tiding_scores([tiding], viewer)
     return {
         'id': str(tiding.id),
@@ -708,14 +812,15 @@ def discussion(tiding_id, viewer=None):
         'at': tiding.at,
         'message': str(message.id),
         'mood': message.mood_slug,
-        'said_by': message.sender_id,
+        'said_by': said_by(message),
         'snippet': snippet_of(text)[:200],
-        'post': said_html(post_text(text, tiding.url)) if post_text(text, tiding.url) else '',
+        'post': said_html(post_text(text, tiding.url)) if not is_line and post_text(text, tiding.url) else '',
         'score': scored.get(str(tiding.id), 0),
         'mine': str(tiding.id) in mines,
         'tags': tiding.tags or [],
         'muted': tiding.muted_in_mood,
         'embed': embed_of(tiding.url),
+        'release': _release_of(tiding.url),
         'comments': tree_of(tiding, message.id, viewer=viewer),
     }
 
@@ -766,7 +871,7 @@ def listed(limit=LISTED, viewer=None, order='top'):
     rows = []
     for tiding in found:
         message = tiding.message
-        text = prose(message.content) or ''
+        text = said_of(message) or ''
         if text == DELETED or message.mood_id is None:
             continue
         rows.append(tiding)
@@ -787,7 +892,7 @@ def listed(limit=LISTED, viewer=None, order='top'):
     out = []
     for tiding in rows:
         message = tiding.message
-        text = prose(message.content) or ''
+        text = said_of(message) or ''
         out.append({
             'id': str(tiding.id),
             'url': tiding.url,
@@ -797,8 +902,10 @@ def listed(limit=LISTED, viewer=None, order='top'):
             'at': tiding.at,
             'message': str(message.id),
             'mood': message.mood_slug,
-            'said_by': message.sender_id,
+            'said_by': said_by(message),
             'snippet': snippet_of(text)[:200],
+            'release': release_cid(tiding.url) or '',
+            'poster': release_embed(release_cid(tiding.url))['poster'] if release_cid(tiding.url) else '',
             'comments': count(_tree(message.id, index)) + said.get(str(tiding.id), 0),
             'talk': people_said(_tree(message.id, index), agents) + people.get(str(tiding.id), 0),
             'tags': tiding.tags or [],
