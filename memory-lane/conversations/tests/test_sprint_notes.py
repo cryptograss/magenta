@@ -114,6 +114,25 @@ class SprintNotesTest(TestCase):
         self.assertEqual(gen_events.count(), 1)
 
 
+class SprintShownTest(TestCase):
+    """The current sprint in the header's menu (Justin, 3 Nov), with /api/servers/."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.delete('current-sprint')
+
+    def test_named_linked_and_kept_none_when_the_wiki_cant_say(self):
+        from django.test import override_settings
+        with override_settings(INTERFACE_WORDS_FROM_WIKI=True, PICKIPEDIA_URL='https://wiki.test'):
+            with mock.patch.object(sprint_notes, 'current', return_value=('Jellyfish', 'Cryptograss/Jellyfish')):
+                self.assertEqual(sprint_notes.shown(), {'name': 'Jellyfish', 'url': 'https://wiki.test/wiki/Cryptograss/Jellyfish'})
+            from django.core.cache import cache
+            cache.delete('current-sprint')
+            with mock.patch.object(sprint_notes, 'current', side_effect=sprint_notes.Refused('none', 409)):
+                self.assertIsNone(sprint_notes.shown())
+        self.assertIn('sprint', Client().get('/api/servers/').json())
+
+
 class WikiEmbedTest(TestCase):
     """⧉ Copy for PickiPedia: {{Magenta message}}, words and all (services/wiki_embed.py; Justin, 25 Oct)."""
 
@@ -132,3 +151,14 @@ class WikiEmbedTest(TestCase):
         self.assertIn('|text=a &#124; b &#123;&#123;c&#125;&#125; &#91;&#91;d&#93;&#93; &#126;&#126;&#126;&#126; '
                       'x&#61;y &amp; &lt;i&gt;\n}}', got)
         self.assertEqual(Client().get(f'/api/messages/{said.id}/wiki/?chars=lots').status_code, 400)
+
+    def test_the_inline_citation(self):
+        """?inline=1: one line, no words, for citing in prose (Justin, 3 Nov, #docs-tests-qa)."""
+        said = Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, timestamp=1,
+                                      eth_blockheight=26266736, content='words that stay out of it')
+        with mock.patch('conversations.services.wiki_auth.names', return_value={'justin': 'JMyles'}):
+            got = Client().get(f'/api/messages/{said.id}/wiki/?inline=1').json()['wikitext']
+        self.assertTrue(got.startswith(f'{{{{Magenta message|id={said.id}|who=justin|user=JMyles|mood=rh|at='))
+        self.assertTrue(got.endswith('|block=26266736|inline=yes}}'))
+        self.assertNotIn('\n', got)
+        self.assertNotIn('words', got)

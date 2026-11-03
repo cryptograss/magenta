@@ -61,6 +61,19 @@
   .dots button { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: none; background: var(--line); }
   .dots button[aria-current="true"] { background: var(--accent); transform: scale(1.3); }
   .empty { margin: auto; color: var(--muted); text-align: center; padding: 40px; }
+  /* A PickiPedia link, previewed on hover, as in the Moods (services/wiki_preview.py). */
+  #wikiPreview { position: fixed; z-index: 60; display: flex; gap: 10px; max-width: 360px; padding: 10px 12px;
+                 background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+                 box-shadow: 0 6px 20px rgba(0,0,0,.18); font-size: 12.5px; line-height: 1.4; pointer-events: none; }
+  #wikiPreview[hidden] { display: none; }
+  #wikiPreview img { width: 72px; height: 72px; object-fit: cover; border-radius: 4px; flex: none; }
+  #wikiPreview pre.art { margin: 0; flex: none; font-size: 1.7px; line-height: 1.05; color: var(--ink);
+                         font-family: ui-monospace, Menlo, Consolas, monospace; }
+  @media (prefers-color-scheme: dark) { #wikiPreview pre.art { color: #161417; background: #d6cfc6; border-radius: 3px; padding: 2px; } }
+  #wikiPreview p { margin: 4px 0 0; }
+  #wikiPreview dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; font-size: 11.5px; }
+  #wikiPreview dt { color: var(--muted); }
+  #wikiPreview dd { margin: 0; overflow-wrap: anywhere; }
   #source-html { display: none; }
 </style>
 </head>
@@ -166,6 +179,54 @@
     x0 = null;
   });
   go(parseInt(location.hash.slice(1), 10) || 0, true);
+
+  // PickiPedia links previewed on hover, as the Moods do (moods.html; /api/wiki/preview/). Mouse only.
+  const esc = t => String(t).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  const previews = new Map();
+  const card = Object.assign(document.createElement('div'), { id: 'wikiPreview', hidden: true });
+  card.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(card);
+  let timer = null, over = null;
+  const titleOf = a => {
+    let url;
+    try { url = new URL(a.href); } catch (e) { return ''; }
+    if (url.origin !== 'https://pickipedia.xyz' || !url.pathname.startsWith('/wiki/')) return '';
+    const t = decodeURIComponent(url.pathname.slice(6)).replace(/_/g, ' ');
+    return /^(Special|File):/i.test(t) ? '' : t;
+  };
+  const previewOf = t => {
+    if (!previews.has(t)) previews.set(t, fetch('/api/wiki/preview/?title=' + encodeURIComponent(t))
+      .then(r => r.ok ? r.json() : null).catch(() => null));
+    return previews.get(t);
+  };
+  const hide = () => { clearTimeout(timer); over = null; card.hidden = true; };
+  document.addEventListener('pointerover', e => {
+    if (e.pointerType !== 'mouse') return;
+    const a = e.target.closest && e.target.closest('.slide a[href]');
+    if (!a || a === over) return;
+    const t = titleOf(a);
+    if (!t) return;
+    hide();
+    over = a;
+    timer = setTimeout(async () => {
+      const p = await previewOf(t);
+      if (over !== a || !p) return;
+      card.innerHTML = (p.art ? `<pre class="art">${esc(p.art)}</pre>` : p.image ? `<img src="${esc(p.image)}" alt="">` : '')
+        + `<div><b>${esc(p.title)}</b>${p.summary ? `<p>${esc(p.summary)}</p>` : ''}`
+        + ((p.facts || []).length ? `<dl>${p.facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '')
+        + '</div>';
+      card.hidden = false;
+      const r = a.getBoundingClientRect(), w = card.offsetWidth, h = card.offsetHeight;
+      card.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+      card.style.top = (r.bottom + 6 + h < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+    }, 350);
+  });
+  document.addEventListener('pointerout', e => {
+    const a = e.target.closest && e.target.closest('.slide a[href]');
+    if (a && a === over && !a.contains(e.relatedTarget)) hide();
+  });
+  document.addEventListener('keydown', hide);
+  stage.addEventListener('scroll', hide, true);
 })();
 </script>
 </body>

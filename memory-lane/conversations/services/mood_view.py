@@ -1344,6 +1344,9 @@ def turn_payload(msg, text, mentionable=()):
     # A ```handoff block went to another Mood (services/handoff.py): a line says so, not the block.
     from .handoff import split as split_handoffs
     from .voice import split_voices
+    if from_wiki_tier(msg):
+        # Signed in with PickiPedia: an @emergent is plain text, not a mention (Justin, 3 Nov). People still are.
+        mentionable = set(mentionable) - agent_names()
     text, directions = split_voices(text)
     text, _ = split_handoffs(text)
     target, said = reply_to(text)
