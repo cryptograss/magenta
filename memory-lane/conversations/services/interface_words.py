@@ -20,9 +20,23 @@ from django.core.cache import cache
 log = logging.getLogger(__name__)
 
 PAGE = 'Magenta:Interface'
+# What the system tells a person about what just happened (Justin, 3 Nov): longer, kept on their own page, the
+# same '*' line a text; [[Page]] and [[Page|words]] in them become links.
+SYSTEM_PAGE = 'Magenta:System Messages'
 FRESH_FOR = 600
 KEPT_FOR = 86400
 MAX_LENGTH = 300
+SYSTEM_MAX_LENGTH = 1000
+
+SYSTEM_DEFAULTS = {
+    # A person signed in with PickiPedia @mentions an emergent: their post goes through, waking nobody.
+    'wiki-mention': ("Mentions of emergents by users signed in via PickiPedia do not automatically trigger a wake, "
+                     "and do not enable tool use. One or more emergents may wake if they are set to listen in this "
+                     "Mood. You can ask an SSH-tier user to wake them for you, with tools. For more information, "
+                     "see [[Magenta:Signing in]]."),
+    # The same, as a hint under the box while they type one.
+    'wiki-mention-hint': "Signed in with PickiPedia, your @{agent} is plain text: it wakes nobody.",
+}
 
 DEFAULTS = {
     # Opening a Mood, or a thread of one (the ⑂ thread box).
@@ -50,17 +64,18 @@ _SHOWN = re.compile(r'<!--.*?-->|<nowiki>.*?</nowiki>|<pre>.*?</pre>', re.S | re
 _LINE = re.compile(r'^\*\s*([a-z][a-z-]*)\s*:\s*(.+?)\s*$')
 
 
-def parse(wikitext):
+def parse(wikitext, defaults=None, longest=MAX_LENGTH):
     """{key: text} for each known key the page sets; the rest stay as they are here."""
+    defaults = DEFAULTS if defaults is None else defaults
     found = {}
     for line in _SHOWN.sub('', wikitext or '').splitlines():
         m = _LINE.match(line.strip())
-        if m and m.group(1) in DEFAULTS and len(m.group(2)) <= MAX_LENGTH:
+        if m and m.group(1) in defaults and len(m.group(2)) <= longest:
             found[m.group(1)] = re.sub(r'\{\{[^{}]*\}\}', '', m.group(2)).strip()
-    return {**DEFAULTS, **{k: v for k, v in found.items() if v}}
+    return {**defaults, **{k: v for k, v in found.items() if v}}
 
 
-def _fetch():
+def _fetch(page=PAGE):
     from django.conf import settings
     if not getattr(settings, 'INTERFACE_WORDS_FROM_WIKI', True):
         return None
@@ -69,27 +84,33 @@ def _fetch():
     except ImportError:  # pragma: no cover -- the poller ships beside the server
         return None
     editors = {e.lower().replace('_', ' ') for e in (getattr(settings, 'MOOD_WIKI_RULES_EDITORS', None) or EDITORS)}
-    for _, editor, wikitext in WikiTexts().get(PAGE):
+    for _, editor, wikitext in WikiTexts().get(page):
         if editor.lower().replace('_', ' ') in editors:
             return wikitext
     return None
 
 
 def words(fetch=None):
-    """The words in force: the page's, as a trusted editor last left it; else what was read last; else these."""
-    found = cache.get('interface-words')
+    """The words in force, Magenta:Interface's and Magenta:System Messages': each page's, as a trusted editor
+    last left it; else what was read last; else these."""
+    return {**_words(PAGE, DEFAULTS, MAX_LENGTH, 'interface-words', fetch),
+            **_words(SYSTEM_PAGE, SYSTEM_DEFAULTS, SYSTEM_MAX_LENGTH, 'system-messages', fetch and (lambda: None))}
+
+
+def _words(page, defaults, longest, key, fetch=None):
+    found = cache.get(key)
     if found is not None:
         return found
     try:
-        text = (fetch or _fetch)()
+        text = (fetch or (lambda: _fetch(page)))()
         # No page (or no trusted revision of it): this file's words, never an older read's -- those may be the
         # defaults of a deploy since replaced.
-        found = parse(text) if text is not None else dict(DEFAULTS)
+        found = parse(text, defaults, longest) if text is not None else dict(defaults)
     except Exception as e:  # noqa: BLE001 -- the wiki away: the last good read, a while longer
-        log.warning('interface words: %s', e)
-        found = {**DEFAULTS, **(cache.get('interface-words:last') or {})}
-        cache.set('interface-words', found, 60)
+        log.warning('%s: %s', page, e)
+        found = {**defaults, **(cache.get(key + ':last') or {})}
+        cache.set(key, found, 60)
         return found
-    cache.set('interface-words', found, FRESH_FOR)
-    cache.set('interface-words:last', found, KEPT_FOR)
+    cache.set(key, found, FRESH_FOR)
+    cache.set(key + ':last', found, KEPT_FOR)
     return found

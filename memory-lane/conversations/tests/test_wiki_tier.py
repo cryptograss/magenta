@@ -172,16 +172,19 @@ class TiersTest(TestCase):
         key = self.client_for('justin', 'key')
         self.assertEqual(self.post(key, '/api/moods/m26/pin/', {'pinned': True}).status_code, 200)
 
-    def test_a_wiki_post_addressing_an_agent_is_refused(self):
+    def test_a_wiki_post_addressing_an_agent_goes_through_as_plain_text(self):
+        # Justin, 3 Nov: not refused, no modal: posted, waking nobody, its @magent no mention. People still are.
         sky = self.client_for('skyler', 'wiki')
-        refused = self.post(sky, '/api/moods/m26/say/', {'text': '@magent @JMyles soundcheck at five?'})
-        self.assertEqual((refused.status_code, refused.json()['agents']), (403, ['magent']))
-        self.assertFalse(Message.objects.filter(mood__slug='m26').exists())
-        # Agents named in code, or a person addressed: fine.
-        self.assertEqual(self.post(sky, '/api/moods/m26/say/', {'text': 'run `@magent /compact`, @JMyles'}).status_code, 201)
+        said = self.post(sky, '/api/moods/m26/say/', {'text': '@magent @JMyles soundcheck at five?'})
+        self.assertEqual(said.status_code, 201)
+        self.assertEqual(Client().get('/api/mentions/magent/').json()['mentions'], [])
+        turn = next(t for t in Client().get('/api/moods/m26/turns/').json()['turns'] if t['id'] == said.json()['id'])
+        self.assertEqual(turn['mentions'], ['justin'])
+        self.assertNotIn('data-who="magent"', turn['html'])
+        self.assertIn('data-who="justin"', turn['html'])
 
     def test_a_wiki_posts_agent_mention_wakes_nobody_but_people_are_told(self):
-        # Refused at the door now; one that got in anyhow (posted before, say) still wakes nobody.
+        # Posted, it wakes nobody.
         sky = ThinkingEntity.objects.get(name='skyler')
         Message.objects.create(id=uuid.uuid4(), sender=sky, mood=Mood.objects.get(slug='m26'), source_file='mood-web',
                                client_version='magenta-web/wiki', content='@magent @JMyles soundcheck at five?',
