@@ -183,14 +183,34 @@ class StartingTest(TestCase):
         events = self.client.get('/api/moods/connectome/turns/').json()['events']
         self.assertEqual([(e['type'], e['state'], e['task']) for e in events], [('task', 'refused', 'Connect')])
 
-    def test_over_its_cap_it_doesnt_start(self):
+    def turn_result(self, cost, answers=None):
         system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=self.mood, source_file='ingest-mood-runner',
+                               content={'type': 'turn-result', 'agent': 'blu', 'cost_usd': cost,
+                                        **({'answers': answers} if answers else {})})
+
+    def test_over_its_cap_it_doesnt_start(self):
+        first = tasks.start(self.task(), 'justin', params={'names': 'x'})
         for cost in (1.25, 0.80):
-            Message.objects.create(id=uuid.uuid4(), sender=system, mood=self.mood, source_file='ingest-mood-runner',
-                                   content={'type': 'turn-result', 'agent': 'blu', 'cost_usd': cost})
+            self.turn_result(cost, answers=[str(first.id)])
         line = tasks.start(self.task(), 'justin', params={'names': 'x'})
         self.assertEqual(line.content['state'], 'refused')
-        self.assertIn('has spent $2.05 here in the past day; its cap is $2.00', line.content['reason'])
+        self.assertIn("blu's Connect has spent $2.05 here in the past day; its cap is $2.00", line.content['reason'])
+
+    def test_the_moods_own_conversation_doesnt_spend_a_tasks_cap(self):
+        # A busy Mood: $100 of turns that answered people, none of them the task's (#ops, 1 Nov).
+        self.turn_result(60.00, answers=[str(uuid.uuid4())])
+        self.turn_result(40.00)
+        line = tasks.start(self.task(), 'justin', params={'names': 'x'})
+        self.assertEqual(line.content['state'], 'asked')
+
+    def test_another_tasks_turns_dont_spend_this_ones_cap(self):
+        self.pages[tasks.title('blu', 'Journal')] = [(51, 'JMyles', JOURNAL)]
+        self.pages['Cryptograss:Emergents/Tasks/Journal'] = [(60, 'JMyles', JOURNAL_SHARED)]
+        journal = tasks.start(tasks.read('blu', 'Journal', wiki(self.pages)), 'justin')
+        self.turn_result(5.00, answers=[str(journal.id)])
+        line = tasks.start(self.task(), 'justin', params={'names': 'x'})
+        self.assertEqual(line.content['state'], 'asked')
 
     def test_no_mood_nowhere_to_say_it(self):
         task = tasks.parse('blu', 'X', 1, 'JMyles', 'Do this.')

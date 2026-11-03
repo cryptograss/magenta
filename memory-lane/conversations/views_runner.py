@@ -147,6 +147,8 @@ def finish_turn(mood, session_id, agent, result, asked=()):
         'duration_ms': result.get('duration_ms'),
         'num_turns': result.get('num_turns'),
         'stop_reason': result.get('stop_reason'),
+        # What woke it (the poller's `answers`): a task's cap counts only its own turns (tasks.spent_today).
+        **({'answers': [str(a) for a in asked][:50]} if asked else {}),
     }
     row_id = result.get('uuid') or uuid.uuid5(uuid.NAMESPACE_URL, f'turn-result:{session_id}')
     Message.objects.get_or_create(id=row_id, defaults={
