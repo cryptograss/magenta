@@ -1043,8 +1043,9 @@ def fresh_repos(workspace):
 
 
 def refresh_fresh(workspace, run=None):
-    """Bring each repo's read-only copy under <workspace>/.fresh/<name> to its origin's default branch, as files:
-    a fetch alone moves refs, and a look-only turn reads files (Read, Grep), never refs (magent, re, blu, 29 Oct).
+    """Bring each repo's read-only copy under <workspace>/.fresh/<name> to its origin's production branch when the
+    branch exists, else its default branch, as files: a fetch alone moves refs, and a look-only turn reads files
+    (Read, Grep), never refs (magent, re, blu, 29 Oct).
     Nobody works in .fresh, so a hard reset there can't lose anything; the agents' own checkouts are never
     touched. Returns [problems], one line per repo that couldn't be refreshed; [] when all were."""
     import shutil, subprocess
@@ -1059,7 +1060,18 @@ def refresh_fresh(workspace, run=None):
                 fresh.mkdir(parents=True, exist_ok=True)
                 done = run(['git', 'clone', '-q', '--depth', '1', url, str(copy)])
             else:
-                done = run(['git', '-C', str(copy), 'fetch', '-q', '--depth', '1', 'origin', 'HEAD'])
+                # magent, re, 3 Nov: maybelle-config and pickipedia serve production from a branch of that name,
+                # so .fresh should track it where it exists; an older repo has no production branch, and HEAD is
+                # its default. ls-remote --heads tells the two apart: a zero exit with no output says the branch
+                # is absent; a nonzero exit says the network or the remote is down, and HEAD must not be a
+                # fallback for that -- a failing network must never quietly hand back the dead default branch,
+                # so the refresh reports the failure and skips the repo instead.
+                remote = run(['git', '-C', str(copy), 'ls-remote', '--heads', 'origin', 'production'])
+                if remote.returncode != 0:
+                    problems.append(f'{name}: {_fresh_error(remote)}'[:200])
+                    continue
+                done = run(['git', '-C', str(copy), 'fetch', '-q', '--depth', '1', 'origin',
+                            'production' if remote.stdout.strip() else 'HEAD'])
                 if done.returncode == 0:
                     done = run(['git', '-C', str(copy), 'reset', '-q', '--hard', 'FETCH_HEAD'])
             if done.returncode != 0:
