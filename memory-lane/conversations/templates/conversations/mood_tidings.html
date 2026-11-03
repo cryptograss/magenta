@@ -50,6 +50,16 @@
   .links .title:visited { color: var(--muted); }
   .links .host { font-size: 12px; color: var(--muted); margin-left: 6px; }
   .links .meta { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+  /* A release on Tidings: its poster still and ▶ beside it, and its title opens its page here, where it plays
+     and is talked about by the moment (tiding_links.discussion); its Release page is a step further. */
+  .links li.release .body { flex: 1; min-width: 0; }
+  .links a.rthumb { flex: none; position: relative; display: block; width: 104px; height: 64px; border-radius: 7px; overflow: hidden;
+                    background: linear-gradient(135deg, var(--accent-soft), var(--code)); order: 0; }
+  .links a.rthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .links a.rthumb .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                          font-size: 22px; color: #fff; text-shadow: 0 1px 5px rgba(0,0,0,.75); }
+  .links a.rthumb:hover .play { transform: scale(1.15); }
+  .links .chip.rel { border-color: var(--accent); color: var(--accent); font-size: 10.5px; padding: 0 6px; margin: 0 6px 0 0; vertical-align: 1px; }
   .pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
   .pic { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   .pic a.thumb { display: block; line-height: 0; background: var(--code); }
@@ -122,13 +132,14 @@
   {% if tidings.links %}
   <ol class="links">
   {% for link in tidings.links %}
-    <li id="t-{{ link.id }}"{% if link.pinned %} class="pinned"{% endif %}>
+    <li id="t-{{ link.id }}" class="{% if link.pinned %}pinned{% endif %}{% if link.release %} release{% endif %}">
       <span class="rank"><span class="num">{{ forloop.counter }}</span>
         <button type="button" class="vote{% if link.mine %} mine{% endif %}" data-vote="/api/tidings/{{ link.id }}/vote/"
                 title="{% if link.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
         <span class="score">{{ link.score }}</span></span>
+      {% if link.release %}<a class="rthumb" href="/moods/tidings/{{ link.id }}/?embed=1" title="Play it, and see what's said at which moment"><img loading="lazy" src="{{ link.poster }}" alt="" onerror="this.remove()"><span class="play" aria-hidden="true">▶</span></a>{% endif %}
       <span class="body">
-        <a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a><span class="host">({{ link.host }})</span>{% if link.pinned %}<span class="pin" title="Pinned to the top">📌</span>{% endif %}{% if link.may_retitle %}<button type="button" class="retitle" data-tiding="{{ link.id }}" title="Give it another title">✎</button>{% endif %}
+        {% if link.release %}<span class="chip rel">release</span><a class="title" href="/moods/tidings/{{ link.id }}/?embed=1">{{ link.title }}</a>{% else %}<a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a>{% endif %}<span class="host">({{ link.host }})</span>{% if link.pinned %}<span class="pin" title="Pinned to the top">📌</span>{% endif %}{% if link.may_retitle %}<button type="button" class="retitle" data-tiding="{{ link.id }}" title="Give it another title">✎</button>{% endif %}
         <div class="meta">{% if link.release %}uploaded by {{ link.said_by|default:"someone" }} · promoted by {{ link.by|default:"someone" }}{% elif link.said_by == link.by %}posted and promoted by {{ link.by|default:"someone" }}{% else %}posted by {{ link.said_by|default:"someone" }} · promoted by {{ link.by|default:"someone" }}{% endif %}
           · <a href="/moods/tidings/{{ link.id }}/?embed=1">{{ link.comments }} comment{{ link.comments|pluralize }}</a>
           · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}" title="{{ link.said_by }}: “{{ link.snippet }}”">{{ link.at|date:"M j, g:i A" }} in #{{ link.mood }}</a>{% if link.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ link.id }}" title="Take it off Tidings">take it off</button>{% endif %}{% if link.may_pin %}<button type="button" class="pinit" data-tiding="{{ link.id }}" data-on="{{ link.pinned|yesno:'0,1' }}" title="{% if link.pinned %}Let it go from the top{% else %}Keep it at the top of Tidings{% endif %}">{% if link.pinned %}unpin{% else %}pin{% endif %}</button>{% endif %}</div>

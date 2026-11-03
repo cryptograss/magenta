@@ -42,17 +42,69 @@
   .thelink .embed iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #000; }
   .thelink .embed video { width: 100%; max-height: 420px; border-radius: 8px; }
   /* A release, played here (tiding_links.release_embed): its speed, and the moments people talked about. */
-  .thelink .embed .speed { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; font-size: 12px; }
-  .thelink .embed .speed span { color: var(--muted); margin-right: 2px; }
-  .thelink .embed .speed button { font: inherit; padding: 1px 8px; border-radius: 10px; cursor: pointer;
+  .embed .speed { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; font-size: 12px; }
+  .embed .speed span { color: var(--muted); margin-right: 2px; }
+  .embed .speed button { font: inherit; padding: 1px 8px; border-radius: 10px; cursor: pointer;
     border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
-  .thelink .embed .speed button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
-  .thelink .embed .moments { position: relative; height: 14px; margin: 6px 2px 0; border-radius: 7px; background: var(--code); }
-  .thelink .embed .moments .now { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 7px; background: var(--accent-soft); pointer-events: none; }
-  .thelink .embed .moments button { all: unset; position: absolute; top: 1px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%;
+  .embed .speed button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .embed .moments { position: relative; height: 14px; margin: 6px 2px 0; border-radius: 7px; background: var(--code); }
+  .embed .moments .now { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 7px; background: var(--accent-soft); pointer-events: none; }
+  .embed .moments button { all: unset; position: absolute; top: 1px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%;
     background: var(--accent); box-shadow: 0 0 0 2px var(--panel); cursor: pointer; }
-  .thelink .embed .moments button:hover, .thelink .embed .moments button:focus-visible { transform: scale(1.3); }
-  .thelink .embed .cant { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .embed .moments button:hover, .embed .moments button:focus-visible { transform: scale(1.3); }
+  .embed .cant { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  /* A release (tiding_links._release_of): its stage. On a wide screen the player keeps its place beside what's
+     said about it, so a moment can be clicked and watched without scrolling away; an upright phone video
+     gets a column its own shape. Narrow: the player above, as for any link. */
+  main.wide { max-width: 1280px; }
+  .stage { display: grid; gap: 24px; align-items: start; margin-top: 10px;
+           grid-template-columns: minmax(0, 1.55fr) minmax(340px, 1fr); }
+  .stage.portrait { grid-template-columns: minmax(0, min(470px, calc((100vh - 120px) * 0.5625))) minmax(340px, 1fr); }
+  .stage .player { position: sticky; top: 10px; }
+  .stage .embed video { display: block; width: 100%; max-height: calc(100vh - 120px); background: #000; border-radius: 12px;
+                        box-shadow: 0 6px 28px rgba(0, 0, 0, .22); }
+  .stage.portrait .embed video { aspect-ratio: 9 / 16; object-fit: contain; }
+  .stage .embed .controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+  .stage .embed .controls .speed { margin-top: 0; }
+  .embed button.cc { font: 600 12px/1 inherit; padding: 3px 9px; border-radius: 10px; cursor: pointer;
+                     border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+  .embed button.cc[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+  /* Captions, styled here, not burned in (as on PickiPedia, pickipedia#170). */
+  .embed video::cue { font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+                      line-height: 1.3; color: #fff; background: rgba(12, 10, 14, .72); }
+  .embed video::cue(v) { color: #ffe6fb; }
+  .embed video::cue(i) { color: #d6ecff; }
+  .side { min-width: 0; }
+  .thelink.release { border-bottom: 0; padding-top: 0; }
+  .thelink.release .body { flex: 1; min-width: 0; }
+  .thelink.release h1 { font-size: 23px; line-height: 1.22; margin: 6px 0 4px; font-weight: 650; letter-spacing: -.01em; }
+  .thelink.release h1 a { color: var(--ink); }
+  .thelink.release h1 .title { font-size: inherit; font-weight: inherit; }
+  .thelink.release .chip.rel { display: inline-block; font-size: 11px; padding: 0 8px; border-radius: 10px;
+                               border: 1px solid var(--accent); color: var(--accent); }
+  .thelink.release .with { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .thelink.release .desc { margin-top: 10px; font-size: 15px; max-width: 65ch; white-space: pre-line; overflow-wrap: anywhere; }
+  .thelink.release figure { margin: 12px 0 0; padding: 8px 12px; border-left: 3px solid var(--accent);
+                            background: var(--accent-soft); border-radius: 0 8px 8px 0; }
+  .thelink.release figure blockquote { margin: 0; font-size: 14.5px; white-space: pre-line; overflow-wrap: anywhere; }
+  .thelink.release figure figcaption { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+  .thelink.release figure .role { margin-left: 5px; padding: 0 6px; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
+  .thelink.release .wiki { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  /* Moments: every time said about it, in the order they play -- the video's own table of contents. */
+  .momentsec { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); }
+  .momentsec h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 6px; }
+  .momentsec ol { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+  .momentsec li button { all: unset; box-sizing: border-box; display: flex; gap: 8px; align-items: baseline; width: 100%;
+                         padding: 4px 6px; border-radius: 6px; cursor: pointer; font-size: 13.5px; }
+  .momentsec li button:hover, .momentsec li button:focus-visible, .momentsec li button.now { background: var(--accent-soft); }
+  .momentsec .t { flex: none; min-width: 3.4em; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); }
+  .momentsec .who { flex: none; font-weight: 600; }
+  .momentsec .what { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  @media (max-width: 900px) {
+    .stage, .stage.portrait { grid-template-columns: minmax(0, 1fr); }
+    .stage .player { position: static; }
+    .stage.portrait .embed video { width: auto; height: 72vh; max-width: 100%; margin: 0 auto; }
+  }
   a.tc { font-variant-numeric: tabular-nums; font-weight: 600; border-radius: 4px; padding: 0 3px; background: var(--accent-soft); }
   .comment.at-moment > .said > .words { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; transition: outline-color .6s; }
   .say button.stamp { background: none; color: var(--accent); border: 1px solid var(--accent); padding: 5px 10px; font-variant-numeric: tabular-nums; }
@@ -459,9 +511,44 @@
 {% endif %}
 </head>
 <body>
-<main>
+<main{% if tiding.release %} class="wide"{% endif %}>
   <a class="back" href="/moods/tidings/?embed=1">‹ Tidings</a>
 
+  {% if tiding.release %}
+  {% with r=tiding.release %}
+  <!-- A release, at its best (Justin, 3 Nov: "I want Releases to look really superb as tidings"). -->
+  <div class="stage{% if r.portrait %} portrait{% endif %}">
+    <div class="player">
+      <div class="embed" id="theEmbed">
+        <video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
+        <!-- Each comment that names a moment ("2:14 that slide!") is a mark on this line, and a link that plays from it. -->
+        <div class="moments" aria-label="Moments people talked about" hidden></div>
+        <div class="controls"><div class="speed" aria-label="Speed"></div><button type="button" class="cc" hidden title="Captions on or off">CC</button></div>
+        {% if r.captions %}{{ r.captions|json_script:"captionsVtt" }}{% endif %}
+      </div>
+    </div>
+    <div class="side">
+      <div class="thelink release" id="t-{{ tiding.id }}">
+        <span class="rank"><button type="button" class="vote{% if tiding.mine %} mine{% endif %}" data-vote="/api/tidings/{{ tiding.id }}/vote/"
+                title="{% if tiding.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
+          <span class="score">{{ tiding.score }}</span></span>
+        <span class="body">
+          <span class="chip rel">release</span>
+          <h1><a class="title" href="{{ r.page|default:tiding.url }}" rel="noopener noreferrer" target="_blank" title="Its Release page, on PickiPedia">{{ tiding.title }}</a>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}</h1>
+          <div class="meta muted">uploaded by {{ r.by|default:tiding.said_by|default:"someone" }}{% if r.upload_block_s %} at block {{ r.upload_block_s }}{% endif %} · promoted by {{ tiding.by|default:"someone" }}
+            · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
+            {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
+          {% if r.performers %}<div class="with">with {% for p in r.performers %}<a href="{{ p.page }}" target="_blank" rel="noopener">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+          {% if r.description %}<div class="desc">{{ r.description }}</div>{% endif %}
+          {% if tiding.post %}<div class="post"><div class="words">{{ tiding.post|safe }}</div></div>{% endif %}
+          {% for note in r.commentary %}<figure><blockquote>{{ note.text }}</blockquote><figcaption>— {{ note.by|default:"someone" }}{% if note.role %}<span class="role">{{ note.role }}</span>{% endif %}</figcaption></figure>{% endfor %}
+          {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
+          <div class="wiki"><a href="{{ r.page|default:tiding.url }}" target="_blank" rel="noopener">its Release page</a>{% if r.captions_page %} · {% if r.captions %}captions on · <a href="{{ r.captions_page }}?action=edit" target="_blank" rel="noopener">edit them</a>{% else %}no captions yet · <a href="{{ r.captions_page }}?action=edit" target="_blank" rel="noopener">add them</a>{% endif %}{% endif %} · <a href="{{ tiding.embed.src }}" target="_blank" rel="noopener">on IPFS</a></div>
+        </span>
+      </div>
+      <section class="momentsec" hidden><h2>Moments</h2><ol class="momentlist"></ol></section>
+  {% endwith %}
+  {% else %}
   <div class="thelink" id="t-{{ tiding.id }}">
     <span class="rank"><button type="button" class="vote{% if tiding.mine %} mine{% endif %}" data-vote="/api/tidings/{{ tiding.id }}/vote/"
             title="{% if tiding.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
@@ -484,6 +571,8 @@
         <div class="moments" aria-label="Moments people talked about" hidden></div>{% endif %}</div>{% endif %}
     </span>
   </div>
+
+  {% endif %}
 
   <!-- The box right under the post, as HN has it (Justin, 24 Oct): what's said here is a top-level comment;
        "reply" on a comment brings it under that one, and "cancel" back here. -->
@@ -516,9 +605,10 @@
     {% for comment in tiding.comments %}
       {% include "conversations/mood_tiding_comment.html" %}
     {% empty %}
-      <p class="muted">Nothing said yet. Say something here, or reply to it in the Mood: both land here.</p>
+      <p class="muted">Nothing said yet. Say something here, or reply to it in the Mood: both land here.{% if tiding.release %} A time you write, like 2:14, plays from there; ⏱ by the box puts in where it is now.{% endif %}</p>
     {% endfor %}
   </section>
+  {% if tiding.release %}</div></div>{% endif %}
 
 </main>
 <script>
@@ -597,6 +687,20 @@
       v.addEventListener('loadedmetadata', () => set(Number(store.get('releaseSpeed', 1)) || 1));  // a new source resets it
       set(SPEEDS.includes(Number(store.get('releaseSpeed', 1))) ? Number(store.get('releaseSpeed', 1)) : 1);
       paint();
+    }
+
+    // --- captions: Release:<CID>/captions, a real text track (on unless this viewer turned them off) ---
+    const vtt = document.getElementById('captionsVtt'), cc = embed.querySelector('button.cc');
+    if (v && vtt && cc) {
+      const track = Object.assign(document.createElement('track'), { kind: 'subtitles', label: 'Captions', srclang: 'en',
+        src: URL.createObjectURL(new Blob([JSON.parse(vtt.textContent)], { type: 'text/vtt' })) });
+      v.appendChild(track);
+      const tt = () => track.track || v.textTracks[0];
+      const on = yes => { if (tt()) tt().mode = yes ? 'showing' : 'hidden'; cc.setAttribute('aria-pressed', String(yes)); };
+      cc.hidden = false;
+      cc.addEventListener('click', () => { const yes = !(tt() && tt().mode === 'showing'); on(yes); store.set('captions', yes ? 'on' : 'off'); });
+      v.textTracks.addEventListener && v.textTracks.addEventListener('change', () => cc.setAttribute('aria-pressed', String(!!tt() && tt().mode === 'showing')));
+      on(store.get('captions', 'on') !== 'off');
     }
 
     // --- moments: times in what's been said, as links ---
@@ -679,6 +783,26 @@
         line.append(b);
       }
       line.hidden = !any;
+      listMoments();
+    }
+    // The Moments list beside a release: each time said, in the order it plays; a click plays from it.
+    const sec = document.querySelector('.momentsec'), list = sec && sec.querySelector('ol');
+    function listMoments() {
+      if (!list) return;
+      const shown = moments.filter(m => !m.gone).sort((a, b) => a.t - b.t);
+      list.innerHTML = '';
+      for (const m of shown) {
+        const b = Object.assign(document.createElement('button'), { type: 'button', title: `Play from ${fmt(m.t)}` });
+        b.append(Object.assign(document.createElement('span'), { className: 't', textContent: fmt(m.t) }),
+                 Object.assign(document.createElement('span'), { className: 'who', textContent: m.who }),
+                 Object.assign(document.createElement('span'), { className: 'what', textContent: m.text.replace(fmt(m.t), '').replace(/^[\s:\-–—,.]+/, '') || m.text }));
+        b.addEventListener('click', () => { seek(m.t); if (m.comment) m.comment.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+        m.row = b;
+        const li = document.createElement('li');
+        li.append(b);
+        list.append(li);
+      }
+      sec.hidden = !shown.length;
     }
     if (v) {
       v.addEventListener('durationchange', drawLine);
@@ -689,6 +813,7 @@
         const now = v.currentTime;
         const bar = line && line.querySelector('.now');
         if (bar && v.duration) bar.style.width = `${now / v.duration * 100}%`;
+        for (const m of moments) if (m.row) m.row.classList.toggle('now', !m.gone && now >= m.t && now < m.t + 4);
         if (!v.paused && now > last && now - last < 2) {
           for (const m of moments) {
             if (!m.gone && m.comment && m.t > last && m.t <= now) {
