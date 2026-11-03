@@ -1576,6 +1576,24 @@
   #todoDone { margin-top: 8px; color: var(--muted); }
   #todoDone summary { cursor: pointer; font-size: 12.5px; }
   #todoDone li .task { text-decoration: line-through; }
+  /* People under the list: pinned to the column's foot, its height dragged from its top edge. */
+  #todo.open #todoBody { display: flex; flex-direction: column; }
+  #todoBody > #todoList, #todoBody > #todoDone, #todoBody > .note { flex: none; }
+  #humans { margin-top: auto; flex: none; height: var(--humans-h, 260px); min-height: 80px; display: flex; flex-direction: column;
+            border-top: 1px solid var(--line); position: sticky; bottom: -12px; background: var(--panel); padding-bottom: 6px; }
+  #humansGrip { height: 7px; margin: -4px -14px 0; cursor: row-resize; flex: none; }
+  #humansGrip:hover, body.sizing-humans #humansGrip { background: var(--accent-soft); }
+  #humans .head { margin: 4px 0 4px; }
+  #humans ul { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+  #humans #humansElsewhere { flex: 1; min-height: 0; }
+  #humans li { display: block; padding: 3px 0; }
+  #humans li button.person { white-space: nowrap; }
+  #humans li button.person { font: inherit; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink); text-align: left; }
+  #humans li button.person:hover { text-decoration: underline; }
+  #humans li .where { display: block; color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #humans li .where a { color: inherit; }
+  #humans li time { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+  #humans hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; width: 100%; }
   #todoDone:not([data-n]) { display: none; }
 
   @media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
@@ -1859,6 +1877,14 @@
       <p class="note" id="todoNote"></p>
       <ul id="todoList"></ul>
       <details id="todoDone"><summary></summary><ul></ul></details>
+      <!-- People, under the list (Justin, 3 Nov): who spoke here lately, then everyone else; its top edge drags. -->
+      <div id="humans">
+        <div id="humansGrip" role="separator" aria-orientation="horizontal" title="Drag to resize; double-click to reset"></div>
+        <div class="head"><b>Humans</b></div>
+        <ul id="humansHere"></ul>
+        <hr id="humansRule" hidden>
+        <ul id="humansElsewhere"></ul>
+      </div>
     </div>
   </aside>
 </div>
@@ -2526,6 +2552,7 @@
       if (!r.ok) throw new Error(r.status);
       const t = await r.json();
       if (slug === current) renderTodo(t);
+      if (another && slug === current) loadHumans();
     } catch (e) {
       // Nothing heard: say so, rather than leave "Loading…" (or an empty list) standing.
       if (slug === current && !todoShown) renderTodoWaiting("The list couldn't be reached just now; it's asked for again in a minute.");
@@ -2534,6 +2561,7 @@
   function openTodo(open) {
     todoEl.classList.toggle('open', open);
     store.set('todoOpen', open);
+    if (open) loadHumans();
   }
   if (store.get('todoOpen', false) && !matchMedia(PHONE).matches) todoEl.classList.add('open');
   document.getElementById('todoTab').addEventListener('click', () => openTodo(true));
@@ -2541,6 +2569,43 @@
   document.getElementById('todoEdit').addEventListener('click', () => { todoShown = null; });
   document.getElementById('todoPage').addEventListener('click', () => { todoShown = null; });  // back from editing: ask afresh
   setInterval(() => loadTodo(), 60000);
+
+  // --- the people under the list (services/humans.py; Justin, 3 Nov) ---------------
+  const humansEl = document.getElementById('humans');
+  const humansH = store.get('humansHeight', 0);
+  if (humansH) humansEl.style.setProperty('--humans-h', humansH + 'px');
+  async function loadHumans() {
+    if (!current || todoEl.hidden || !todoEl.classList.contains('open')) return;
+    let d;
+    try { const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/humans/'); if (!r.ok) return; d = await r.json(); }
+    catch (e) { return; }
+    const who = n => `<button type="button" class="person" data-person="${esc(n)}" title="${esc(shown(n))}: their card">${icon(n, true)}${nameHtml(n)}</button>`;
+    document.getElementById('humansHere').innerHTML = d.here.map(h =>
+      `<li>${who(h.name)}<time title="${esc(stamp(h.at))}">${esc(blocksAgo(h.at))} blocks</time></li>`).join('')
+      || '<li class="none">Nobody here yet.</li>';
+    document.getElementById('humansRule').hidden = !d.elsewhere.length;
+    document.getElementById('humansElsewhere').innerHTML = d.elsewhere.map(h =>
+      `<li>${who(h.name)}<time title="${esc(stamp(h.at))}">${esc(blocksAgo(h.at))} blocks</time>`
+      + `<span class="where">${h.where === 'tiding' ? 'on Tidings: ' : '#'}<a href="${esc(h.url)}">${esc(h.title)}</a></span></li>`).join('');
+  }
+  humansEl.addEventListener('click', e => {
+    const b = e.target.closest('button.person');
+    if (b) openPersonCard(b.dataset.person);
+  });
+  document.getElementById('humansGrip').addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const startY = e.clientY, startH = humansEl.getBoundingClientRect().height;
+    document.body.classList.add('sizing-humans');
+    const move = ev => humansEl.style.setProperty('--humans-h', Math.max(80, Math.min(innerHeight - 160, startH + startY - ev.clientY)) + 'px');
+    const up = () => {
+      document.body.classList.remove('sizing-humans');
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      store.set('humansHeight', Math.round(humansEl.getBoundingClientRect().height));
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
+  document.getElementById('humansGrip').addEventListener('dblclick', () => { humansEl.style.removeProperty('--humans-h'); store.set('humansHeight', 0); });
+  setInterval(loadHumans, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadTodo(todoShown === null); });
 
   // --- the chain's height: from the explorer now and then, a block every 12 s between ---
