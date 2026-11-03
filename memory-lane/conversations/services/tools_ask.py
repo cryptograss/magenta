@@ -30,7 +30,7 @@ OVERLAP = timedelta(minutes=10)  # each read starts this far before the last: a 
 
 
 def open_requests():
-    """{slug: [{'kind', 'agent', 'for', 'at', 'id'}]}: asks not yet answered by their event there.
+    """{slug: [{'kind', 'emergent', 'for', 'at', 'id'}]}: asks not yet answered by their event there.
 
     The newest ask of each kind by each agent in each Mood is kept between reads, and each read looks only at
     what came since the last (Justin, 1 Nov: reading a week of agents' messages afresh took 11 s, every time
@@ -76,7 +76,7 @@ def open_requests():
         if _answered(kind, slug, agent, m, purpose):
             answered.add(((slug, agent, kind), mid))
         else:
-            found.setdefault(slug, []).append({'kind': kind, 'agent': agent, 'for': purpose,
+            found.setdefault(slug, []).append({'kind': kind, 'emergent': agent, 'for': purpose,
                                                'at': m.created_at.isoformat(), 'id': str(m.id)})
     for asks in found.values():
         asks.sort(key=lambda a: a['at'])
@@ -164,7 +164,7 @@ def _answered(kind, slug, agent, request, purpose=''):
         return kind == 'merge' and _merged_on_github(purpose)
     wakes = (Message.objects.filter(mood=request.mood, sender_id='mood-poller', created_at__gt=request.created_at)
              .annotate(t=Cast('content', TextField())).filter(t__contains=FULL))
-    bundles = {str(b) for b in BundleRecord.objects.filter(agent=agent, mood=slug, requested_at__gt=request.created_at)
+    bundles = {str(b) for b in BundleRecord.objects.filter(emergent=agent, mood=slug, requested_at__gt=request.created_at)
                .values_list('id', flat=True)}
     if bundles and any(bundles & set(BUNDLE_SAID.findall(t)) for t in wakes.values_list('t', flat=True)):
         return True

@@ -42,7 +42,7 @@ def windows_in(info):
     return list({w['window']: w for w in found}.values())  # one each: the last said
 
 
-def record(info, agent=''):
+def record(info, emergent=''):
     """Keep each window the info names, when it differs from the newest kept for that window."""
     kept = []
     for w in windows_in(info):
@@ -50,7 +50,7 @@ def record(info, agent=''):
         if last and (round(last.utilization, 4), last.resets_at, last.status) == (round(w['utilization'], 4),
                                                                                    w['resets_at'], w['status']):
             continue
-        kept.append(PlanWindow.objects.create(agent=agent[:60], info=info, **w))
+        kept.append(PlanWindow.objects.create(emergent=emergent[:60], info=info, **w))
     return kept
 
 

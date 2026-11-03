@@ -173,13 +173,13 @@
           #{{ prompt.mood }}
           · <a href="/moods/{{ prompt.mood }}/#m-{{ prompt.id }}">{{ prompt.at|date:"M j, g:i A" }}</a>
           {% if prompt.block %}· block {{ prompt.block }}{% endif %}
-          <span class="chip">mentions {% for agent in prompt.agents %}@{{ agent }}{% if not forloop.last %} {% endif %}{% endfor %}</span>
+          <span class="chip">mentions {% for agent in prompt.emergents %}@{{ agent }}{% if not forloop.last %} {% endif %}{% endfor %}</span>
         </div>
         <div class="body">{{ prompt.snippet }}{% if prompt.text|length > 280 %}…{% endif %}</div>
         {% if prompt.kind == "paired" %}
         <div class="then">then said, right after:
           <span class="said">“{{ prompt.trigger.snippet }}”</span>
-          {% for agent in prompt.trigger.agents %}@{{ agent }}{% if not forloop.last %} {% endif %}{% endfor %}
+          {% for agent in prompt.trigger.emergents %}@{{ agent }}{% if not forloop.last %} {% endif %}{% endfor %}
           · <a class="at" href="/moods/{{ prompt.mood }}/#m-{{ prompt.trigger.id }}">{{ prompt.trigger.at|date:"M j, g:i A" }}</a>
         </div>
         {% endif %}
@@ -187,7 +187,7 @@
         <div class="cost">
           {% for turn in prompt.turns %}
           <span class="chip" title="what answered it: {{ turn.model }} · {{ turn.in }} tokens in, {{ turn.out }} out, {{ turn.calls }} call{{ turn.calls|pluralize }}{% if turn.paid %} · the harness's own cost{% elif turn.cost %} · cost per the price list{% else %} · no price known for this model{% endif %}">
-            @{{ turn.agent }} {{ turn.tokens }}{% if turn.cost %} · {{ turn.cost }}{% endif %}
+            @{{ turn.emergent }} {{ turn.tokens }}{% if turn.cost %} · {{ turn.cost }}{% endif %}
           </span>
           {% endfor %}
         </div>
@@ -224,7 +224,7 @@
                  : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n));
   const fmt = (m, v) => m === 'usd' ? usd(v) : tok(v);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  // A slice: [bucket, agent, mood, model, harness, calls, ctx, cached, out, usd, unpriced]
+  // A slice: [bucket, emergent, mood, model, harness, calls, ctx, cached, out, usd, unpriced]
   const COL = { agent: 1, mood: 2, model: 3, harness: 4 }, VAL = { calls: 5, ctx: 6, cached: 7, out: 8, usd: 9 };
 
   function colours(names, dim) {
@@ -241,7 +241,7 @@
 
   function series(slices, dim, measure) {
     // [{name, values[bucket]}], the first SLOTS by the range's own order, the rest as one "other".
-    const order = dim === 'agent' ? state.agents : dim === 'harness' ? HARNESSES : state[dim + 's'];
+    const order = dim === 'agent' ? state.emergents : dim === 'harness' ? HARNESSES : state[dim + 's'];
     const keep = new Set(dim === 'agent' || dim === 'harness' ? order : order.slice(0, SLOTS));
     const by = new Map();
     for (const s of slices) {
@@ -357,8 +357,8 @@
     const paid = measure === 'usd' ? state.slices.filter(s => s[4] !== 'anthropic') : state.slices;
     bars($('u-overall'), series(paid, 'harness', measure), 'harness', measure, 170);
 
-    $('u-agents').innerHTML = state.agents.map(a => `<div><h4>${esc(a)} <span></span></h4><div data-agent="${esc(a)}"></div></div>`).join('');
-    for (const a of state.agents) {
+    $('u-agents').innerHTML = state.emergents.map(a => `<div><h4>${esc(a)} <span></span></h4><div data-agent="${esc(a)}"></div></div>`).join('');
+    for (const a of state.emergents) {
       const mine = paid.filter(s => s[1] === a), box = $('u-agents').querySelector(`[data-agent="${CSS.escape(a)}"]`);
       box.previousElementSibling.querySelector('span').textContent = fmt(measure, sum(mine, measure));
       bars(box, series(mine, by, measure), by, measure);
@@ -403,7 +403,7 @@
       <th class="n">calls</th><th class="n">context read</th><th class="n">largest</th><th class="n">cached</th>
       <th class="n">written</th><th class="n">cost</th></tr></thead><tbody>` + rows.map(r => `<tr>
       <td class="n"><a href="/moods/${encodeURIComponent(r.mood)}/#m-${r.first}">${esc(new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</a></td>
-      <td title="${esc(r.label || '')}">${prompted(r)}</td><td>${esc(r.agent)}</td><td>#${esc(r.mood)}</td><td>${esc(r.models.join(', '))}</td>
+      <td title="${esc(r.label || '')}">${prompted(r)}</td><td>${esc(r.emergent)}</td><td>#${esc(r.mood)}</td><td>${esc(r.models.join(', '))}</td>
       <td class="n">${r.calls}</td><td class="n">${tok(r.ctx)}</td><td class="n">${tok(r.max_ctx)}</td>
       <td class="n">${r.ctx ? Math.round(100 * r.cached / r.ctx) + '%' : '–'}</td><td class="n">${tok(r.out)}</td>
       <td class="n" title="${r.harness === 'anthropic' ? "the plan's: paid in its windows, not dollars" : r.paid ? 'what was billed' : 'at list price'}${r.unpriced ? `; ${r.unpriced} call(s) with no price` : ''}">${r.harness === 'anthropic' ? '<span class="muted">plan</span>' : usd(r.usd) + (r.paid ? '' : ' <span class="muted">list</span>')}</td>

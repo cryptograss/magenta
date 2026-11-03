@@ -20,10 +20,11 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .models import Message, Mood, ThinkingEntity
 from .services import mood_auth
-from .services.emergent_names import named  # emergent or, until the rename's last step, agent
 from .services.redaction import redact
 
 MAX_CHARS = 20_000
+# A page loaded before the emergent rename names one as "agent": refused, so it can't be read as naming none.
+OLD_PAGE = 'this page is from before "agent" became "emergent": reload it'
 PER_MINUTE = 20
 WEB_SOURCE = 'mood-web'
 ENROLL_MAX_BYTES = 64 * 1024
@@ -176,31 +177,31 @@ def _say_checks(text, device, slug=None):
     # and isn't drawn as a mention (mood_view.turn_payload). The page says so to the poster, in words from
     # Magenta:System Messages (Justin, 3 Nov: no refusal, no modal in their way).
 
-    # /compact, /context, /usage, /cost for agents (services/agent_commands): in its one
+    # /compact, /context, /usage, /cost for agents (services/emergent_commands): in its one
     # form, or refused here with the form it should take -- never posted as if it ran.
-    from .services import agent_commands
+    from .services import emergent_commands
     from .services.mood_view import agent_names, reply_to as _reply_to
     try:
-        command = agent_commands.parse(_reply_to(text)[1], agent_names())
-    except agent_commands.Invalid as e:
+        command = emergent_commands.parse(_reply_to(text)[1], agent_names())
+    except emergent_commands.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
     if command and command[0] == 'incorporate':
         thread = Mood.by_slug(command[2].split()[0].lstrip('#'))
         if slug and (thread is None or thread.thread_of_id is None or thread.thread_of.slug != slug):
             return JsonResponse({'error': f'{command[2].split()[0]} is not a thread of this Mood. '
-                                          f'{agent_commands.INCORPORATE_FORM}'}, status=400)
+                                          f'{emergent_commands.INCORPORATE_FORM}'}, status=400)
         return None
     if command and command[0] == 'handoff':
         to = command[2].split()[0]
         if slug and (Mood.by_slug(to.lstrip('#')) is None or to.lstrip('#') == slug):
-            return JsonResponse({'error': f'{to}: no other Mood by that name. {agent_commands.HANDOFF_FORM}'}, status=400)
+            return JsonResponse({'error': f'{to}: no other Mood by that name. {emergent_commands.HANDOFF_FORM}'}, status=400)
         return None
     if command:
         # They're Claude Code's; an agent on Pi has /compact too (its runner asks Pi's RPC
         # mode, poller/pi_harness.py), and none of the others yet.
         from .models import HarnessModels
-        elsewhere = {a: h for a, h in HarnessModels.objects.filter(agent_id__in=command[1])
-                     .values_list('agent_id', 'harness')
+        elsewhere = {a: h for a, h in HarnessModels.objects.filter(emergent_id__in=command[1])
+                     .values_list('emergent_id', 'harness')
                      if not (command[0] == 'compact' and h.split()[:1] == ['pi'])}
         if elsewhere:
             who = ', '.join(f'{a} ({h})' for a, h in sorted(elsewhere.items()))
@@ -592,7 +593,7 @@ def _retract(request, slug, message_id, edit):
             from .services.mood_view import addressed_in, known_names
             agents = set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
             if [n for n in addressed_in(text, known_names(), by=device.entity_id) if n in agents]:
-                return JsonResponse({'error': "signed in with PickiPedia, you can't address agents"}, status=403)
+                return JsonResponse({'error': "signed in with PickiPedia, you can't address emergents"}, status=403)
         try:
             done = retract.edit(message, text, device.entity_id)
         except retract.Refused as e:
@@ -1082,13 +1083,13 @@ def api_attest(request):
 def api_interrupt(request, slug):
     """Stop what an agent is doing in a Mood, as Esc does in a terminal.
 
-    POST {"agent": "magent"}, as the device's person: a turn under way ends
+    POST {"emergent": "magent"}, as the device's person: a turn under way ends
     (its runner checks every few seconds), and a mention not yet answered is
     let go -- posted by mistake, say, to be added to. What was said stays
     in the Mood, so the next mention's wake still reads it. A line in the
     thread says who stopped whom.
 
-    GET ?agent=magent: the newest such stop here, and whether an AZ5 is in
+    GET ?emergent=magent: the newest such stop here, and whether an AZ5 is in
     force -- what a runner asks while a turn runs. Readable by anyone, like
     the thread it is a line in.
     """
@@ -1098,18 +1099,21 @@ def api_interrupt(request, slug):
     from .views_admin import locked_response
     mood = Mood.by_slug_or_404(slug)
     if request.method == 'GET':
-        return JsonResponse({'scram': knobs.scram(), 'interrupt': latest_interrupt(mood, named(request.GET))})
+        return JsonResponse({'scram': knobs.scram(), 'interrupt': latest_interrupt(mood, request.GET.get('emergent'))})
     if locked_response():
         return locked_response()
-    device, refused = mood_auth.key_device(request, 'stop an agent')
+    device, refused = mood_auth.key_device(request, 'stop an emergent')
     if refused:
         return refused
     try:
-        agent = str(json.loads(request.body or b'{}').get('agent') or 'magent').lower()
-    except (ValueError, AttributeError):
-        return JsonResponse({'error': 'expected {"agent": "<name>"}'}, status=400)
+        body = json.loads(request.body or b'{}')
+        if 'agent' in body:  # a page from before the rename: refused, never read as no name (magent)
+            return JsonResponse({'error': OLD_PAGE}, status=400)
+        agent = str(body.get('emergent') or 'magent').lower()
+    except (ValueError, AttributeError, TypeError):
+        return JsonResponse({'error': 'expected {"emergent": "<name>"}'}, status=400)
     if not ThinkingEntity.objects.filter(name=agent, is_biological_human=False).exists():
-        return JsonResponse({'error': f'no agent named {agent}'}, status=400)
+        return JsonResponse({'error': f'no emergent named {agent}'}, status=400)
     system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
     Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=INTERRUPT_SOURCE,
                            content={'type': 'interrupt', 'agent': agent, 'by': device.entity_id},
@@ -1132,12 +1136,12 @@ def api_task(request, name, task):
     from .views_admin import locked_response
     if locked_response():
         return locked_response()
-    device, refused = mood_auth.key_device(request, "start an agent's task")
+    device, refused = mood_auth.key_device(request, "start an emergent's task")
     if refused:
         return refused
     agent = name.lower()
     if not ThinkingEntity.objects.filter(name=agent, is_biological_human=False).exists():
-        return JsonResponse({'error': f'no agent named {agent}'}, status=400)
+        return JsonResponse({'error': f'no emergent named {agent}'}, status=400)
     try:
         body = json.loads(request.body or b'{}')
         params = body.get('params') or {}
@@ -1238,9 +1242,9 @@ def _carry_settings(parent, thread, by):
     from .services import settings as knobs
     newest = {}
     for row in Setting.objects.filter(mood=parent).exclude(key__in=list(knobs.MOOD_KEYS)).order_by('created_at'):
-        newest[(row.key, row.agent_id)] = row
+        newest[(row.key, row.emergent_id)] = row
     for row in newest.values():
-        Setting.objects.create(mood=thread, agent_id=row.agent_id, key=row.key, value=row.value, set_by=by,
+        Setting.objects.create(mood=thread, emergent_id=row.emergent_id, key=row.key, value=row.value, set_by=by,
                                note=f'carried from #{parent.slug} into its thread')
 
 
@@ -1306,7 +1310,7 @@ def api_move_thread(request, slug):
     worktrees follow it to its new Mood's threads/<it>/ (Cryptograss:Moods as Directories)."""
     from django.db import transaction
     from .models import ConversationParticipant
-    from .services import agent_commands, interface_words
+    from .services import emergent_commands, interface_words
     from .services.mood_view import NEW_MOOD_SOURCE, agent_names
     from .views_admin import locked_response
     if locked_response():
@@ -1681,7 +1685,7 @@ def api_my_look(request):
     if device is None:
         return JsonResponse({'error': 'sign in first'}, status=401)
     if not device.entity.is_biological_human:
-        return JsonResponse({'error': "a person's look: agents have their colours"}, status=403)
+        return JsonResponse({'error': "a person's look: emergents have their colours"}, status=403)
     try:
         body = json.loads(request.body)
         assert isinstance(body, dict)
@@ -1779,7 +1783,7 @@ def api_voice_search(request):
 
 @require_POST
 def api_narrate(request):
-    """{"mood", "agent", "where"}: the narrator saying an agent has started work there
+    """{"mood", "emergent", "where"}: the narrator saying an emergent has started work there
     ("Pound magenta interface. Magent is thinking."), for reading Moods as they come: {"url"}.
     {"mood", "deploy": a deploy row's id}: saying a server redeployed, or failed to."""
     from .services import voice
@@ -1805,7 +1809,7 @@ def api_narrate(request):
         except voice.VoiceError as e:
             return JsonResponse({'error': str(e)}, status=e.status)
         return JsonResponse({'url': url}) if url else JsonResponse({'error': 'only a finished or failed redeploy is said'}, status=400)
-    agent = ThinkingEntity.objects.filter(name=str(named(body) or ''), is_biological_human=False).first()
+    agent = ThinkingEntity.objects.filter(name=str(body.get('emergent') or ''), is_biological_human=False).first()
     if mood is None or agent is None:
         return JsonResponse({'error': 'no such Mood, or no such emergent'}, status=404)
     if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
@@ -1825,7 +1829,7 @@ def api_narrate(request):
         still = (max(1, int((time.time() - doing['since']) // 60)), steps)
     waiting = str(body.get('waiting') or '')
     if waiting and not re.fullmatch(r'[\w.-]+(?:,\s*[\w.-]+)*', waiting):
-        return JsonResponse({'error': 'waiting: agents\' names'}, status=400)
+        return JsonResponse({'error': 'waiting: emergents\' names'}, status=400)
     waiting_to = ' '.join(str(body.get('to') or '').split()[:8]) if waiting else ''
     if re.search(r'[<>]', waiting_to):
         return JsonResponse({'error': 'to: a few words'}, status=400)
@@ -2038,7 +2042,7 @@ def api_push(request):
 @require_POST
 def api_push_subscribe(request):
     """This device's push subscription, from the browser's PushManager:
-    {"endpoint", "keys": {"p256dh", "auth"}}, and optionally "people"/"agents":
+    {"endpoint", "keys": {"p256dh", "auth"}}, and optionally "people"/"emergents":
     true to be told of every message from them too. Its bell, turned on (or
     those two changed: the page sends it again)."""
     from .models import PushSubscription
@@ -2058,7 +2062,7 @@ def api_push_subscribe(request):
         return JsonResponse({'error': 'not a push subscription'}, status=400)
     PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={
         'device': device, 'p256dh': p256dh, 'auth': auth,
-        'from_people': body.get('people') is True, 'from_agents': body.get('emergents', body.get('agents')) is True})
+        'from_people': body.get('people') is True, 'from_emergents': body.get('emergents') is True})
     # A browser has one subscription at a time: one it made before (under an old key, or
     # before its storage was cleared) can still be delivered to, and each would show the
     # same notice again (Justin, 19 Oct: three at once for one message).

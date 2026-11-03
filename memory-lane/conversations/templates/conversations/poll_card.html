@@ -59,8 +59,8 @@
       }).join('');
       const mayClose = ctx.viewer && (ctx.viewer === p.by || ctx.admin);
       const counted = !total ? 'no votes yet' : plural(total, 'vote', 'votes')
-        + (agents && people ? ` (${plural(people, 'person', 'people')}, ${plural(agents, 'agent', 'agents')})`
-           : agents ? ` (all agents)` : '');
+        + (agents && people ? ` (${plural(people, 'person', 'people')}, ${plural(agents, 'emergent', 'emergents')})`
+           : agents ? ` (all emergents)` : '');
       const state = p.closed
         ? `<span class="pstate">closed by ${esc(p.closed.by === ctx.viewer ? 'you' : ctx.shown(p.closed.by))}${ctx.stamp ? ' · ' + esc(ctx.stamp(p.closed.at)) : ''}</span>`
           + (leaders.length > 1 ? `<span>a tie</span>` : '')

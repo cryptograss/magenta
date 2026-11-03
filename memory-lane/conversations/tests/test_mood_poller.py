@@ -2079,7 +2079,7 @@ class GlovesOffTest(TestCase):
 
 class CompactTest(TestCase):
     """"/compact magent <what to keep>" from someone trusted compacts the session instead of
-    taking a turn -- in that form only (memory-lane services/agent_commands; Justin, 17 Oct)."""
+    taking a turn -- in that form only (memory-lane services/emergent_commands; Justin, 17 Oct)."""
 
     def run_for(self, *posts):
         api = FakeAPI([mention('m26', dict(turn(f'm{i}', who, i, text), via='web'))

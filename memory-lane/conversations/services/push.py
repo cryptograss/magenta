@@ -225,7 +225,7 @@ def sweep(now=None):
     told = 0
     for name, subs in theirs.items():
         seen = dict(ReadMark.objects.filter(entity_id=name).values_list('mood__slug', 'seen_at'))
-        everything = any(sub.from_people or sub.from_agents for sub in subs)
+        everything = any(sub.from_people or sub.from_emergents for sub in subs)
         for notice in reversed(notices_for(name, since, everything=everything)):  # oldest first
             at = parse_datetime(notice['turn']['created_at'])
             if seen.get(notice['mood']) and at and seen[notice['mood']] >= at:
@@ -235,7 +235,7 @@ def sweep(now=None):
             # Mentions and answers reach every bell; anything else, only the
             # browsers whose person asked for every message from its sender's kind.
             to = subs if notice['kind'] != 'said' else [
-                sub for sub in subs if (sub.from_people if notice['from'] == 'person' else sub.from_agents)]
+                sub for sub in subs if (sub.from_people if notice['from'] == 'person' else sub.from_emergents)]
             if not to:
                 continue
             payload = notification(notice)

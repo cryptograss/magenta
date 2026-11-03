@@ -25,8 +25,8 @@ def caller(request):
     if request is None:
         return None
     from django.conf import settings
-    from memory_viewer.runner_keys import agent_for
-    return agent_for(request.headers.get('authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
+    from memory_viewer.runner_keys import emergent_for
+    return emergent_for(request.headers.get('authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
 
 
 def create_mcp_server():

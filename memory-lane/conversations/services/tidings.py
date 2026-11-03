@@ -81,7 +81,7 @@ def _brief(message, mood_slug, agents):
         'block': message.eth_blockheight,
         'text': text,
         'snippet': snippet_of(text)[:280],
-        'agents': agents or [],
+        'emergents': agents or [],
     }
 
 
@@ -138,7 +138,7 @@ def _add_turn(entry, agent, messages):
     metrics = _run_metrics(messages)
     if metrics is not None:
         usd = metrics['usd']
-        entry['turns'].append({'agent': agent, **metrics, 'tokens': f"{_k(metrics['in'])}→{_k(metrics['out'])}",
+        entry['turns'].append({'emergent': agent, **metrics, 'tokens': f"{_k(metrics['in'])}→{_k(metrics['out'])}",
                                # As the page's usdText; nothing when no call had a price (a model the list lacks).
                                'cost': '' if not metrics['priced'] else '<$0.01' if usd < 0.005 else f'${usd:.2f}'})
 
@@ -146,7 +146,7 @@ def _add_turn(entry, agent, messages):
 def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
     """prompt_scan, kept PROMPTS_KEPT seconds."""
     from django.core.cache import cache
-    key = f'tidings:prompts:{per_human}'
+    key = f'tidings:prompts:{per_human}:emergents'  # not a copy kept before the rename's keys
     found = cache.get(key)
     if found is None:
         found = prompt_scan(per_human)
@@ -189,7 +189,7 @@ def prompt_scan(per_human=PROMPTS_PER_HUMAN):
 
         for message in heapq.merge(human_rows, agent_rows, key=lambda m: m.created_at):
             if message.sender_id in agents:
-                if answering is not None and message.sender_id in entries[answering]['agents']:
+                if answering is not None and message.sender_id in entries[answering]['emergents']:
                     answers[(answering, message.sender_id)].append(message)
                 continue
             answering = None  # a person's post ends every turn, as on the page

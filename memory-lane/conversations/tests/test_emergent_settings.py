@@ -1,4 +1,4 @@
-"""An agent setting agents' settings in a Mood, at a person's ask (services/agent_settings.py; Justin and re,
+"""An agent setting agents' settings in a Mood, at a person's ask (services/emergent_settings.py; Justin and re,
 24 Oct): a grant, a full-tools turn a person woke, one ledger, and shown only when it's used."""
 
 import time
@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from conversations.models import ConversationParticipant, Message, Mood, Setting, ThinkingEntity
-from conversations.services import agent_settings, settings as knobs
+from conversations.services import emergent_settings, settings as knobs
 
 FULL = 'This turn has your full tools, as in your terminal: the people who woke you are trusted.'
 LOOK = 'This turn can look but not touch.'
@@ -61,7 +61,7 @@ class AgentSettingsTest(TestCase):
         # The block is machinery: not shown, not read aloud.
         said = self.client.get('/api/moods/m26/turns/').json()['turns']
         self.assertEqual([t['text'] for t in said if t['sender'] == 'magent'], ['On it.'])
-        agent_settings.from_message(reply)  # its transcript, after the stream: once only
+        emergent_settings.from_message(reply)  # its transcript, after the stream: once only
         self.assertEqual(Setting.objects.filter(agent_id='re').count(), 2)
 
     def test_another_mood_and_listening_for_a_while(self):
@@ -126,16 +126,16 @@ class AgentSettingsTest(TestCase):
         self.assertEqual(settings_changed('magent', page), [])
 
     def test_a_block_parsed(self):
-        mood, changes = agent_settings.parse('@re: model sonnet, effort max\nblu: listening mentions until 2026-10-25T00:00Z\nin: #jams')
+        mood, changes = emergent_settings.parse('@re: model sonnet, effort max\nblu: listening mentions until 2026-10-25T00:00Z\nin: #jams')
         self.assertEqual(mood, 'jams')
         self.assertEqual(changes[:2], [('re', 'model', 'sonnet'), ('re', 'mention_effort', 'max')])
         self.assertEqual(changes[2], ('blu', 'listening', {'mode': 'mentions', 'until': '2026-10-25T00:00Z'}))
         for bad in ('re model sonnet', 're: listening off for a while', 're: rules be nice'):
-            with self.subTest(bad=bad), self.assertRaises(agent_settings.Refused):
-                agent_settings.parse(bad)
-        self.assertEqual(agent_settings.vendor('sonnet'), 'anthropic')
-        self.assertEqual(agent_settings.vendor('anthropic/claude-sonnet-5-5'), 'anthropic')
-        self.assertEqual(agent_settings.vendor('openrouter/moonshotai/kimi-k3'), 'openrouter')
+            with self.subTest(bad=bad), self.assertRaises(emergent_settings.Refused):
+                emergent_settings.parse(bad)
+        self.assertEqual(emergent_settings.vendor('sonnet'), 'anthropic')
+        self.assertEqual(emergent_settings.vendor('anthropic/claude-sonnet-5-5'), 'anthropic')
+        self.assertEqual(emergent_settings.vendor('openrouter/moonshotai/kimi-k3'), 'openrouter')
 
     def test_how_is_in_the_instructions_not_the_wake(self):
         from poller.mood_poller import wake_footer

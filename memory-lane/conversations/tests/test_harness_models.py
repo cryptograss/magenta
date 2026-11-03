@@ -1,5 +1,5 @@
 """What an agent's harness can run, reported by its runner, for the Mood's
-model menu (views_runner.api_agent_models, poller/pi_harness.py)."""
+model menu (views_runner.api_emergent_models, poller/pi_harness.py)."""
 
 import json
 from unittest import mock
