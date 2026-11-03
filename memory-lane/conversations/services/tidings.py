@@ -435,8 +435,11 @@ def tidings_state(viewer=None, order='top'):
     `preview` is its small form for the gallery; see views_moods.media_preview.)
     `viewer` is who's looking: each link says whether they voted for it. `order`: top (pinned, then ranked) or new."""
     from conversations.services import tiding_links
+    # Each release says whether it's on Tidings, and where it's talked about (tiding_links.promote_release).
+    on = tiding_links.released()
+    releases = [{**release, 'tiding': on.get(release['cid'], '')} for release in release_tidings()]
     return {'links': tiding_links.listed(viewer=viewer, order=order), 'pictures': picture_tidings(),
-            'releases': release_tidings()}
+            'releases': releases}
 
 
 def prompts_state():

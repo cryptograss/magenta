@@ -41,6 +41,21 @@
   .thelink .embed { margin-top: 8px; max-width: 560px; }
   .thelink .embed iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #000; }
   .thelink .embed video { width: 100%; max-height: 420px; border-radius: 8px; }
+  /* A release, played here (tiding_links.release_embed): its speed, and the moments people talked about. */
+  .thelink .embed .speed { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; font-size: 12px; }
+  .thelink .embed .speed span { color: var(--muted); margin-right: 2px; }
+  .thelink .embed .speed button { font: inherit; padding: 1px 8px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .thelink .embed .speed button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .thelink .embed .moments { position: relative; height: 14px; margin: 6px 2px 0; border-radius: 7px; background: var(--code); }
+  .thelink .embed .moments .now { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 7px; background: var(--accent-soft); pointer-events: none; }
+  .thelink .embed .moments button { all: unset; position: absolute; top: 1px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 0 2px var(--panel); cursor: pointer; }
+  .thelink .embed .moments button:hover, .thelink .embed .moments button:focus-visible { transform: scale(1.3); }
+  .thelink .embed .cant { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  a.tc { font-variant-numeric: tabular-nums; font-weight: 600; border-radius: 4px; padding: 0 3px; background: var(--accent-soft); }
+  .comment.at-moment > .said > .words { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; transition: outline-color .6s; }
+  .say button.stamp { background: none; color: var(--accent); border: 1px solid var(--accent); padding: 5px 10px; font-variant-numeric: tabular-nums; }
   /* What's been said: a tree, HN-style, each comment's score beside it (Justin, 21 Oct). */
   .comments { margin: 14px 0 0 0; }
   /* The post's own words, under who posted it: drawn as a comment's are. */
@@ -453,7 +468,7 @@
       <span class="score">{{ tiding.score }}</span></span>
     <span class="body">
       <a class="title" href="{{ tiding.url }}" rel="noopener noreferrer" target="_blank">{{ tiding.title }}</a><span class="host">({{ tiding.host }})</span>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}
-      <div class="meta muted">{% if tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
+      <div class="meta muted">{% if tiding.embed.kind == 'release' %}uploaded by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% elif tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
         · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
         {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
       {% if tiding.post %}
@@ -462,7 +477,11 @@
       <div class="post"><div class="words">{{ tiding.post|safe }}</div></div>
       {% endif %}
       {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
-      {% if tiding.embed %}<div class="embed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen></iframe>{% else %}<video src="{{ tiding.embed.src }}" controls preload="none"></video>{% endif %}</div>{% endif %}
+      {% if tiding.embed %}<div class="embed" id="theEmbed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen allow="autoplay; fullscreen"></iframe>{% elif tiding.embed.kind == 'release' %}<video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
+        <!-- Each comment that names a moment ("2:14 that slide!") is a mark on this line, and a link that plays from it. -->
+        <div class="moments" aria-label="Moments people talked about" hidden></div>
+        <div class="speed" aria-label="Speed"></div>{% else %}<video src="{{ tiding.embed.src }}" controls preload="metadata"></video>
+        <div class="moments" aria-label="Moments people talked about" hidden></div>{% endif %}</div>{% endif %}
     </span>
   </div>
 
@@ -479,6 +498,7 @@
     </div>
     <div class="bar">
       <button type="submit">add comment</button>
+      <button type="button" class="stamp" hidden title="Put where the video is now into what you're saying: it becomes a link that plays from there">⏱ 0:00</button>
       <span class="replying" id="replyToNote"></span><button type="button" class="cancelreply" hidden>cancel</button>
       <span class="err"></span>
     </div>
@@ -501,5 +521,210 @@
   </section>
 
 </main>
+<script>
+  // Talking about a video by the moment (Justin, 3 Nov: "timecoded comments first"). A time said in a comment
+  // -- 2:14, or 1:02:03 -- is a link that plays the video from there; each is a mark on a line under the
+  // player; as it plays past one, that comment lights; and ⏱ by the box puts where it is now into what you
+  // say. A release plays as everywhere else here: hls.js, pinned and checked by its hash, where there's Media
+  // Source; the browser's own HLS otherwise; the plain file if the CID isn't a stream.
+  (function () {
+    const embed = document.getElementById('theEmbed');
+    if (!embed) return;
+    const v = embed.querySelector('video'), frame = embed.querySelector('iframe');
+    const fmt = s => {
+      s = Math.max(0, Math.floor(s));
+      const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, '0');
+      return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`;
+    };
+    const secs = t => t.split(':').reduce((a, p) => a * 60 + Number(p), 0);
+    const store = {
+      get(k, d) { try { const x = localStorage.getItem('moods.' + k); return x === null ? d : JSON.parse(x); } catch (e) { return d; } },
+      set(k, x) { try { localStorage.setItem('moods.' + k, JSON.stringify(x)); } catch (e) {} },
+    };
+
+    // --- the player ---
+    const HLS_JS = { src: 'https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.min.js',
+                     integrity: 'sha384-cciJ0zi8d1uMKC2zJd7jvPY4HQt7W4ByUI/FlMkltvBi31aW61rcpVBhpmW8/NwX' };
+    function loadHls() {
+      if (window.Hls) return Promise.resolve(window.Hls);
+      return new Promise((ok, fail) => {
+        const s = Object.assign(document.createElement('script'), { src: HLS_JS.src, integrity: HLS_JS.integrity, crossOrigin: 'anonymous' });
+        s.onload = () => ok(window.Hls);
+        s.onerror = () => fail(new Error('hls.js did not load'));
+        document.head.appendChild(s);
+      });
+    }
+    function cantPlay() {
+      if (embed.querySelector('.cant')) return;
+      embed.append(Object.assign(document.createElement('div'), { className: 'cant',
+        textContent: 'This browser can\'t play it: it\'s AV1, which Firefox and Chrome play anywhere, and Safari only on newer Apple chips.' }));
+    }
+    async function attach() {
+      const plain = () => { if (v._hls) { v._hls.destroy(); v._hls = null; } v.src = v.dataset.src; };
+      const native = v.canPlayType('application/vnd.apple.mpegurl') !== '';
+      const mse = 'MediaSource' in window || 'ManagedMediaSource' in window;
+      if (!mse && native) { v.src = v.dataset.hls; return; }  // iOS: the browser's own, which picks the quality
+      let Hls = null;
+      try { Hls = await loadHls(); } catch (e) { Hls = null; }
+      if (!Hls || !Hls.isSupported()) { if (native) v.src = v.dataset.hls; else plain(); return; }
+      const hls = v._hls = new Hls({ maxBufferLength: 12 });
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) cantPlay(); else plain();  // no playlist there: one plain file
+      });
+      hls.loadSource(v.dataset.hls);
+      hls.attachMedia(v);
+    }
+    if (v && v.dataset.hls) {
+      attach();
+      v.addEventListener('error', () => { if (v.src === v.dataset.hls) v.src = v.dataset.src; else cantPlay(); });
+    }
+
+    // --- speed, as under every release's player (remembered with the Moods' own: moods.releaseSpeed) ---
+    const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+    const speedRow = embed.querySelector('.speed');
+    if (v && speedRow) {
+      speedRow.innerHTML = '<span>Speed</span>' + SPEEDS.map(r => `<button type="button" data-rate="${r}">${r}×</button>`).join('');
+      const paint = () => { for (const b of speedRow.querySelectorAll('button')) b.setAttribute('aria-pressed', String(Number(b.dataset.rate) === v.playbackRate)); };
+      const set = r => { v.defaultPlaybackRate = r; v.playbackRate = r; };
+      speedRow.addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        set(Number(b.dataset.rate));
+        store.set('releaseSpeed', Number(b.dataset.rate));
+      });
+      v.addEventListener('ratechange', paint);
+      v.addEventListener('loadedmetadata', () => set(Number(store.get('releaseSpeed', 1)) || 1));  // a new source resets it
+      set(SPEEDS.includes(Number(store.get('releaseSpeed', 1))) ? Number(store.get('releaseSpeed', 1)) : 1);
+      paint();
+    }
+
+    // --- moments: times in what's been said, as links ---
+    const TC = /(^|[^\w:.\/])((?:\d{1,2}:)?[0-5]?\d:[0-5]\d)(?![\w:])/g;
+    const moments = [];
+    for (const words of document.querySelectorAll('.comment .said > .words, .thelink .post .words')) {
+      const walker = document.createTreeWalker(words, NodeFilter.SHOW_TEXT, {
+        acceptNode: n => n.parentElement.closest('a, code, pre') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      const comment = words.closest('.comment');
+      for (const node of nodes) {
+        const text = node.nodeValue;
+        TC.lastIndex = 0;
+        if (!TC.test(text)) continue;
+        TC.lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        let at = 0, m;
+        while ((m = TC.exec(text))) {
+          const start = m.index + m[1].length;
+          frag.append(text.slice(at, start));
+          const a = Object.assign(document.createElement('a'), { className: 'tc', href: '#t=' + m[2], textContent: m[2],
+                                                                 title: 'Play from ' + m[2] });
+          a.dataset.t = secs(m[2]);
+          frag.append(a);
+          at = start + m[2].length;
+          moments.push({ t: secs(m[2]), comment, who: comment ? (comment.querySelector('.who b') || {}).textContent || '' : '',
+                         text: words.textContent.replace(/\s+/g, ' ').trim().slice(0, 100), link: a });
+        }
+        frag.append(text.slice(at));
+        node.replaceWith(frag);
+      }
+    }
+
+    function light(t) {  // the comments that named this moment
+      for (const m of moments) {
+        if (!m.gone && m.comment && Math.abs(m.t - t) < 1) {
+          m.comment.classList.add('at-moment');
+          setTimeout(() => m.comment.classList.remove('at-moment'), 3500);
+        }
+      }
+    }
+    function seek(t) {
+      light(t);
+      if (v) {
+        v.currentTime = t;
+        v.play().catch(() => {});
+        embed.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+      if (frame) {  // YouTube and Vimeo: their players, asked to start there
+        const u = new URL(frame.src);
+        if (u.hostname.includes('vimeo')) u.hash = `t=${Math.floor(t)}s`;
+        else u.searchParams.set('start', String(Math.floor(t)));
+        u.searchParams.set('autoplay', '1');
+        frame.src = u.toString();
+        embed.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+    document.addEventListener('click', e => {
+      const a = e.target.closest('a.tc');
+      if (!a) return;
+      e.preventDefault();
+      seek(Number(a.dataset.t));
+    });
+
+    // --- the line of marks under a video, once its length is known; a moment past it isn't one ---
+    const line = embed.querySelector('.moments');
+    function drawLine() {
+      if (!v || !line || !isFinite(v.duration) || !v.duration) return;
+      line.innerHTML = '<span class="now"></span>';
+      let any = false;
+      for (const m of moments) {
+        if (m.t > v.duration + 1) { m.link.replaceWith(document.createTextNode(m.link.textContent)); m.gone = true; continue; }
+        any = true;
+        const b = Object.assign(document.createElement('button'), { type: 'button', title: `${fmt(m.t)} · ${m.who}: ${m.text}` });
+        b.style.left = `${Math.min(100, m.t / v.duration * 100)}%`;
+        b.setAttribute('aria-label', `${fmt(m.t)}, ${m.who}`);
+        b.addEventListener('click', () => { seek(m.t); if (m.comment) m.comment.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+        line.append(b);
+      }
+      line.hidden = !any;
+    }
+    if (v) {
+      v.addEventListener('durationchange', drawLine);
+      v.addEventListener('loadedmetadata', drawLine);
+      // As it plays past a moment, the comment that named it lights for a moment.
+      let last = 0;
+      v.addEventListener('timeupdate', () => {
+        const now = v.currentTime;
+        const bar = line && line.querySelector('.now');
+        if (bar && v.duration) bar.style.width = `${now / v.duration * 100}%`;
+        if (!v.paused && now > last && now - last < 2) {
+          for (const m of moments) {
+            if (!m.gone && m.comment && m.t > last && m.t <= now) {
+              m.comment.classList.add('at-moment');
+              setTimeout(() => m.comment.classList.remove('at-moment'), 3500);
+            }
+          }
+        }
+        last = now;
+      });
+    }
+
+    // --- ⏱ by the box: where it is now, into what's being said ---
+    const stamp = document.querySelector('form.say button.stamp'), box = document.getElementById('say');
+    if (v && stamp && box) {
+      stamp.hidden = false;
+      const show = () => { stamp.textContent = '⏱ ' + fmt(v.currentTime); };
+      v.addEventListener('timeupdate', show);
+      v.addEventListener('seeked', show);
+      stamp.addEventListener('click', () => {
+        const at = box.selectionStart ?? box.value.length, end = box.selectionEnd ?? at;
+        const before = box.value.slice(0, at), after = box.value.slice(end);
+        const words = (before && !/\s$/.test(before) ? ' ' : '') + fmt(v.currentTime) + ' ';
+        box.value = before + words + after;
+        box.focus();
+        box.setSelectionRange((before + words).length, (before + words).length);
+      });
+    }
+
+    // --- #t=2:14 in the page's address: start there ---
+    const asked = /[#&]t=([0-9:]+)/.exec(location.hash || '');
+    if (asked && v) {
+      const t = secs(asked[1]);
+      v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(t, v.duration || t); }, { once: true });
+    }
+  })();
+</script>
 </body>
 </html>

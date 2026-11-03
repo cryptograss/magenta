@@ -375,6 +375,35 @@ def api_message_promote(request, slug, message_id):
     return JsonResponse({**tidings[0], 'tidings': tidings}, status=201 if any(t['new'] for t in tidings) else 200)
 
 
+@require_POST
+def api_tiding_release(request):
+    """{"cid", "title"?, "tags"?}: put a release on Tidings, as its line in a feed Mood promoted
+    (services/tiding_links.promote_release). Anyone signed in. 201 if it went up, 200 if it was there."""
+    from .services import tiding_links
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in first'}, status=401)
+    if not _under_limit(f'promote:{device.pk}', 10):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    try:
+        body = json.loads(request.body or b'{}')
+    except ValueError:
+        body = None
+    cid = str((body or {}).get('cid') or '').strip()
+    if not cid or not cid.isalnum() or len(cid) > 100:
+        return JsonResponse({'error': 'expected {"cid": ...}'}, status=400)
+    try:
+        tiding, new = tiding_links.promote_release(cid, device.entity, title=body.get('title') or None,
+                                                   tags=body.get('tags') or None)
+    except tiding_links.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'id': str(tiding.id), 'url': tiding.url, 'title': tiding.title, 'new': new},
+                        status=201 if new else 200)
+
+
 @require_http_methods(['GET', 'POST'])
 def api_tiding(request, tiding_id):
     """GET: the link and what's been said about it (services/tiding_links.discussion). POST: {"title"} to
