@@ -351,9 +351,8 @@
   #devicesBox .dev.revoked, #devicesBox .dev.timed { opacity: .65; }
   #devicesBox button { font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel);
                        color: var(--ink); cursor: pointer; }
-  #noAgents { max-width: min(420px, 90vw); border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
-              color: var(--ink); padding: 16px 18px; }
-  #noAgents::backdrop { background: rgba(0,0,0,.35); }
+  .event.sysnote { text-align: left; font-size: 13px; color: var(--ink); background: var(--code); border-radius: 6px; padding: 6px 10px; }
+  .event.sysnote a { color: var(--accent); }
   /* ★ Promote to Tidings, for a message with several links: each a box to tick (Justin, 21 Oct). */
   #promotePick { max-width: min(520px, 92vw); border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink);
                  padding: 16px 18px; }
@@ -371,8 +370,6 @@
   #promotePick .go { background: var(--accent); color: #fff; }
   #promotePick .go:disabled { opacity: .45; cursor: default; }
   #promotePick .cancel { background: none; color: var(--muted); }
-  #noAgents p { margin: 0 0 10px; }
-  #noAgents button { font: inherit; border: 0; border-radius: 6px; padding: 6px 16px; background: var(--accent); color: #fff; cursor: pointer; }
   #renameBox, #newBox, #closeBox, #moveBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
                background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.18);
                padding: 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -1723,11 +1720,6 @@
     <p class="muted">Tags, separated by commas. <input type="text" name="tags" class="tagbox" maxlength="200" placeholder="e.g. music, security" autocomplete="off"></p>
     <div class="bar"><button type="submit" value="promote" class="go" disabled>★ Promote</button> <button type="submit" value="cancel" class="cancel">Cancel</button></div>
   </form>
-</dialog>
-<dialog id="noAgents">
-  <p><b>Emergents can't be addressed from a PickiPedia sign-in.</b></p>
-  <p>Take <span class="who"></span> out of your message and send it again. To wake an emergent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
-  <button type="button">OK</button>
 </dialog>
 <dialog id="personCard" aria-label="A person's card"></dialog>
 <dialog id="lookBox">
@@ -9345,8 +9337,38 @@
     if (e.key === 'Escape' && replyTo && !suggest.classList.contains('on')) { e.preventDefault(); e.stopImmediatePropagation(); cancelReply(); }
   }, { capture: true });
 
-  const noAgents = document.getElementById('noAgents');
-  noAgents.querySelector('button').addEventListener('click', () => { noAgents.close(); sayBox.focus(); });
+  // Signed in with PickiPedia, an @emergent is plain text (Justin, 3 Nov: no modal in their way): a hint under
+  // the box while one is typed, and after sending, once a Mood a visit, a note to them alone -- never in the
+  // record. Both in Magenta:System Messages' words.
+  const systemSaid = (key, fields = {}) => said(key, fields)
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (all, page, words) =>
+      `<a href="${esc(WIKI + '/wiki/' + encodeURIComponent(page.trim().replace(/ /g, '_')).replace(/%3A/g, ':').replace(/%2F/g, '/'))}" target="_blank" rel="noopener">${words || page}</a>`);
+  function wikiMentionHint() {
+    if (viewerTier !== 'wiki') return;
+    const addressed = agentsAddressed(sayBox.value);
+    let hint = composer.querySelector('.note.wiki-mention');
+    if (!addressed.length) { if (hint) hint.remove(); return; }
+    if (!hint) {
+      hint = document.createElement('span');
+      hint.className = 'note wiki-mention';
+      hint.title = 'Magenta:System Messages · wiki-mention-hint';
+      composer.appendChild(hint);
+    }
+    hint.innerHTML = systemSaid('wiki-mention-hint', { agent: esc(addressed.join(', @')) });
+  }
+  sayBox.addEventListener('input', wikiMentionHint);
+  const wikiNoted = new Set();
+  function wikiMentionNote(text, id) {
+    if (viewerTier !== 'wiki' || !agentsAddressed(text).length || wikiNoted.has(current)) return;
+    wikiNoted.add(current);
+    const note = document.createElement('div');
+    note.className = 'event sysnote';
+    note.title = 'Magenta:System Messages · wiki-mention: shown to you alone, not kept';
+    note.innerHTML = '⚙ ' + systemSaid('wiki-mention');
+    const turns = document.getElementById('turns');
+    const mine = id && document.getElementById('m-' + id);
+    if (mine) mine.after(note); else if (turns) turns.appendChild(note);
+  }
   async function say() {
     // A memo still recording or uploading: stop it, and send once it's in the box.
     if (recorder || memoSaving) {
@@ -9377,15 +9399,8 @@
     const sendOn = () => { makeDraft.dataset.then = 'page'; makeDraft.click(); delete makeDraft.dataset.then; };
     if (!text && makeDraft) { sendOn(); return; }
     if (!text || !current) return;
-    if (viewerTier === 'wiki') {
-      const addressed = agentsAddressed(text);
-      if (addressed.length) {
-        noAgents.querySelector('.who').textContent = addressed.map(n => '@' + n).join(', ');
-        noAgents.showModal();
-        return;
-      }
-    }
     sendBtn.disabled = true;
+    composer.querySelectorAll('.note.wiki-mention').forEach(el => el.remove());
     const old = composer.querySelector('.err'); if (old) old.remove();
     // Shown at once, faint, while it's on its way; the box is free for the next.
     const pending = memoPending || showPending(text);
@@ -9404,6 +9419,7 @@
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
       const done = await r.json().catch(() => ({}));
+      wikiMentionNote(text, done.id);
       if (pending && done.pending) {
         // A memo whose words aren't in yet: posted once they are (voice.post_when_heard). Its place stays, saying so.
         pending.dataset.memo = done.pending;

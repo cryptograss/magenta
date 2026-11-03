@@ -172,16 +172,9 @@ def _say_checks(text, device, slug=None):
     """What a text can't be posted as, by this device -- refused with the reason -- or None. The same
     checks wherever the device speaks: in a Mood (api_say) or on a link's Tidings page, which posts
     its comments into the Mood."""
-    if device.tier == 'wiki':
-        # A PickiPedia sign-in can't address agents: refused, not quietly passed
-        # on as text, so nobody believes an agent was asked.
-        from .services.mood_view import addressed_in, known_names
-        agents = set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
-        addressed = [n for n in addressed_in(text, known_names(), by=device.entity_id) if n in agents]
-        if addressed:
-            return JsonResponse({'error': f"signed in with PickiPedia, you can't address agents "
-                                          f"(@{', @'.join(addressed)}): take the mention out, or sign in with "
-                                          f"your SSH key (magenta.sh login)", 'agents': addressed}, status=403)
+    # A PickiPedia sign-in's @emergent goes through as plain text: it wakes nobody (views_moods.api_mentions)
+    # and isn't drawn as a mention (mood_view.turn_payload). The page says so to the poster, in words from
+    # Magenta:System Messages (Justin, 3 Nov: no refusal, no modal in their way).
 
     # /compact, /context, /usage, /cost for agents (services/agent_commands): in its one
     # form, or refused here with the form it should take -- never posted as if it ran.

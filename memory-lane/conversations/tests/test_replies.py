@@ -61,12 +61,13 @@ class RepliesTest(TestCase):
         mentions = self.client.get('/api/mentions/magent/').json()['mentions']
         self.assertEqual([m['turn']['id'] for m in mentions], [loud.json()['id']])
 
-    def test_a_pickipedia_sign_in_can_reply_to_anyone_but_still_cant_mention_an_agent(self):
+    def test_a_pickipedia_sign_in_can_reply_to_anyone_but_an_agent_is_plain_text(self):
         wiki = self.client_for(self.skyler, tier='wiki')
         self.assertEqual(self.reply(wiki, self.i_said, 'Nine sharp?').status_code, 201)
         self.assertEqual(self.reply(wiki, self.sky_said, 'answering myself').status_code, 201)
-        refused = self.reply(wiki, self.i_said, '@magent nine sharp?')
-        self.assertEqual((refused.status_code, refused.json()['agents']), (403, ['magent']))
+        said = self.reply(wiki, self.i_said, '@magent nine sharp?')  # through, as plain text (Justin, 3 Nov)
+        self.assertEqual(said.status_code, 201)
+        self.assertNotIn('magent', self.turn(said.json()['id'])['mentions'])
 
     def test_a_reply_to_something_gone_is_just_a_post(self):
         r = self.client_for(self.justin).post('/api/moods/general/say/', json.dumps(
