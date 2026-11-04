@@ -111,9 +111,11 @@ def api_bundles(request):
     if request.method != 'GET':
         return JsonResponse({'error': 'GET or POST'}, status=405)
     found = BundleRecord.objects.all()
-    # PickiPedia's Special:EmergentBundles still asks with ?agent= (its SpecialEmergentBundles.php, showList), so
-    # this one filter takes either name until the wiki sends ?emergent=; everything else here says emergent only.
-    who = request.GET.get('emergent') or request.GET.get('agent')
+    # ?agent= is the old name (the wiki asks with ?emergent= since pickipedia#171): refused, never read as no
+    # filter, which would answer with every emergent's bundles as if they were the one asked for.
+    if 'agent' in request.GET:
+        return JsonResponse({'error': 'agent: ask with ?emergent= (the emergent rename)'}, status=400)
+    who = request.GET.get('emergent')
     if who:
         found = found.filter(emergent=who)
     for name in ('mood', 'session_id', 'sha256'):
