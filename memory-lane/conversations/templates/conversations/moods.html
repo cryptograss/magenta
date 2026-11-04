@@ -3365,7 +3365,7 @@
   // magentaHandoff): to another page of Tidings, or out of Tidings altogether. It plays on from that moment, at
   // its speed and quality (the same remembered choices), captions too. Its title goes back to the page; that
   // page takes the video back from here, from where it is now. ✕ closes it. Playing another video ends it.
-  const mini = { el: null, state: null };
+  const mini = { el: null, state: null, carried: null };
   function miniVideo() { return mini.el && mini.el.querySelector('video'); }
   function miniClose() {
     const v = miniVideo();
@@ -3414,7 +3414,10 @@
   }
   function miniNow() {
     const v = miniVideo();
-    return v ? { ...mini.state, t: v.currentTime, rate: v.playbackRate, muted: v.muted } : null;
+    if (!v) return null;
+    // Not loaded yet (just shown, or carried from the last page): it's still where it was handed over.
+    if (v.readyState < 1) return { ...mini.state };
+    return { ...mini.state, t: v.currentTime, rate: v.playbackRate, muted: v.muted };
   }
   async function miniShow(state) {
     miniClose();
@@ -3508,12 +3511,39 @@
     show: miniShow,
     close: miniClose,
     take(id) {  // a Tidings page arriving: if this is its video, where it is now, and this goes
+      if (mini.carried && mini.carried.id === id) { const was = mini.carried; mini.carried = null; return was; }
       if (!mini.state || mini.state.id !== id) return null;
       const now = miniNow();
       miniClose();
       return now;
     },
   };
+  // Leaving the one page altogether -- the logo, signing in and coming back, a reload, a new version -- it
+  // follows too (Justin, 4 Nov: "even if the user is not signed in, I still want the video to follow them"):
+  // what's playing waits in this tab, and the page that comes next plays it on from there.
+  const MINI_CARRY = 'magentaMiniCarry', MINI_CARRY_MS = 10 * 60 * 1000;
+  addEventListener('pagehide', () => {
+    const v = miniVideo();
+    let state = v && !v.paused && !v.ended ? miniNow() : null;
+    if (!state && sectionNow === 'tidings') {
+      try { const w = tidingsFrame() && tidingsFrame().contentWindow; state = w && w.magentaPlaying ? w.magentaPlaying() : null; } catch (e) {}
+    }
+    try {
+      if (state) sessionStorage.setItem(MINI_CARRY, JSON.stringify({ ...state, carried: Date.now() }));
+      else sessionStorage.removeItem(MINI_CARRY);
+    } catch (e) {}
+  });
+  // Back from the browser's cache instead, the page is as it was: nothing to carry.
+  addEventListener('pageshow', e => { if (e.persisted) try { sessionStorage.removeItem(MINI_CARRY); } catch (err) {} });
+  try {
+    const carried = JSON.parse(sessionStorage.getItem(MINI_CARRY) || 'null');
+    sessionStorage.removeItem(MINI_CARRY);
+    if (carried && Date.now() - carried.carried < MINI_CARRY_MS) {
+      // Arriving at that very tiding: its own player goes on from there, as its page asks (magentaMini.take).
+      if (location.pathname.replace(/\/?$/, '/') === carried.back) mini.carried = carried;
+      else setTimeout(() => miniShow(carried));  // once the rest of this script is read: what it uses is all there
+    }
+  } catch (e) {}
 
   // A memo recorded in a browser doesn't say how long it is (MediaRecorder writes no
   // duration), so its player can't place its bar: it races ahead, then crawls.
@@ -7791,6 +7821,13 @@
   });
   const menu = document.getElementById('menu');
   menu.addEventListener('click', () => {
+    // On a phone, ☰ is the Moods: from a section, it goes back to them, with their list open.
+    if (document.body.classList.contains('in-section')) {
+      showSection('moods', true);
+      document.body.classList.add('menu-open');
+      menu.setAttribute('aria-expanded', 'true');
+      return;
+    }
     menu.setAttribute('aria-expanded', document.body.classList.toggle('menu-open'));
   });
   nav.addEventListener('click', e => {
@@ -9814,6 +9851,22 @@
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
   const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
+  // The address follows the Tidings frame while it shows (Justin, 4 Nov): a tiding opened from the list is
+  // its own address, to reload or share, and ‹ Tidings back to the list is /moods/tidings/ again.
+  function tidingsAddress(f) {
+    let at;
+    try { at = f.contentWindow.location; } catch (err) { return null; }
+    if (!at.pathname.startsWith('/moods/tidings/')) return null;
+    const rest = new URLSearchParams(at.search);
+    rest.delete('embed');
+    return at.pathname + (rest.size ? '?' + rest : '') + at.hash;
+  }
+  sectionFrames.addEventListener('load', e => {
+    const f = e.target;
+    if (!(f instanceof HTMLIFrameElement) || f.dataset.section !== 'tidings' || f.hidden || sectionNow !== 'tidings') return;
+    const want = tidingsAddress(f);
+    if (want && location.pathname + location.search + location.hash !== want) history.replaceState(history.state, '', want);
+  }, true);  // a frame's load doesn't bubble; it's caught on the way down
   // A section drawn again behind the scenes when what it shows has changed (a promotion here, a comment or a
   // link from someone else): a fresh frame loads hidden and takes the old one's place once it's in, so
   // nobody waits on it (Justin, 21 Oct). Never under the reader's eyes: open, it's done when they leave.
@@ -9903,8 +9956,11 @@
     document.querySelectorAll('header [data-section]').forEach(a => {
       if (a.dataset.section === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
-    const url = name === 'moods' ? (current ? '/moods/' + encodeURIComponent(current) + '/' : '/moods/') : `/moods/${name}/`;
-    if (push && location.pathname !== url) history.pushState({ section: name, slug: current }, '', url);
+    // Back to Tidings: the address is where its frame is, a tiding's own page if it was left there.
+    const url = name === 'moods' ? (current ? '/moods/' + encodeURIComponent(current) + '/' : '/moods/')
+      : (name === 'tidings' && tidingsAddress(frameFor('tidings'))) || `/moods/${name}/`;
+    const here = name === 'tidings' ? location.pathname + location.search + location.hash : location.pathname;
+    if (push && here !== url) history.pushState({ section: name, slug: current }, '', url);
     const moreBtn = document.getElementById('sectionsMoreBtn');
     if (moreBtn) moreBtn.classList.toggle('active', ['prompts', 'status', 'todo', 'verify'].includes(name));
     setTitle();
@@ -10000,12 +10056,29 @@
     }
     if (!slug) { location.href = to.href; return; }  // somewhere else: go there
     showSection('moods', false);
-    if (id || message) openAndReveal(decodeURIComponent(slug), id || message);
-    else open(decodeURIComponent(slug), true);
+    // Its address, once, whether or not that Mood was already the one behind the section: Back returns to
+    // where the link was, not out of magenta.
+    const at = '/moods/' + encodeURIComponent(decodeURIComponent(slug)) + '/';
+    if (location.pathname !== at) history.pushState({ slug: decodeURIComponent(slug) }, '', at + (id ? '#m-' + id : ''));
+    if (id || message) openAndReveal(decodeURIComponent(slug), id || message, false);
+    else open(decodeURIComponent(slug), false);
   });
   window.addEventListener('popstate', e => {
     if (e.state && e.state.lightbox) return;  // forward into a picture's step: nothing to open
     const sectionTo = sectionOf(location.pathname);
+    // Back to Tidings, or to one tiding's own page (left by a link in it into a Mood): Tidings, its frame
+    // where the address says.
+    const tidingAt = location.pathname.match(/^\/moods\/tidings\/([0-9a-f-]{36})\/?$/);
+    if (sectionTo === 'tidings' || tidingAt) {
+      showSection('tidings', false);
+      const frame = tidingsFrame(), there = frame && tidingsAddress(frame);
+      if (frame && there !== null && there.split('#')[0] !== location.pathname + location.search) {
+        const asked = new URLSearchParams(location.search);
+        asked.set('embed', '1');
+        frame.src = `${location.pathname}?${asked}${location.hash}`;
+      }
+      return;
+    }
     if (sectionTo) { showSection(sectionTo, false); return; }
     if (sectionNow !== 'moods') showSection('moods', false);
     const slug = (e.state && e.state.slug) || location.pathname.split('/')[2];
@@ -10016,8 +10089,13 @@
     await null;  // the rest of this script read first: what showSection uses is all there
     // Loaded in the background: ready the moment it's wanted. Opened at a link's own address (from the
     // front page, or a #t- link elsewhere), it opens at that link's discussion.
+    // Its order (?order=new) and a comment's #c- come along: a frame's own address opened on its own is
+    // sent here without ?embed (views_settings._opened_on_its_own), and lands where it pointed.
     const tidingAt = location.pathname.match(/^\/moods\/tidings\/[0-9a-f-]{36}\/?$/);
-    frameFor('tidings', true, tidingAt ? tidingAt[0].replace(/\/?$/, '/') + '?embed=1' : undefined);
+    const tidingsAt = tidingAt ? tidingAt[0].replace(/\/?$/, '/') : sectionOf(location.pathname) === 'tidings' ? '/moods/tidings/' : null;
+    const asked = new URLSearchParams(location.search);
+    asked.set('embed', '1');
+    frameFor('tidings', true, tidingsAt ? `${tidingsAt}?${asked}${location.hash}` : undefined);
     // Asked for a section: shown at once, before the Moods load behind it -- not a Mood first, then the
     // section (Justin, 23 Oct: from the front page, a link took "quite a while").
     if (initialSection !== 'moods') showSection(initialSection, false);

@@ -197,6 +197,8 @@
     const to = new URL(a.href, location.href);
     if (to.origin !== location.origin) { a.target = '_top'; return; }
     if (a.target === '_top') return;  // signing in: the whole page goes, and comes back here
+    // Its title: this page's own address, to share or open in a tab. Pressed here, it's here already.
+    if (a.matches('h1 a.title') && to.pathname === location.pathname) { e.preventDefault(); scrollTo({ top: 0 }); return; }
     if (to.pathname.startsWith('/moods/tidings/')) return;  // the listing or another discussion: in this frame
     if (a.matches('.words a.img')) return;  // a picture: the one page's lightbox (mood_tiding_tools.html)
     e.preventDefault();
@@ -541,7 +543,7 @@
           <span class="score">{{ tiding.score }}</span></span>
         <span class="body">
           <span class="chip rel">release</span>
-          <h1><a class="title" href="{{ r.page|default:tiding.url }}" rel="noopener noreferrer" target="_blank" title="Its Release page, on PickiPedia">{{ tiding.title }}</a>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}</h1>
+          <h1><a class="title" href="/moods/tidings/{{ tiding.id }}/" title="This tiding's own page: its link to share">{{ tiding.title }}</a>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}</h1>
           <div class="meta muted">uploaded by {{ r.by|default:tiding.said_by|default:"someone" }}{% if r.upload_block_s %} at block {{ r.upload_block_s }}{% endif %} · promoted by {{ tiding.by|default:"someone" }}
             · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
             {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
@@ -916,14 +918,18 @@
     const tidingId = '{{ tiding.id }}';
     if (v && mini && (v.dataset.hls || v.getAttribute('src'))) {
       let gone = false;
+      // What's playing, and where: what the small player needs to play it on. Nothing if it isn't playing.
+      window.magentaPlaying = () => (gone || v.paused || v.ended) ? null : {
+        id: tidingId, title: JSON.parse(document.getElementById('tidingTitle').textContent),
+        back: `/moods/tidings/${tidingId}/`, hls: v.dataset.hls || '', src: v.dataset.src || v.currentSrc || v.getAttribute('src') || '',
+        poster: v.getAttribute('poster') || '', t: v.currentTime, rate: v.playbackRate, muted: v.muted,
+        captions: vtt ? JSON.parse(vtt.textContent) : '', cc: !!(v.textTracks[0] && v.textTracks[0].mode === 'showing'),
+        portrait: !!(v.videoHeight > v.videoWidth) };
       window.magentaHandoff = () => {  // asked by the one page as it leaves Tidings, and on our way out
-        if (gone || v.paused || v.ended) return false;
+        const state = window.magentaPlaying();
+        if (!state) return false;
         gone = true;
-        mini.show({ id: tidingId, title: JSON.parse(document.getElementById('tidingTitle').textContent),
-                    back: `/moods/tidings/${tidingId}/`, hls: v.dataset.hls || '', src: v.dataset.src || v.currentSrc || v.getAttribute('src') || '',
-                    poster: v.getAttribute('poster') || '', t: v.currentTime, rate: v.playbackRate, muted: v.muted,
-                    captions: vtt ? JSON.parse(vtt.textContent) : '', cc: !!(v.textTracks[0] && v.textTracks[0].mode === 'showing'),
-                    portrait: !!(v.videoHeight > v.videoWidth) });
+        mini.show(state);
         v.pause();
         return true;
       };
