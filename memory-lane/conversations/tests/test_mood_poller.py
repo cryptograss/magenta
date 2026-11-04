@@ -2801,6 +2801,17 @@ class WaitingTest(TestCase):
         self.assertEqual(poller.poll_once(), ['m26'])               # posted: its turn now, the rest in view
         self.assertIn('You chose to wait for justin', self.waker.woken[1][1])
 
+    def test_a_wait_for_someone_typing_at_the_wake_holds_though_they_paused_since(self):
+        # Justin, 4 Nov: woken with "justin is typing", the wait for him was refused -- "nobody ... goes by justin".
+        # A keystroke counts for 8 s; by the turn's end he seemed to have stopped. The wake's word is what counts.
+        poller = self.make(['<wait for="justin" to="finish the thought"/>'], mentions=('magent',))
+        self.page['typing'] = ['justin']
+        poller.people_typing = lambda slug, page=None: []   # as the reply is read: no keystroke in the last 8 s
+        poller.poll_once()
+        self.assertIn('Right now, here: justin is typing.', self.waker.woken[0][1])
+        self.assertIn('m26', poller.state['waits'])
+        self.assertFalse(poller.state['waits']['m26'].get('refused'))
+
     def test_an_answer_between_the_ask_and_the_wait_taking_releases_the_wait(self):
         # Justin, 29 Oct: blu waited for magent, who had already answered the very question a minute before
         # blu's wait was taken (22:01 the answer, 22:02 the wait). The wait measured what counted from its own
