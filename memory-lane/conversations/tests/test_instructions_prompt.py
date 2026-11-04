@@ -60,4 +60,4 @@ class RulesPromptTest(SimpleTestCase):
     def test_the_old_flag_still_turns_them_on(self):
         from poller.mood_poller import build_parser
         for flag in ('--instructions', '--rules-bundle'):  # the inventory says --rules-bundle until it is changed
-            self.assertTrue(build_parser().parse_args(['--agent', 'blu', flag]).instructions)
+            self.assertTrue(build_parser().parse_args(['--emergent', 'blu', flag]).instructions)

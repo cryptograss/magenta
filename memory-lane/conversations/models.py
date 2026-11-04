@@ -1445,9 +1445,9 @@ class PushSubscription(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_sent_at = models.DateTimeField(null=True, blank=True)
     # Beyond mentions and answers, which every bell gets: every message from
-    # people, or from agents, as this browser's person chose in its menu.
+    # people, or from emergents, as this browser's person chose in its menu.
     from_people = models.BooleanField(default=False)
-    from_agents = models.BooleanField(default=False)
+    from_emergents = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'push_subscriptions'
@@ -1697,18 +1697,18 @@ class SealedCopy(models.Model):
 
 class Setting(models.Model):
     """
-    One change to a knob: what was set, for which agent in which Mood, by whom.
+    One change to a knob: what was set, for which emergent in which Mood, by whom.
 
-    The newest row for a (mood, agent, key) is in force; the rest are its
+    The newest row for a (mood, emergent, key) is in force; the rest are its
     history, and so the audit trail -- rows are only ever added. A null
-    mood means every Mood; a null agent means every agent (or, for a
-    moderation key like 'banned', the person it names is in `agent`). See
+    mood means every Mood; a null emergent means every emergent (or, for a
+    moderation key like 'banned', the person it names is in `emergent`). See
     conversations/services/settings.py for the knobs and how they resolve.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     mood = models.ForeignKey('Mood', models.CASCADE, null=True, blank=True, related_name='settings')
-    agent = models.ForeignKey(ThinkingEntity, models.CASCADE, null=True, blank=True, related_name='settings')
+    emergent = models.ForeignKey(ThinkingEntity, models.CASCADE, null=True, blank=True, related_name='settings')
     key = models.CharField(max_length=40)
     value = models.JSONField()
     set_by = models.ForeignKey(ThinkingEntity, models.SET_NULL, null=True, blank=True, related_name='settings_set')
@@ -1717,24 +1717,24 @@ class Setting(models.Model):
 
     class Meta:
         db_table = 'settings'
-        indexes = [models.Index(fields=['key', 'mood', 'agent', 'created_at'])]
+        indexes = [models.Index(fields=['key', 'mood', 'emergent', 'created_at'])]
 
     def __str__(self):
-        return f"{self.key}={self.value!r} ({self.mood_id or '*'}/{self.agent_id or '*'})"
+        return f"{self.key}={self.value!r} ({self.mood_id or '*'}/{self.emergent_id or '*'})"
 
 
 
 class HarnessModels(models.Model):
     """
-    What an agent's harness can run: every model it knows, by vendor, and
-    whether the keys on the agent's machine reach each vendor. Reported by
-    the agent's runner (poller/pi_harness.py `PiWaker.catalog`) when it
+    What an emergent's harness can run: every model it knows, by vendor, and
+    whether the keys on the emergent's machine reach each vendor. Reported by
+    the emergent's runner (poller/pi_harness.py `PiWaker.catalog`) when it
     starts, and replaced whole each time; the Mood's model menu is drawn
     from it. A report of the machine, not a setting anyone chose, so it is
     kept apart from Setting and its history.
     """
 
-    agent = models.OneToOneField(ThinkingEntity, models.CASCADE, primary_key=True, related_name='harness_models')
+    emergent = models.OneToOneField(ThinkingEntity, models.CASCADE, primary_key=True, related_name='harness_models')
     harness = models.CharField(max_length=60, blank=True, default='')
     # [{'name': 'anthropic', 'usable': True, 'models': [['claude-opus-5-5', 1000000], ...]}, ...]
     vendors = models.JSONField(default=list)
@@ -1744,7 +1744,7 @@ class HarnessModels(models.Model):
         db_table = 'harness_models'
 
     def __str__(self):
-        return f"{self.agent_id}: {self.harness}, {len(self.vendors)} vendors"
+        return f"{self.emergent_id}: {self.harness}, {len(self.vendors)} vendors"
 
 class PlanWindow(models.Model):
     """
@@ -1752,14 +1752,14 @@ class PlanWindow(models.Model):
     rate_limit_event: the 5-hour and the weekly, each a fraction of its cap (Justin, #usage, 28 Oct: "every
     anthropic use is a percentage of our rolling limits, whereas the openrouter usage is literally metered in
     dollars"). One row per window per change, so the prompts page can draw the meter over time. The plan is
-    the account's, not one agent's: `agent` says whose turn reported it.
+    the account's, not one emergent's: `emergent` says whose turn reported it.
     """
 
     window = models.CharField(max_length=40)          # 'five_hour', 'seven_day', ... as Claude Code names it
     utilization = models.FloatField()                 # 0-1, past 1 when usage runs past the cap
     resets_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=40, blank=True, default='')
-    agent = models.CharField(max_length=60, blank=True, default='')
+    emergent = models.CharField(max_length=60, blank=True, default='')
     info = models.JSONField(default=dict)             # what Claude Code said, whole
     at = models.DateTimeField(auto_now_add=True, db_index=True)
 
@@ -1780,7 +1780,7 @@ class BundleRecord(models.Model):
     """
 
     id = models.UUIDField(primary_key=True)  # the runner's, in the bundle's <instructions bundle="..."> tag
-    agent = models.CharField(max_length=60, db_index=True)
+    emergent = models.CharField(max_length=60, db_index=True)
     mood = models.CharField(max_length=120, blank=True, default='', db_index=True)
     session_id = models.CharField(max_length=80, blank=True, default='')
     harness = models.CharField(max_length=60, blank=True, default='')
@@ -1801,7 +1801,7 @@ class BundleRecord(models.Model):
         ordering = ['-requested_at']
 
     def __str__(self):
-        return f"{self.agent} in {self.mood or '(no Mood)'} at {self.requested_at:%Y-%m-%d %H:%M:%S}: {self.sha256[:12]}"
+        return f"{self.emergent} in {self.mood or '(no Mood)'} at {self.requested_at:%Y-%m-%d %H:%M:%S}: {self.sha256[:12]}"
 
     def pages(self):
         """[{'page', 'revision'}] in the order the bundle has them."""

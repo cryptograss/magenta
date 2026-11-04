@@ -224,7 +224,7 @@ def difference(slug, agent, since, until=None, rows=None):
         return [], None, ''
     from conversations.models import mood_slug
     keys = {c['key'] for c in changes}
-    newest = max((r for r in rows if r.key in keys and since < r.created_at <= until and r.agent_id in (agent, None)
+    newest = max((r for r in rows if r.key in keys and since < r.created_at <= until and r.emergent_id in (agent, None)
                   and mood_slug(r.mood_id) in (slug, None)), key=lambda r: r.created_at, default=None)
     return changes, (newest.set_by_id if newest else None), (newest.note if newest else '')
 
@@ -244,7 +244,7 @@ def noticed(message):
         return None
     from django.db.models import Q
     slug = message.mood.slug
-    if not Setting.objects.filter(Q(mood_id=message.mood_id) | Q(mood=None), Q(agent_id=agent) | Q(agent=None),
+    if not Setting.objects.filter(Q(mood_id=message.mood_id) | Q(mood=None), Q(emergent_id=agent) | Q(emergent=None),
                                   key__in=SHOWN, created_at__gt=before, created_at__lte=message.created_at).exists():
         return None  # nothing set for it here since its last word: the common case, one look
     if Message.objects.filter(mood_id=message.mood_id, source_file=SOURCE, content__type='agent-settings',

@@ -173,7 +173,7 @@ class PushTest(TestCase):
         told = self.phone.read(service.sent[0][1]['data'])
         self.assertEqual((told['title'], told['body']), ('skyler in general', 'the bus leaves at nine'))
         # Asking for agents too, by sending the subscription again with both.
-        body['agents'] = True
+        body['emergents'] = True
         self.client_for(self.justin).post('/api/push/subscribe/', json.dumps(body), content_type='application/json')
         self.said(self.magent, 'Merged and deployed.', stop_reason='end_turn')
         with mock.patch('requests.post', service.post):

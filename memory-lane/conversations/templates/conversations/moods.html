@@ -2034,12 +2034,12 @@
     for (const t of asked) {
       const icon = ASK_EMOJI[t.kind] || '🔨';
       if (!kinds.has(icon)) kinds.set(icon, []);
-      kinds.get(icon).push(t.agent);  // a dot an ask: two merges asked, two dots (Justin, 30 Oct)
+      kinds.get(icon).push(t.emergent);  // a dot an ask: two merges asked, two dots (Justin, 30 Oct)
     }
     return [...kinds].map(([icon, agents]) => `<span class="askgroup">${icon}${
       agents.map(a => `<span class="askdot" style="background: ${agentColor(a)}"></span>`).join('')}</span>`).join('');
   }
-  const askLine = t => `${esc(shown(t.agent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
+  const askLine = t => `${esc(shown(t.emergent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
     : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
 
   // How long an ask of the server may take before it's given up (and asked again
@@ -2327,16 +2327,16 @@
     const mine = viewer && slug === current && Date.now() - hereAt < SHOWN_FOR_MS;
     const d = { ...raw, speakers: [...(raw.speakers || []).filter(n => n !== viewer), ...(mine ? [viewer] : [])] };
     const typing = new Set(slug === current ? [...d.typing, ...typingNow] : d.typing);
-    const busy = slug === current ? acts.filter(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')).map(a => a.agent) : (d.busy_all || (d.busy ? [d.busy] : []));
+    const busy = slug === current ? acts.filter(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')).map(a => a.emergent) : (d.busy_all || (d.busy ? [d.busy] : []));
     // Listening by voice (services/listening.py): 🎧 on their name where it's shown; one listening to this Mood
     // alone is shown here even if they haven't spoken. One listening to every Mood isn't put on every line.
     const listening = new Map((d.listening || []).map(who => [who.name, who.everywhere]));
     const names = [...new Set([...busy, ...typing, ...d.speakers,
                                ...[...listening].filter(([, everywhere]) => !everywhere).map(([name]) => name)])];
     // A turn with its full tools: 🔨 by the pulsing name (Justin, 29 Oct).
-    const tooled = new Set((slug === current ? acts : (d.activities || [])).filter(a => (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) && a.tools === 'full').map(a => a.agent));
+    const tooled = new Set((slug === current ? acts : (d.activities || [])).filter(a => (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) && a.tools === 'full').map(a => a.emergent));
     // What each agent is at (mood_view._doing's words), for how its name moves (Justin, 1 Nov).
-    const doing = new Map((slug === current ? acts : (d.activities || [])).map(a => [a.agent, a.doing || '']));
+    const doing = new Map((slug === current ? acts : (d.activities || [])).map(a => [a.emergent, a.doing || '']));
     // Of those typing, who's recording a voice memo (views_moods.recording_in): they pulse, the others type.
     const recording = new Set(slug === current ? recordingNow : (d.recording || []));
     return { names, active: new Set([...typing, ...busy]), listening, tooled, doing, typing, recording };
@@ -2459,9 +2459,9 @@
     // Waiting for another agent asked too: said once, as thinking is, when it starts (Justin, 24 Oct).
     for (const [slug, d] of Object.entries(liveData)) {
       if (readMode !== 'everywhere' && slug !== current) continue;
-      const was = new Set(((before[slug] || {}).waiting || []).map(w => w.agent));
+      const was = new Set(((before[slug] || {}).waiting || []).map(w => w.emergent));
       for (const w of d.waiting || []) {
-        if (!was.has(w.agent)) readQueue.push({ kind: 'thinking', waiting: w.for, waitingTo: w.to || '', mood: slug, who: w.agent, agent: w.agent });
+        if (!was.has(w.emergent)) readQueue.push({ kind: 'thinking', waiting: w.for, waitingTo: w.to || '', mood: slug, who: w.emergent, agent: w.emergent });
       }
     }
     readNext();
@@ -4477,7 +4477,7 @@
       prev = null;
       return;
     }
-    if (e.type === 'agent-settings' || e.type === 'agent-settings-refused') {  // services/agent_settings.py
+    if (e.type === 'agent-settings' || e.type === 'agent-settings-refused') {  // services/emergent_settings.py
       // Shown when it's used: above an agent's first turn on settings other than its last turn's (Justin, 24 Oct).
       el.className = 'event';
       // "at justin's ask, #m-…": the word "ask" goes to the words that asked.
@@ -4820,7 +4820,7 @@
   wordsFrom(document.getElementById('closeNote'), 'close-note');
   wordsFrom(document.getElementById('closeGo'), 'close-button');
   const closeBox = document.getElementById('closeBox');
-  const HANDOFF_AGENT = 'magent';  // who incorporates a thread (services/agent_commands.HANDOFF_AGENT)
+  const HANDOFF_AGENT = 'magent';  // who incorporates a thread (services/emergent_commands.HANDOFF_AGENT)
   document.addEventListener('click', async e => {
     if (e.target.closest('#rename')) {
       document.getElementById('renameTitle').value = headMood.title;
@@ -4951,7 +4951,7 @@
     if (!agentsFor[parent] || !closeBox._was) {
       try {
         const r = await fetch('/api/moods/' + encodeURIComponent(parent) + '/turns/?limit=1');
-        if (r.ok) noteAgents(parent, (await r.json()).agents);
+        if (r.ok) noteAgents(parent, (await r.json()).emergents);
       } catch (e) {}
     }
     const a = (agentsFor[parent] || {})[HANDOFF_AGENT];
@@ -4986,7 +4986,7 @@
       // Its model and effort there first, if changed here: set as any of its settings are, noted as from here.
       for (const [key, value] of Object.entries(closeBox._chosen || {})) {
         if (value === (closeBox._was || {})[key]) continue;
-        const r = await post('/api/settings/', { key, value, mood: closeBox._parent, agent: HANDOFF_AGENT, note: 'from the close dialog' });
+        const r = await post('/api/settings/', { key, value, mood: closeBox._parent, emergent: HANDOFF_AGENT, note: 'from the close dialog' });
         if (!r.ok) { showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
       }
       closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
@@ -5419,7 +5419,7 @@
   }
   // Working only if it's the newest thing here and the agent is at work now.
   function isWorking(b) {
-    return b.parentNode && lastOf(b.parentNode) === b && acts.some(a => a.agent === b._agent && (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')));
+    return b.parentNode && lastOf(b.parentNode) === b && acts.some(a => a.emergent === b._agent && (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')));
   }
   // A turn that a person spoke after is over, whether or not its end was marked.
   function closeBlock(container) {
@@ -6268,7 +6268,7 @@
           data = await r.json();
         } catch (e) { continue; }
         if (m.slug === current || drawn.has(m.slug) || keptOf(m.slug)) continue;
-        noteAgents(m.slug, data.agents);
+        noteAgents(m.slug, data.emergents);
         primed.set(m.slug, grow({ has_earlier: !!data.has_earlier, version: KEPT_VERSION }, data));
       }
     } finally { priming = false; }
@@ -6286,7 +6286,7 @@
     } catch (e) { return; }
     if (slug === current) return;  // opened meanwhile: its own poll asks
     preloadedTo[slug] = data.now;
-    noteAgents(slug, data.agents);
+    noteAgents(slug, data.emergents);
     // Kept without the server's time: what changed since was not asked, and opening it still asks.
     keep(slug, { ...data, now: undefined }, false, false);
     if (primed.has(slug)) grow(primed.get(slug), { ...data, now: undefined });
@@ -6378,7 +6378,7 @@
     if (!data) return false;
     const items = itemsOf(data);
     if (!items.length) return false;
-    noteAgents(current, data.agents);  // the thread is now a window at the message; the Mood head keeps its own
+    noteAgents(current, data.emergents);  // the thread is now a window at the message; the Mood head keeps its own
     if (!document.getElementById('turns')) {
       prev = null;
       inner.innerHTML = renderHead(data.mood);
@@ -6544,8 +6544,8 @@
     renderActivity();
     tasks = data.tasks || [];
     renderTasks();
-    renderAgents(data.agents || {});
-    noteAgents(current, data.agents);
+    renderAgents(data.emergents || {});
+    noteAgents(current, data.emergents);
     renderLocked(data.scram || null);
     typingNow = (data.typing || []).filter(n => n !== viewer);
     recordingNow = data.recording || [];
@@ -6929,12 +6929,12 @@
         if (agentsFor[m.slug] || m.slug === current) continue;
         try {
           const r = await fetch('/api/moods/' + encodeURIComponent(m.slug) + '/turns/?limit=1', { signal: AbortSignal.timeout(POLL_WAIT_MS) });
-          if (r.ok) noteAgents(m.slug, (await r.json()).agents);
+          if (r.ok) noteAgents(m.slug, (await r.json()).emergents);
         } catch (e) {}
       }
     } finally { warming = false; }
   }
-  // For an agent whose harness reports what it can run (Pi: api_agent_models),
+  // For an agent whose harness reports what it can run (Pi: api_emergent_models),
   // two menus: the vendor, greyed out without a key on the agent's machine,
   // then that vendor's models. The setting is the one vendor/model id Pi reads.
   // Fetched once a page.
@@ -7170,7 +7170,7 @@
     const key = input.dataset.pace, value = Number(input.value) * Number(input.dataset.scale);
     const r = await fetch('/api/settings/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ key, value, mood: current, agent: null, note: 'from the Mood' }),
+      body: JSON.stringify({ key, value, mood: current, emergent: null, note: 'from the Mood' }),
     });
     if (!r.ok) showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status));
     agentsShown = '';
@@ -7196,7 +7196,7 @@
     }
     const r = await fetch('/api/settings/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ key, value, mood: current, agent: select.dataset.agent, note: 'from the Mood' }),
+      body: JSON.stringify({ key, value, mood: current, emergent: select.dataset.agent, note: 'from the Mood' }),
     });
     if (!r.ok) showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status));
     agentsShown = '';
@@ -7318,7 +7318,7 @@
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
     box.innerHTML = ((m && m.asked) || []).map(t =>
       `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
-        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b>`
+        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.emergent, true)}<b>${esc(shown(t.emergent))}</b>`
         + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
         + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
   }
@@ -7341,15 +7341,15 @@
     if (typeof agent !== 'string') agent = null;
     if (!agent && (!act || (act.doing === 'held' && !/a turn is under way/i.test(act.why || '')))) return false;
     if (!keyHolder || !current) return false;
-    agent = agent || act.agent;
+    agent = agent || act.emergent;
     stopBtn.disabled = true;
     try {
       const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/interrupt/', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-        body: JSON.stringify({ agent }),
+        body: JSON.stringify({ emergent: agent }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
-      acts = acts.filter(a => a.agent !== agent);
+      acts = acts.filter(a => a.emergent !== agent);
       act = [...acts].reverse().find(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) || null;
       renderActivity();
       await poll(false);
@@ -7368,28 +7368,28 @@
     if (lastHead && lastHead._turns && roundOngoing(lastHead) !== lastHead.classList.contains('ongoing')) drawRunHead(lastHead);  // lit while its round goes on
     const isHeld = a => a.doing === 'held' && !/a turn is under way/i.test(a.why || '');
     const working = acts.filter(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || ''));
-    document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('busy', working.some(a => el.dataset.who === a.agent)));
+    document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('busy', working.some(a => el.dataset.who === a.emergent)));
     activityEl.classList.toggle('on', acts.length > 0);
     markLive();
     // One at work: the stop button. Several: a little stop sign by each one's name instead (Justin, 28 Oct:
     // the button named only one of them).
     const several = working.length > 1;
     stopBtn.hidden = !(keyHolder && act && (act.doing !== 'held' || /a turn is under way/i.test(act.why || ''))) || several;
-    stopBtn.textContent = act && act.agent ? `■ stop ${act.agent}` : '■ stop';  // which one (Justin, 2 Nov)
+    stopBtn.textContent = act && act.emergent ? `■ stop ${act.emergent}` : '■ stop';  // which one (Justin, 2 Nov)
     const stopOne = a => keyHolder && several && (a.doing !== 'held' || /a turn is under way/i.test(a.why || ''))
-      ? `<button type="button" class="stopone" data-agent="${esc(a.agent)}" title="Stop ${esc(a.agent)}" aria-label="Stop ${esc(a.agent)}">🛑</button>` : '';
+      ? `<button type="button" class="stopone" data-agent="${esc(a.emergent)}" title="Stop ${esc(a.emergent)}" aria-label="Stop ${esc(a.emergent)}">🛑</button>` : '';
     if (!acts.length) return;
     const hhmm = iso => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     // A line for each, in its colour: two woken by one post, or one asked and one looking in.
-    activityText.innerHTML = acts.map(a => `<span class="one${isHeld(a) ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
+    activityText.innerHTML = acts.map(a => `<span class="one${isHeld(a) ? ' held' : ''}" style="--who: ${agentColor(a.emergent)}"><span class="dot"></span>`
       + (a.doing === 'waking'
-        ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${stopOne(a)}${elapsed(a.since)}`
+        ? `waking ${icon(a.emergent, false)}<b>${esc(a.emergent)}</b> · ${stopOne(a)}${elapsed(a.since)}`
         : isHeld(a) && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
-        ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${waitedFor(a.why)}` + (a.until ? ` · checks in by ${esc(hhmm(a.until))}` : '')
+        ? `${icon(a.emergent, false)}<b>${esc(a.emergent)}</b> is ${waitedFor(a.why)}` + (a.until ? ` · checks in by ${esc(hhmm(a.until))}` : '')
         : isHeld(a)
-        ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
+        ? `${icon(a.emergent, false)}<b>${esc(a.emergent)}</b> · held: ${esc(a.why || 'not yet')}`
           + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
-        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${esc(a.doing || 'at work')}`
+        : `${icon(a.emergent, false)}<b>${esc(a.emergent)}</b> · ${esc(a.doing || 'at work')}`
           + (/a turn is under way/i.test(a.why || '') ? ` <span class="meta">(next turn queued)</span>` : '')
           + ` · ${stopOne(a)}${elapsed(a.since)}`
           + ([a.model, a.effort].filter(Boolean).length ? ` · ${esc([a.model, a.effort].filter(Boolean).join(' · '))}` : ''))
@@ -7508,7 +7508,7 @@
       return m.turns.map(t => t.tokens).join(' + ') + (costs.length ? ' · ' + costs.join(' + ') : '');
     };
     const dots = m => {
-      const answered = new Set(m.turns.map(t => t.agent));
+      const answered = new Set(m.turns.map(t => t.emergent));
       return [...new Set([...m.asked, ...answered])].map(a =>
         `<span class="dot${answered.has(a) ? '' : ' unanswered'}" style="--who: ${agentColor(a)}" title="${esc(a)}${answered.has(a) ? ' answered' : ' was asked'}"></span>`).join('');
     };
@@ -7604,7 +7604,7 @@
       return clips;
     } catch (e) { return []; }
   }
-  // Slash commands (services/agent_commands, and /clips): offered as soon as / starts the box,
+  // Slash commands (services/emergent_commands, and /clips): offered as soon as / starts the box,
   // with the form each takes; then, for an agent's command, the agents. Formal on purpose
   // (Justin, 17 Oct): "/compact magent what to keep", and the server refuses anything else.
   const SLASH_COMMANDS = JSON.parse("{{ slash_commands|escapejs }}" || '[]');
@@ -8898,7 +8898,7 @@
     // "X is thinking" only as the latest news: when nothing else is waiting, it says something's
     // coming. With more to hear, or its answer already in, it's left out (Justin, 19 Oct).
     if (item.kind === 'thinking' && (readQueue.length || (item.waiting
-        ? !((liveData[item.mood] || {}).waiting || []).some(w => w.agent === item.agent)  // its wait is over
+        ? !((liveData[item.mood] || {}).waiting || []).some(w => w.emergent === item.agent)  // its wait is over
         : (liveData[item.mood] || {}).busy !== item.agent))) { readNext(); return; }
     const now = readNow = { item, skipped: false };
     renderReadBar();
@@ -8933,7 +8933,7 @@
         const r = await fetch('/api/voice/narrate/', { method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
           body: JSON.stringify(item.kind === 'deploy' ? { mood: current, deploy: item.row }
-                               : { mood: item.mood, agent: item.agent, where: readMode === 'everywhere', still: !!item.still,
+                               : { mood: item.mood, emergent: item.agent, where: readMode === 'everywhere', still: !!item.still,
                                    ...(item.waiting ? { waiting: item.waiting, to: item.waitingTo || '' } : {}) }) });
         const body = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(body.error || r.status);
@@ -10165,7 +10165,7 @@
         }
       }
     } else {
-      for (const a of acts.filter(a => a.doing !== 'held')) out.push(`<b>${esc(shown(a.agent))}</b> ${esc(a.doing)} · ${esc(elapsed(a.since))}`);
+      for (const a of acts.filter(a => a.doing !== 'held')) out.push(`<b>${esc(shown(a.emergent))}</b> ${esc(a.doing)} · ${esc(elapsed(a.since))}`);
     }
     return out;
   }

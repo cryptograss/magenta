@@ -704,15 +704,15 @@ def how_i_speak_text(agent, count=12, fresh=False, others=False, now=None, short
 
 # --- bootstrap_memory, per agent --------------------------------------------------
 
-AGENT_NAMESPACE = 3010  # PickiPedia's Agent: namespace (its LocalSettings.php): each agent writes only its own
+EMERGENT_NAMESPACE = 3010  # PickiPedia's Emergent: namespace (its LocalSettings.php): each emergent writes only its own
 
 
 def journal_prefix(agent):
-    return f'Agent:{agent[:1].upper()}{agent[1:]}/Journal/'
+    return f'Emergent:{agent[:1].upper()}{agent[1:]}/Journal/'
 
 
 def journal_entries(agent, count=2, http=None):
-    """[(title, wikitext)]: the agent's newest journal entries, Agent:<Name>/Journal/<block>, newest first
+    """[(title, wikitext)]: the emergent's newest journal entries, Emergent:<Name>/Journal/<block>, newest first
     by block; [] with none, None if PickiPedia can't be read. Its own words, in its own namespace."""
     import requests
 
@@ -722,7 +722,7 @@ def journal_entries(agent, count=2, http=None):
     prefix = journal_prefix(agent).split(':', 1)[1]
     try:
         found = http.get(api, timeout=5, headers=headers, params={
-            'action': 'query', 'list': 'allpages', 'apnamespace': AGENT_NAMESPACE, 'apprefix': prefix,
+            'action': 'query', 'list': 'allpages', 'apnamespace': EMERGENT_NAMESPACE, 'apprefix': prefix,
             'aplimit': 500, 'format': 'json', 'formatversion': '2'}).json()['query']['allpages']
         blocks = sorted(((int(p['title'].rsplit('/', 1)[1].replace(',', '')), p['title']) for p in found
                          if re.fullmatch(r'[\d,]+', p['title'].rsplit('/', 1)[1])), reverse=True)[:count]

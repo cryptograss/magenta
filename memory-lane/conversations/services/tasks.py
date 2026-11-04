@@ -36,7 +36,7 @@ agent as a mention does (views_moods.api_mentions), so its runner wakes it
 there with the filled-in prompt (poller: via 'task'). Refused -- over its
 cap, a blank unfilled -- it is a line too, waking nobody. Two ways in:
 
-    POST /api/emergents/<emergent>/tasks/<task>/  {"params": {...}, "mood": ...}  (/api/agents/... also, until the rename's last step)
+    POST /api/emergents/<emergent>/tasks/<task>/  {"params": {...}, "mood": ...}
         a person, by their enrolled key (mood_auth.key_device)
     manage.py run_due_tasks
         every minute, from cron: each task whose schedule has come round

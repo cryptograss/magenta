@@ -266,7 +266,7 @@ class TaskApiTest(TestCase):
         self.client.cookies[mood_auth.COOKIE] = token
         pages = {tasks.title('blu', 'Connect'): [(41, 'JMyles', CONNECT)]}
         with patch.object(tasks, 'history', wiki(pages)):
-            return self.client.post(f'/api/agents/{agent}/tasks/{task}/', json.dumps(body),
+            return self.client.post(f'/api/emergents/{agent}/tasks/{task}/', json.dumps(body),
                                     content_type='application/json')
 
     def test_a_person_with_their_key_starts_it(self):

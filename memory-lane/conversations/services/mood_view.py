@@ -367,7 +367,7 @@ def known_names():
 
 
 def agent_names():
-    """The agents' names: who a command (services/agent_commands) can be for."""
+    """The agents' names: who a command (services/emergent_commands) can be for."""
     from conversations.models import ThinkingEntity
     return set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
 
@@ -585,9 +585,9 @@ def addressed_in(text, mentionable, answered=None, by=None):
     disagree. `answered`: replied(), if already looked up."""
     out = mentions_in(text, mentionable)
     target, said = reply_to(text)
-    # "/compact magent,re ...": a command addresses the agents it names (services/agent_commands).
+    # "/compact magent,re ...": a command addresses the agents it names (services/emergent_commands).
     if said.lstrip().startswith('/'):
-        from .agent_commands import commanded
+        from .emergent_commands import commanded
         out += [a for a in commanded(said, agent_names()) if a not in out]
     if target:
         answered = answered or replied(target)
@@ -1294,7 +1294,7 @@ def bundle_marks(ids):
     from conversations.models import BundleRecord
     found = {}
     for r in BundleRecord.objects.filter(id__in=[i for i in set(ids) if i]):
-        before = (BundleRecord.objects.filter(agent=r.agent, mood=r.mood, requested_at__lt=r.requested_at)
+        before = (BundleRecord.objects.filter(emergent=r.emergent, mood=r.mood, requested_at__lt=r.requested_at)
                   .order_by('-requested_at').values_list('sha256', flat=True).first())
         found[str(r.id)] = {'id': str(r.id), 'sha': r.sha256[:8], 'new': before is not None and before != r.sha256}
     return found
@@ -1424,7 +1424,7 @@ COMMAND_DOING = {'compact': 'compacting', 'context': 'measuring its context', 'u
 
 def command_doing(text, agent):
     """'compacting' for a post like "/compact magent what to keep"; None for anything else."""
-    from .agent_commands import doing
+    from .emergent_commands import doing
     name = doing(text, agent, agent_names())
     return COMMAND_DOING.get(name) if name else None
 
@@ -1582,7 +1582,7 @@ def activity(mood, now=None, only=None):
     waiting for its runner to notice."""
     doing = _activity(mood, now, only)
     if doing and doing['doing'] != 'held':
-        stopped = latest_interrupt(mood, doing['agent'])
+        stopped = latest_interrupt(mood, doing['emergent'])
         if stopped and stopped['at_ts'] >= doing['since']:
             return None
     return doing
@@ -1601,7 +1601,7 @@ def activities(mood, now=None):
 
 
 def latest_interrupt(mood, agent=None):
-    """{'agent', 'by', 'at', 'at_ts'} for the newest time someone stopped
+    """{'emergent', 'by', 'at', 'at_ts'} for the newest time someone stopped
     `agent` (any agent, if None) here; None if nobody ever has."""
     for msg in (mood.messages.filter(source_file=INTERRUPT_SOURCE).order_by('-created_at')
                 .only('content', 'timestamp', 'created_at')[:20]):
@@ -1609,7 +1609,7 @@ def latest_interrupt(mood, agent=None):
         if agent is None or c.get('agent') == agent:
             at = _when(msg)
             from datetime import datetime, timezone as tz
-            return {'agent': c.get('agent'), 'by': c.get('by'), 'at_ts': at,
+            return {'emergent': c.get('agent'), 'by': c.get('by'), 'at_ts': at,  # the stored line says 'agent'
                     'at': datetime.fromtimestamp(at, tz.utc).isoformat()}
     return None
 
@@ -1680,7 +1680,7 @@ def _activity(mood, now=None, only=None):
     if only:
         hold = held_in(mood.slug, now).get(only)
         if hold and hold['at'] >= _when(newest) and str(hold.get('reason') or '').startswith('waiting for'):
-            return {'agent': only, 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
+            return {'emergent': only, 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
                     'since': hold['at']}
 
     ended = mood.messages.filter(sender_id='system', content__type='turn-result')
@@ -1700,19 +1700,19 @@ def _activity(mood, now=None, only=None):
         hold = held_in(mood.slug, now).get(named[0])
         turn_under_way = bool(hold and 'a turn is under way' in str(hold.get('reason') or ''))
         if hold and hold['at'] >= _when(newest) and not turn_under_way:
-            return {'agent': named[0], 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
+            return {'emergent': named[0], 'doing': 'held', 'why': hold['reason'], 'until': hold.get('until'),
                     'since': _when(newest)}
         alive = running_in(mood.slug, now).get(named[0])
         if turn_under_way or (alive and alive['since'] <= _when(newest)):
             # Posted while its turn was already running: it's at work on that, not waking for this,
             # and never 'held' (Justin, 30 Oct: "held: a turn is under way" stopped pulsing and activity).
             since = alive['since'] if alive else _when(newest)
-            return {'agent': named[0], 'doing': 'still at work', 'since': since,
+            return {'emergent': named[0], 'doing': 'still at work', 'since': since,
                     **({'why': hold['reason']} if turn_under_way else {})}
         if now - _when(newest) > ACTIVITY_WINDOW:
             return None
         # "@magent /compact" runs the command, not a turn: say what's happening.
-        return {'agent': named[0], 'doing': command_doing(prose(newest.content), named[0]) or 'waking',
+        return {'emergent': named[0], 'doing': command_doing(prose(newest.content), named[0]) or 'waking',
                 'since': _when(newest)}
 
     # Quiet past the window is a session that died -- unless its runner says the turn is still running
@@ -1780,7 +1780,7 @@ def _activity(mood, now=None, only=None):
             start = mine.filter(created_at__gt=boundary.created_at).order_by('created_at').first() or start
     # Which tools this turn has, as its wake said (Justin, 29 Oct: 🔨 by a pulsing name in the list).
     tools = next((said for said in (wake_said(prose(m.content) or '') for m in streak if m.sender_id == WAKE_SENDER) if said), '')
-    return {'agent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v},
+    return {'emergent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v},
             **({'tools': tools} if tools else {})}
 
 

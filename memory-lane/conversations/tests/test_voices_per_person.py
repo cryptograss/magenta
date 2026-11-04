@@ -48,7 +48,7 @@ class SpeakersTest(TestCase):
         skylers = self.voice_used()
         self.assertEqual(len({'v-aria', justins, skylers}), 3)  # nobody sounds like anybody else
         self.assertEqual(voice.chosen_voices(), {'justin': justins, 'skyler': skylers})
-        given = Setting.objects.get(key='speaker_voice', agent=self.justin)
+        given = Setting.objects.get(key='speaker_voice', emergent=self.justin)
         self.assertEqual((given.set_by, given.note), (None, 'given at their first reading aloud'))
         voice.speak(self.said(self.justin, 'Again.'), 'justin', http=self.fake)
         self.assertEqual(self.voice_used(), justins)  # tomorrow too
@@ -176,7 +176,7 @@ class SpeakerEndpointsTest(TestCase):
     def test_thinking_said_for_an_agent_only_and_a_signed_in_device(self):
         fake = FakeQuartet()
         client = self.client_for(self.justin)
-        ask = lambda c, who: c.post('/api/voice/narrate/', json.dumps({'mood': 'general', 'agent': who, 'where': True}),
+        ask = lambda c, who: c.post('/api/voice/narrate/', json.dumps({'mood': 'general', 'emergent': who, 'where': True}),
                                     content_type='application/json')
         with mock.patch('requests.get', fake.get), mock.patch('requests.post', fake.post):
             self.assertEqual(ask(Client(), 'magent').status_code, 401)
@@ -191,7 +191,7 @@ class SpeakerEndpointsTest(TestCase):
         from conversations.models import ToolUse
         fake = FakeQuartet()
         client = self.client_for(self.justin)
-        ask = lambda: client.post('/api/voice/narrate/', json.dumps({'mood': 'general', 'agent': 'magent', 'still': True}),  # noqa: E731
+        ask = lambda: client.post('/api/voice/narrate/', json.dumps({'mood': 'general', 'emergent': 'magent', 'still': True}),  # noqa: E731
                                   content_type='application/json')
         with mock.patch('requests.get', fake.get), mock.patch('requests.post', fake.post):
             self.assertEqual(ask().status_code, 409)  # not at work: nothing to say

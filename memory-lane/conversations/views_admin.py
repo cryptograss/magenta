@@ -129,13 +129,13 @@ def api_admin(request):
         result['devices_signed_out'], result['links_spent'] = sign_out(
             Device.objects.filter(entity=person), LoginCode.objects.filter(entity=person))
         if action == 'ban':
-            Setting.objects.create(key='banned', agent=person, value=True, set_by=admin_entity,
+            Setting.objects.create(key='banned', emergent=person, value=True, set_by=admin_entity,
                                    note=f'banned by {admin}')
     elif action == 'unban':
         person = ThinkingEntity.objects.filter(name=target).first()
         if person is None:
             return JsonResponse({'error': f'no one named {target}'}, status=404)
-        Setting.objects.create(key='banned', agent=person, value=False, set_by=admin_entity,
+        Setting.objects.create(key='banned', emergent=person, value=False, set_by=admin_entity,
                                note=f'unbanned by {admin}')
     elif action == 'az5':
         result['devices_signed_out'], result['links_spent'] = sign_out(Device.objects.all(), LoginCode.objects.all())

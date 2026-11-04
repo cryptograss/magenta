@@ -42,10 +42,10 @@ MAX_EVENTS = 500
 TURN_ENDS = {'end_turn', 'refusal', 'stop_sequence', 'max_tokens'}
 
 
-def runner_agent(request):
+def runner_emergent(request):
     """The agent a valid runner key speaks for, or None."""
-    from memory_viewer.runner_keys import agent_for
-    return agent_for(request.headers.get('Authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
+    from memory_viewer.runner_keys import emergent_for
+    return emergent_for(request.headers.get('Authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
 
 
 def stream_line(event, now_iso):
@@ -172,7 +172,7 @@ def api_stream(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     mood = Mood.by_slug_or_404(slug)
@@ -312,7 +312,7 @@ def api_quiet(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     mood = Mood.by_slug_or_404(slug)
@@ -353,7 +353,7 @@ def api_held(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     Mood.by_slug_or_404(slug)
@@ -381,7 +381,7 @@ def api_degraded(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     Mood.by_slug_or_404(slug)
@@ -408,7 +408,7 @@ def api_running(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     Mood.by_slug_or_404(slug)
@@ -431,7 +431,7 @@ def api_plan(request):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     try:
@@ -551,7 +551,7 @@ def clean_vendors(vendors):
 
 
 @csrf_exempt  # a POST is authenticated by the runner's key; reading is open, like the Moods
-def api_agent_models(request, name):
+def api_emergent_models(request, name):
     """What `name`'s harness can run, for the model menu: GET it, or (its
     runner, with its key) POST it.
 
@@ -562,19 +562,19 @@ def api_agent_models(request, name):
     """
     from .models import HarnessModels, ThinkingEntity
     if request.method == 'GET':
-        found = HarnessModels.objects.filter(agent_id=name).first()
+        found = HarnessModels.objects.filter(emergent_id=name).first()
         if found is None:
             return JsonResponse({'error': f'{name} has reported no models'}, status=404)
         from .services import settings as knobs
         # Less what's switched off (settings: models offered); ?all=1, everything, for that very list.
         vendors = found.vendors if request.GET.get('all') == '1' else knobs.offered(found.vendors)
-        return JsonResponse({'agent': name, 'harness': found.harness, 'vendors': vendors,
+        return JsonResponse({'emergent': name, 'harness': found.harness, 'vendors': vendors,
                              'reported_at': found.reported_at.isoformat()})
     if request.method != 'POST':
         return JsonResponse({'error': 'GET or POST'}, status=405)
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    if runner_agent(request) != name:
+    if runner_emergent(request) != name:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     agent = ThinkingEntity.objects.filter(name=name).first()
     if agent is None:
@@ -585,5 +585,5 @@ def api_agent_models(request, name):
         vendors = clean_vendors(body.get('vendors'))
     except (ValueError, AttributeError, TypeError) as e:
         return JsonResponse({'error': str(e) or 'expected {"harness": ..., "vendors": [...]}'}, status=400)
-    HarnessModels.objects.update_or_create(agent=agent, defaults={'harness': harness, 'vendors': vendors})
-    return JsonResponse({'agent': name, 'vendors': len(vendors), 'models': sum(len(v['models']) for v in vendors)})
+    HarnessModels.objects.update_or_create(emergent=agent, defaults={'harness': harness, 'vendors': vendors})
+    return JsonResponse({'emergent': name, 'vendors': len(vendors), 'models': sum(len(v['models']) for v in vendors)})

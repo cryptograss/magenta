@@ -12,7 +12,7 @@ the only place they are written, and queryable from there by anything else
     You are {name}, the {colour} emergent of cryptograss. {greeting}  (the Greeting page)
     {{Emergent|colour=red|greeting=...|image=...}}                    (Cryptograss:Emergents/Re)
 
-{name}, {mood} and {block} are data, filled here: the name from --agent only
+{name}, {mood} and {block} are data, filled here: the name from --emergent only
 (the agent's page is found by it, and never names it, so no page can rename
 an agent), the Mood from the wake, the block only if one was fetched and
 handed in. {colour} and {greeting} are authored, one field each (re, 04:15Z
@@ -103,7 +103,7 @@ MOODS = 'Cryptograss:Moods/Instructions'
 CLIPS = 'Magenta:Clips'
 GREETING = 'Cryptograss:Emergents/Greeting'
 GREETING_FALLBACK = Path(__file__).with_name('greeting_fallback.md')
-AGENT_TEMPLATE = 'Emergent'
+EMERGENT_TEMPLATE = 'Emergent'
 EMERGENT_TEMPLATES = ('Emergent', 'Agent')  # both accepted while trusted revisions still say {{Agent|...}}
 AGENT_FIELDS = ('colour', 'hex', 'greeting', 'image')  # what an agent's own page may put in its line
 ROSTER_FIELDS = ('colour', 'for')  # what each other agent's page puts in the roster: '<name> (<colour>) <for>'
@@ -221,7 +221,7 @@ class Bundle:
 
     def record(self):
         """What is kept of this bundle: enough to rebuild it, and its sha256 to prove the rebuild."""
-        return {'id': self.id, 'emergent': self.agent, 'agent': self.agent, 'mood': self.mood or '', 'gathered': self.gathered,
+        return {'id': self.id, 'emergent': self.agent, 'mood': self.mood or '', 'gathered': self.gathered,
                 'block': self.block, 'sha256': self.sha256, 'parts': self.parts, 'transform': TRANSFORM,
                 'stamps': self.stamps()}
 
@@ -361,7 +361,7 @@ def greeting_line(line, mine, agent, mood=None, block=None, fallback_path=GREETI
         why = line.problem or 'no trusted revision of the line yet'
     elif not fields:
         why = mine.problem or (f'no trusted revision of {mine.title} yet' if not mine.text
-                               else f'no {{{{{AGENT_TEMPLATE}}}}} on {mine.title}')
+                               else f'no {{{{{EMERGENT_TEMPLATE}}}}} on {mine.title}')
     if why:
         template, fields = ' '.join(file_text(fallback_path).split()), {}
     values = {**{k: v for k, v in fields.items() if k in AGENT_FIELDS}, **data}

@@ -1,4 +1,4 @@
-"""An agent setting agents' settings in a Mood, at a person's ask (services/agent_settings.py; Justin and re,
+"""An agent setting agents' settings in a Mood, at a person's ask (services/emergent_settings.py; Justin and re,
 24 Oct): a grant, a full-tools turn a person woke, one ledger, and shown only when it's used."""
 
 import time
@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from conversations.models import ConversationParticipant, Message, Mood, Setting, ThinkingEntity
-from conversations.services import agent_settings, settings as knobs
+from conversations.services import emergent_settings, settings as knobs
 
 FULL = 'This turn has your full tools, as in your terminal: the people who woke you are trusted.'
 LOOK = 'This turn can look but not touch.'
@@ -45,7 +45,7 @@ class AgentSettingsTest(TestCase):
                         session=session)
 
     def rows(self, agent='re'):
-        return {r.key: r for r in Setting.objects.filter(agent_id=agent, mood=self.m26)}
+        return {r.key: r for r in Setting.objects.filter(emergent_id=agent, mood=self.m26)}
 
     def refusals(self):
         return [m.content['note'] for m in Message.objects.filter(source_file='agent-settings',
@@ -61,18 +61,18 @@ class AgentSettingsTest(TestCase):
         # The block is machinery: not shown, not read aloud.
         said = self.client.get('/api/moods/m26/turns/').json()['turns']
         self.assertEqual([t['text'] for t in said if t['sender'] == 'magent'], ['On it.'])
-        agent_settings.from_message(reply)  # its transcript, after the stream: once only
-        self.assertEqual(Setting.objects.filter(agent_id='re').count(), 2)
+        emergent_settings.from_message(reply)  # its transcript, after the stream: once only
+        self.assertEqual(Setting.objects.filter(emergent_id='re').count(), 2)
 
     def test_another_mood_and_listening_for_a_while(self):
         self.turn('re: listening off for 2h\nin: jams')
-        row = Setting.objects.get(agent_id='re', mood=self.jams, key='listening')
+        row = Setting.objects.get(emergent_id='re', mood=self.jams, key='listening')
         self.assertEqual(row.value['mode'], 'off')
         self.assertTrue(row.value['until'])
 
     def test_only_who_the_grant_names(self):
         self.turn('magent: verbosity brief', agent=self.re)
-        self.assertFalse(Setting.objects.filter(agent_id='magent').exists())
+        self.assertFalse(Setting.objects.filter(emergent_id='magent').exists())
         self.assertIn('re may not set', self.refusals()[0])
         knobs.change('settings_may_set', ['magent', 're'], by=self.justin)  # a person grants it: a value, not code
         self.turn('magent: verbosity brief', agent=self.re)
@@ -126,16 +126,16 @@ class AgentSettingsTest(TestCase):
         self.assertEqual(settings_changed('magent', page), [])
 
     def test_a_block_parsed(self):
-        mood, changes = agent_settings.parse('@re: model sonnet, effort max\nblu: listening mentions until 2026-10-25T00:00Z\nin: #jams')
+        mood, changes = emergent_settings.parse('@re: model sonnet, effort max\nblu: listening mentions until 2026-10-25T00:00Z\nin: #jams')
         self.assertEqual(mood, 'jams')
         self.assertEqual(changes[:2], [('re', 'model', 'sonnet'), ('re', 'mention_effort', 'max')])
         self.assertEqual(changes[2], ('blu', 'listening', {'mode': 'mentions', 'until': '2026-10-25T00:00Z'}))
         for bad in ('re model sonnet', 're: listening off for a while', 're: rules be nice'):
-            with self.subTest(bad=bad), self.assertRaises(agent_settings.Refused):
-                agent_settings.parse(bad)
-        self.assertEqual(agent_settings.vendor('sonnet'), 'anthropic')
-        self.assertEqual(agent_settings.vendor('anthropic/claude-sonnet-5-5'), 'anthropic')
-        self.assertEqual(agent_settings.vendor('openrouter/moonshotai/kimi-k3'), 'openrouter')
+            with self.subTest(bad=bad), self.assertRaises(emergent_settings.Refused):
+                emergent_settings.parse(bad)
+        self.assertEqual(emergent_settings.vendor('sonnet'), 'anthropic')
+        self.assertEqual(emergent_settings.vendor('anthropic/claude-sonnet-5-5'), 'anthropic')
+        self.assertEqual(emergent_settings.vendor('openrouter/moonshotai/kimi-k3'), 'openrouter')
 
     def test_how_is_in_the_instructions_not_the_wake(self):
         from poller.mood_poller import wake_footer

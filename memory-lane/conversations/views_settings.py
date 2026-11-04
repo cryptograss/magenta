@@ -17,7 +17,6 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .models import Mood, Setting, ThinkingEntity
 from .services import mood_auth
 from .services import settings as knobs
-from .services.emergent_names import named  # emergent or, until the rename's last step, agent
 
 
 def settings_state():
@@ -33,7 +32,7 @@ def settings_state():
         'global_knobs': {k: {'default': d, 'help': h} for k, (d, h) in knobs.GLOBAL_KNOBS.items()},
         'efforts': knobs.EFFORTS,
         'choices': {'discretion': knobs.DISCRETIONS, 'verbosity': knobs.VERBOSITIES},
-        'agents': agents,
+        'emergents': agents,
         'moods': moods,
         # Every explicitly set slot, as it stands; anything absent is inherited.
         'set': [knobs.describe(row) for row in current.values()],
@@ -347,19 +346,22 @@ def api_settings(request):
     except (ValueError, KeyError, TypeError):
         return JsonResponse({'error': 'expected {"key": ..., "value": ..., "mood": slug|null, "emergent": name|null}'},
                             status=400)
+    if 'agent' in body:  # a page from before the rename: refused, never read as every emergent
+        from .views_auth import OLD_PAGE
+        return JsonResponse({'error': OLD_PAGE}, status=400)
     mood = agent = None
     if body.get('mood'):
         mood = Mood.objects.filter(slug=body['mood']).first()
         if mood is None:
             return JsonResponse({'error': f"no Mood {body['mood']}"}, status=400)
-    if named(body):
-        agent = ThinkingEntity.objects.filter(name=named(body), is_biological_human=False).first()
+    if body.get('emergent'):
+        agent = ThinkingEntity.objects.filter(name=body['emergent'], is_biological_human=False).first()
         if agent is None:
-            return JsonResponse({'error': f"no emergent {named(body)}"}, status=400)
+            return JsonResponse({'error': f"no emergent {body['emergent']}"}, status=400)
     try:
         if body.get('all_emergents'):  # all emergents' setting in every Mood at once (e.g. mention-only)
             if mood is not None or key not in knobs.KNOBS:
-                return JsonResponse({'error': 'all_emergents: key must be a per-agent knob, no Mood'}, status=400)
+                return JsonResponse({'error': 'all_emergents: key must be a per-emergent knob, no Mood'}, status=400)
             emergents = ThinkingEntity.objects.filter(is_biological_human=False)
             val = body.get('value')
             note = body.get('note', 'all emergents')
@@ -369,7 +371,7 @@ def api_settings(request):
             return JsonResponse({'set': [knobs.describe(r) for r in rows]}, status=201)
         if body.get('every_mood'):  # one agent's setting, in every Mood at once (the settings page's Set)
             if agent is None or mood is not None or key not in knobs.KNOBS:
-                return JsonResponse({'error': 'every_mood: one agent, one per-agent setting, no Mood'}, status=400)
+                return JsonResponse({'error': 'every_mood: one emergent, one per-emergent setting, no Mood'}, status=400)
             rows = knobs.change_every_mood(key, body.get('value'), agent, by=device.entity, note=body.get('note', ''))
             return JsonResponse({'set': [knobs.describe(r) for r in rows]}, status=201)
         row = knobs.change(key, body.get('value'), mood=mood, agent=agent, by=device.entity,
@@ -445,7 +447,7 @@ def instructions_page(request, slug):
     from poller.mood_poller import wake_frames
 
     mood = Mood.by_slug_or_404(slug)
-    agent = named(request.GET, 'magent').lower()
+    agent = request.GET.get('emergent', 'magent').lower()
     if not ThinkingEntity.objects.filter(name=agent, is_biological_human=False).exists():
         agent = 'magent'  # an agent's name only: it names the pages read
     resolved = knobs.resolve(slug, agent)

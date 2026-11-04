@@ -314,7 +314,7 @@ def pickipedia_mcp_status():
 
 
 def agents_across_moods():
-    """Every Mood's agent settings row (for the settings bar), plus `everywhere` and harness vendors."""
+    """Every Mood's emergent settings row (for the settings bar), plus `everywhere` and harness vendors."""
     agents = list(ThinkingEntity.objects.filter(is_biological_human=False).order_by('name').values_list('name', flat=True))
     shown = ('listening', 'model', 'mention_effort', 'ultracode', 'catch_up_tokens', 'discretion', 'verbosity')
     rows = list(Setting.objects.filter(key__in=shown))
@@ -323,10 +323,10 @@ def agents_across_moods():
 
     harnesses = []
     catalogs = {}
-    for hm in HarnessModels.objects.order_by('agent_id'):
-        catalogs[hm.agent_id] = hm.harness
+    for hm in HarnessModels.objects.order_by('emergent_id'):
+        catalogs[hm.emergent_id] = hm.harness
         harnesses.append({
-            'agent': hm.agent_id,
+            'emergent': hm.emergent_id,
             'harness': hm.harness,
             'reported_at': hm.reported_at.isoformat() if hm.reported_at else None,
             'vendors': [
@@ -357,7 +357,7 @@ def agents_across_moods():
             'title': mood.title or mood.slug,
             'archived': mood.slug in archived,
             'pinned': mood.slug in pinned,
-            'agents': mood_agents,
+            'emergents': mood_agents,
         })
     moods_out.sort(key=lambda m: (m['archived'], not m['pinned'], m['slug']))
 
@@ -378,7 +378,7 @@ def agents_across_moods():
         }
 
     return {
-        'agents': agents,
+        'emergents': agents,
         'moods': moods_out,
         'everywhere': everywhere,
         'harnesses': harnesses,

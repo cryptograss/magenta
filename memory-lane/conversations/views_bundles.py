@@ -7,7 +7,7 @@ is open, as the Moods are: a record holds only page titles, revision numbers
 and the bundle's own wrapper words, and the instructions are public pages. Writing
 takes the agent's runner key.
 
-    GET  /api/bundles/?agent=re&mood=magent-self&before=<iso>&limit=50   newest first
+    GET  /api/bundles/?emergent=re&mood=magent-self&before=<iso>&limit=50   newest first
     POST /api/bundles/                                                    a runner records one
     GET  /api/bundles/<id>/                                               one, with its parts
     GET  /api/bundles/<id>/text/                                          rebuilt from the wiki and checked
@@ -24,8 +24,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
 from .models import BundleRecord
-from .services.emergent_names import named  # emergent or, until the rename's last step, agent
-from .views_runner import runner_agent
+from .views_runner import runner_emergent
 
 MAX_PARTS_CHARS = 400_000  # a bundle is an argument to a harness, which Linux caps far below this
 SHA256 = re.compile(r'^[0-9a-f]{64}$')
@@ -33,7 +32,7 @@ SHA256 = re.compile(r'^[0-9a-f]{64}$')
 
 def summary(r):
     stamps = r.stamps or {}
-    return {'id': str(r.id), 'agent': r.agent, 'mood': r.mood, 'session_id': r.session_id, 'harness': r.harness,
+    return {'id': str(r.id), 'emergent': r.emergent, 'mood': r.mood, 'session_id': r.session_id, 'harness': r.harness,
             'requested_at': r.requested_at.isoformat(), 'produced_at': r.produced_at and r.produced_at.isoformat(),
             'delivered_at': r.delivered_at and r.delivered_at.isoformat(), 'block': r.block, 'sha256': r.sha256,
             'pages': r.pages(), 'degraded': stamps.get('degraded') or [], 'error': r.error, 'commit': r.commit}
@@ -60,7 +59,7 @@ def parsed(body, agent):
         record_id = uuid.UUID(str(body.get('id')))
     except ValueError:
         raise ValueError('id: not a uuid') from None
-    if named(body) != agent:
+    if body.get('emergent') != agent:
         raise ValueError(f"emergent: this key speaks for {agent}")
     parts = body.get('parts')
     if not isinstance(parts, list) or not parts:
@@ -82,7 +81,7 @@ def parsed(body, agent):
     stamps = body.get('stamps') or {}
     if not isinstance(stamps, dict):
         raise ValueError('stamps: an object')
-    return {'id': record_id, 'agent': agent, 'mood': str(body.get('mood') or '')[:120],
+    return {'id': record_id, 'emergent': agent, 'mood': str(body.get('mood') or '')[:120],
             'session_id': str(body.get('session_id') or '')[:80], 'harness': str(body.get('harness') or '')[:60],
             'requested_at': when(body.get('requested_at'), 'requested_at', required=True),
             'produced_at': when(body.get('produced_at'), 'produced_at'),
@@ -97,7 +96,7 @@ def api_bundles(request):
     if request.method == 'POST':
         if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
             return JsonResponse({'error': 'no runners are configured'}, status=503)
-        agent = runner_agent(request)
+        agent = runner_emergent(request)
         if agent is None:
             return JsonResponse({'error': 'unauthorized'}, status=401)
         try:
@@ -106,14 +105,17 @@ def api_bundles(request):
         except (ValueError, json.JSONDecodeError) as e:
             return JsonResponse({'error': str(e)}, status=400)
         record, made = BundleRecord.objects.get_or_create(id=fields.pop('id'), defaults=fields)
-        if not made and record.agent != agent:
+        if not made and record.emergent != agent:
             return JsonResponse({'error': 'that id is taken'}, status=409)
         return JsonResponse({'id': str(record.id), 'recorded': made}, status=201 if made else 200)
     if request.method != 'GET':
         return JsonResponse({'error': 'GET or POST'}, status=405)
     found = BundleRecord.objects.all()
-    if named(request.GET):
-        found = found.filter(agent=named(request.GET))
+    # PickiPedia's Special:EmergentBundles still asks with ?agent= (its SpecialEmergentBundles.php, showList), so
+    # this one filter takes either name until the wiki sends ?emergent=; everything else here says emergent only.
+    who = request.GET.get('emergent') or request.GET.get('agent')
+    if who:
+        found = found.filter(emergent=who)
     for name in ('mood', 'session_id', 'sha256'):
         if request.GET.get(name):
             found = found.filter(**{name: request.GET[name]})

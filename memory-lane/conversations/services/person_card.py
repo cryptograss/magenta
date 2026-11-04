@@ -43,8 +43,8 @@ def _answered(entry):
     """Which emergents were asked and which answered, with each answer's tokens and cost."""
     if not entry:
         return {'asked': [], 'turns': []}
-    return {'asked': list(entry.get('agents') or []),
-            'turns': [{'agent': t['agent'], 'tokens': t['tokens'], 'cost': t['cost'], 'model': t.get('model', '')}
+    return {'asked': list(entry.get('emergents') or []),
+            'turns': [{'emergent': t['emergent'], 'tokens': t['tokens'], 'cost': t['cost'], 'model': t.get('model', '')}
                       for t in entry.get('turns', [])]}
 
 
