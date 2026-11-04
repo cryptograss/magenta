@@ -36,6 +36,8 @@ SYSTEM_DEFAULTS = {
                      "see [[Magenta:Signing in]]."),
     # The same, as a hint under the box while they type one.
     'wiki-mention-hint': "Signed in with PickiPedia, your @{agent} is plain text: it wakes nobody.",
+    # A poll's 🔔 nudge: the reply it posts under the poll, as its asker; {who} is the @names of those yet to vote.
+    'poll-nudge': "🔔 {who}: this poll is waiting on your vote.",
 }
 
 DEFAULTS = {
@@ -55,6 +57,9 @@ DEFAULTS = {
     'move-incorporate-from': 'Have {agent} incorporate it into {parent}, the Mood it leaves',
     'move-incorporate-to': 'Have {agent} incorporate it into the Mood it joins',
     'move-compact': 'Compact the emergents who have spoken here',
+    # A poll's 🔔 nudge button, shown to its asker while it's open.
+    'poll-nudge-button': '🔔 nudge',
+    'poll-nudge-title': "Reply under the poll, @-naming everyone in @core who hasn't voted yet",
     'move-inform': 'This thread moved from {from} to {to}, and belongs to {to} now. Its worktrees go under {dir}',
     'move-inform-ask': "Tell the thread: a line here, from you, that its emergents read at their next wake",
     'move-button': 'Move the thread',

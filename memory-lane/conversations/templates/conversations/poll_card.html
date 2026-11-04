@@ -66,7 +66,7 @@
           + (leaders.length > 1 ? `<span>a tie</span>` : '')
         : `<span class="pstate open">open</span>${mayClose ? '' : `<span>${esc(ctx.shown(p.by))} closes it</span>`}`;
       const nudge = open && ctx.viewer && ctx.viewer === p.by
-        ? `<button type="button" class="pnudge" title="Reply under the poll, @-naming everyone in @core who hasn't voted yet">🔔 nudge</button>` : '';
+        ? `<button type="button" class="pnudge" title="${esc((ctx.words || {})['poll-nudge-title'] || '')}">${esc((ctx.words || {})['poll-nudge-button'] || '🔔')}</button>` : '';  // Magenta:Interface
       const button = mayClose ? `<button type="button" class="pclose" title="${p.closed ? 'Open it again, for more votes' : 'Close it: no more votes, the result stands'}">${p.closed ? 'reopen' : 'close the poll'}</button>` : '';
       const where = ctx.where ? `<div class="pwhere">${esc(ctx.shown(p.by))} asked in <a href="/moods/${esc(p.mood)}/#m-${esc(p.id)}">#${esc(p.mood)}</a>${ctx.stamp ? ' · ' + esc(ctx.stamp(p.created_at)) : ''}</div>` : '';
       return `<div class="pollcard" data-poll="${esc(p.id)}" data-mood="${esc(p.mood)}">${where}`

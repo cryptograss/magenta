@@ -3872,7 +3872,7 @@
   // Mood brings every poll's votes, and a vote or a close answers with that poll as it now stands.
   let pollsNow = {};
   const pollCtx = { human: n => human[n] !== false, color: n => agentColor(n), shown: n => shown(n), stamp: iso => stamp(iso),
-                    get viewer() { return viewer; }, get admin() { return viewerAdmin; } };
+                    get viewer() { return viewer; }, get admin() { return viewerAdmin; }, get words() { return WORDS; } };
   function renderPoll(el) {
     const box = el.querySelector(':scope > .body.poll');
     if (!box || !box._asked) return;

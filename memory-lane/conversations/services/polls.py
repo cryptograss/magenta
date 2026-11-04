@@ -201,7 +201,11 @@ def nudge_text(poll):
     who = unvoted(poll)
     if not who:
         raise Refused('everyone in @core has voted', status=409)
-    return f"↩ #m-{poll.id}\n🔔 {' '.join('@' + n for n in who)}: this poll is waiting on your vote."
+    from . import interface_words
+    said = interface_words.words().get('poll-nudge') or interface_words.SYSTEM_DEFAULTS['poll-nudge']  # Magenta:System Messages
+    names = ' '.join('@' + n for n in who)
+    said = said.replace('{who}', names) if '{who}' in said else f'{names} {said}'  # the names go in, whatever the page says
+    return f"↩ #m-{poll.id}\n{said}"
 
 
 def close(poll, by):

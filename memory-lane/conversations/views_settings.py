@@ -253,9 +253,10 @@ def prompts_page(request):
 @section('polls')
 def polls_page(request):
     """Polls & Plebiscites: every Mood's polls in one place, open ones first (services/polls.py)."""
+    from .views_moods import interface_words
     device = mood_auth.device_for(request)
     return render(request, 'conversations/mood_polls.html', {
-        'viewer': device.entity_id if device else '', 'embed': True})
+        'viewer': device.entity_id if device else '', 'embed': True, 'interface_words': json.dumps(interface_words())})
 
 
 @require_GET

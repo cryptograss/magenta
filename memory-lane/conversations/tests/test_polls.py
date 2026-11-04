@@ -113,6 +113,16 @@ class PollsTest(TestCase):
             self.close(skyler, poll)
             self.assertEqual(nudge(skyler).status_code, 409)
 
+    def test_a_nudge_says_what_magenta_system_messages_says(self):
+        from unittest import mock
+        self.mattie = ThinkingEntity.objects.update_or_create(name='mattie', defaults={'is_biological_human': True})[0]
+        skyler = self.client_for(self.skyler)
+        poll = self.ask(skyler).json()['id']
+        with mock.patch('conversations.services.mood_auth.key_holders', return_value={'skyler', 'mattie'}), \
+             mock.patch('conversations.services.interface_words.words', return_value={'poll-nudge': 'vote, {who}!'}):
+            r = skyler.post(f'/api/moods/general/messages/{poll}/nudge/', '{}', content_type='application/json')
+        self.assertEqual(Message.objects.get(id=r.json()['id']).content, f'↩ #m-{poll}\nvote, @mattie!')
+
     @override_settings(MOOD_ADMINS=('justin',))
     def test_an_admin_may_close_anyones(self):
         poll = self.ask(self.client_for(self.skyler)).json()['id']
