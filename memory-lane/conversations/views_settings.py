@@ -68,6 +68,21 @@ def makers_offered():
 SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'settings')
 
 
+def _opened_on_its_own(request):
+    """A frame's own address (?embed=1) opened as a whole page -- a link in it opened in a new tab, or its
+    address copied and pasted (Justin, 4 Nov: no bar, and leaving it loaded everything again): sent to
+    the same place without ?embed, which is the one page showing it. The browser says what it's loading
+    for (Sec-Fetch-Dest); one that doesn't say gets the frame's page, as before."""
+    if request.headers.get('Sec-Fetch-Dest') != 'document':
+        return None
+    from django.http import QueryDict
+    from django.shortcuts import redirect
+    rest = QueryDict(mutable=True)
+    rest.update(request.GET)
+    rest.pop('embed', None)
+    return redirect(request.path + (f'?{rest.urlencode()}' if rest else ''))
+
+
 def section(name):
     """A section's page as the one page shows it (?embed=1: inside it, without its own header); asked for
     directly, the one page, showing that section (views_moods.moods_page)."""
@@ -76,6 +91,9 @@ def section(name):
         @require_GET
         def view(request):
             if request.GET.get('embed'):
+                whole = _opened_on_its_own(request)
+                if whole:
+                    return whole
                 response = page(request)
                 # Framed by the one page, and only by a page of ours (Django's default is DENY).
                 response['X-Frame-Options'] = 'SAMEORIGIN'
@@ -198,6 +216,9 @@ def tiding_page(request, tiding_id):
     if not request.GET.get('embed'):
         from .views_moods import moods_page
         return moods_page(request, section='tidings')
+    whole = _opened_on_its_own(request)
+    if whole:
+        return whole
     device = mood_auth.device_for(request)
     viewer = device.entity_id if device else None
     try:
