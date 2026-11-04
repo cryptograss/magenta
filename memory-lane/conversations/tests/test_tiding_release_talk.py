@@ -270,3 +270,14 @@ class FollowAndTidyTest(_Release):
         self.assertIn('window.magentaMini = {', source)
         self.assertIn('w.magentaHandoff()', source)  # leaving Tidings hands it over
         self.assertIn("if (name === 'tidings' && left !== 'tidings') miniHome();", source)
+
+    def test_a_mood_makes_room_for_the_small_player(self):
+        """Justin, 4 Nov: "can the text wrap around the video instead of underlapping it?" The Mood's column
+        moves over beside it (the side it's on), and it's measured again whenever it, or the Mood, moves."""
+        from django.template.loader import get_template
+        source = get_template('conversations/moods.html').template.source
+        self.assertIn('function miniDodge()', source)
+        self.assertIn("main.style[onRight ? 'paddingRight' : 'paddingLeft']", source)
+        self.assertIn("observe(main, { box: 'border-box' })", source)  # not woken by the room it makes
+        self.assertIn('body:not(.in-section) .miniplayer.dodged:not(.moved) { bottom: 16px; }', source)
+        self.assertIn("if (!bar || e.target.closest('.miniclose')) return;", source)  # its title drags it too
