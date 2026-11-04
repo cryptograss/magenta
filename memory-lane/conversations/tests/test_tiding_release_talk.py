@@ -281,3 +281,27 @@ class FollowAndTidyTest(_Release):
         self.assertIn("observe(main, { box: 'border-box' })", source)  # not woken by the room it makes
         self.assertIn('body:not(.in-section) .miniplayer.dodged:not(.moved) { bottom: 16px; }', source)
         self.assertIn("if (!bar || e.target.closest('.miniclose')) return;", source)  # its title drags it too
+
+    def test_signed_out_it_follows_too_and_its_title_is_its_own_page(self):
+        """Justin, 4 Nov: "even if the user is not signed in, I still want the video to follow them", and "the
+        title of the tiding needs to be a link to the tiding, not to the release page"."""
+        page = self.client.get(f'/moods/tidings/{self.tiding.id}/?embed=1').content.decode()  # nobody signed in
+        self.assertIn('window.magentaPlaying', page)
+        self.assertIn('window.magentaHandoff', page)
+        self.assertIn(f'<h1><a class="title" href="/moods/tidings/{self.tiding.id}/"', page)
+        self.assertIn('>its Release page</a>', page)  # the Release page keeps its own link
+
+    def test_it_follows_across_a_whole_page_load(self):
+        """The logo, signing in and coming back, a reload: what's playing waits in the tab, and plays on; back
+        at that very tiding, its own player takes it."""
+        from django.template.loader import get_template
+        source = get_template('conversations/moods.html').template.source
+        self.assertIn("addEventListener('pagehide', () => {", source)
+        self.assertIn('sessionStorage.setItem(MINI_CARRY', source)
+        self.assertIn('w.magentaPlaying()', source)
+        self.assertIn('if (mini.carried && mini.carried.id === id)', source)
+        self.assertIn('if (v.readyState < 1) return { ...mini.state };', source)  # not loaded yet: still where it was
+        # Back to a tiding's own page is Tidings at that page, not a Mood called "tidings".
+        self.assertIn("const tidingAt = location.pathname.match(/^\\/moods\\/tidings\\/([0-9a-f-]{36})\\/?$/);", source)
+        # ☰ on a phone, from a section, is the Moods.
+        self.assertIn("if (document.body.classList.contains('in-section')) {\n      showSection('moods', true);", source)
