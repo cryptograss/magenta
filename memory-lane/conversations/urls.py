@@ -91,6 +91,7 @@ urlpatterns = [
     path('api/moods/<slug:slug>/turns/', views_moods.api_mood_turns, name='api_mood_turns'),
     path('api/moods/<slug:slug>/unfurl/<str:message_id>/', views_moods.api_unfurl, name='api_mood_unfurl'),
     path('api/moods/<slug:slug>/todo/', views_moods.api_mood_todo, name='api_mood_todo'),
+    path('api/moods/<slug:slug>/humans/', views_moods.api_mood_humans, name='api_mood_humans'),
     path('api/github/hook/', views_moods.api_github_hook, name='api_github_hook'),
     path('api/moods/<slug:slug>/sessions/', views_moods.api_mood_sessions, name='api_mood_sessions'),
     path('api/moods/<slug:slug>/steps/<str:step_id>/', views_moods.api_mood_step, name='api_mood_step'),

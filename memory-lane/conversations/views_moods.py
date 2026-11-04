@@ -1273,6 +1273,14 @@ def api_wiki_preview(request):
 
 
 @require_GET
+@require_GET
+def api_mood_humans(request, slug):
+    """The people pane under the to-do list (services/humans.py): who spoke here lately, then everyone else."""
+    from .services import humans
+    get_object_or_404(Mood, slug=slug)
+    return JsonResponse(humans.pane(slug))
+
+
 def api_person_card(request, name):
     """A person's card, for a click on their name (services/person_card.py): their User page in brief, last
     messages with what answering them took, last PickiPedia edits, and their trail across the Moods.
