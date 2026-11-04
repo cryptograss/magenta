@@ -140,6 +140,7 @@ class ServersTest(TestCase):
         from django.core.cache import cache
         for s in servers.NAMES:
             cache.delete(f'server-check:{s}')
+            cache.delete(f'server-deploy:{s}')
         cards = mock.patch('conversations.services.servers.wiki_card',
                            side_effect=lambda server: {'url': 'u', 'role': '', 'art': ''})
         cards.start()
@@ -206,6 +207,59 @@ class ServersTest(TestCase):
         self.deploy({'server': 'maybelle', 'state': 'finished'})
         after = {m['slug']: (m['last_at'], m['message_count']) for m in self.client.get('/api/moods/').json()['moods']}
         self.assertEqual(before, after)
+
+    def test_servers_are_probed_at_once_not_one_after_another(self):
+        import time as clock
+        from django.core.cache import cache
+        cache.delete(servers.PROBING_KEY)
+        def slow(check):
+            clock.sleep(0.3)
+            return True, 300
+        with mock.patch('conversations.services.servers.probe', side_effect=slow):
+            start = clock.monotonic()
+            listed = servers.status()
+            took = clock.monotonic() - start
+        self.assertEqual(len(listed), len(servers.SERVERS))
+        self.assertLess(took, 0.3 * len(servers.SERVERS) - 0.2)  # four probes in about the time of one
+
+    def test_a_stale_check_is_shown_while_its_looked_at_again(self):
+        from django.core.cache import cache
+        cache.delete(servers.PROBING_KEY)
+        with mock.patch('conversations.services.servers.probe', return_value=(True, 5)):
+            servers.status(now=1000.0)
+        with mock.patch('conversations.services.servers.probe', return_value=(False, 4000)) as probe, \
+             mock.patch('conversations.services.mood_cache.spawn') as spawn:
+            later = {s['name']: s for s in servers.status(now=1000.0 + servers.CHECK_EVERY)}
+            servers.status(now=1000.0 + servers.CHECK_EVERY)  # a second asker doesn't start a second look
+        self.assertEqual(probe.call_count, 0)  # nobody waited on a probe
+        self.assertTrue(later['hunter']['up'])
+        self.assertEqual(later['hunter']['checked_at'], 1000.0)  # the age is shown, not hidden
+        self.assertEqual(spawn.call_count, 1)
+        fn, stale, now = spawn.call_args.args
+        with mock.patch('conversations.services.servers.probe', return_value=(False, 4000)):
+            fn(stale, now)
+        self.assertFalse({s['name']: s for s in servers.status(now=now)}['hunter']['up'])
+        self.assertIsNone(cache.get(servers.PROBING_KEY))
+
+    def test_the_last_redeploy_is_kept_until_another_is_told(self):
+        with mock.patch('conversations.services.servers.probe', return_value=(True, 5)):
+            servers.last_deploy('hunter')
+            with self.assertNumQueries(0):
+                self.assertIsNone(servers.last_deploy('hunter'))
+            self.deploy({'server': 'hunter', 'state': 'started'})
+            self.assertEqual(servers.last_deploy('hunter')['state'], 'started')
+            with self.assertNumQueries(0):
+                servers.last_deploy('hunter')
+            self.deploy({'server': 'hunter', 'state': 'finished'})
+            self.assertEqual(servers.last_deploy('hunter')['state'], 'finished')
+
+    def test_the_page_version_is_hashed_again_only_when_a_file_changes(self):
+        from conversations import views_moods
+        first = views_moods.page_version()
+        with mock.patch('builtins.open', side_effect=AssertionError('read again')):
+            self.assertEqual(views_moods.page_version(), first)
+        views_moods._page_version[0] = None  # as if a file had changed
+        self.assertEqual(views_moods.page_version(), first)
 
     def test_without_a_key_nobody_tells_of_redeploys(self):
         with override_settings(MOOD_DEPLOY_KEY=''):

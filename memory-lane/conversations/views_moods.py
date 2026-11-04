@@ -144,12 +144,20 @@ def page_version():
     otherwise stay broken in it)."""
     from django.template.loader import get_template
     from .services import embeds, mood_view
-    digest = hashlib.sha256()
-    for path in (get_template('conversations/moods.html').origin.name,
-                 get_template('conversations/name_art_css.html').origin.name, mood_view.__file__, embeds.__file__):
-        with open(path, 'rb') as f:
-            digest.update(f.read())
-    return digest.hexdigest()[:12]
+    paths = (get_template('conversations/moods.html').origin.name,
+             get_template('conversations/name_art_css.html').origin.name, mood_view.__file__, embeds.__file__)
+    # Hashed again only when a file changes: ~700 KB read and hashed on every /api/servers otherwise.
+    stamp = tuple((path, os.stat(path).st_mtime_ns, os.stat(path).st_size) for path in paths)
+    if _page_version[0] != stamp:
+        digest = hashlib.sha256()
+        for path in paths:
+            with open(path, 'rb') as f:
+                digest.update(f.read())
+        _page_version[:] = [stamp, digest.hexdigest()[:12]]
+    return _page_version[1]
+
+
+_page_version = [None, '']
 
 
 @require_GET
