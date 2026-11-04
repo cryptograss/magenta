@@ -975,11 +975,18 @@
   /* Its own head line is gone, but not its ↩ 🙂 ⋯ (Justin, 3 Nov: "I can't seem to get it at all"): a toolbar on
      its top edge while hovered, as a follow-on message's; on a touch screen, floated at its right. */
   .abody > article.turn:first-of-type > .who { position: absolute; right: 2px; top: -22px; z-index: 2; margin: 0; gap: 0; visibility: hidden;
-      padding: 1px 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+      padding: 1px 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.08);
+      transition: visibility 0s .4s; }
+  /* Reachable (Justin, 4 Nov: "when I get to them, they go away"): it sat a pixel above the message, so the pointer
+     on its way up left the message and it hid. It now waits 400 ms before hiding, a strip under it reaches the message,
+     and it shows from the head line too. */
+  .abody > article.turn:first-of-type > .who::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 6px; }
   .abody > article.turn:first-of-type > .who > :not(.replybtn, .addreact, .morebtn, .speak, .readfrom) { display: none; }
   .abody > article.turn:first-of-type > .who:not(:has(.replybtn, .addreact, .morebtn, .speak)) { display: none; }
-  .abody > article.turn:first-of-type:hover > .who, .abody > article.turn:first-of-type > .who:focus-within { visibility: visible; }
-  .abody > article.turn:first-of-type:hover > .who button { opacity: 1; }
+  .abody > article.turn:first-of-type:hover > .who, .abody > article.turn:first-of-type > .who:focus-within,
+  .aturn:has(> .ahead:hover) > .abody > article.turn:first-of-type > .who { visibility: visible; transition-delay: 0s; }
+  .abody > article.turn:first-of-type:hover > .who button,
+  .aturn:has(> .ahead:hover) > .abody > article.turn:first-of-type > .who button { opacity: 1; }
   @media (pointer: coarse) { .abody > article.turn:first-of-type > .who { position: static; float: right; visibility: visible; margin: 0 0 2px 4px;
       background: none; border: 0; box-shadow: none; padding: 0; } }
   .abody > .turn { padding-top: 2px; padding-bottom: 6px; border-top: 0; }
