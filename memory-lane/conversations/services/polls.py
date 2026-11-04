@@ -183,6 +183,27 @@ def vote(poll, by, choice):
     return choice
 
 
+def unvoted(poll):
+    """Who in @core hasn't voted in this poll yet, sorted: whom a nudge names. Never the asker."""
+    from .mood_view import group_members
+    state = poll_state(poll) or {'choices': []}
+    voted = {who for c in state['choices'] for who in c['votes']}
+    return [n for n in group_members('core') if n not in voted and n != poll.sender_id]
+
+
+def nudge_text(poll):
+    """The reply a nudge posts, as its asker: under the poll, @-naming whoever in @core hasn't voted
+    (Skyler, 4 Nov: "ping people who haven't voted yet"). Refused if it can't be sent."""
+    if poll.sender_id is None:
+        raise Refused('nobody asked this poll')
+    if closed(poll):
+        raise Refused('that poll is closed', status=409)
+    who = unvoted(poll)
+    if not who:
+        raise Refused('everyone in @core has voted', status=409)
+    return f"↩ #m-{poll.id}\n🔔 {' '.join('@' + n for n in who)}: this poll is waiting on your vote."
+
+
 def close(poll, by):
     """Close the poll, or open it again. True if it's closed now."""
     from conversations.models import Message

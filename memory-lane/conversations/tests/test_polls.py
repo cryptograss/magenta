@@ -93,6 +93,26 @@ class PollsTest(TestCase):
         self.assertFalse(self.close(skyler, poll).json()['closed'])
         self.assertEqual(self.vote(justin, poll, 'yes').status_code, 200)
 
+    def test_the_asker_nudges_whoever_in_core_has_not_voted(self):
+        from unittest import mock
+        self.mattie = ThinkingEntity.objects.update_or_create(name='mattie', defaults={'is_biological_human': True})[0]
+        skyler, justin = self.client_for(self.skyler), self.client_for(self.justin)
+        poll = self.ask(skyler).json()['id']
+        nudge = lambda c: c.post(f'/api/moods/general/messages/{poll}/nudge/', '{}', content_type='application/json')
+        with mock.patch('conversations.services.mood_auth.key_holders', return_value={'skyler', 'justin', 'mattie', 'magent'}):
+            self.vote(justin, poll, 'yes')
+            self.assertEqual(nudge(justin).status_code, 403)  # the asker's alone
+            r = nudge(skyler)
+            self.assertEqual(r.status_code, 201)
+            self.assertEqual(r.json()['named'], ['mattie'])  # not who voted, not the asker, not an agent
+            said = Message.objects.get(id=r.json()['id'])
+            self.assertEqual(said.sender_id, 'skyler')
+            self.assertTrue(said.content.startswith(f'↩ #m-{poll}\n🔔 @mattie:'))
+            self.vote(self.client_for(self.mattie), poll, 'no')
+            self.assertEqual(nudge(skyler).status_code, 409)  # everyone has voted
+            self.close(skyler, poll)
+            self.assertEqual(nudge(skyler).status_code, 409)
+
     @override_settings(MOOD_ADMINS=('justin',))
     def test_an_admin_may_close_anyones(self):
         poll = self.ask(self.client_for(self.skyler)).json()['id']
