@@ -1345,6 +1345,11 @@
   .miniplayer .embed, .miniplayer .player { display: block; margin: 0; position: relative; }
   .miniplayer video { display: block; width: 100%; max-height: 56vh; background: #000; }
   .miniplayer .quality, .miniplayer .dkmask { display: none !important; }
+  /* Over a Mood, the Mood makes room for it (Justin, 4 Nov: "can the text wrap around the video instead of
+     underlapping it?"): the Mood's column moves over and narrows beside it, its box too, so the player can sit
+     at the bottom beside the box. The space it holds is the whole height, not just the lines beside it:
+     lines that reflowed as you scrolled past it would jump under your eye. No room for both on a phone. */
+  body:not(.in-section) .miniplayer.dodged:not(.moved) { bottom: 16px; }
   #lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.86); display: flex; flex-direction: column;
               align-items: center; justify-content: center; gap: 10px; padding: 16px; }
   #lightbox[hidden] { display: none; }
@@ -3367,6 +3372,45 @@
     if (v) { if (v._hls) v._hls.destroy(); v.pause(); v.removeAttribute('src'); v.load(); }
     if (mini.el) mini.el.remove();
     mini.el = mini.state = null;
+    miniDodge();
+  }
+  // The Mood makes room for it, on whichever side of the Mood it sits (its bar can move it), when there's
+  // room left for a column beside it.
+  const MINI_GAP = 16, MINI_ROOM = 360;
+  function miniDodge() {
+    const main = document.getElementById('main');
+    if (!main) return;
+    const had = main.style.paddingRight || main.style.paddingLeft;
+    main.style.paddingLeft = main.style.paddingRight = '';
+    if (mini.el) mini.el.classList.remove('dodged');
+    if (!mini.el || document.body.classList.contains('in-section')) return keepPlace(had);
+    mini.el.classList.add('dodged');  // where it sits when the Mood makes room for it
+    const m = main.getBoundingClientRect(), p = mini.el.getBoundingClientRect();
+    const covers = p.left < m.right && p.right > m.left && p.top < m.bottom && p.bottom > m.top;
+    const onRight = p.left + p.width / 2 > m.left + m.width / 2;
+    const room = onRight ? m.right - p.left + MINI_GAP : p.right - m.left + MINI_GAP;
+    if (!covers || m.width - room < MINI_ROOM) {
+      mini.el.classList.remove('dodged');
+      return keepPlace(had);
+    }
+    main.style[onRight ? 'paddingRight' : 'paddingLeft'] = Math.ceil(room) + 'px';
+    keepPlace(true);
+  }
+  // The column narrowing grows its messages taller: held at the newest, it stays at the newest.
+  function keepPlace(changed) {
+    const main = document.getElementById('main');
+    if (!changed || !main || !main._miniAtEnd) return;
+    main.scrollTop = main.scrollHeight;
+  }
+  {
+    const main = document.getElementById('main');
+    if (main) {
+      // The Mood's width changing (the window, the to-do list, the Moods list folding, a section shown): again.
+      // Its border box, so the room it makes doesn't wake it.
+      new ResizeObserver(() => { if (mini.el) miniDodge(); }).observe(main, { box: 'border-box' });
+      main.addEventListener('scroll', () => { main._miniAtEnd = main.scrollHeight - main.scrollTop - main.clientHeight < 40; },
+        { passive: true });
+    }
   }
   function miniNow() {
     const v = miniVideo();
@@ -3393,6 +3437,7 @@
       if (track.track) track.track.mode = state.cc ? 'showing' : 'hidden';
     }
     document.body.append(el);
+    miniDodge();
     v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(state.t || 0, v.duration || state.t || 0); }, { once: true });
     if (state.hls) {
       v.dataset.hls = state.hls;
@@ -3428,21 +3473,32 @@
   }
   document.addEventListener('click', e => {
     if (!mini.el || !mini.el.contains(e.target)) return;
+    if (mini.dragged) { mini.dragged = false; return; }  // the end of a drag, not a press
     if (e.target.closest('.miniclose')) miniClose();
     else if (e.target.closest('.miniback')) miniBack();
   });
-  // Its bar moves it, out of the way of whatever it covers.
+  // Its bar moves it, out of the way of whatever it covers: the title too, which is most of the bar. A press
+  // that doesn't go anywhere is still a press, and takes you back.
   document.addEventListener('pointerdown', e => {
     const bar = mini.el && e.target.closest('.miniplayer .minibar');
-    if (!bar || e.target.closest('button')) return;
+    if (!bar || e.target.closest('.miniclose')) return;
     const box = mini.el.getBoundingClientRect(), dx = e.clientX - box.left, dy = e.clientY - box.top;
+    const x0 = e.clientX, y0 = e.clientY;
+    mini.dragged = false;
     const move = m => {
+      if (!mini.el) return;
+      if (!mini.dragged && Math.hypot(m.clientX - x0, m.clientY - y0) < 5) return;
+      mini.dragged = true;
       mini.el.classList.add('moved');
       mini.el.style.left = Math.max(0, Math.min(innerWidth - box.width, m.clientX - dx)) + 'px';
       mini.el.style.top = Math.max(0, Math.min(innerHeight - 40, m.clientY - dy)) + 'px';
       mini.el.style.right = mini.el.style.bottom = 'auto';
     };
-    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+    const up = () => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      if (mini.dragged) miniDodge();
+      setTimeout(() => { mini.dragged = false; });  // a drag that ended off its bar sends no click to clear it
+    };
     addEventListener('pointermove', move);
     addEventListener('pointerup', up);
   });
@@ -9832,6 +9888,7 @@
     sectionFrames.hidden = name === 'moods';
     if (name === 'tidings') markTidingsSeen();  // the badges count from this visit on
     if (name === 'tidings' && left !== 'tidings') miniHome();
+    miniDodge();
     if (name !== 'moods') {
       const frame = frameFor(name);
       frame.hidden = false;
