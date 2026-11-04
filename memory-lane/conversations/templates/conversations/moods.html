@@ -852,6 +852,11 @@
   .turn:hover .replybtn, .turn .replybtn:focus, .turn:hover .addreact, .turn .addreact:focus,
   .turn:hover .morebtn, .turn .morebtn:focus { opacity: 1; }
   @media (pointer: coarse) { .turn .replybtn, .turn .addreact, .turn .morebtn { opacity: .6; } }
+  /* The guided tour (driver.js) pointing at a message or its ⋯: its buttons in view, as on hover. */
+  .turn.driver-active-element .replybtn, .turn.driver-active-element .addreact, .turn.driver-active-element .morebtn,
+  .turn .morebtn.driver-active-element { opacity: 1; }
+  .driver-popover.magenta-tour { max-width: 340px; }
+  .driver-popover.magenta-tour .driver-popover-description a { color: inherit; text-decoration: underline; }
   #msgMenu { position: fixed; z-index: 50; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: var(--panel);
              border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
   #msgMenu[hidden] { display: none; }
@@ -1683,7 +1688,7 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls">polls</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a><a href="/moods/todo/" data-section="todo">todo</a><a href="/moods/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">bundle segments</a></div></span></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a><a href="/moods/todo/" data-section="todo">todo</a><a href="/moods/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">bundle segments</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <!-- The block, the servers and the sprint, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
@@ -1695,7 +1700,7 @@
     </div>
   </span>
   <button id="reloadNudge" type="button" title="This page changed since you opened it: reload for the new one" hidden>↻ new version</button>
-  <button id="searchBtn" type="button" title="Search what was said (/)">⌕</button>
+  <button id="searchBtn" data-tour="search" type="button" title="Search what was said (/)">⌕</button>
   <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
   <span class="statuswrap">
     <button type="button" class="status" id="status" title="connecting…" aria-label="Status: online. Click for version"></button>
@@ -1705,7 +1710,7 @@
   </span>
   <!-- The bell, out front with what's waiting for you (Justin, 29 Oct): mentions of you and answers to you, by Mood. -->
   <span class="bellwrap" id="bellWrap" hidden>
-    <button id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span><span class="badge bot" id="bellCountBot" hidden></span></button>
+    <button id="bellBtn" data-tour="bell" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span><span class="badge bot" id="bellCountBot" hidden></span></button>
     <div id="bellMenu" hidden>
       <div class="belltabs" role="tablist"><button type="button" role="tab" data-tab="for" aria-selected="true">For you</button><button type="button" role="tab" data-tab="set" aria-selected="false">Settings</button></div>
       <div class="bellpane" data-pane="for"><label class="replies"><input type="checkbox" id="bellReplies"> include replies</label><div id="bellList"></div></div>
@@ -1723,14 +1728,14 @@
       </div></div></div>
   </span>
   <span class="account">
-    <button id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"></button>
-    <div id="userMenu" hidden>
-      <div class="auth" id="auth"></div>
+    <button id="userBtn" data-tour="user-menu" type="button" aria-haspopup="true" aria-expanded="false"></button>
+    <div id="userMenu" data-tour-open="userBtn" hidden>
+      <div class="auth" id="auth" data-tour="sign-in"></div>
       <label class="me">viewing as <select id="me"><option value="">nobody</option></select></label>
       <label class="only"><input type="checkbox" id="onlyMine"> only mentions of me</label>
       <span class="textsize">text size <button type="button" data-step="-1" aria-label="Smaller text">A−</button><span id="textSizeVal">100%</span><button type="button" data-step="1" aria-label="Larger text">A+</button></span>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an emergent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
-      <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
+      <button type="button" id="voiceModeOpen" data-tour="voice-mode" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
       <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: emergents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: emergents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
       <a href="/moods/settings/#voices" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
@@ -1740,7 +1745,9 @@
       <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
       <a class="settings" href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
       <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
-      <a href="https://pickipedia.xyz/wiki/Magenta:Help" target="_blank" rel="noopener" title="How magenta works: Magenta:Help on PickiPedia">help</a>
+      <a href="https://pickipedia.xyz/wiki/Magenta:Help" target="_blank" rel="noopener" data-tour="help" title="How magenta works: Magenta:Help on PickiPedia">help</a>
+      <a href="/faq/" data-tour="faq" title="Questions people ask, one at a time: Magenta:FAQ">faq</a>
+      <a href="#" id="tourLink" title="A walk round this page, on the page itself: what each part is for">take the tour</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
@@ -1858,12 +1865,12 @@
 <!-- Tidings, prompts, status and settings: each its own page, loaded once and kept, beside the Moods. -->
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
-  <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
+  <nav id="nav" data-tour="moods" data-tour-open="menu"><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"><button type="button" class="navfold" id="navFold" title="Fold the Moods away" aria-label="Fold the Moods list away" aria-expanded="true">‹</button></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
-  <main id="main"><div id="topbar"><div id="moodbar"></div><div id="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
+  <main id="main"><div id="topbar"><div id="moodbar" data-tour="mood-bar"></div><div id="pins" data-tour="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
-    <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
+    <div id="jump" data-tour="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
     <div id="toolsOpen"></div>
     <div id="typing"></div>
@@ -1879,22 +1886,22 @@
     <div id="videoBar" hidden><span class="what"></span><span class="track"><span class="fill"></span></span><span class="pct"></span> <button type="button" id="videoCancel">cancel</button></div>
     <div id="shareCard" hidden><span class="what"></span><label class="into">into <select id="shareMood" aria-label="Which Mood it goes to"></select></label><button type="button" id="shareHere"></button><button type="button" id="shareDrop" title="Don't share it" aria-label="Don't share it">✕</button></div>
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
-    <form id="composer" autocomplete="off">
+    <form id="composer" data-tour="composer" autocomplete="off">
       <div id="suggest"></div>
       <button type="button" id="expandComposer" class="expand" title="Expand the box to write at length" aria-label="Expand the message box" aria-expanded="false">▴</button>
-      <button type="button" id="agentsBtn" title="Emergents here: listening, model, effort" aria-label="Emergent settings" aria-expanded="false">⚙</button>
+      <button type="button" id="agentsBtn" data-tour="emergents-bar" title="Emergents here: listening, model, effort" aria-label="Emergent settings" aria-expanded="false">⚙</button>
       <div id="tray" hidden></div>
       <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
       <!-- One field, as Signal and WhatsApp have it: ＋ and 🎙 inside it, the words between. -->
       <div class="field">
-        <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
+        <button type="button" id="attach" data-tour="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
         <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
         <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
         <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <!-- ✕: throw away what's under way -- a recording, unsent; the words typed (Skyler, 31 Oct: "an x in the right corner to quick delete"). -->
         <button type="button" id="discardBtn" title="Discard: stops a recording without sending it, and clears the box" aria-label="Discard what you're writing or recording" hidden>✕</button>
-        <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
+        <button type="button" id="memoBtn" data-tour="memo" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
       <button type="submit" id="send" aria-label="Send"><span class="label">Send</span><span class="wait"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z" fill="currentColor"/></svg></button>
     </form>
@@ -1902,7 +1909,7 @@
     </div>
   </main>
   <aside id="todo" hidden aria-label="To do">
-    <button type="button" id="todoTab" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
+    <button type="button" id="todoTab" data-tour="todo" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
     <div id="todoBody">
       <div class="head"><b><a id="todoPage" target="_blank" rel="noopener" title="The list's page on PickiPedia">To do</a></b><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
       <p class="note" id="todoNote"></p>
@@ -3757,6 +3764,7 @@
     // A signed statement always stands on its own, heading and ✓ in view.
     const cont = !t.attested && prev && prev.sender === t.sender && at - prev.at < RUN_MS;
     prev = t.attested ? null : { sender: t.sender, at };
+    el.dataset.tour = 'message-actions';  // the guided tour points at the newest one (services/tour.py)
     el.className = 'turn ' + (t.is_human ? 'human' : 'agent') + (cont ? ' cont' : '') + (t.attested ? ' attested' : '') + (isNew ? ' new' : '');
     if (cont) el.title = t.sender + ' · ' + stamp(t.created_at);
     el.dataset.mentions = JSON.stringify(t.mentions || []);
@@ -3788,7 +3796,7 @@
     const mayPin = keyHolder && !t.deleted;
     const moreBtn = mayEdit || mayDelete || mayPromote || mayNote || mayPin
       ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
-        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" data-pin="${mayPin ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
+        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" data-pin="${mayPin ? 1 : ''}" data-tour="more-menu" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
     const onTidings = onTidingsMark(t.tidings || []);
     const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
@@ -10123,7 +10131,89 @@
     else await open(slug, false);
     if (sharing_) { history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/'); offerShare(); }
     setInterval(() => { poll(false); fetchBadges(); }, POLL_MS);
+    if (new URLSearchParams(location.search).has('tour')) startTour();
   })();
+
+  // The guided tour (services/tour.py; Justin, 4 Nov: "run in the user's browser and use the live site"):
+  // steps from Magenta:Tour's trusted revision, each pointing at a data-tour anchor on this page, drawn by
+  // driver.js (vendored, loaded only now). A step whose anchor isn't on the page, or isn't for this visitor
+  // (needs=signin, key, voice, signedout), is left out. Inside a closed menu (data-tour-open names its
+  // button), the menu is opened. Scrolling panes (the Moods, the messages) move the highlight with them:
+  // driver.js follows only the window's scroll (tried on the live page, 4 Nov), so any scroll refreshes it.
+  let tourLoaded = null;
+  function tourAssets() {
+    if (window.driver && window.driver.js) return Promise.resolve();
+    return tourLoaded || (tourLoaded = new Promise((done, failed) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = '/moods/tour/driver.css';
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = '/moods/tour/driver.js'; js.onload = () => done(); js.onerror = () => { tourLoaded = null; failed(new Error('driver.js did not load')); };
+      document.head.appendChild(js);
+    }));
+  }
+  const tourFor = { signin: () => !!viewer, key: () => keyHolder, voice: () => voiceOn, signedout: () => !viewer };
+  function tourShown(el) { return !!el && el.getClientRects().length > 0 && !el.closest('[hidden]'); }
+  // The newest one shown: for a message, the last in the column.
+  function tourAnchor(name) {
+    const all = [...document.querySelectorAll(`[data-tour="${CSS.escape(name)}"]`)];
+    // Shown, or out of sight only because the menu it's in is closed (opened when its step comes); an item the
+    // menu itself hides (voice mode, with no voices here) is left out.
+    const shown = all.filter(el => tourShown(el) || (el.closest('[data-tour-open]') && !(el.hidden && !el.dataset.tourOpen)));
+    return shown.length ? shown[shown.length - 1] : null;
+  }
+  // What the tour opened, closed again once a step points elsewhere (driver.js keeps its clicks to itself, so
+  // a menu's own click-outside never hears them).
+  let tourOpened = null;
+  function tourClose(keepFor) {
+    if (!tourOpened || (keepFor && tourOpened.holder.contains(keepFor))) return;
+    if (tourShown(tourOpened.holder)) tourOpened.opener.click();
+    tourOpened = null;
+  }
+  function tourReveal(el) {
+    tourClose(el);
+    if (!tourShown(el)) {
+      const holder = el.closest('[data-tour-open]');
+      const opener = holder && document.getElementById(holder.dataset.tourOpen);
+      if (opener && tourShown(opener)) { opener.click(); tourOpened = { holder, opener }; }
+    }
+    if (tourShown(el)) el.scrollIntoView({ block: 'nearest' });
+    return el;
+  }
+  async function startTour() {
+    let got;
+    try {
+      const [r] = await Promise.all([fetch('/api/tour/'), tourAssets()]);
+      got = await r.json();
+    } catch (err) { showNote(`The tour couldn't start: ${err.message}`, 8000); return; }
+    const steps = (got.steps || []).filter(s => !s.needs || (tourFor[s.needs] || (() => false))())
+      .filter(s => tourAnchor(s.at));
+    if (!steps.length) { showNote(got.error ? `No tour yet: ${got.error}` : 'No tour yet: Magenta:Tour has no steps for this page.', 8000); return; }
+    // Moving on a beat later: a click on Next closes an open menu first, then the next step opens what it needs.
+    const later = fn => setTimeout(fn, 0);
+    const tour = window.driver.js.driver({
+      showProgress: true, popoverClass: 'magenta-tour', smoothScroll: false,
+      nextBtnText: 'Next →', prevBtnText: '← Back', doneBtnText: 'Done',
+      onNextClick: () => later(() => tour.moveNext()),
+      onPrevClick: () => later(() => tour.movePrevious()),
+      onDestroyed: () => { document.removeEventListener('scroll', follow, true); tourClose(null); },
+      steps: steps.map(s => ({
+        element: () => tourReveal(tourAnchor(s.at) || document.body),
+        popover: { description: s.text },
+        ...(s.try ? { advanceOnClick: true } : {}),
+      })),
+    });
+    let frame = 0;
+    const follow = () => { if (tour.isActive() && !frame) frame = requestAnimationFrame(() => { frame = 0; tour.refresh(); }); };
+    document.addEventListener('scroll', follow, true);
+    tour.drive();
+  }
+  document.getElementById('tourLink').addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('userMenu').hidden = true;
+    document.getElementById('userBtn').setAttribute('aria-expanded', 'false');
+    startTour();
+  });
 
   // The Tidings button's two badges: what's new since the viewer last opened Tidings (Justin, 21 Oct).
   // Never opened here: counted from now, not from the first link ever promoted.

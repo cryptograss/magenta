@@ -386,6 +386,15 @@ def agents_across_moods():
     }
 
 
+def _tour_health():
+    """The guided tour's steps against the page's anchors, both ways (services/tour.py; re, 4 Nov)."""
+    try:
+        from . import tour
+        return tour.health()
+    except Exception as e:
+        return {'error': str(e)}
+
+
 def full_status(private=False):
     """The complete payload for /api/status/. `private`: also when people were last seen, and
     where, and where the backups are -- for an SSH-key sign-in only, as readers' addresses are
@@ -398,4 +407,5 @@ def full_status(private=False):
         'private': not private,
         'magenta': magenta_version(),
         'pickipedia_mcp': pickipedia_mcp_status(),
+        'tour': _tour_health(),
     }
