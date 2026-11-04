@@ -90,6 +90,7 @@
     color: n => AGENT_COLORS[n] || AGENT_PALETTE[[...n].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % AGENT_PALETTE.length],
     stamp: iso => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
     where: true,
+    words: JSON.parse("{{ interface_words|escapejs }}" || '{}'),  // Magenta:Interface
   };
   function draw() {
     const open = state.polls.filter(p => !p.closed), shut = state.polls.filter(p => p.closed);

@@ -740,6 +740,30 @@ def api_poll_close(request, slug, message_id):
     return JsonResponse({'closed': polls.close(poll, device.entity_id), 'poll': polls.poll_state(poll)})
 
 
+@require_POST
+def api_poll_nudge(request, slug, message_id):
+    """Reply under a poll, as its asker, @-naming whoever in @core hasn't voted yet (services/polls.py).
+    The asker's alone: {"id", "named", "poll"}."""
+    from .services import polls
+    found = _poll_in(request, slug, message_id)
+    if isinstance(found, JsonResponse):
+        return found
+    device, poll = found
+    if device.entity_id != poll.sender_id:
+        return JsonResponse({'error': f'only {poll.sender_id}, who asked it, nudges for this poll'}, status=403)
+    try:
+        text = polls.nudge_text(poll)
+    except polls.Refused as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    if not _under_limit(f'nudge:{device.pk}', 2):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    message = Message.objects.create(
+        id=uuid.uuid4(), sender=device.entity, content=text[:MAX_CHARS], mood=poll.mood,
+        timestamp=int(time.time() * 1000), source_file=WEB_SOURCE, client_version=web_client(request, device),
+    )
+    return JsonResponse({'id': str(message.id), 'named': polls.unvoted(poll), 'poll': polls.poll_state(poll)}, status=201)
+
+
 # What was taken back, for an admin's page to open with the recovery key
 # (services/retract.py). Sealed, it's nothing to anyone without the key's
 # private half; that stays in the browser, and only what it opened comes back.
