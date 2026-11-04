@@ -229,3 +229,44 @@ class ReleaseStageTest(_Release):
             listing = client.get('/moods/tidings/?embed=1').content.decode()
         self.assertIn(f'<a class="rthumb" href="/moods/tidings/{tid}/?embed=1"', listing)
         self.assertIn(f'src="https://ipfs.delivery-kid.cryptograss.live/ipfs/{CID}/poster.jpg"', listing)
+
+
+@override_settings(MOOD_ADMINS=('justin',), PICKIPEDIA_URL='https://pickipedia.xyz')
+class FollowAndTidyTest(_Release):
+    """Justin, 3 Nov: a deleted comment nothing answered is gone, not '[deleted]'; a quality row like the
+    Moods'; and the video follows you out of the page (the one page's small player)."""
+
+    def setUp(self):
+        super().setUp()
+        mock.patch('conversations.services.tidings.release_info', return_value={}).start()
+        self.addCleanup(mock.patch.stopall)
+        self.tiding, _ = tiding_links.promote_release(CID, self.justin)
+
+    def say(self, text, parent=None, deleted=False):
+        from conversations.models import TidingComment
+        return TidingComment.objects.create(tiding=self.tiding, by=self.justin, text='[deleted]' if deleted else text,
+                                            parent=parent, changed='deleted' if deleted else '')
+
+    def test_a_deleted_comment_nothing_answers_is_gone(self):
+        self.say('1:00 alone, then deleted', deleted=True)
+        answered = self.say('0:30 answered, then deleted', deleted=True)
+        self.say('0:31 the answer', parent=answered)
+        self.say('0:40 kept')
+        tree = tiding_links.discussion(self.tiding.id)['comments']
+        self.assertEqual([(n['changed'], [r['text'] for r in n['replies']]) for n in tree],
+                         [('deleted', ['0:31 the answer']), ('', [])])
+        self.assertEqual(tiding_links.listed()[0]['comments'], 2)  # the two that still say something
+
+    def test_its_page_has_a_quality_row_and_hands_off(self):
+        page = self.client_for(self.justin).get(f'/moods/tidings/{self.tiding.id}/?embed=1').content.decode()
+        self.assertIn('<div class="quality" aria-label="Quality" hidden></div>', page)
+        self.assertIn('id="tidingTitle"', page)
+        self.assertIn('window.magentaHandoff', page)
+        self.assertIn('mini.take(tidingId)', page)
+
+    def test_the_one_page_has_the_small_player(self):
+        from django.template.loader import get_template
+        source = get_template('conversations/moods.html').template.source
+        self.assertIn('window.magentaMini = {', source)
+        self.assertIn('w.magentaHandoff()', source)  # leaving Tidings hands it over
+        self.assertIn("if (name === 'tidings' && left !== 'tidings') miniHome();", source)
