@@ -2430,7 +2430,8 @@ class MoodPoller:
         if not match or not owed:
             return
         ids = [t['id'] for t in owed]
-        allowed = others_asked(owed, self.agent) + self.state['wait_also'].pop(slug, []) + self.people_typing(slug)
+        allowed = (others_asked(owed, self.agent) + self.state['wait_also'].pop(slug, [])
+                   + self.state.setdefault('typing_at_wake', {}).pop(slug, []) + self.people_typing(slug))
         wanted = [n for n in re.split(r'[\s,]+', match.group(1).lower()) if n]
         names = [n for n in wanted if n in allowed]
         again = any(i in self.state['waited'] for i in ids)
@@ -2928,7 +2929,7 @@ class MoodPoller:
             page = self.api.recent(slug, limit=200)
         except Exception:
             page = None
-        return (self.typing_lines(page) + self.pronoun_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
+        return (self.typing_lines(page, slug) + self.pronoun_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
                 + self.nearmiss_lines(slug, page)
                 # Open polls, on every kind of wake: a quiet look too (re's review of #157).
                 + (open_polls(self.agent, page) if page else [])
@@ -2948,10 +2949,14 @@ class MoodPoller:
         shown = ([f'you ({mine})'] if mine else []) + [f'{n} ({p})' for n, p in shown if p]
         return ['', wake_line(self.texts, 'pronouns', PRONOUNS_NOTE, said='; '.join(shown))] if shown else []
 
-    def typing_lines(self, page):
+    def typing_lines(self, page, slug=None):
         """Who is typing or recording here right now (Justin, 28 Oct: "the emergents are able to see both and
         consider whether you might want to wait"): a line, and how to wait for them."""
         typing = [n for n in (page or {}).get('typing') or () if n != self.agent]
+        if slug:
+            # Kept for the reply: a keystroke counts as typing for 8 s (views_moods.TYPING_FOR), a turn takes longer,
+            # so by its end they'd seem to have stopped and the wait this line offered was refused (Justin, 4 Nov).
+            self.state.setdefault('typing_at_wake', {})[slug] = typing
         if not typing:
             return []
         rec = set((page or {}).get('recording') or ())
