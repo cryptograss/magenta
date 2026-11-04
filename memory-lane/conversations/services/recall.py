@@ -62,14 +62,36 @@ def clip(text, limit=EACH):
 # --- who it is, and since when -----------------------------------------------
 
 def arrival(agent):
-    """(created_at, block) of the start of the agent's first conversation -- the first message of the
+    """(when, block) of the start of the agent's first conversation, by when it was said (said_at) -- the first message of the
     session its first word is in, or that word, with no session -- or (None, None): not arrived yet."""
-    first = Message.objects.filter(sender_id=agent).order_by('created_at').first()
+    first = first_said(Message.objects.filter(sender_id=agent))
     if first is None:
         return None, None
     if first.session_id:
-        first = Message.objects.filter(session_id=first.session_id).order_by('created_at').first()
-    return first.created_at, first.eth_blockheight
+        first = first_said(Message.objects.filter(session_id=first.session_id))
+    return said_at(first), first.eth_blockheight
+
+
+def first_said(messages):
+    """The earliest said of these messages, in one query, by when it was said rather than when it was
+    imported: created_at is the import's time, so a conversation imported late would look newer than
+    it is. The Cursor imports have no times and are the oldest in the record, so they come first; any
+    other row without a time comes after every row with one."""
+    from django.db.models import Case, F, IntegerField, Value, When
+    from conversations.services.eras import CURSOR_HEAPS
+    cursor = Case(When(CURSOR_HEAPS & Q(timestamp__isnull=True), then=Value(0)), default=Value(1),
+                  output_field=IntegerField())
+    return (messages.annotate(cursor_last=cursor)
+            .order_by('cursor_last', F('timestamp').asc(nulls_last=True), 'created_at').first())
+
+
+def said_at(message):
+    """When it was said: its own time where it has one, else when it reached the record. Never later
+    than its created_at, so `created_at >= said_at(first)` keeps everything said after it."""
+    from datetime import datetime, timezone
+    if message.timestamp is None:
+        return message.created_at
+    return min(datetime.fromtimestamp(message.timestamp / 1000, tz=timezone.utc), message.created_at)
 
 
 def arrival_line(agent):

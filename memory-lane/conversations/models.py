@@ -165,7 +165,9 @@ class ContextHeap(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    era = models.ForeignKey(Era, models.CASCADE, related_name='context_heaps')
+    # A label from the import that made it, kept for the Cursor heaps, which have no times: every
+    # other message's era is found by its block, from Cryptograss:Eras (services/eras.py).
+    era = models.ForeignKey(Era, models.CASCADE, related_name='context_heaps', null=True, blank=True)
     type = models.CharField(
         max_length=20,
         choices=ContextHeapType.choices,
@@ -239,7 +241,7 @@ class ContextHeap(models.Model):
 
     def __str__(self):
         # TODO: What if there are no messages in this heap?
-        return f"{self.era.name} - {self.get_type_display()} - Heap starting at msg #{self.first_message().message_number}"
+        return f"{self.era.name if self.era else 'No label'} - {self.get_type_display()} - Heap starting at msg #{self.first_message().message_number}"
 
     def parent_heap(self):
         """For SPLIT_POINT heaps, return the heap they split from."""
