@@ -101,30 +101,79 @@ def wiki_card(server):
     return card
 
 
+def _deploy_key(name):
+    return f'server-deploy:{name}'
+
+
+DEPLOY_KEPT = 600  # record_deploy busts it; the expiry is only a net
+
+
 def last_deploy(name):
-    """The newest deploy event told for a server, as stored, or None."""
+    """The newest deploy event told for a server, as stored, or None.
+
+    Kept until record_deploy tells another (the only writer): the query walks every
+    deploy row, and /api/servers asks it for four servers every minute, from every page."""
     from conversations.models import Message
+    kept = cache.get(_deploy_key(name))
+    if kept is not None:
+        return kept or None  # {} is "none told"
     row = (Message.objects.filter(source_file=SOURCE, content__server=name)
            .order_by('-created_at').values('content', 'created_at').first())
-    if row is None:
-        return None
-    return {**row['content'], 'at': row['created_at'].isoformat(), 'at_ts': row['created_at'].timestamp()}
+    found = None if row is None else {
+        **row['content'], 'at': row['created_at'].isoformat(), 'at_ts': row['created_at'].timestamp()}
+    cache.set(_deploy_key(name), found or {}, DEPLOY_KEPT)
+    return found
+
+
+PROBING_KEY = 'server-check:probing'
+
+
+def _look(server, now):
+    up, ms = probe(server['check'])
+    checked = {'up': up, 'ms': ms, 'checked_at': now}
+    # Kept with no expiry: past CHECK_EVERY it's still shown while it's looked at again.
+    cache.set(f"server-check:{server['name']}", checked, None)
+    return checked
+
+
+def _look_at(stale, now):
+    """Probe these servers at once, not one after another: a server that doesn't answer costs its
+    timeout once, not once for every server behind it."""
+    if not stale:
+        return {}
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=len(stale)) as pool:
+        return dict(zip((s['name'] for s in stale), pool.map(lambda s: _look(s, now), stale)))
+
+
+def _look_again(stale, now):
+    try:
+        _look_at(stale, now)
+    finally:
+        cache.delete(PROBING_KEY)
 
 
 def status(now=None):
-    """Every server: whether it answers, and its newest deploy event."""
+    """Every server: whether it answers, and its newest deploy event.
+
+    A server never checked is probed now (all of them at once); one checked over a minute ago
+    shows its last answer, with its checked_at, while a thread looks again -- the page asks every
+    minute, and the one who asks just after the minute shouldn't wait on four servers."""
+    from conversations.services.mood_cache import spawn
     now = now or time.time()
+    checks = {s['name']: cache.get(f"server-check:{s['name']}") for s in SERVERS}
+    checks.update(_look_at([s for s in SERVERS if checks[s['name']] is None], now))
+    stale = [s for s in SERVERS if now - checks[s['name']]['checked_at'] >= CHECK_EVERY]
+    if stale and cache.add(PROBING_KEY, True, 30):
+        spawn(_look_again, stale, now)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=len(SERVERS)) as pool:
+        cards = list(pool.map(wiki_card, SERVERS))  # each kept six hours; a miss asks the wiki
     out = []
-    for server in SERVERS:
-        key = f"server-check:{server['name']}"
-        checked = cache.get(key)
-        if checked is None:
-            up, ms = probe(server['check'])
-            checked = {'up': up, 'ms': ms, 'checked_at': now}
-            cache.set(key, checked, CHECK_EVERY)
+    for server, card in zip(SERVERS, cards):
         deploy = last_deploy(server['name'])
         deploying = bool(deploy and deploy.get('state') == 'started' and now - deploy['at_ts'] < DEPLOY_PATIENCE)
-        out.append({'name': server['name'], 'about': server['about'], **wiki_card(server), **checked,
+        out.append({'name': server['name'], 'about': server['about'], **card, **checks[server['name']],
                     'deploying': deploying,
                     'deploy': {k: v for k, v in (deploy or {}).items() if k != 'at_ts'} or None})
     return out
@@ -156,4 +205,5 @@ def record_deploy(name, state, commit='', by='', note=''):
         Message(id=uuid.uuid4(), sender=system, mood=mood, content=content, timestamp=stamp, source_file=SOURCE)
         for mood in moods])
     cache.delete(f'server-check:{name}')  # look again: it may be back, or gone
+    cache.delete(_deploy_key(name))
     return len(moods)
