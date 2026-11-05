@@ -3,7 +3,7 @@
 from django.core.management.base import BaseCommand
 
 from conversations.models import ThinkingEntity
-from conversations.services import tasks
+from conversations.services import alarms, tasks
 
 
 class Command(BaseCommand):
@@ -14,3 +14,7 @@ class Command(BaseCommand):
         for agent, task, what in tasks.due(sorted(agents)):
             said = what if isinstance(what, str) else f"{what.content['state']} in {what.mood_slug}"
             self.stdout.write(f"{agent} {task or ''}: {said}")
+        # A Jenkins check still red after a round wakes its task in #ops (services/alarms.py).
+        for stage, what in alarms.still_red():
+            said = what if isinstance(what, str) else f"{what.content['state']} in {what.mood_slug}"
+            self.stdout.write(f"alarm {stage}: {said}")
