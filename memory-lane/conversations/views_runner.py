@@ -27,6 +27,7 @@ import hmac
 import json
 import re
 import uuid
+import time
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -125,10 +126,17 @@ def final_usage(session_id, agent, events):
             Message.objects.filter(id__in=ids, session_id=session_id, sender_id=agent).update(**fields)
 
 
+_UUID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
+
 def finish_turn(mood, session_id, agent, result, asked=()):
     """The run is over: stamp the turn's last message, and keep what it cost; its answer to Tidings, if
     something there asked it (`asked`: what woke it)."""
     stop = result.get('stop_reason') if result.get('stop_reason') in TURN_ENDS else 'end_turn'
+    # Helpers it started in the background and that never reported: the run's end stops them (Justin, 5 Nov: an
+    # audit in #rabbithole cut off, unseen). Read before the turn-result, which would count them over.
+    from .services.mood_view import background_tasks
+    cut = [t for t in background_tasks(mood, of_session=session_id) if t['kind'] == 'helper']
     last = (Message.objects.filter(session_id=session_id, sender_id=agent, is_sidechain=False)
             .order_by('-created_at').first())
     if last is not None and last.stop_reason is None:
@@ -155,6 +163,17 @@ def finish_turn(mood, session_id, agent, result, asked=()):
         'sender': system, 'content': summary, 'mood': mood, 'session_id': session_id,
         'source_file': f'ingest-{SOURCE}',
     })
+    if cut:
+        # Said in the Mood, and to whoever woke the turn (views_moods.notices_for).
+        from conversations.models import ThinkingEntity
+        people = set(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True))
+        askers = sorted(set(Message.objects.filter(id__in=[a for a in map(str, asked) if _UUID.match(a)], sender_id__in=people)
+                            .values_list('sender_id', flat=True))) if asked else []
+        for task in cut:
+            Message.objects.get_or_create(id=uuid.uuid5(uuid.NAMESPACE_URL, f'helper-cut:{session_id}:{task["id"]}'), defaults={
+                'sender': system, 'mood': mood, 'session_id': session_id, 'source_file': 'helper',
+                'content': {'type': 'helper-cut', 'agent': agent, 'label': task['label'], 'steps': task.get('steps', 0),
+                            'took': round(time.time() - task['since']), 'for': askers}})
     if asked and not result.get('is_error'):
         from .services import tiding_links
         tiding_links.answer_asked(mood, session_id, agent, asked)

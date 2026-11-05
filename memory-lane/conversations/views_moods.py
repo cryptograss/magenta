@@ -362,7 +362,7 @@ def api_mood_turns(request, slug):
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'thread', 'into', 'was', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
-                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools', 'lines')},
+                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools', 'lines', 'steps')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
@@ -1217,9 +1217,23 @@ def notices_for(name, since, limit=NOTICES_MAX, everything=False):
         kept = [n for n in found if n['kind'] == 'mention'] + mentions
         rest = [n for n in found if n['kind'] != 'mention']
         found = kept + rest[:max(0, limit - len(kept))]
-    found += talk_page_notices(name, since)
+    found += talk_page_notices(name, since) + helper_cut_notices(name, since)
     found.sort(key=lambda n: n['turn']['created_at'], reverse=True)
     return found if len(found) <= limit else _mentions_first(found, limit)
+
+
+def helper_cut_notices(name, since):
+    """A helper stopped before it reported, told to whoever woke the turn that started it (views_runner.finish_turn)."""
+    out = []
+    for msg in (Message.objects.filter(source_file='helper', created_at__gt=since, content__type='helper-cut')
+                .select_related('mood').order_by('-created_at')[:20]):
+        c = msg.content
+        if name not in (c.get('for') or []) or msg.mood is None:
+            continue
+        out.append({'kind': 'mention', 'from': 'agent', 'mood': msg.mood.slug, 'turn': {
+            'id': str(msg.id), 'sender': c.get('agent'), 'created_at': msg.created_at.isoformat(),
+            'text': f"⚠ its helper “{c.get('label')}” stopped when the run ended, before it reported"}})
+    return out
 
 
 def _mentions_first(found, limit):

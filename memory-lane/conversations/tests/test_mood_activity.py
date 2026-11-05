@@ -123,6 +123,49 @@ class ActivityTest(TestCase):
         self.assertEqual(first[0].mood, self.mood)
         self.assertEqual(background_tasks(self.mood, now=NOW), [])
 
+    def test_words_said_but_a_helper_still_running_is_still_at_work(self):
+        # Justin, 5 Nov: an audit ran in the background in #rabbithole while its emergent showed idle.
+        session = uuid.uuid4()
+        self.add(self.justin, 60, 'audit the player')
+        set_running('m26', 'magent', since=NOW - 58, now=NOW - 10)
+        self.add(self.magent, 50, {'description': 'Audit', 'prompt': 'audit'}, model=ToolUse, tool_name='Agent',
+                 tool_id='ta1', stop_reason='tool_use', session_id=session)
+        self.add(self.tool, 49, 'Async agent launched successfully.\nagentId: ag1 (internal)', model=ToolResult,
+                 tool_use_id='ta1', session_id=session)
+        self.add(self.magent, 45, [{'type': 'text', 'text': 'running it'}], stop_reason='end_turn', session_id=session)
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'working with helpers', 'since': NOW - 58})
+        set_running('m26', 'magent', since=None, now=NOW - 5)  # its run has ended
+        self.assertIsNone(self.now())
+
+    def test_a_helper_says_what_it_is_at_and_a_run_ending_under_it_is_told(self):
+        # Justin, 5 Nov: introspect the helpers, and be told when one is cut off.
+        from conversations.services.mood_view import background_tasks
+        from conversations.views_moods import notices_for
+        from conversations.views_runner import finish_turn
+        from datetime import datetime, timezone as tz
+        session = uuid.uuid4()
+        ask = self.add(self.justin, 70, '@magent audit the player', source_file='mood-web')
+        self.add(self.magent, 50, {'description': 'Audit the player', 'prompt': 'audit'}, model=ToolUse,
+                 tool_name='Agent', tool_id='tc1', stop_reason='tool_use', session_id=session)
+        self.add(self.tool, 49, 'Async agent launched successfully.\nagentId: abc123 (internal)', model=ToolResult,
+                 tool_use_id='tc1', session_id=session)
+        for i in range(3):
+            self.add(self.magent, 40 - i, {}, model=ToolUse, tool_name='Read', tool_id=f'h{i}', stop_reason='tool_use',
+                     session_id=session, is_sidechain=True, source_file='agent-abc123.jsonl')
+        task, = background_tasks(self.mood, now=NOW)
+        self.assertEqual((task['steps'], task['doing']), (3, 'reading'))
+        from unittest import mock
+        with mock.patch('time.time', return_value=NOW):  # the record's clock, not today's
+            finish_turn(self.mood, session, 'magent', {'subtype': 'success'}, asked=[ask.id])
+            self.assertEqual(background_tasks(self.mood), [])
+        cut = Message.objects.get(source_file='helper')
+        self.assertEqual((cut.content['label'], cut.content['steps'], cut.content['for']), ('Audit the player', 3, ['justin']))
+        told = notices_for('justin', datetime.fromtimestamp(0, tz.utc))
+        self.assertTrue(any('Audit the player' in n['turn']['text'] for n in told))
+        with mock.patch('time.time', return_value=NOW):
+            finish_turn(self.mood, session, 'magent', {'subtype': 'success'}, asked=[ask.id])  # told once
+        self.assertEqual(Message.objects.filter(source_file='helper').count(), 1)
+
     def test_end_turn_is_the_end(self):
         self.add(self.justin, 40, 'go')
         self.add(self.magent, 5, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn')
