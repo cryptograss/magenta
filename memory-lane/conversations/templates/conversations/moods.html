@@ -1295,6 +1295,8 @@
   .quiet .dot.screened:hover, .quiet .dot.screened.on { background: transparent; border-color: var(--who); }
   .quiet .why { flex-basis: 100%; font-size: 13px; color: var(--muted); font-style: italic; }
   .quiet .why .thought { margin: 4px 0 0; padding: 0; white-space: pre-wrap; }
+  .quiet .why.qthought { white-space: pre-wrap; }
+  .quiet > .qsteps { flex-basis: 100%; }
   body.only-mine .quiet { display: none; }
   /* Thinking the harness kept: dim, as a terminal shows it between tool calls. */
   .thought { margin: 2px 0 4px -10px; padding: 0 13px; font-size: 13.5px; font-style: italic; color: var(--muted);
@@ -5136,7 +5138,21 @@
     loadMoods();
   });
 
+  // A quiet turn that used tools, and said nothing on the way: its steps fold into its dot, shown when the
+  // dot is pressed, not a line of their own above it (Justin, 5 Nov). Kept in the page, hidden, so a step
+  // that arrives a second time is still known as drawn. Only for a plain dot: not an ask, a wait or a failure.
+  function quietSteps(q, container) {
+    if (q.by === 'screen' || q.by === 'failed' || q.type || /^(?:requested |waiting|taking)/.test(q.reason || '')) return null;
+    const b = openBlock(container, q.sender);
+    if (!b || b.querySelector('.abody .turn')) return null;
+    const body = b.querySelector('.abody');
+    body.classList.add('qsteps'); body.hidden = true;
+    b.remove();
+    return body;
+  }
   function addQuiet(q, container) {
+    const unsaid = quietSteps(q, container);
+    closeBlock(container);
     // An ask (<tools/>, <merge/>, <deploy/>, Justin, 28 Oct-29 Oct): its own visible message in the thread --
     // "re requested tools for push the fix" at its place, a link by its name in the list until someone does it.
     // It carries the row's own id, so the notice under the composer can link straight to it (Justin, 29 Oct).
@@ -5199,6 +5215,8 @@
     // Its thinking, and any words it wrote before choosing silence (q.thought: mood_view._QUIET_TAIL).
     const thought = [...((container._held || {})[q.sender] || []).map(t => t.text), q.thought].filter(Boolean).join('\n\n');
     if (container._held) delete container._held[q.sender];
+    const stepsEl = unsaid;
+    const stepWords = stepsEl ? [...stepsEl.querySelectorAll('.trow')].reduce((n, r) => n + (Number(r.dataset.words) || 0), 0) : 0;
     let row = lastOf(container);
     if (!row || !row.classList.contains('quiet')) {
       row = document.createElement('div'); row.className = 'quiet';
@@ -5215,9 +5233,14 @@
         + (q.usd != null ? ` · ${usdText(q.usd)} at API prices (read ${kTokens(q.ctx || 0)}, ${kTokens(q.cached || 0)} of it from the cache)` : '');
     dot.dataset.why = q.reason || '(no reason given)';  // what woke it is in its title, shown with this
     if (q.why === 'crosstalk') dot.classList.add('crosstalk');
-    if (thought) {
-      dot.dataset.thought = thought;
-      const words = wordsIn(thought);
+    if (stepsEl) {
+      const n = stepsEl.querySelectorAll('.step').length;
+      dot._steps = stepsEl;
+      dot.title += ` · ${n} tool call${n === 1 ? '' : 's'} first`;
+    }
+    if (thought || stepWords) {
+      if (thought) dot.dataset.thought = thought;
+      const words = wordsIn(thought) + stepWords;
       dot.classList.add('n');
       dot.textContent = kTokens(words);
       dot.title += ` · thought ${words.toLocaleString()} word${words === 1 ? '' : 's'} first`;
@@ -5225,6 +5248,7 @@
     // A crosstalk look says so inside its dot, as a turn's ⇆ crosstalk does beside its name (Justin, 27 Oct).
     if (q.why === 'crosstalk') { dot.classList.add('n'); dot.textContent = '⇆' + (thought ? ' ' + dot.textContent : ''); }
     row.appendChild(dot);
+    if (stepsEl) row.appendChild(stepsEl);
     if (q.by !== 'screen') resolveWaits(container, q.sender, q.created_at, row);  // finished without a word: answered, for a wait
   }
   document.addEventListener('click', e => {
@@ -5233,14 +5257,18 @@
     const row = dot.parentElement;
     const wasOn = dot.classList.contains('on');
     row.querySelectorAll('.dot').forEach(d => d.classList.remove('on'));
+    row.querySelectorAll(':scope > .qsteps').forEach(el => { el.hidden = true; });
+    row.querySelectorAll(':scope > .qthought').forEach(el => el.remove());
     let why = row.querySelector('.why');
     if (wasOn) { if (why) why.remove(); return; }
     dot.classList.add('on');
     if (!why) { why = document.createElement('div'); why.className = 'why'; row.appendChild(why); }
     why.textContent = dot.title + ': ' + dot.dataset.why;
+    // Its steps, in the order it did them, between why it stayed quiet and its last thoughts.
+    if (dot._steps) { why.after(dot._steps); dot._steps.hidden = false; }
     if (dot.dataset.thought) {
-      const t = document.createElement('div'); t.className = 'thought'; t.textContent = dot.dataset.thought;
-      why.appendChild(t);
+      const t = document.createElement('div'); t.className = 'why qthought'; t.textContent = dot.dataset.thought;
+      (dot._steps || why).after(t);
     }
   });
 
@@ -5496,7 +5524,8 @@
   function foldOld(container, keepNewest = true) {
     // Older finished turns fold away; the newest stays open.
     const blocks = [...container.querySelectorAll(':scope > .aturn')];
-    (keepNewest ? blocks.slice(0, -1) : blocks).forEach(b => { if (b._ended && !b.classList.contains('folded')) { b.classList.add('folded'); drawBlockHead(b); } });
+    // A clip is never folded away (Justin, 5 Nov): a turn that plays one stays open.
+    (keepNewest ? blocks.slice(0, -1) : blocks).forEach(b => { if (b._ended && !b.classList.contains('folded') && !b.querySelector('.abody a.yarn, .abody .yarnbox')) { b.classList.add('folded'); drawBlockHead(b); } });
   }
   document.addEventListener('click', e => {
     const head = e.target.closest('.ahead');
@@ -5536,7 +5565,7 @@
       if (!head || !head.classList.contains('runhead')) {
         head = document.createElement('div');
         head.className = 'runhead';
-        head._shut = !(keepNewest && i === runs.length - 1);
+        head._shut = !(keepNewest && i === runs.length - 1) && !turns.some(b => b.querySelector('.abody a.yarn, .abody .yarnbox'));
         members[0].before(head);
       }
       Object.assign(head, { _members: members, _turns: turns });
@@ -5642,7 +5671,7 @@
         drawBlockHead(b);
         continue;
       }
-      closeBlock(container);
+      if (it.kind !== 'quiet') closeBlock(container);  // a quiet dot closes it itself, once it has taken its steps
       if (it.kind === 'turn') {
         const waiting = sending.findIndex(el => el.dataset.pendingId === it.v.id);
         if (waiting >= 0) sending.splice(waiting, 1);  // sent from here: the record's own now stands in its place
