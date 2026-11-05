@@ -7640,14 +7640,15 @@
     personCard.close();
     a.dataset.cardId ? openAndReveal(a.dataset.cardMood, a.dataset.cardId) : open(a.dataset.cardMood, true);
   });
-  // A person's name in a turn's heading, or among the people here; an emergent's still opens its User page.
+  // A person's name in a turn's heading, among the people here, or @mentioned in a message (Justin, 5 Nov);
+  // an emergent's still opens its User page.
   document.addEventListener('click', e => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;  // a new tab still gets the User page
-    const at = e.target.closest && e.target.closest('.turn.human > .who .name, .people .who.human');
+    const at = e.target.closest && e.target.closest('.turn.human > .who .name, .people .who.human, a.mention[data-who]');
     if (!at) return;
-    const turn = at.closest('.turn');
+    const turn = at.matches('a.mention') ? null : at.closest('.turn');
     const name = turn ? (turn.querySelector('.badges[data-for]') || {}).dataset?.for : (at.dataset.who || at.textContent || '').trim();
-    if (!name || human[name] === false) return;
+    if (!name || human[name] === false || (!turn && at.matches('a.mention') && !human[name])) return;
     e.preventDefault();
     openPersonCard(name);
   });
