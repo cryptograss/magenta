@@ -127,6 +127,10 @@ Every change is kept at the bottom, with who made it.</p>
   <div class="cards" id="global"></div>
   <h3 id="voices">Voices: who is read in which</h3>
   <div id="voicesList" class="voices">Loading…</div>
+  <h3 id="sounds">Sounds and notifications</h3>
+  <p class="note">This browser's own, as in the 🔔 menu. Until you choose here or there, the team's defaults, from
+    <a id="soundsPage" target="_blank" rel="noopener">Magenta:Sounds</a> (where a message's own sound is named too).</p>
+  <table class="defaults" id="soundsBox"></table>
   <h3>History</h3>
   <table class="history"><thead><tr><th>when</th><th>who</th><th>where</th><th>what</th><th>value</th><th>why</th></tr></thead>
     <tbody id="history"></tbody></table>
@@ -134,6 +138,49 @@ Every change is kept at the bottom, with who made it.</p>
 <script>
 (function () {
   const viewer = "{{ viewer|escapejs }}" || null;
+  // --- sounds and notifications: this browser's, over the team's (Magenta:Sounds; moods.html keeps the same keys) ---
+  (function () {
+    const TEAM = JSON.parse("{{ sound_words|escapejs }}" || '{}'), WIKI = "{{ pickipedia_url|escapejs }}" || 'https://pickipedia.xyz';
+    const get = (k, d) => { try { const v = localStorage.getItem('moods.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+    const put = (k, v) => { try { localStorage.setItem('moods.' + k, JSON.stringify(v)); } catch (e) {} };
+    const SOUND = [['', 'off'], ['mention', 'mentioning me'], ['all', 'every message']];
+    const TELL = [['', 'mentioning me'], ['all', 'every message']];
+    const label = (opts, v) => (opts.find(([k]) => k === v) || opts[0])[1];
+    const teamSound = k => ['mention', 'all'].includes(TEAM['sound-' + k]) ? TEAM['sound-' + k] : '';
+    const teamTell = k => TEAM['tell-' + k] === 'all' ? 'all' : '';
+    function draw() {
+      const sounds = get('sounds', null), tell = get('tellAll', null);
+      const mine = k => sounds ? (sounds[k] ? 'all' : sounds[k + '-mention'] ? 'mention' : '') : teamSound(k);
+      const told = k => tell ? (tell[k] ? 'all' : '') : teamTell(k);
+      const select = (kind, k, opts, v) => `<select data-${kind}="${k}">${opts.map(([o, t]) =>
+        `<option value="${o}"${o === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+      const file = k => TEAM['chime-' + k] ? ` · plays <a href="${WIKI}/wiki/${encodeURIComponent(TEAM['chime-' + k].replace(/^\[\[:?|\]\]$/g, '').replace(/ /g, '_')).replace(/%3A/g, ':')}" target="_blank" rel="noopener">${TEAM['chime-' + k].replace(/^\[\[:?|\]\]$/g, '')}</a>` : '';
+      document.getElementById('soundsBox').innerHTML = '<tr><th></th><th>sound</th><th>notifications</th><th>team default</th></tr>'
+        + [['person', 'people'], ['agent', 'emergents']].map(([k, who]) => `<tr><td>${who}</td>`
+          + `<td>${select('sound', k, SOUND, mine(k))}</td><td>${select('tell', k, TELL, told(k))}</td>`
+          + `<td class="inherited">${label(SOUND, teamSound(k))}; ${label(TELL, teamTell(k))}${file(k)}</td></tr>`).join('')
+        + (sounds || tell ? '<tr><td></td><td colspan="3"><button type="button" id="soundsTeam">Use the team\'s defaults</button></td></tr>' : '');
+    }
+    document.getElementById('soundsPage').href = WIKI + '/wiki/Magenta:Sounds';
+    document.getElementById('soundsBox').addEventListener('change', e => {
+      const s = e.target.dataset.sound, t = e.target.dataset.tell, v = e.target.value;
+      if (s) {
+        const sounds = get('sounds', null) || Object.fromEntries(['person', 'agent'].flatMap(k => [[k, teamSound(k) === 'all'], [k + '-mention', !!teamSound(k)]]));
+        sounds[s] = v === 'all'; sounds[s + '-mention'] = !!v; put('sounds', sounds);
+      }
+      if (t) {
+        const tell = get('tellAll', null) || { person: teamTell('person') === 'all', agent: teamTell('agent') === 'all' };
+        tell[t] = v === 'all'; put('tellAll', tell);
+      }
+      draw();
+    });
+    document.getElementById('soundsBox').addEventListener('click', e => {
+      if (e.target.id !== 'soundsTeam') return;
+      try { localStorage.removeItem('moods.sounds'); localStorage.removeItem('moods.tellAll'); } catch (err) {}
+      draw();
+    });
+    draw();
+  })();
   const LABELS = {
     listening: 'listening', consider_after: 'consider after (s)', idle_after: 'first unprompted look (min)',
     considers_per_hour: 'considerations / hour', mention_effort: 'effort',
