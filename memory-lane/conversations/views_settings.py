@@ -173,11 +173,17 @@ def api_verify(request):
 
 @section('settings')
 def settings_page(request):
+    from .services.interface_words import SOUND_DEFAULTS
+    from .services.mood_view import pickipedia_url
+    from .views_moods import interface_words
     device = mood_auth.device_for(request)
     return render(request, 'conversations/mood_settings.html', {
         'viewer': device.entity_id if device else '', 'embed': True,
         # Anyone's voice is chosen with an SSH key; your own from any sign-in (views_auth.api_speaker_voice).
-        'key_holder': bool(device and device.tier == 'key' and device.entity.is_biological_human)})
+        'key_holder': bool(device and device.tier == 'key' and device.entity.is_biological_human),
+        # The team's sound defaults (Magenta:Sounds), beside this browser's own choices (Justin, 5 Nov).
+        'sound_words': json.dumps({k: v for k, v in interface_words().items() if k in SOUND_DEFAULTS}),
+        'pickipedia_url': pickipedia_url()})
 
 
 @section('status')
