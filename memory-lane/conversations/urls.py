@@ -23,6 +23,8 @@ urlpatterns = [
     path('faq/', views_settings.faq_page, name='faq'),
     path('moods/faq/', RedirectView.as_view(url='/faq/', permanent=True)),  # its first address
     path('moods/verify/', views_settings.verify_page, name='mood_verify'),
+    path('moods/tour/<str:name>', views_settings.tour_asset, name='mood_tour_asset'),
+    path('api/tour/', views_settings.api_tour, name='api_tour'),
     path('moods/<slug:slug>/instructions/', views_settings.instructions_page, name='mood_instructions'),
     path('moods/<slug:slug>/rules/', views_settings.rules_page, name='mood_rules'),
     path('moods/manifest.webmanifest', views_moods.app_manifest, name='mood_app_manifest'),

@@ -135,6 +135,12 @@
     </div>
   </div>
 
+  <!-- The guided tour against the page it runs on, both ways (services/tour.py; re, 4 Nov). -->
+  <div class="card" style="margin-top: 18px;">
+    <h3>The tour</h3>
+    <div id="tourHealth">Loading…</div>
+  </div>
+
   {% include "conversations/_spend_kinds.html" %}
 
   <h2>Database backups (magenta_memory on maybelle)</h2>
@@ -284,6 +290,17 @@
       + (d.at ? `<div class="meta" style="margin-top:4px;"><b>Last maybelle deploy:</b> ${esc(ago(d.at))} (${esc(when(d.at))}) by <b>${esc(d.by || '—')}</b></div>` : '');
   }
 
+  // A step naming an anchor the page lacks is skipped in the tour; an anchor no step names is unused.
+  function renderTour(t) {
+    if (!t) return '—';
+    const page = `<a href="${esc(t.page || 'https://pickipedia.xyz/wiki/Magenta:Tour')}" target="_blank" rel="noopener">Magenta:Tour</a>`;
+    if (t.error && !t.revision) return `${page}: ${esc(t.error)}`;
+    const list = xs => xs.map(x => `<code>${esc(x)}</code>`).join(' ');
+    return `${page} rev ${esc(String(t.revision))}: ${t.steps} step${t.steps === 1 ? '' : 's'}.`
+      + (t.error ? ` <span class="meta">${esc(t.error)}</span>` : '')
+      + (t.missing.length ? `<div><b>Skipped</b>, no such anchor on the page: ${list(t.missing)}</div>` : '<div>Every step has its anchor.</div>')
+      + (t.unused.length ? `<div class="meta">Anchors no step names: ${list(t.unused)}</div>` : '');
+  }
   function renderPickipediaMcp(p) {
     if (!p) return '—';
     const head = p.head_sha
@@ -460,6 +477,7 @@
     document.getElementById('servers').innerHTML = renderServers(state.servers || []);
     document.getElementById('magentaVersion').innerHTML = renderMagenta(state.magenta);
     document.getElementById('pickipediaMcp').innerHTML = renderPickipediaMcp(state.pickipedia_mcp);
+    document.getElementById('tourHealth').innerHTML = renderTour(state.tour);
     // Who was last seen where, and where the backups are: for an SSH-key sign-in only.
     const hidden = '<div class="card meta">Shown to an SSH-key sign-in only (magenta.sh login).</div>';
     document.getElementById('backups').innerHTML = state.private ? hidden : renderBackups(state.backup);

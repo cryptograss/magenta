@@ -132,6 +132,30 @@ def faq_page(request):
     return render(request, 'conversations/mood_faq.html', {'faq': faq.state(), 'source': faq.page_url()})
 
 
+_TOUR_FILES = {'driver.js': ('driver.js.iife.js', 'text/javascript'), 'driver.css': ('driver.css', 'text/css')}
+
+
+@require_GET
+def tour_asset(request, name):
+    """driver.js and its CSS, vendored (conversations/vendor/driverjs): loaded only when someone starts the tour."""
+    from pathlib import Path
+    from django.http import Http404, HttpResponse
+    if name not in _TOUR_FILES:
+        raise Http404(name)
+    file, kind = _TOUR_FILES[name]
+    response = HttpResponse((Path(__file__).resolve().parent / 'vendor' / 'driverjs' / file).read_bytes(), content_type=kind)
+    response['Cache-Control'] = 'public, max-age=86400'
+    return response
+
+
+@require_GET
+def api_tour(request):
+    """{"revision", "steps", "error"}: the guided tour as Magenta:Tour's trusted revision says (services/tour.py),
+    only the steps whose anchor this page has."""
+    from .services import tour
+    return JsonResponse(tour.runnable())
+
+
 @section('verify')
 def verify_page(request):
     """The pages the emergents are told from, and which wait for a verify (services/verify.py).
