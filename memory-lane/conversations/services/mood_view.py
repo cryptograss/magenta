@@ -1732,6 +1732,14 @@ def _activity(mood, now=None, only=None):
     if ended is not None and ended >= _when(newest):
         return None
     if newest.sender_id in agents and newest.stop_reason in TURN_ENDS:
+        # Its words are said, but its run hasn't ended: the runner still says it's running, with no turn-result
+        # since. A helper it started in the background is at work (Justin, 5 Nov: an audit running in #rabbithole,
+        # its emergent shown idle).
+        alive = running_in(mood.slug, now).get(newest.sender_id)
+        if alive and (not only or only == newest.sender_id) and (ended is None or ended < alive['since']):
+            helping = any(t['kind'] == 'helper' for t in background_tasks(mood, now))
+            return {'emergent': newest.sender_id, 'doing': 'working with helpers' if helping else 'still at work',
+                    'since': alive['since']}
         return None
     # Rows imported before stop_reason was kept: a plain reply that has sat
     # for half a minute with nothing after it is taken as the end of a turn.

@@ -123,6 +123,20 @@ class ActivityTest(TestCase):
         self.assertEqual(first[0].mood, self.mood)
         self.assertEqual(background_tasks(self.mood, now=NOW), [])
 
+    def test_words_said_but_a_helper_still_running_is_still_at_work(self):
+        # Justin, 5 Nov: an audit ran in the background in #rabbithole while its emergent showed idle.
+        session = uuid.uuid4()
+        self.add(self.justin, 60, 'audit the player')
+        set_running('m26', 'magent', since=NOW - 58, now=NOW - 10)
+        self.add(self.magent, 50, {'description': 'Audit', 'prompt': 'audit'}, model=ToolUse, tool_name='Agent',
+                 tool_id='ta1', stop_reason='tool_use', session_id=session)
+        self.add(self.tool, 49, 'Async agent launched successfully.\nagentId: ag1 (internal)', model=ToolResult,
+                 tool_use_id='ta1', session_id=session)
+        self.add(self.magent, 45, [{'type': 'text', 'text': 'running it'}], stop_reason='end_turn', session_id=session)
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'working with helpers', 'since': NOW - 58})
+        set_running('m26', 'magent', since=None, now=NOW - 5)  # its run has ended
+        self.assertIsNone(self.now())
+
     def test_end_turn_is_the_end(self):
         self.add(self.justin, 40, 'go')
         self.add(self.magent, 5, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn')
