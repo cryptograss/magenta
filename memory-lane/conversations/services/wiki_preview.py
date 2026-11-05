@@ -203,6 +203,17 @@ def from_release(text):
             'image_file': str(data.get('thumbnail') or ''), 'name': str(data.get('title') or '').strip()}
 
 
+def _key(title):
+    return 'wiki-preview:' + hashlib.sha1(title.encode()).hexdigest()
+
+
+def forget(title):
+    """Drop what's kept of a page, so the next preview of it is fetched (services/wiki_changes.py)."""
+    title = re.sub(r'\s+', ' ', (title or '').replace('_', ' ')).strip()
+    if title:
+        cache.delete(_key(title))
+
+
 def preview(title, http=None, newer_than=None):
     """{'title', 'url', 'summary', 'facts', 'art', 'image'} for a page, or None if there's no such page.
 
@@ -215,7 +226,7 @@ def preview(title, http=None, newer_than=None):
     title = re.sub(r'\s+', ' ', (title or '').replace('_', ' ')).strip()
     if not _TITLE_OK.match(title):
         return None
-    key = 'wiki-preview:' + hashlib.sha1(title.encode()).hexdigest()
+    key = _key(title)
     found = cache.get(key)
     if found is not None and not (newer_than and found and time.time() - found.get('at', 0) > newer_than):
         return found or None

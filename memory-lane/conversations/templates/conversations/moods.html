@@ -4562,6 +4562,17 @@
       prev = null;
       return;
     }
+    if (e.type === 'wiki-missed') {  // a change the sweep found that PickiPedia never pushed (services/wiki_changes.py)
+      el.className = 'event warn';
+      const page = `${WIKI}/wiki/${encodeURIComponent((e.title || '').replace(/ /g, '_'))}`;
+      const diff = e.revid ? `${WIKI}/index.php?diff=${encodeURIComponent(e.revid)}` : page;
+      el.innerHTML = `📡 PickiPedia didn't push <a href="${esc(diff)}" target="_blank" rel="noopener">rev ${esc(String(e.revid || '?'))}</a>`
+        + ` of <a href="${esc(page)}" target="_blank" rel="noopener">${esc(e.title || '')}</a>${e.user ? ` by <b>${esc(e.user)}</b>` : ''}`
+        + `: the sweep found it · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'degraded') {  // an emergent's instructions bundle degraded, or whole again (services/instructions_state.py)
       el.className = 'event';
       const who = `<b>${esc(shown(e.agent || 'an emergent'))}</b>`;

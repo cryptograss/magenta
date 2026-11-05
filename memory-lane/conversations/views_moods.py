@@ -21,7 +21,7 @@ from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
-from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_feed, wiki_ledger, wiki_upload
+from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_changes, wiki_feed, wiki_ledger, wiki_upload
 from .services import emergent_commands, mood_auth
 from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.mood_view import (
@@ -725,6 +725,7 @@ def api_pulse(request):
     rows = list(Setting.objects.exclude(key__in=knobs.MODERATION_KEYS))
     archived = knobs.archived_slugs()
     wiki_feed.nudge()  # asked every second by the runner: the wiki feed's clock (at most once a minute)
+    wiki_changes.nudge()  # and the sweep that forgets what's kept of each page changed on the wiki (once a minute)
     push.nudge()       # and the push clock: notices to send to closed pages (at most every 10 s)
     wiki_ledger.nudge()  # and the Moods' links, written to PickiPedia (at most every 30 s)
     pr_cards.nudge()     # and the pull requests' cards, VersionControl:PRs/... (at most every 10 min)
