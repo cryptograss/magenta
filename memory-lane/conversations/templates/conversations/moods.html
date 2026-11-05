@@ -1025,6 +1025,7 @@
   .proof { font-size: 12px; background: var(--code); border-radius: 6px; padding: 8px 10px; margin-top: 6px; }
   .proof pre { white-space: pre-wrap; word-break: break-all; margin: 4px 0; font-size: 11px; }
   .event { margin: 8px 0; font-size: 12.5px; color: var(--muted); text-align: center; }
+  .event.warn { color: var(--warn-ink); }  /* a helper cut off before it reported */
   .event.failed { color: var(--err); }
   .event.wiki { text-align: left; font-size: 12px; margin: 4px 0; }
   /* A new release (services/wiki_feed.py): a line, and its player under it. */
@@ -4513,6 +4514,15 @@
       prev = null;
       return;
     }
+    if (e.type === 'helper-cut') {  // a helper its run stopped before it reported (views_runner.finish_turn)
+      el.className = 'event warn';
+      const mins = Math.round((e.took || 0) / 60);
+      el.innerHTML = `⚠ ${esc(e.agent || 'an emergent')}'s helper “${esc(e.label || '')}” stopped when its run ended, before it reported`
+        + ` · ${e.steps || 0} steps${mins ? `, ${mins} min` : ''} · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'interrupt' || e.type === 'created') {  // someone pressed stop; someone started this Mood
       el.className = 'event';
       el.innerHTML = e.type === 'created'
@@ -7332,7 +7342,8 @@
     const oldest = Math.min(...tasks.map(t => t.since));
     tasksEl.querySelector('.sum').textContent = `⚙ ${tasks.length} running · longest ${elapsed(oldest)} ${tasksEl.classList.contains('open') ? '▾' : '▸'}`;
     tasksEl.querySelector('.list').innerHTML = tasks.map(t =>
-      `<button type="button" class="task ${t.kind === 'helper' ? 'helper' : ''}${t.id === taskShown ? ' on' : ''}" data-id="${esc(t.id)}" title="what it is">${esc(t.label)} · ${elapsed(t.since)}</button>`).join('');
+      `<button type="button" class="task ${t.kind === 'helper' ? 'helper' : ''}${t.id === taskShown ? ' on' : ''}" data-id="${esc(t.id)}" title="what it is">${esc(t.label)} · ${elapsed(t.since)}${t.kind === 'helper' && t.doing
+        ? ` · ${esc(t.doing)}, ${t.steps || 0} steps` : ''}</button>`).join('');  // a helper: what it's at (Justin, 5 Nov)
   }
   function drawTaskDetail() {
     const box = tasksEl.querySelector('.detail');

@@ -32,7 +32,8 @@ INTERRUPT_SOURCE = 'interrupt'
 # System rows shown as a line in the thread.
 NEW_MOOD_SOURCE = 'mood-new'
 EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
-                 'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task', 'instructions', 'sprint-note')  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
+                 'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task', 'instructions', 'sprint-note',
+                 'helper')  # helper: a helper its run stopped before it reported (views_runner.finish_turn)  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).
 POSTED = ('mood-web', 'mood-attest')
@@ -1806,10 +1807,12 @@ TASK_HORIZONS = {'command': 2.5 * 3600, 'helper': 12 * 3600}
 TASK_HORIZON = max(TASK_HORIZONS.values())
 
 
-def background_tasks(mood, now=None):
+def background_tasks(mood, now=None, of_session=None):
     """Commands and helpers an agent started in the background here and that
     haven't ended, read from the record: the tool result that started each
-    one, and the <task-notification> that says it ended.
+    one, and the <task-notification> that says it ended. A helper says what it's
+    at and how many steps it has taken (its own transcript, agent-<id>.jsonl).
+    `of_session`: only those that session started.
     """
     import json
     import time
@@ -1865,6 +1868,15 @@ def background_tasks(mood, now=None):
             continue
         if session in over and over[session] >= at:
             continue
+        if of_session and str(session) != str(of_session):
+            continue
+        if task['kind'] == 'helper':
+            # What it's at (Justin, 5 Nov: "introspect the activities of the helpers").
+            lines = mood.messages.filter(is_sidechain=True, source_file=f'agent-{task_id}.jsonl')
+            task['steps'] = lines.filter(tooluse__isnull=False).count()
+            last = lines.select_related('tooluse', 'thought').order_by('-created_at').first()
+            if last is not None:
+                task['doing'], task['heard'] = _doing(last), _when(last)
         running.append(task)
     return running
 
