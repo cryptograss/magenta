@@ -63,6 +63,9 @@ def react_on(message, by, emoji):
 AGENT_REACT_TAIL = re.compile(r'^(.*\S)\s*<react\s+((?:\w+="[^"]{0,80}"\s*){2})/>\s*$', re.S)
 # And at the very start, words after it (re, 29 Oct: three such posts hid whole, and gave no nod): the same.
 AGENT_REACT_HEAD = re.compile(r'^\s*<react\s+((?:\w+="[^"]{0,80}"\s*){2})/>\s*(\S.*)$', re.S)
+# And wrapped round them, as an element (blu, magent and re in #emergence, 5 Nov: three such posts showed whole,
+# tags and all, and gave no nod): the same as at the start.
+AGENT_REACT_WRAPPED = re.compile(r'^\s*<react\s+((?:\w+="[^"]{0,80}"\s*){2})>\s*(\S.*?)\s*</react>\s*$', re.S)
 
 
 def agent_reaction(text):
@@ -110,7 +113,7 @@ def agent_reacted(session_id, agent):
         text = content[0].get('text') if block else prose(content)
         found = agent_reaction(text)
         tail = None if found else AGENT_REACT_TAIL.match(text or '')
-        head = None if found or tail else AGENT_REACT_HEAD.match(text or '')
+        head = None if found or tail else AGENT_REACT_HEAD.match(text or '') or AGENT_REACT_WRAPPED.match(text or '')
         if head:
             attrs = dict(re.findall(r'(\w+)="([^"]*)"', head.group(1)))
             emoji, to = attrs.get('emoji', '').strip(), attrs.get('to', '').strip().lower()
@@ -119,6 +122,10 @@ def agent_reacted(session_id, agent):
                 if hit:
                     react_on(hit, agent, emoji)
                 words = head.group(2).strip()
+                if hit and not words.startswith('↩'):
+                    # Shown with what it reacted to, as a reply is (Justin, 5 Nov: "indicate that the message is
+                    # associated with the reaction").
+                    words = f'↩ #m-{hit.id}\n{words}'
                 message.content = [{**content[0], 'text': words}] if block else words
                 message.save(update_fields=['content'])
             continue
@@ -130,6 +137,10 @@ def agent_reacted(session_id, agent):
                 if hit:
                     react_on(hit, agent, emoji)
                 words = tail.group(1).rstrip()
+                if hit and not words.startswith('↩'):
+                    # Shown with what it reacted to, as a reply is (Justin, 5 Nov: "indicate that the message is
+                    # associated with the reaction").
+                    words = f'↩ #m-{hit.id}\n{words}'
                 message.content = [{**content[0], 'text': words}] if block else words
                 message.save(update_fields=['content'])
             continue

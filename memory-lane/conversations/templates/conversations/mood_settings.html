@@ -127,6 +127,10 @@ Every change is kept at the bottom, with who made it.</p>
   <div class="cards" id="global"></div>
   <h3 id="voices">Voices: who is read in which</h3>
   <div id="voicesList" class="voices">Loading…</div>
+  <h3 id="sounds">Sounds and notifications</h3>
+  <p class="note">This browser's own, as in the 🔔 menu. Until you choose here or there, the team's defaults, from
+    <a id="soundsPage" target="_blank" rel="noopener">Magenta:Sounds</a> (where a message's own sound is named too).</p>
+  <table class="defaults" id="soundsBox"></table>
   <h3>History</h3>
   <table class="history"><thead><tr><th>when</th><th>who</th><th>where</th><th>what</th><th>value</th><th>why</th></tr></thead>
     <tbody id="history"></tbody></table>
@@ -134,13 +138,56 @@ Every change is kept at the bottom, with who made it.</p>
 <script>
 (function () {
   const viewer = "{{ viewer|escapejs }}" || null;
+  // --- sounds and notifications: this browser's, over the team's (Magenta:Sounds; moods.html keeps the same keys) ---
+  (function () {
+    const TEAM = JSON.parse("{{ sound_words|escapejs }}" || '{}'), WIKI = "{{ pickipedia_url|escapejs }}" || 'https://pickipedia.xyz';
+    const get = (k, d) => { try { const v = localStorage.getItem('moods.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+    const put = (k, v) => { try { localStorage.setItem('moods.' + k, JSON.stringify(v)); } catch (e) {} };
+    const SOUND = [['', 'off'], ['mention', 'mentioning me'], ['all', 'every message']];
+    const TELL = [['', 'mentioning me'], ['all', 'every message']];
+    const label = (opts, v) => (opts.find(([k]) => k === v) || opts[0])[1];
+    const teamSound = k => ['mention', 'all'].includes(TEAM['sound-' + k]) ? TEAM['sound-' + k] : '';
+    const teamTell = k => TEAM['tell-' + k] === 'all' ? 'all' : '';
+    function draw() {
+      const sounds = get('sounds', null), tell = get('tellAll', null);
+      const mine = k => sounds ? (sounds[k] ? 'all' : sounds[k + '-mention'] ? 'mention' : '') : teamSound(k);
+      const told = k => tell ? (tell[k] ? 'all' : '') : teamTell(k);
+      const select = (kind, k, opts, v) => `<select data-${kind}="${k}">${opts.map(([o, t]) =>
+        `<option value="${o}"${o === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+      const file = k => TEAM['chime-' + k] ? ` · plays <a href="${WIKI}/wiki/${encodeURIComponent(TEAM['chime-' + k].replace(/^\[\[:?|\]\]$/g, '').replace(/ /g, '_')).replace(/%3A/g, ':')}" target="_blank" rel="noopener">${TEAM['chime-' + k].replace(/^\[\[:?|\]\]$/g, '')}</a>` : '';
+      document.getElementById('soundsBox').innerHTML = '<tr><th></th><th>sound</th><th>notifications</th><th>team default</th></tr>'
+        + [['person', 'people'], ['agent', 'emergents']].map(([k, who]) => `<tr><td>${who}</td>`
+          + `<td>${select('sound', k, SOUND, mine(k))}</td><td>${select('tell', k, TELL, told(k))}</td>`
+          + `<td class="inherited">${label(SOUND, teamSound(k))}; ${label(TELL, teamTell(k))}${file(k)}</td></tr>`).join('')
+        + (sounds || tell ? '<tr><td></td><td colspan="3"><button type="button" id="soundsTeam">Use the team\'s defaults</button></td></tr>' : '');
+    }
+    document.getElementById('soundsPage').href = WIKI + '/wiki/Magenta:Sounds';
+    document.getElementById('soundsBox').addEventListener('change', e => {
+      const s = e.target.dataset.sound, t = e.target.dataset.tell, v = e.target.value;
+      if (s) {
+        const sounds = get('sounds', null) || Object.fromEntries(['person', 'agent'].flatMap(k => [[k, teamSound(k) === 'all'], [k + '-mention', !!teamSound(k)]]));
+        sounds[s] = v === 'all'; sounds[s + '-mention'] = !!v; put('sounds', sounds);
+      }
+      if (t) {
+        const tell = get('tellAll', null) || { person: teamTell('person') === 'all', agent: teamTell('agent') === 'all' };
+        tell[t] = v === 'all'; put('tellAll', tell);
+      }
+      draw();
+    });
+    document.getElementById('soundsBox').addEventListener('click', e => {
+      if (e.target.id !== 'soundsTeam') return;
+      try { localStorage.removeItem('moods.sounds'); localStorage.removeItem('moods.tellAll'); } catch (err) {}
+      draw();
+    });
+    draw();
+  })();
   const LABELS = {
     listening: 'listening', consider_after: 'consider after (s)', idle_after: 'first unprompted look (min)',
     considers_per_hour: 'considerations / hour', mention_effort: 'effort',
     model: 'model', ultracode: 'ultracode', catch_up_tokens: 'reads (tokens)', discretion: 'discretion', verbosity: 'verbosity',
     handoff_effort: 'handoff effort',
   };
-  // /incorporate and /handoff are magent's alone (services/agent_commands.HANDOFF_AGENT): their settings show only there.
+  // /incorporate and /handoff are magent's alone (services/emergent_commands.HANDOFF_AGENT): their settings show only there.
   const HANDOFF_AGENT = 'magent', HANDOFF_KEYS = ['handoff_effort'];
   // As the terminal names them.
   const EFFORT_LABELS = { xhigh: 'extra' };
@@ -152,10 +199,10 @@ Every change is kept at the bottom, with who made it.</p>
 
   // Is this slot set right here (not inherited)?
   function setHere(mood, agent, key) {
-    return state.set.some(s => s.key === key && (s.mood || null) === mood && (s.agent || null) === agent);
+    return state.set.some(s => s.key === key && (s.mood || null) === mood && (s.emergent || null) === agent);
   }
   function everywhere(agent) {  // what (every Mood, agent) resolves to
-    const pick = (m, a, key) => state.set.find(s => s.key === key && (s.mood || null) === m && (s.agent || null) === a);
+    const pick = (m, a, key) => state.set.find(s => s.key === key && (s.mood || null) === m && (s.emergent || null) === a);
     const out = {};
     for (const key of Object.keys(state.knobs)) {
       const row = pick(null, agent, key) || pick(null, null, key);
@@ -242,7 +289,7 @@ Every change is kept at the bottom, with who made it.</p>
       + '</select>';
     const any = Object.values(wide).some(w => Object.values(w).some(Boolean));
     return `<div class="card">`
-      + state.agents.map(a => `<div class="mrow"><span class="who">${esc(a)}</span><span>`
+      + state.emergents.map(a => `<div class="mrow"><span class="who">${esc(a)}</span><span>`
         + modelField(`data-wide="model" data-agent="${esc(a)}" ${dis}`, (wide[a] || {}).model || '', a, leave)
         + `</span><span>${effort(a, 'mention_effort')}</span></div>`).join('')
       + `<div class="setline"><button type="button" id="setWide" ${viewer && any ? '' : 'disabled'}>Set</button>`
@@ -251,7 +298,7 @@ Every change is kept at the bottom, with who made it.</p>
   async function setWide() {
     const status = document.getElementById('wideStatus');
     const asks = [];
-    for (const [agent, w] of Object.entries(wide)) for (const [key, value] of Object.entries(w)) if (value) asks.push({ agent, key, value });
+    for (const [agent, w] of Object.entries(wide)) for (const [key, value] of Object.entries(w)) if (value) asks.push({ emergent: agent, key, value });
     if (!asks.length) return;
     status.className = 'status'; status.textContent = 'setting…';
     const failed = [];
@@ -260,7 +307,7 @@ Every change is kept at the bottom, with who made it.</p>
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
         body: JSON.stringify({ ...ask, mood: null, every_mood: true, note: 'magenta-wide' }),
       });
-      if (!r.ok) failed.push(`${ask.agent} ${ask.key}: ${(await r.json().catch(() => ({}))).error || r.status}`);
+      if (!r.ok) failed.push(`${ask.emergent} ${ask.key}: ${(await r.json().catch(() => ({}))).error || r.status}`);
     }
     if (failed.length) { status.className = 'status err'; status.textContent = failed.join('; '); return; }
     for (const k of Object.keys(wide)) delete wide[k];
@@ -276,7 +323,7 @@ Every change is kept at the bottom, with who made it.</p>
   // A room's pace: one default here, for every emergent; a Mood sets its own in its bar (Justin, 29 Oct).
   const PACE_KEYS = ['consider_after', 'idle_after', 'considers_per_hour'];
   function paceCard() {
-    const value = k => { const row = state.set.find(s => s.key === k && !s.mood && !s.agent); return row ? row.value : state.knobs[k].default; };
+    const value = k => { const row = state.set.find(s => s.key === k && !s.mood && !s.emergent); return row ? row.value : state.knobs[k].default; };
     return `<div class="card"><h2>Pace</h2><div class="sub">every emergent, in every Mood that doesn't set its own (in its bar)</div>`
       + PACE_KEYS.map(k => field(k, value(k), null, null)).join('') + '</div>';
   }
@@ -305,7 +352,7 @@ Every change is kept at the bottom, with who made it.</p>
   function defaultsTable() {
     const keys = Object.keys(state.knobs).filter(k => (k === 'model' || !IN_THE_MOOD.includes(k)) && !PACE_KEYS.includes(k));
     const head = '<tr><th></th>' + keys.map(k => `<th title="${esc(state.knobs[k].help)}">${esc(LABELS[k] || k)}</th>`).join('') + '</tr>';
-    return head + state.agents.map(a => {
+    return head + state.emergents.map(a => {
       const v = everywhere(a);
       return `<tr><td class="who">${esc(a)}</td>` + keys.map(k =>
         `<td>${a === HANDOFF_AGENT || !HANDOFF_KEYS.includes(k) ? field(k, v[k], null, a, true) : ''}</td>`).join('') + '</tr>';
@@ -330,7 +377,7 @@ Every change is kept at the bottom, with who made it.</p>
       paceCard(), offeredCard()].join('');
     bannerPreview();
     document.getElementById('history').innerHTML = state.history.map(h =>
-      `<tr><td>${esc(when(h.at))}</td><td>${esc(h.set_by || '')}</td><td>${esc(h.mood ? '#' + h.mood : 'everywhere')}${h.agent ? ' · ' + esc(h.agent) : ''}</td>`
+      `<tr><td>${esc(when(h.at))}</td><td>${esc(h.set_by || '')}</td><td>${esc(h.mood ? '#' + h.mood : 'everywhere')}${h.emergent ? ' · ' + esc(h.emergent) : ''}</td>`
       + `<td>${esc(h.key)}</td><td class="value">${esc(JSON.stringify(h.value))}</td><td>${esc(h.note)}</td></tr>`).join('')
       || '<tr><td colspan="6">Nothing changed yet: everything is at its default.</td></tr>';
   }
@@ -429,7 +476,7 @@ Every change is kept at the bottom, with who made it.</p>
 
   async function load() {
     state = await (await fetch('/api/settings/')).json();
-    await Promise.all(state.agents.filter(a => catalogs[a] === undefined).map(a =>
+    await Promise.all(state.emergents.filter(a => catalogs[a] === undefined).map(a =>
       fetch(`/api/emergents/${encodeURIComponent(a)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
         .then(c => { catalogs[a] = c; })));
     render();
@@ -457,7 +504,7 @@ Every change is kept at the bottom, with who made it.</p>
     const status = el.closest('.makers').querySelector('.status');
     const r = await fetch('/api/settings/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ key: 'models_off', value: off, mood: null, agent: null }),
+      body: JSON.stringify({ key: 'models_off', value: off, mood: null, emergent: null }),
     });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) { status.className = 'status err'; status.textContent = body.error || r.status; return; }
@@ -476,7 +523,7 @@ Every change is kept at the bottom, with who made it.</p>
     const status = el.closest('span:not(.note)').querySelector('.status');
     const r = await fetch('/api/settings/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ key, value, mood: el.dataset.mood || null, agent: el.dataset.agent || null }),
+      body: JSON.stringify({ key, value, mood: el.dataset.mood || null, emergent: el.dataset.agent || null }),
     });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) { status.className = 'status err'; status.textContent = body.error || r.status; return; }

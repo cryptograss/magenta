@@ -42,19 +42,19 @@ class PromptsPageTests(TidingsTests):
         entry = prompts[0]
         self.assertEqual(entry['kind'], 'mention')
         self.assertEqual(entry['id'], str(post.id))
-        self.assertEqual(entry['agents'], ['magent'])
+        self.assertEqual(entry['emergents'], ['magent'])
         self.assertEqual(entry['mood'], 'magenta-interface')
         self.assertEqual(entry['text'], 'please look at this @magent')
 
     def test_two_agents_in_one_post(self):
         self.post(self.justin, self.mood_a, 'both of you, now: @magent @re')
         [entry] = self.prompts()['justin']
-        self.assertEqual(sorted(entry['agents']), ['magent', 're'])
+        self.assertEqual(sorted(entry['emergents']), ['magent', 're'])
 
     def test_a_slash_command_names_the_agents_it_commands(self):
         self.post(self.justin, self.mood_a, '/compact magent keep the status page work in view')
         [entry] = self.prompts()['justin']
-        self.assertEqual(entry['agents'], ['magent'])
+        self.assertEqual(entry['emergents'], ['magent'])
 
     def test_a_short_post_pairs_with_the_same_persons_post_right_before_it(self):
         context = self.post(self.justin, self.mood_a, 'the header sits over the text and hides the link')
@@ -64,7 +64,7 @@ class PromptsPageTests(TidingsTests):
         entry = prompts[0]
         self.assertEqual(entry['kind'], 'paired')
         self.assertEqual(entry['id'], str(context.id))
-        self.assertEqual(entry['agents'], ['magent'])
+        self.assertEqual(entry['emergents'], ['magent'])
         self.assertEqual(entry['trigger']['id'], str(trigger.id))
         self.assertEqual(entry['trigger']['text'], '@magent')
 
@@ -165,7 +165,7 @@ class PromptsPageTests(TidingsTests):
         self.post(self.skyler, self.mood_a, 'thanks!')  # ends the turn
         [entry] = self.prompts()['justin']
         [turn] = entry['turns']
-        self.assertEqual(turn['agent'], 'magent')
+        self.assertEqual(turn['emergent'], 'magent')
         self.assertEqual((turn['in'], turn['out']), (240, 20))  # the repeated pair counted once
         self.assertEqual(turn['usd'], 0.005)
         self.assertTrue(turn['paid'])
@@ -218,7 +218,7 @@ class PromptsPageTests(TidingsTests):
         body = self.client.get('/api/prompts/').json()
         justin = next(human for human in body['prompts'] if human['name'] == 'justin')
         [turn] = justin['prompts'][0]['turns']
-        self.assertEqual((turn['agent'], turn['in'], turn['out'], turn['usd'], turn['tokens'], turn['cost']),
+        self.assertEqual((turn['emergent'], turn['in'], turn['out'], turn['usd'], turn['tokens'], turn['cost']),
                          ('magent', 100, 8, 0.002, '100→8', '<$0.01'))
 
     def test_a_model_with_no_price_shows_no_cost(self):
@@ -243,7 +243,7 @@ class PromptsQueriesTests(TidingsTests):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
         from django.core.cache import cache
-        cache.delete_many([f'tidings:prompts:{tidings.PROMPTS_PER_HUMAN}'])  # the scan itself, not its kept copy
+        cache.delete_many([f'tidings:prompts:{tidings.PROMPTS_PER_HUMAN}:emergents'])  # the scan itself, not its kept copy
         with CaptureQueriesContext(connection) as queries:
             tidings.prompts_state()
         return len(queries)

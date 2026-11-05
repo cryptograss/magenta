@@ -192,14 +192,14 @@ class BundleAPITest(TestCase):
         record, _ = a_record()
         self.assertEqual(self.post(record).status_code, 201)
         self.assertEqual(self.post(record).status_code, 200)  # sent twice: kept once
-        listed = self.client.get('/api/bundles/', {'agent': 're'}).json()['bundles']
+        listed = self.client.get('/api/bundles/', {'emergent': 're'}).json()['bundles']
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]['id'], record['id'])
         self.assertEqual(listed[0]['delivered_at'], '2026-10-24T06:30:03+00:00')
         self.assertEqual([p['revision'] for p in listed[0]['pages']], [101, 104, 103])
-        self.assertEqual(self.client.get('/api/bundles/', {'agent': 'blu'}).json()['bundles'], [])
-        # the emergent rename's name for the same filter (the wiki's Special:EmergentBundles sends either)
-        self.assertEqual([b['id'] for b in self.client.get('/api/bundles/', {'emergent': 're'}).json()['bundles']], [record['id']])
+        self.assertEqual(self.client.get('/api/bundles/', {'emergent': 'blu'}).json()['bundles'], [])
+        # the old name is refused, never read as no filter (pickipedia#171 asks with ?emergent=)
+        self.assertEqual(self.client.get('/api/bundles/', {'agent': 're'}).status_code, 400)
         self.assertEqual(self.client.get('/api/bundles/', {'emergent': 'blu'}).json()['bundles'], [])
         one = self.client.get(f'/api/bundles/{record["id"]}/').json()
         self.assertEqual(one['parts'], record['parts'])

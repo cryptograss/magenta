@@ -135,6 +135,12 @@
     </div>
   </div>
 
+  <!-- The guided tour against the page it runs on, both ways (services/tour.py; re, 4 Nov). -->
+  <div class="card" style="margin-top: 18px;">
+    <h3>The tour</h3>
+    <div id="tourHealth">Loading…</div>
+  </div>
+
   {% include "conversations/_spend_kinds.html" %}
 
   <h2>Database backups (magenta_memory on maybelle)</h2>
@@ -284,6 +290,17 @@
       + (d.at ? `<div class="meta" style="margin-top:4px;"><b>Last maybelle deploy:</b> ${esc(ago(d.at))} (${esc(when(d.at))}) by <b>${esc(d.by || '—')}</b></div>` : '');
   }
 
+  // A step naming an anchor the page lacks is skipped in the tour; an anchor no step names is unused.
+  function renderTour(t) {
+    if (!t) return '—';
+    const page = `<a href="${esc(t.page || 'https://pickipedia.xyz/wiki/Magenta:Tour')}" target="_blank" rel="noopener">Magenta:Tour</a>`;
+    if (t.error && !t.revision) return `${page}: ${esc(t.error)}`;
+    const list = xs => xs.map(x => `<code>${esc(x)}</code>`).join(' ');
+    return `${page} rev ${esc(String(t.revision))}: ${t.steps} step${t.steps === 1 ? '' : 's'}.`
+      + (t.error ? ` <span class="meta">${esc(t.error)}</span>` : '')
+      + (t.missing.length ? `<div><b>Skipped</b>, no such anchor on the page: ${list(t.missing)}</div>` : '<div>Every step has its anchor.</div>')
+      + (t.unused.length ? `<div class="meta">Anchors no step names: ${list(t.unused)}</div>` : '');
+  }
   function renderPickipediaMcp(p) {
     if (!p) return '—';
     const head = p.head_sha
@@ -386,7 +403,7 @@
       entries.forEach(([agent, a], idx) => rows.push(agentRowHtml('', 'everywhere', agent, a, idx === 0, entries.length)));
     }
     for (const m of moodList) {
-      const entries = Object.entries(m.agents || {});
+      const entries = Object.entries(m.emergents || {});
       entries.forEach(([agent, a], idx) => rows.push(agentRowHtml(m.slug, m.title, agent, a, idx === 0, entries.length)));
     }
     return head + (rows.join('') || `<tr><td colspan="9" class="meta">No Moods yet.</td></tr>`) + `</tbody></table>`;
@@ -398,7 +415,7 @@
       const usable = (h.vendors || []).filter(v => v.usable);
       const nokey = (h.vendors || []).filter(v => !v.usable);
       return `<div class="card" style="margin-bottom:10px;">`
-        + `<h3><span class="agent-name" data-agent="${esc(h.agent)}">${esc(h.agent)}</span> · <code>${esc(h.harness)}</code>`
+        + `<h3><span class="agent-name" data-agent="${esc(h.emergent)}">${esc(h.emergent)}</span> · <code>${esc(h.harness)}</code>`
         + (h.reported_at ? ` <span class="meta">(reported ${esc(ago(h.reported_at))})</span>` : '') + `</h3>`
         + `<div><b>With key (${usable.length}):</b> `
         + (usable.map(v => `<span class="pill usable">${esc(v.name)} (${v.model_count})</span>`).join('') || '<span class="meta">none</span>') + `</div>`
@@ -414,7 +431,7 @@
     for (const m of moods) {
       if (m.archived) continue;
       const rows = [];
-      for (const [agent, a] of Object.entries(m.agents || {})) {
+      for (const [agent, a] of Object.entries(m.emergents || {})) {
         const c = a.context;
         if (c && c.window && c.tokens / c.window >= 0.4) {
           rows.push({ agent, mood: m.slug, c, pct: Math.round(100 * c.tokens / c.window) });
@@ -460,6 +477,7 @@
     document.getElementById('servers').innerHTML = renderServers(state.servers || []);
     document.getElementById('magentaVersion').innerHTML = renderMagenta(state.magenta);
     document.getElementById('pickipediaMcp').innerHTML = renderPickipediaMcp(state.pickipedia_mcp);
+    document.getElementById('tourHealth').innerHTML = renderTour(state.tour);
     // Who was last seen where, and where the backups are: for an SSH-key sign-in only.
     const hidden = '<div class="card meta">Shown to an SSH-key sign-in only (magenta.sh login).</div>';
     document.getElementById('backups').innerHTML = state.private ? hidden : renderBackups(state.backup);
@@ -477,10 +495,10 @@
   async function load() {
     state = await (await fetch('/api/status/')).json();
     for (const h of state.harnesses || []) {
-      if (catalogs[h.agent] === undefined) {
-        catalogs[h.agent] = null;
-        fetch(`/api/emergents/${encodeURIComponent(h.agent)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
-          .then(c => { if (c) { catalogs[h.agent] = c; render(); } });
+      if (catalogs[h.emergent] === undefined) {
+        catalogs[h.emergent] = null;
+        fetch(`/api/emergents/${encodeURIComponent(h.emergent)}/models/`).then(r => r.ok ? r.json() : null).catch(() => null)
+          .then(c => { if (c) { catalogs[h.emergent] = c; render(); } });
       }
     }
     render();
@@ -509,7 +527,7 @@
     const msg = el.closest('tr')?.querySelector('.save-msg');
     const r = await fetch('/api/settings/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ key: knob, value, mood, agent, note: 'from the status page' }),
+      body: JSON.stringify({ key: knob, value, mood, emergent: agent, note: 'from the status page' }),
     });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) {

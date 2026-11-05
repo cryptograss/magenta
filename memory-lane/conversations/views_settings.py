@@ -17,7 +17,6 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .models import Mood, Setting, ThinkingEntity
 from .services import mood_auth
 from .services import settings as knobs
-from .services.emergent_names import named  # emergent or, until the rename's last step, agent
 
 
 def settings_state():
@@ -33,7 +32,7 @@ def settings_state():
         'global_knobs': {k: {'default': d, 'help': h} for k, (d, h) in knobs.GLOBAL_KNOBS.items()},
         'efforts': knobs.EFFORTS,
         'choices': {'discretion': knobs.DISCRETIONS, 'verbosity': knobs.VERBOSITIES},
-        'agents': agents,
+        'emergents': agents,
         'moods': moods,
         # Every explicitly set slot, as it stands; anything absent is inherited.
         'set': [knobs.describe(row) for row in current.values()],
@@ -69,6 +68,21 @@ def makers_offered():
 SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'settings')
 
 
+def _opened_on_its_own(request):
+    """A frame's own address (?embed=1) opened as a whole page -- a link in it opened in a new tab, or its
+    address copied and pasted (Justin, 4 Nov: no bar, and leaving it loaded everything again): sent to
+    the same place without ?embed, which is the one page showing it. The browser says what it's loading
+    for (Sec-Fetch-Dest); one that doesn't say gets the frame's page, as before."""
+    if request.headers.get('Sec-Fetch-Dest') != 'document':
+        return None
+    from django.http import QueryDict
+    from django.shortcuts import redirect
+    rest = QueryDict(mutable=True)
+    rest.update(request.GET)
+    rest.pop('embed', None)
+    return redirect(request.path + (f'?{rest.urlencode()}' if rest else ''))
+
+
 def section(name):
     """A section's page as the one page shows it (?embed=1: inside it, without its own header); asked for
     directly, the one page, showing that section (views_moods.moods_page)."""
@@ -77,6 +91,9 @@ def section(name):
         @require_GET
         def view(request):
             if request.GET.get('embed'):
+                whole = _opened_on_its_own(request)
+                if whole:
+                    return whole
                 response = page(request)
                 # Framed by the one page, and only by a page of ours (Django's default is DENY).
                 response['X-Frame-Options'] = 'SAMEORIGIN'
@@ -115,6 +132,30 @@ def faq_page(request):
     return render(request, 'conversations/mood_faq.html', {'faq': faq.state(), 'source': faq.page_url()})
 
 
+_TOUR_FILES = {'driver.js': ('driver.js.iife.js', 'text/javascript'), 'driver.css': ('driver.css', 'text/css')}
+
+
+@require_GET
+def tour_asset(request, name):
+    """driver.js and its CSS, vendored (conversations/vendor/driverjs): loaded only when someone starts the tour."""
+    from pathlib import Path
+    from django.http import Http404, HttpResponse
+    if name not in _TOUR_FILES:
+        raise Http404(name)
+    file, kind = _TOUR_FILES[name]
+    response = HttpResponse((Path(__file__).resolve().parent / 'vendor' / 'driverjs' / file).read_bytes(), content_type=kind)
+    response['Cache-Control'] = 'public, max-age=86400'
+    return response
+
+
+@require_GET
+def api_tour(request):
+    """{"revision", "steps", "error"}: the guided tour as Magenta:Tour's trusted revision says (services/tour.py),
+    only the steps whose anchor this page has."""
+    from .services import tour
+    return JsonResponse(tour.runnable())
+
+
 @section('verify')
 def verify_page(request):
     """The pages the emergents are told from, and which wait for a verify (services/verify.py).
@@ -132,11 +173,17 @@ def api_verify(request):
 
 @section('settings')
 def settings_page(request):
+    from .services.interface_words import SOUND_DEFAULTS
+    from .services.mood_view import pickipedia_url
+    from .views_moods import interface_words
     device = mood_auth.device_for(request)
     return render(request, 'conversations/mood_settings.html', {
         'viewer': device.entity_id if device else '', 'embed': True,
         # Anyone's voice is chosen with an SSH key; your own from any sign-in (views_auth.api_speaker_voice).
-        'key_holder': bool(device and device.tier == 'key' and device.entity.is_biological_human)})
+        'key_holder': bool(device and device.tier == 'key' and device.entity.is_biological_human),
+        # The team's sound defaults (Magenta:Sounds), beside this browser's own choices (Justin, 5 Nov).
+        'sound_words': json.dumps({k: v for k, v in interface_words().items() if k in SOUND_DEFAULTS}),
+        'pickipedia_url': pickipedia_url()})
 
 
 @section('status')
@@ -199,6 +246,9 @@ def tiding_page(request, tiding_id):
     if not request.GET.get('embed'):
         from .views_moods import moods_page
         return moods_page(request, section='tidings')
+    whole = _opened_on_its_own(request)
+    if whole:
+        return whole
     device = mood_auth.device_for(request)
     viewer = device.entity_id if device else None
     try:
@@ -233,9 +283,10 @@ def prompts_page(request):
 @section('polls')
 def polls_page(request):
     """Polls & Plebiscites: every Mood's polls in one place, open ones first (services/polls.py)."""
+    from .views_moods import interface_words
     device = mood_auth.device_for(request)
     return render(request, 'conversations/mood_polls.html', {
-        'viewer': device.entity_id if device else '', 'embed': True})
+        'viewer': device.entity_id if device else '', 'embed': True, 'interface_words': json.dumps(interface_words())})
 
 
 @require_GET
@@ -347,19 +398,22 @@ def api_settings(request):
     except (ValueError, KeyError, TypeError):
         return JsonResponse({'error': 'expected {"key": ..., "value": ..., "mood": slug|null, "emergent": name|null}'},
                             status=400)
+    if 'agent' in body:  # a page from before the rename: refused, never read as every emergent
+        from .views_auth import OLD_PAGE
+        return JsonResponse({'error': OLD_PAGE}, status=400)
     mood = agent = None
     if body.get('mood'):
         mood = Mood.objects.filter(slug=body['mood']).first()
         if mood is None:
             return JsonResponse({'error': f"no Mood {body['mood']}"}, status=400)
-    if named(body):
-        agent = ThinkingEntity.objects.filter(name=named(body), is_biological_human=False).first()
+    if body.get('emergent'):
+        agent = ThinkingEntity.objects.filter(name=body['emergent'], is_biological_human=False).first()
         if agent is None:
-            return JsonResponse({'error': f"no emergent {named(body)}"}, status=400)
+            return JsonResponse({'error': f"no emergent {body['emergent']}"}, status=400)
     try:
         if body.get('all_emergents'):  # all emergents' setting in every Mood at once (e.g. mention-only)
             if mood is not None or key not in knobs.KNOBS:
-                return JsonResponse({'error': 'all_emergents: key must be a per-agent knob, no Mood'}, status=400)
+                return JsonResponse({'error': 'all_emergents: key must be a per-emergent knob, no Mood'}, status=400)
             emergents = ThinkingEntity.objects.filter(is_biological_human=False)
             val = body.get('value')
             note = body.get('note', 'all emergents')
@@ -369,7 +423,7 @@ def api_settings(request):
             return JsonResponse({'set': [knobs.describe(r) for r in rows]}, status=201)
         if body.get('every_mood'):  # one agent's setting, in every Mood at once (the settings page's Set)
             if agent is None or mood is not None or key not in knobs.KNOBS:
-                return JsonResponse({'error': 'every_mood: one agent, one per-agent setting, no Mood'}, status=400)
+                return JsonResponse({'error': 'every_mood: one emergent, one per-emergent setting, no Mood'}, status=400)
             rows = knobs.change_every_mood(key, body.get('value'), agent, by=device.entity, note=body.get('note', ''))
             return JsonResponse({'set': [knobs.describe(r) for r in rows]}, status=201)
         row = knobs.change(key, body.get('value'), mood=mood, agent=agent, by=device.entity,
@@ -445,7 +499,7 @@ def instructions_page(request, slug):
     from poller.mood_poller import wake_frames
 
     mood = Mood.by_slug_or_404(slug)
-    agent = named(request.GET, 'magent').lower()
+    agent = request.GET.get('emergent', 'magent').lower()
     if not ThinkingEntity.objects.filter(name=agent, is_biological_human=False).exists():
         agent = 'magent'  # an agent's name only: it names the pages read
     resolved = knobs.resolve(slug, agent)

@@ -41,7 +41,7 @@ class ActivityTest(TestCase):
     def test_a_prompt_then_a_thought_is_thinking_since_the_prompt(self):
         self.add(self.justin, 40, 'justin: look at this')
         self.add(self.magent, 30, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use')
-        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'thinking', 'since': NOW - 40})
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'thinking', 'since': NOW - 40})
 
     def test_a_tool_call_says_which(self):
         self.add(self.justin, 40, 'go')
@@ -58,7 +58,7 @@ class ActivityTest(TestCase):
         self.add(self.magent, 10, {}, model=ToolUse, tool_name='mcp__pickipedia__search-page', tool_id='t2',
                  stop_reason='tool_use', is_sidechain=True)
         self.add(self.magent, 5, [{'type': 'text', 'text': 'found it'}], stop_reason='end_turn', is_sidechain=True)
-        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'working with helpers', 'since': NOW - 40})
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'working with helpers', 'since': NOW - 40})
 
     def test_a_long_turn_counts_from_its_start(self):
         self.add(self.magent, 400, [{'type': 'text', 'text': 'earlier'}], stop_reason='end_turn')
@@ -123,6 +123,49 @@ class ActivityTest(TestCase):
         self.assertEqual(first[0].mood, self.mood)
         self.assertEqual(background_tasks(self.mood, now=NOW), [])
 
+    def test_words_said_but_a_helper_still_running_is_still_at_work(self):
+        # Justin, 5 Nov: an audit ran in the background in #rabbithole while its emergent showed idle.
+        session = uuid.uuid4()
+        self.add(self.justin, 60, 'audit the player')
+        set_running('m26', 'magent', since=NOW - 58, now=NOW - 10)
+        self.add(self.magent, 50, {'description': 'Audit', 'prompt': 'audit'}, model=ToolUse, tool_name='Agent',
+                 tool_id='ta1', stop_reason='tool_use', session_id=session)
+        self.add(self.tool, 49, 'Async agent launched successfully.\nagentId: ag1 (internal)', model=ToolResult,
+                 tool_use_id='ta1', session_id=session)
+        self.add(self.magent, 45, [{'type': 'text', 'text': 'running it'}], stop_reason='end_turn', session_id=session)
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'working with helpers', 'since': NOW - 58})
+        set_running('m26', 'magent', since=None, now=NOW - 5)  # its run has ended
+        self.assertIsNone(self.now())
+
+    def test_a_helper_says_what_it_is_at_and_a_run_ending_under_it_is_told(self):
+        # Justin, 5 Nov: introspect the helpers, and be told when one is cut off.
+        from conversations.services.mood_view import background_tasks
+        from conversations.views_moods import notices_for
+        from conversations.views_runner import finish_turn
+        from datetime import datetime, timezone as tz
+        session = uuid.uuid4()
+        ask = self.add(self.justin, 70, '@magent audit the player', source_file='mood-web')
+        self.add(self.magent, 50, {'description': 'Audit the player', 'prompt': 'audit'}, model=ToolUse,
+                 tool_name='Agent', tool_id='tc1', stop_reason='tool_use', session_id=session)
+        self.add(self.tool, 49, 'Async agent launched successfully.\nagentId: abc123 (internal)', model=ToolResult,
+                 tool_use_id='tc1', session_id=session)
+        for i in range(3):
+            self.add(self.magent, 40 - i, {}, model=ToolUse, tool_name='Read', tool_id=f'h{i}', stop_reason='tool_use',
+                     session_id=session, is_sidechain=True, source_file='agent-abc123.jsonl')
+        task, = background_tasks(self.mood, now=NOW)
+        self.assertEqual((task['steps'], task['doing']), (3, 'reading'))
+        from unittest import mock
+        with mock.patch('time.time', return_value=NOW):  # the record's clock, not today's
+            finish_turn(self.mood, session, 'magent', {'subtype': 'success'}, asked=[ask.id])
+            self.assertEqual(background_tasks(self.mood), [])
+        cut = Message.objects.get(source_file='helper')
+        self.assertEqual((cut.content['label'], cut.content['steps'], cut.content['for']), ('Audit the player', 3, ['justin']))
+        told = notices_for('justin', datetime.fromtimestamp(0, tz.utc))
+        self.assertTrue(any('Audit the player' in n['turn']['text'] for n in told))
+        with mock.patch('time.time', return_value=NOW):
+            finish_turn(self.mood, session, 'magent', {'subtype': 'success'}, asked=[ask.id])  # told once
+        self.assertEqual(Message.objects.filter(source_file='helper').count(), 1)
+
     def test_end_turn_is_the_end(self):
         self.add(self.justin, 40, 'go')
         self.add(self.magent, 5, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn')
@@ -157,7 +200,7 @@ class ActivityTest(TestCase):
         self.compacted(300)
         self.add(self.justin, 40, '<mood-wake mood="m26" reason="quiet">nothing said lately</mood-wake>')
         self.add(self.magent, 30, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use')
-        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'thinking', 'since': NOW - 40})
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'thinking', 'since': NOW - 40})
 
     def ran(self, seconds_ago):
         """What a runner writes once a turn has ended."""
@@ -196,18 +239,18 @@ class ActivityTest(TestCase):
         self.ran(299)
         self.add(self.justin, 40, '<mood-wake mood="m26" reason="quiet">nothing said lately</mood-wake>')
         self.add(self.magent, 30, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use')
-        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'thinking', 'since': NOW - 40})
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'thinking', 'since': NOW - 40})
 
     def test_a_web_post_naming_an_agent_is_waking_it(self):
         self.add(self.justin, 3, '@magent can you see?', source_file='mood-web')
-        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'waking', 'since': NOW - 3})
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'waking', 'since': NOW - 3})
 
     def test_a_mention_the_runner_holds_says_so_and_why(self):
         # Asked 20 minutes ago -- longer than an unexplained wait is shown.
         self.add(self.justin, 1200, '@magent and another thing', source_file='mood-web')
         self.assertIsNone(self.now())
         set_held('m26', 'magent', '30 wakes this hour already', '2026-10-02T23:15:00+00:00', now=NOW - 5)
-        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'held', 'why': '30 wakes this hour already',
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'held', 'why': '30 wakes this hour already',
                                       'until': '2026-10-02T23:15:00+00:00', 'since': NOW - 1200})
         # A newer post is waking again, until the runner has looked at it.
         self.add(self.justin, 2, '@magent still there?', source_file='mood-web')
@@ -236,7 +279,7 @@ class ActivityTest(TestCase):
         set_held('m26', 'magent', 'a turn is under way here; this one is next', now=NOW - 15)
         act = self.now()
         self.assertIsNotNone(act)
-        self.assertEqual(act['agent'], 'magent')
+        self.assertEqual(act['emergent'], 'magent')
         self.assertNotEqual(act['doing'], 'held')
         self.assertEqual(act['doing'], 'still at work')
         self.assertEqual(act['why'], 'a turn is under way here; this one is next')
@@ -259,11 +302,11 @@ class ActivityTest(TestCase):
                  stop_reason='tool_use')
         self.assertIsNone(self.now())
         set_running('m26', 'magent', since=NOW - 1900, now=NOW - 60)
-        self.assertEqual(self.now()['agent'], 'magent')
+        self.assertEqual(self.now()['emergent'], 'magent')
         self.assertEqual(self.now()['since'], NOW - 1900)
         # A person asking after it meanwhile: it's still at work on that turn, not waking for this.
         self.add(self.justin, 30, '@magent are you there?', source_file='mood-web')
-        self.assertEqual(self.now(), {'agent': 'magent', 'doing': 'still at work', 'since': NOW - 1900})
+        self.assertEqual(self.now(), {'emergent': 'magent', 'doing': 'still at work', 'since': NOW - 1900})
         self.assertEqual(running_in('m26', now=NOW - 60 + RUNNING_FOR + 1), {})
         set_running('m26', 'magent', None, now=NOW - 1)  # the turn ended
         self.assertEqual(self.now()['doing'], 'waking')
@@ -302,7 +345,7 @@ class SeveralAtOnceTest(TestCase):
 
     def now(self):
         from conversations.services.mood_view import activities
-        return [(a['agent'], a['doing']) for a in activities(self.mood, now=NOW)]
+        return [(a['emergent'], a['doing']) for a in activities(self.mood, now=NOW)]
 
     def ended(self, agent, seconds_ago):
         self.add(self.system, seconds_ago, {'type': 'turn-result', 'agent': agent}, session_id=uuid.uuid4())
@@ -343,7 +386,7 @@ class SeveralAtOnceTest(TestCase):
         self.add(poller, 120, '<mood-wake mood="m26">...</mood-wake>', session_id=magent_session)
         self.add(self.magent, 100, [{'type': 'thinking'}], model=Thought, stop_reason='tool_use', session_id=magent_session)
         from conversations.services.mood_view import activities
-        [(agent, since)] = [(a['agent'], a['since']) for a in activities(self.mood, now=NOW)]
+        [(agent, since)] = [(a['emergent'], a['since']) for a in activities(self.mood, now=NOW)]
         self.assertEqual((agent, since), ('magent', NOW - 120))
 
     def test_a_turn_says_which_tools_its_wake_gave(self):
@@ -386,8 +429,8 @@ class SeveralAtOnceTest(TestCase):
     def test_the_turns_endpoint_carries_them(self):
         self.add(self.justin, NOW - time.time() + 1, '@magent @re now', source_file='mood-web')
         body = self.client.get('/api/moods/m26/turns/').json()
-        self.assertEqual([(a['agent'], a['doing']) for a in body['activities']], [('magent', 'waking'), ('re', 'waking')])
-        self.assertEqual(body['activity']['agent'], 'magent')  # as before, for whatever reads the one
+        self.assertEqual([(a['emergent'], a['doing']) for a in body['activities']], [('magent', 'waking'), ('re', 'waking')])
+        self.assertEqual(body['activity']['emergent'], 'magent')  # as before, for whatever reads the one
 
     def test_the_mood_list_pulses_for_each(self):
         cache.delete('moods-live')
@@ -396,4 +439,4 @@ class SeveralAtOnceTest(TestCase):
         self.assertEqual(live['busy_all'], ['magent', 're'])
         # And each as the Mood's own look has it, so opening the Mood shows them at once (Justin, 25 Oct).
         turns = self.client.get('/api/moods/m26/turns/').json()['activities']
-        self.assertEqual([(x['agent'], x['doing']) for x in live['activities']], [(x['agent'], x['doing']) for x in turns])
+        self.assertEqual([(x['emergent'], x['doing']) for x in live['activities']], [(x['emergent'], x['doing']) for x in turns])

@@ -22,7 +22,7 @@ def runner_keys(environ):
     return keys
 
 
-def agent_for(authorization, keys):
+def emergent_for(authorization, keys):
     """The agent whose key an Authorization header ('Bearer <key>') carries, or None.
     The runner's API and the memory server (conversations/mcp) both know a caller by it."""
     header = (authorization or '').encode()

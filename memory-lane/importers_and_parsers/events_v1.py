@@ -16,7 +16,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from conversations.models import (
-    ContextHeap, ContextHeapType, ConversationParticipant, Era, Message, Thought, ThinkingEntity,
+    ContextHeap, ContextHeapType, ConversationParticipant, Message, Thought, ThinkingEntity,
     ToolResult, ToolUse,
 )
 from conversations.services.media import markdown, store_base64
@@ -81,7 +81,7 @@ class Turn:
         self.mood, self.session_id, self.harness = mood, session_id, harness
         self.forked_from, self.keep = forked_from, keep_tool_output
         self.source_file = f'ingest-{source}'
-        self.era, _ = Era.objects.get_or_create(name='Current Working Era (Era N)')
+        self.era = None  # an era is found by block, from Cryptograss:Eras (services/eras.py)
         self.meta = {}
         self.finished = None
 

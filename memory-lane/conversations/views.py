@@ -451,7 +451,12 @@ def heap_metadata(request):
             'created_at': note.created_at.isoformat()
         }
 
-    for era in eras:
+    # Heaps imported since labels stopped have none: they come last, as one
+    # group, and their era is found by block (services/eras.py).
+    groups = [(era, era.context_heaps.all()) for era in eras]
+    groups.append((None, ContextHeap.objects.filter(era__isnull=True)))
+
+    for era, heaps in groups:
         era_data = {
             'id': str(era.id),
             'name': era.name,
@@ -460,13 +465,21 @@ def heap_metadata(request):
             'latest_blockheight': era.latest_blockheight(),
             'context_heaps': [],
             'notes': [serialize_note(n) for n in era_notes_by_id.get(str(era.id), [])]
+        } if era else {
+            'id': 'unlabelled',
+            'name': 'No label (era by block)',
+            'created_at': None,
+            'earliest_blockheight': None,
+            'latest_blockheight': None,
+            'context_heaps': [],
+            'notes': [],
         }
 
         # One query for every per-heap aggregate: message count, blockheight
         # range, and the timestamps used for sorting.  All of these aggregate
         # over the same `messages` join, so there is no fan-out.
         all_heaps = list(
-            era.context_heaps
+            heaps
                .select_related('compacting_action')
                .annotate(
                    msg_count=Count('messages'),
@@ -478,8 +491,13 @@ def heap_metadata(request):
         )
 
         if not all_heaps:
-            data['eras'].append(era_data)
+            if era:
+                data['eras'].append(era_data)
             continue
+        if era is None:
+            blocks = [b for h in all_heaps for b in (h.earliest_bh, h.latest_bh) if b is not None]
+            era_data['earliest_blockheight'] = min(blocks, default=None)
+            era_data['latest_blockheight'] = max(blocks, default=None)
 
         heap_ids = [h.id for h in all_heaps]
 
@@ -742,6 +760,14 @@ def all_messages(request):
             'context_heaps': [heap_data_by_id[h] for h in heap_ids if heaps[h].era_id == era.id],
             'notes': era_notes.get(str(era.id), []),
         })
+    unlabelled = [heap_data_by_id[h] for h in heap_ids if heaps[h].era_id is None]
+    if unlabelled:  # imported since labels stopped: their era is found by block (services/eras.py)
+        blocks = [b for h in unlabelled for b in (h['earliest_blockheight'], h['latest_blockheight']) if b is not None]
+        data['eras'].append({
+            'id': 'unlabelled', 'name': 'No label (era by block)', 'created_at': None,
+            'earliest_blockheight': min(blocks, default=None), 'latest_blockheight': max(blocks, default=None),
+            'context_heaps': unlabelled, 'notes': [],
+        })
 
     # Orphaned compacting actions (not linked to any context heap): first page only.
     if not after:
@@ -916,7 +942,7 @@ def ingest(request):
     {
         "lines": ["jsonl line 1", "jsonl line 2", ...],
         "username": "justin",  # optional, defaults to "justin"
-        "era_name": "Current Working Era",  # optional
+        "era_name": "Some label",  # optional; with none, the heap has no label
         "source": "hunter-watcher"  # optional, for logging
     }
 
@@ -951,7 +977,7 @@ def ingest(request):
 
     # Get parameters
     username = data.get('username', 'justin')
-    era_name = data.get('era_name', 'Current Working Era (Era N)')
+    era_name = data.get('era_name')
     source = data.get('source', 'unknown')
 
     # Get lines - support both single line and batch
@@ -995,7 +1021,7 @@ def scrub_texts(texts):
     return texts, False
 
 
-def import_lines(lines, *, era_name='Current Working Era (Era N)', source='unknown', username='justin',
+def import_lines(lines, *, era_name=None, source='unknown', username='justin',
                  assistant='magent'):
     """Scrub, import and heap-assign transcript lines: (imported, skipped, errors).
 
@@ -1008,7 +1034,8 @@ def import_lines(lines, *, era_name='Current Working Era (Era N)', source='unkno
     from watcher.heap_assignment import assign_heap_to_message
     from constant_sorrow.constants import EVENT_TYPE_WE_DO_NOT_HANDLE_YET
 
-    era, _ = Era.objects.get_or_create(name=era_name)
+    # No label unless one is asked for: a message's era comes from its block (services/eras.py).
+    era = Era.objects.get_or_create(name=era_name)[0] if era_name else None
     lines, scrubbed = scrub_texts(lines)
 
     # Process lines

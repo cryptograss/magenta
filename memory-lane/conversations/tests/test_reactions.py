@@ -98,7 +98,7 @@ class TrailingReactTest(TestCase):
                                       content=[{'type': 'text', 'text': 'Fair. Cite the row.\n\n<react emoji="🤝" to="blu"/>'}])
         reactions.agent_reacted(sid, 're')
         mine.refresh_from_db()
-        self.assertEqual(mine.content[0]['text'], 'Fair. Cite the row.')
+        self.assertEqual(mine.content[0]['text'], f'↩ #m-{hers.id}\nFair. Cite the row.')
         self.assertEqual(reactions.in_mood(mood), {str(hers.id): {'🤝': ['re']}})
 
     def test_a_react_first_then_words_gives_the_nod_and_keeps_the_words(self):
@@ -112,8 +112,22 @@ class TrailingReactTest(TestCase):
                                       content=[{'type': 'text', 'text': '<react emoji="👍" to="magent"/> blu, here is how.'}])
         reactions.agent_reacted(sid, 're')
         mine.refresh_from_db()
-        self.assertEqual(mine.content[0]['text'], 'blu, here is how.')
+        self.assertEqual(mine.content[0]['text'], f'↩ #m-{his.id}\nblu, here is how.')
         self.assertEqual(reactions.in_mood(mood), {str(his.id): {'👍': ['re']}})
+
+    def test_a_react_wrapped_round_words_gives_the_nod_and_keeps_the_words(self):
+        # blu, magent and re in #emergence, 5 Nov: <react ...>words</react> showed whole, tags and all, no nod.
+        mood = Mood.objects.create(slug='em3', title='em3')
+        for n in ('re', 'magent'):
+            ThinkingEntity.objects.get_or_create(name=n, defaults={'is_biological_human': False})
+        hers = Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=mood, content='The approved sentence.', timestamp=1)
+        sid = uuid.uuid4()
+        mine = Message.objects.create(id=uuid.uuid4(), sender_id='magent', mood=mood, session_id=sid, timestamp=2,
+                                      content=[{'type': 'text', 'text': '<react emoji="✅" to="re">Word for word.\nShipped.</react>'}])
+        reactions.agent_reacted(sid, 'magent')
+        mine.refresh_from_db()
+        self.assertEqual(mine.content[0]['text'], f'↩ #m-{hers.id}\nWord for word.\nShipped.')
+        self.assertEqual(reactions.in_mood(mood), {str(hers.id): {'✅': ['magent']}})
 
 
 class WhatIsMachineryTest(TestCase):

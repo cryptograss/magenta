@@ -1,5 +1,5 @@
-"""Commands for agents in their one form (services/agent_commands; Justin, 17 Oct):
-"/compact <agent>[,<agent>...] <what to keep>", refused before it's posted otherwise."""
+"""Commands for agents in their one form (services/emergent_commands; Justin, 17 Oct):
+"/compact <emergent>[,<emergent>...] <what to keep>", refused before it's posted otherwise."""
 
 import json
 import uuid
@@ -7,7 +7,7 @@ import uuid
 from django.test import TestCase
 
 from conversations.models import HarnessModels, Message, Mood, ThinkingEntity
-from conversations.services import agent_commands as ac
+from conversations.services import emergent_commands as ac
 from conversations.services import mood_auth
 from conversations.services.mood_view import addressed_in, command_doing
 
@@ -30,11 +30,11 @@ class ParseTest(TestCase):
 
     def test_refused_with_the_form_it_should_take(self):
         cases = {
-            '/compact': 'which agent?',
-            '/compact skyler keep it': 'skyler: not an agent here',
-            '/usage magent of the word banjo': 'takes nothing after its agents',
+            '/compact': 'which emergent?',
+            '/compact skyler keep it': 'skyler: not an emergent here',
+            '/usage magent of the word banjo': 'takes nothing after its emergents',
             '@magent /compact keep the list': '/compact magent [what to keep]',
-            'hey @magent /compact - heres what i want': 'commands for agents start the message now',  # Skyler, 17 Oct
+            'hey @magent /compact - heres what i want': 'commands for emergents start the message now',  # Skyler, 17 Oct
         }
         for text, said in cases.items():
             with self.subTest(text=text):
@@ -87,13 +87,13 @@ class SayTest(TestCase):
         self.assertEqual(self.say('should we /compact soon, @magent?').status_code, 201)  # talk about one
 
     def test_an_agent_on_pi_compacts_and_has_none_of_the_others(self):
-        HarnessModels.objects.create(agent_id='re', harness='pi 1.1.0', vendors=[])
+        HarnessModels.objects.create(emergent_id='re', harness='pi 1.1.0', vendors=[])
         self.assertEqual(self.say('/compact re keep it').status_code, 201)
         self.assertEqual(self.say('/compact magent, re keep the list').status_code, 201)
         refused = self.say('/context re')
         self.assertEqual(refused.status_code, 400)
         self.assertIn("Claude Code's; not for re (pi 1.1.0)", refused.json()['error'])
-        HarnessModels.objects.filter(agent_id='re').update(harness='goose 2')
+        HarnessModels.objects.filter(emergent_id='re').update(harness='goose 2')
         self.assertIn('not for re (goose 2)', self.say('/compact re keep it').json()['error'])
 
 

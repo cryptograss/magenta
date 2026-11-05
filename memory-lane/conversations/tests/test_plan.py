@@ -49,6 +49,6 @@ class PlanTest(TestCase):
         self.assertEqual(post({'nope': 1}).status_code, 400)
         answered = post({'rate_limit_info': {'rateLimitType': 'seven_day', 'utilization': 0.3, 'resetsAt': SOON}})
         self.assertEqual(answered.json(), {'kept': ['seven_day']})
-        self.assertEqual(PlanWindow.objects.get().agent, 're')
+        self.assertEqual(PlanWindow.objects.get().emergent, 're')
         shown = self.client.get('/api/usage/?hours=24').json()['plan']
         self.assertEqual(shown['seven_day']['now']['utilization'], 0.3)

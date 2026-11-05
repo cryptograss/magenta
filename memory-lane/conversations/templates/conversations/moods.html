@@ -152,7 +152,8 @@
   #bellList a.note { display: block; padding: 5px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; }
   #bellList a.note .who { font-size: 12.5px; }
   #bellList a.note .where { color: var(--muted); font-size: 11.5px; }
-  #bellList a.note .said { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Up to three lines of what was said, about 2.5 times the one line it had (Justin, 3 Nov). */
+  #bellList a.note .said { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; color: var(--muted); font-size: 12px; overflow: hidden; }
   #bellList a.note.seen { opacity: .6; }
   #bellList .sep { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 6px 6px 2px; }
   #bellMenu .belltoggle { padding: 2px 6px; }
@@ -189,8 +190,21 @@
   #bellMenu #alerts .head { color: var(--ink); font-size: 12px; font-weight: 600; margin-top: 2px; }
   #bellMenu #alerts .hint { color: var(--muted); font-size: 12px; }
   #bellMenu #alerts .hint[hidden] { display: none; }
-  #bellMenu #alerts.bell-off [data-tell] { opacity: .5; }  /* chosen, but nothing tells until the bell's on */
+  #bellMenu #alerts.bell-off [data-tell] { opacity: .5; }
+  #bellMenu #alerts select { font: inherit; margin-left: auto; }  /* chosen, but nothing tells until the bell's on */
   #bellMenu #alerts label[hidden] { display: none; }
+  /* The block, the servers and the sprint: one button, its menu under it (Justin, 3 Nov). */
+  header .statewrap { position: relative; display: inline-flex; align-items: center; }
+  #stateBtn { border: 1px solid var(--line); border-radius: 10px; background: none; padding: 2px 6px; cursor: pointer; display: inline-flex;
+              align-items: center; gap: 4px; color: var(--muted); font: inherit; font-size: 11px; }
+  #stateBtn:hover { border-color: var(--accent); color: var(--ink); }
+  #stateMenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 380px; max-width: calc(100vw - 20px); background: var(--panel);
+               border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 13px; }
+  #stateMenu[hidden] { display: none; }
+  #stateMenu .block, #stateMenu .sprint { padding: 2px 0 6px; color: var(--ink); }
+  #stateMenu .sprint[hidden] { display: none; }
+  #stateMenu .sprint a { color: var(--accent); }
+  #stateMenu #serverPop { position: static; min-width: 0; border: 0; box-shadow: none; padding: 0; background: none; border-top: 1px solid var(--line); }
   /* The servers: four dots, pulsing while one is being redeployed. */
   .servers { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
   .servers .srv { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
@@ -351,9 +365,8 @@
   #devicesBox .dev.revoked, #devicesBox .dev.timed { opacity: .65; }
   #devicesBox button { font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel);
                        color: var(--ink); cursor: pointer; }
-  #noAgents { max-width: min(420px, 90vw); border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
-              color: var(--ink); padding: 16px 18px; }
-  #noAgents::backdrop { background: rgba(0,0,0,.35); }
+  .event.sysnote { text-align: left; font-size: 13px; color: var(--ink); background: var(--code); border-radius: 6px; padding: 6px 10px; }
+  .event.sysnote a { color: var(--accent); }
   /* ★ Promote to Tidings, for a message with several links: each a box to tick (Justin, 21 Oct). */
   #promotePick { max-width: min(520px, 92vw); border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink);
                  padding: 16px 18px; }
@@ -371,8 +384,6 @@
   #promotePick .go { background: var(--accent); color: #fff; }
   #promotePick .go:disabled { opacity: .45; cursor: default; }
   #promotePick .cancel { background: none; color: var(--muted); }
-  #noAgents p { margin: 0 0 10px; }
-  #noAgents button { font: inherit; border: 0; border-radius: 6px; padding: 6px 16px; background: var(--accent); color: #fff; cursor: pointer; }
   #renameBox, #newBox, #closeBox, #moveBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
                background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.18);
                padding: 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -842,6 +853,11 @@
   .turn:hover .replybtn, .turn .replybtn:focus, .turn:hover .addreact, .turn .addreact:focus,
   .turn:hover .morebtn, .turn .morebtn:focus { opacity: 1; }
   @media (pointer: coarse) { .turn .replybtn, .turn .addreact, .turn .morebtn { opacity: .6; } }
+  /* The guided tour (driver.js) pointing at a message or its ⋯: its buttons in view, as on hover. */
+  .turn.driver-active-element .replybtn, .turn.driver-active-element .addreact, .turn.driver-active-element .morebtn,
+  .turn .morebtn.driver-active-element { opacity: 1; }
+  .driver-popover.magenta-tour { max-width: 340px; }
+  .driver-popover.magenta-tour .driver-popover-description a { color: inherit; text-decoration: underline; }
   #msgMenu { position: fixed; z-index: 50; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: var(--panel);
              border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
   #msgMenu[hidden] { display: none; }
@@ -965,11 +981,18 @@
   /* Its own head line is gone, but not its ↩ 🙂 ⋯ (Justin, 3 Nov: "I can't seem to get it at all"): a toolbar on
      its top edge while hovered, as a follow-on message's; on a touch screen, floated at its right. */
   .abody > article.turn:first-of-type > .who { position: absolute; right: 2px; top: -22px; z-index: 2; margin: 0; gap: 0; visibility: hidden;
-      padding: 1px 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+      padding: 1px 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.08);
+      transition: visibility 0s .4s; }
+  /* Reachable (Justin, 4 Nov: "when I get to them, they go away"): it sat a pixel above the message, so the pointer
+     on its way up left the message and it hid. It now waits 400 ms before hiding, a strip under it reaches the message,
+     and it shows from the head line too. */
+  .abody > article.turn:first-of-type > .who::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 6px; }
   .abody > article.turn:first-of-type > .who > :not(.replybtn, .addreact, .morebtn, .speak, .readfrom) { display: none; }
   .abody > article.turn:first-of-type > .who:not(:has(.replybtn, .addreact, .morebtn, .speak)) { display: none; }
-  .abody > article.turn:first-of-type:hover > .who, .abody > article.turn:first-of-type > .who:focus-within { visibility: visible; }
-  .abody > article.turn:first-of-type:hover > .who button { opacity: 1; }
+  .abody > article.turn:first-of-type:hover > .who, .abody > article.turn:first-of-type > .who:focus-within,
+  .aturn:has(> .ahead:hover) > .abody > article.turn:first-of-type > .who { visibility: visible; transition-delay: 0s; }
+  .abody > article.turn:first-of-type:hover > .who button,
+  .aturn:has(> .ahead:hover) > .abody > article.turn:first-of-type > .who button { opacity: 1; }
   @media (pointer: coarse) { .abody > article.turn:first-of-type > .who { position: static; float: right; visibility: visible; margin: 0 0 2px 4px;
       background: none; border: 0; box-shadow: none; padding: 0; } }
   .abody > .turn { padding-top: 2px; padding-bottom: 6px; border-top: 0; }
@@ -1002,6 +1025,7 @@
   .proof { font-size: 12px; background: var(--code); border-radius: 6px; padding: 8px 10px; margin-top: 6px; }
   .proof pre { white-space: pre-wrap; word-break: break-all; margin: 4px 0; font-size: 11px; }
   .event { margin: 8px 0; font-size: 12.5px; color: var(--muted); text-align: center; }
+  .event.warn { color: var(--warn-ink); }  /* a helper cut off before it reported */
   .event.failed { color: var(--err); }
   .event.wiki { text-align: left; font-size: 12px; margin: 4px 0; }
   /* A new release (services/wiki_feed.py): a line, and its player under it. */
@@ -1316,6 +1340,30 @@
   .turn .body .hearagain:disabled { color: var(--muted); cursor: default; }
   .turn .body img { display: block; max-width: 100%; max-height: 420px; border-radius: 6px; border: 1px solid var(--line); }
   /* A picture, large, over everything: its caption, and its page. */
+  /* The small player that follows you (Justin, 3 Nov): a video playing on a Tidings page, carried along when
+     you browse away, playing on from the same moment. Its title takes you back there; ✕ closes it; its bar
+     moves it. Above the Mood's own box when a Mood is open. */
+  .miniplayer { position: fixed; right: 16px; bottom: 16px; z-index: 45; width: 340px; max-width: calc(100vw - 24px);
+                background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; overflow: hidden;
+                box-shadow: 0 10px 34px rgba(0, 0, 0, .35); }
+  body:not(.in-section) .miniplayer:not(.moved) { bottom: 104px; }
+  .miniplayer.portrait { width: 210px; }
+  .miniplayer .minibar { display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; font-size: 12.5px;
+                         cursor: grab; touch-action: none; user-select: none; }
+  .miniplayer .miniback { all: unset; cursor: pointer; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+                          text-overflow: ellipsis; color: var(--accent); font-weight: 600; }
+  .miniplayer .miniback:hover span, .miniplayer .miniback:focus-visible span { text-decoration: underline; }
+  .miniplayer .miniclose { all: unset; cursor: pointer; flex: none; width: 26px; height: 26px; text-align: center; line-height: 26px;
+                           border-radius: 50%; color: var(--muted); font-size: 15px; }
+  .miniplayer .miniclose:hover, .miniplayer .miniclose:focus-visible { background: var(--accent-soft); color: var(--ink); }
+  .miniplayer .embed, .miniplayer .player { display: block; margin: 0; position: relative; }
+  .miniplayer video { display: block; width: 100%; max-height: 56vh; background: #000; }
+  .miniplayer .quality, .miniplayer .dkmask { display: none !important; }
+  /* Over a Mood, the Mood makes room for it (Justin, 4 Nov: "can the text wrap around the video instead of
+     underlapping it?"): the Mood's column moves over and narrows beside it, its box too, so the player can sit
+     at the bottom beside the box. The space it holds is the whole height, not just the lines beside it:
+     lines that reflowed as you scrolled past it would jump under your eye. No room for both on a phone. */
+  body:not(.in-section) .miniplayer.dodged:not(.moved) { bottom: 16px; }
   #lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.86); display: flex; flex-direction: column;
               align-items: center; justify-content: center; gap: 10px; padding: 16px; }
   #lightbox[hidden] { display: none; }
@@ -1566,6 +1614,24 @@
   #todoDone { margin-top: 8px; color: var(--muted); }
   #todoDone summary { cursor: pointer; font-size: 12.5px; }
   #todoDone li .task { text-decoration: line-through; }
+  /* People under the list: pinned to the column's foot, its height dragged from its top edge. */
+  #todo.open #todoBody { display: flex; flex-direction: column; }
+  #todoBody > #todoList, #todoBody > #todoDone, #todoBody > .note { flex: none; }
+  #humans { margin-top: auto; flex: none; height: var(--humans-h, 260px); min-height: 80px; display: flex; flex-direction: column;
+            border-top: 1px solid var(--line); position: sticky; bottom: -12px; background: var(--panel); padding-bottom: 6px; }
+  #humansGrip { height: 7px; margin: -4px -14px 0; cursor: row-resize; flex: none; }
+  #humansGrip:hover, body.sizing-humans #humansGrip { background: var(--accent-soft); }
+  #humans .head { margin: 4px 0 4px; }
+  #humans ul { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+  #humans #humansElsewhere { flex: 1; min-height: 0; }
+  #humans li { display: block; padding: 3px 0; }
+  #humans li button.person { white-space: nowrap; }
+  #humans li button.person { font: inherit; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink); text-align: left; }
+  #humans li button.person:hover { text-decoration: underline; }
+  #humans li .where { display: block; color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #humans li .where a { color: inherit; }
+  #humans li time { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+  #humans hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; width: 100%; }
   #todoDone:not([data-n]) { display: none; }
 
   @media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
@@ -1624,13 +1690,19 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls">polls</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a><a href="/moods/todo/" data-section="todo">todo</a><a href="/moods/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">bundle segments</a></div></span></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a><a href="/moods/todo/" data-section="todo">todo</a><a href="/moods/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">bundle segments</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
-  <span class="block" id="block" title="Ethereum mainnet's block height"></span>
-  <span class="servers" id="servers" title="Servers"></span>
+  <!-- The block, the servers and the sprint, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
+  <span class="statewrap">
+    <button type="button" id="stateBtn" aria-haspopup="true" aria-expanded="false" title="The block, the servers and the sprint"><span class="servers" id="servers"></span><span class="caret">▾</span></button>
+    <div id="stateMenu" hidden>
+      <div class="block" id="block" title="Ethereum mainnet's block height"></div>
+      <div class="sprint" id="sprintLine" hidden></div>
+    </div>
+  </span>
   <button id="reloadNudge" type="button" title="This page changed since you opened it: reload for the new one" hidden>↻ new version</button>
-  <button id="searchBtn" type="button" title="Search what was said (/)">⌕</button>
+  <button id="searchBtn" data-tour="search" type="button" title="Search what was said (/)">⌕</button>
   <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
   <span class="statuswrap">
     <button type="button" class="status" id="status" title="connecting…" aria-label="Status: online. Click for version"></button>
@@ -1640,32 +1712,31 @@
   </span>
   <!-- The bell, out front with what's waiting for you (Justin, 29 Oct): mentions of you and answers to you, by Mood. -->
   <span class="bellwrap" id="bellWrap" hidden>
-    <button id="bellBtn" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span><span class="badge bot" id="bellCountBot" hidden></span></button>
+    <button id="bellBtn" data-tour="bell" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span><span class="badge bot" id="bellCountBot" hidden></span></button>
     <div id="bellMenu" hidden>
       <div class="belltabs" role="tablist"><button type="button" role="tab" data-tab="for" aria-selected="true">For you</button><button type="button" role="tab" data-tab="set" aria-selected="false">Settings</button></div>
       <div class="bellpane" data-pane="for"><label class="replies"><input type="checkbox" id="bellReplies"> include replies</label><div id="bellList"></div></div>
       <div class="bellpane" data-pane="set" hidden><div class="belltoggle"><button id="notify" type="button" hidden aria-label="Notifications"></button></div>
       <div id="alerts" hidden>
+        <!-- Each sender's kind, one choice: every message takes in their mentions of me (Justin, 5 Nov). -->
         <span class="head">Sounds</span>
-        <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
-        <label><input type="checkbox" data-sound="agent-mention"> emergents mentioning me</label>
-        <label><input type="checkbox" data-sound="person"> every message from people</label>
-        <label><input type="checkbox" data-sound="agent"> every message from emergents</label>
+        <label>people <select data-sound="person"><option value="">off</option><option value="mention">mentioning me</option><option value="all">every message</option></select></label>
+        <label>emergents <select data-sound="agent"><option value="">off</option><option value="mention">mentioning me</option><option value="all">every message</option></select></label>
         <span class="head" id="tellHead">Notifications</span>
-        <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
-        <label><input type="checkbox" data-tell="person"> every message from people</label>
-        <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
+        <span class="hint" id="tellHint">Mentions of me and answers to me, always; and from</span>
+        <label>people <select data-tell="person"><option value="">mentioning me</option><option value="all">every message</option></select></label>
+        <label>emergents <select data-tell="agent"><option value="">mentioning me</option><option value="all">every message</option></select></label>
       </div></div></div>
   </span>
   <span class="account">
-    <button id="userBtn" type="button" aria-haspopup="true" aria-expanded="false"></button>
-    <div id="userMenu" hidden>
-      <div class="auth" id="auth"></div>
+    <button id="userBtn" data-tour="user-menu" type="button" aria-haspopup="true" aria-expanded="false"></button>
+    <div id="userMenu" data-tour-open="userBtn" hidden>
+      <div class="auth" id="auth" data-tour="sign-in"></div>
       <label class="me">viewing as <select id="me"><option value="">nobody</option></select></label>
       <label class="only"><input type="checkbox" id="onlyMine"> only mentions of me</label>
       <span class="textsize">text size <button type="button" data-step="-1" aria-label="Smaller text">A−</button><span id="textSizeVal">100%</span><button type="button" data-step="1" aria-label="Larger text">A+</button></span>
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an emergent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
-      <button type="button" id="voiceModeOpen" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
+      <button type="button" id="voiceModeOpen" data-tour="voice-mode" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
       <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: emergents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: emergents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
       <a href="/moods/settings/#voices" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
@@ -1675,7 +1746,9 @@
       <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
       <a class="settings" href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
       <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
-      <a href="https://pickipedia.xyz/wiki/Magenta:Help" target="_blank" rel="noopener" title="How magenta works: Magenta:Help on PickiPedia">help</a>
+      <a href="https://pickipedia.xyz/wiki/Magenta:Help" target="_blank" rel="noopener" data-tour="help" title="How magenta works: Magenta:Help on PickiPedia">help</a>
+      <a href="/faq/" data-tour="faq" title="Questions people ask, one at a time: Magenta:FAQ">faq</a>
+      <a href="#" id="tourLink" title="A walk round this page, on the page itself: what each part is for">take the tour</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
@@ -1723,11 +1796,6 @@
     <p class="muted">Tags, separated by commas. <input type="text" name="tags" class="tagbox" maxlength="200" placeholder="e.g. music, security" autocomplete="off"></p>
     <div class="bar"><button type="submit" value="promote" class="go" disabled>★ Promote</button> <button type="submit" value="cancel" class="cancel">Cancel</button></div>
   </form>
-</dialog>
-<dialog id="noAgents">
-  <p><b>Emergents can't be addressed from a PickiPedia sign-in.</b></p>
-  <p>Take <span class="who"></span> out of your message and send it again. To wake an emergent, sign in with your SSH key (<code>magenta.sh login</code>).</p>
-  <button type="button">OK</button>
 </dialog>
 <dialog id="personCard" aria-label="A person's card"></dialog>
 <dialog id="lookBox">
@@ -1798,12 +1866,12 @@
 <!-- Tidings, prompts, status and settings: each its own page, loaded once and kept, beside the Moods. -->
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
-  <nav id="nav"><div id="moodList"><div class="label">Moods</div></div></nav>
+  <nav id="nav" data-tour="moods" data-tour-open="menu"><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"><button type="button" class="navfold" id="navFold" title="Fold the Moods away" aria-label="Fold the Moods list away" aria-expanded="true">‹</button></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
-  <main id="main"><div id="topbar"><div id="moodbar"></div><div id="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
+  <main id="main"><div id="topbar"><div id="moodbar" data-tour="mood-bar"></div><div id="pins" data-tour="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
     <div id="footer">
-    <div id="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
+    <div id="jump" data-tour="jump"><button type="button" class="human" id="jumpHumanUp" title="previous message from a person" aria-label="previous message from a person">↑</button><button type="button" id="jumpUp" title="previous message" aria-label="previous message">↑</button><button type="button" class="forme" id="jumpMeUp" title="previous message for you: a mention, or an answer" aria-label="previous message for you">@↑</button><button type="button" class="human" id="jumpHumanDown" title="next message from a person" aria-label="next message from a person">↓</button><button type="button" id="jumpDown" title="next message" aria-label="next message">↓</button><button type="button" class="forme" id="jumpMeDown" title="next message for you: a mention, or an answer" aria-label="next message for you">@↓</button></div>
     <button type="button" id="toBottom">↓ newest</button>
     <div id="toolsOpen"></div>
     <div id="typing"></div>
@@ -1819,22 +1887,22 @@
     <div id="videoBar" hidden><span class="what"></span><span class="track"><span class="fill"></span></span><span class="pct"></span> <button type="button" id="videoCancel">cancel</button></div>
     <div id="shareCard" hidden><span class="what"></span><label class="into">into <select id="shareMood" aria-label="Which Mood it goes to"></select></label><button type="button" id="shareHere"></button><button type="button" id="shareDrop" title="Don't share it" aria-label="Don't share it">✕</button></div>
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
-    <form id="composer" autocomplete="off">
+    <form id="composer" data-tour="composer" autocomplete="off">
       <div id="suggest"></div>
       <button type="button" id="expandComposer" class="expand" title="Expand the box to write at length" aria-label="Expand the message box" aria-expanded="false">▴</button>
-      <button type="button" id="agentsBtn" title="Emergents here: listening, model, effort" aria-label="Emergent settings" aria-expanded="false">⚙</button>
+      <button type="button" id="agentsBtn" data-tour="emergents-bar" title="Emergents here: listening, model, effort" aria-label="Emergent settings" aria-expanded="false">⚙</button>
       <div id="tray" hidden></div>
       <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
       <!-- One field, as Signal and WhatsApp have it: ＋ and 🎙 inside it, the words between. -->
       <div class="field">
-        <button type="button" id="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
+        <button type="button" id="attach" data-tour="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
         <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
         <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
         <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <!-- ✕: throw away what's under way -- a recording, unsent; the words typed (Skyler, 31 Oct: "an x in the right corner to quick delete"). -->
         <button type="button" id="discardBtn" title="Discard: stops a recording without sending it, and clears the box" aria-label="Discard what you're writing or recording" hidden>✕</button>
-        <button type="button" id="memoBtn" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
+        <button type="button" id="memoBtn" data-tour="memo" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
       </div>
       <button type="submit" id="send" aria-label="Send"><span class="label">Send</span><span class="wait"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z" fill="currentColor"/></svg></button>
     </form>
@@ -1842,12 +1910,20 @@
     </div>
   </main>
   <aside id="todo" hidden aria-label="To do">
-    <button type="button" id="todoTab" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
+    <button type="button" id="todoTab" data-tour="todo" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
     <div id="todoBody">
       <div class="head"><b><a id="todoPage" target="_blank" rel="noopener" title="The list's page on PickiPedia">To do</a></b><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
       <p class="note" id="todoNote"></p>
       <ul id="todoList"></ul>
       <details id="todoDone"><summary></summary><ul></ul></details>
+      <!-- People, under the list (Justin, 3 Nov): who spoke here lately, then everyone else; its top edge drags. -->
+      <div id="humans">
+        <div id="humansGrip" role="separator" aria-orientation="horizontal" title="Drag to resize; double-click to reset"></div>
+        <div class="head"><b>Humans</b></div>
+        <ul id="humansHere"></ul>
+        <hr id="humansRule" hidden>
+        <ul id="humansElsewhere"></ul>
+      </div>
     </div>
   </aside>
 </div>
@@ -1973,12 +2049,12 @@
     for (const t of asked) {
       const icon = ASK_EMOJI[t.kind] || '🔨';
       if (!kinds.has(icon)) kinds.set(icon, []);
-      kinds.get(icon).push(t.agent);  // a dot an ask: two merges asked, two dots (Justin, 30 Oct)
+      kinds.get(icon).push(t.emergent);  // a dot an ask: two merges asked, two dots (Justin, 30 Oct)
     }
     return [...kinds].map(([icon, agents]) => `<span class="askgroup">${icon}${
       agents.map(a => `<span class="askdot" style="background: ${agentColor(a)}"></span>`).join('')}</span>`).join('');
   }
-  const askLine = t => `${esc(shown(t.agent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
+  const askLine = t => `${esc(shown(t.emergent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
     : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
 
   // How long an ask of the server may take before it's given up (and asked again
@@ -2266,16 +2342,16 @@
     const mine = viewer && slug === current && Date.now() - hereAt < SHOWN_FOR_MS;
     const d = { ...raw, speakers: [...(raw.speakers || []).filter(n => n !== viewer), ...(mine ? [viewer] : [])] };
     const typing = new Set(slug === current ? [...d.typing, ...typingNow] : d.typing);
-    const busy = slug === current ? acts.filter(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')).map(a => a.agent) : (d.busy_all || (d.busy ? [d.busy] : []));
+    const busy = slug === current ? acts.filter(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')).map(a => a.emergent) : (d.busy_all || (d.busy ? [d.busy] : []));
     // Listening by voice (services/listening.py): 🎧 on their name where it's shown; one listening to this Mood
     // alone is shown here even if they haven't spoken. One listening to every Mood isn't put on every line.
     const listening = new Map((d.listening || []).map(who => [who.name, who.everywhere]));
     const names = [...new Set([...busy, ...typing, ...d.speakers,
                                ...[...listening].filter(([, everywhere]) => !everywhere).map(([name]) => name)])];
     // A turn with its full tools: 🔨 by the pulsing name (Justin, 29 Oct).
-    const tooled = new Set((slug === current ? acts : (d.activities || [])).filter(a => (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) && a.tools === 'full').map(a => a.agent));
+    const tooled = new Set((slug === current ? acts : (d.activities || [])).filter(a => (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) && a.tools === 'full').map(a => a.emergent));
     // What each agent is at (mood_view._doing's words), for how its name moves (Justin, 1 Nov).
-    const doing = new Map((slug === current ? acts : (d.activities || [])).map(a => [a.agent, a.doing || '']));
+    const doing = new Map((slug === current ? acts : (d.activities || [])).map(a => [a.emergent, a.doing || '']));
     // Of those typing, who's recording a voice memo (views_moods.recording_in): they pulse, the others type.
     const recording = new Set(slug === current ? recordingNow : (d.recording || []));
     return { names, active: new Set([...typing, ...busy]), listening, tooled, doing, typing, recording };
@@ -2398,9 +2474,9 @@
     // Waiting for another agent asked too: said once, as thinking is, when it starts (Justin, 24 Oct).
     for (const [slug, d] of Object.entries(liveData)) {
       if (readMode !== 'everywhere' && slug !== current) continue;
-      const was = new Set(((before[slug] || {}).waiting || []).map(w => w.agent));
+      const was = new Set(((before[slug] || {}).waiting || []).map(w => w.emergent));
       for (const w of d.waiting || []) {
-        if (!was.has(w.agent)) readQueue.push({ kind: 'thinking', waiting: w.for, waitingTo: w.to || '', mood: slug, who: w.agent, agent: w.agent });
+        if (!was.has(w.emergent)) readQueue.push({ kind: 'thinking', waiting: w.for, waitingTo: w.to || '', mood: slug, who: w.emergent, agent: w.emergent });
       }
     }
     readNext();
@@ -2515,6 +2591,7 @@
       if (!r.ok) throw new Error(r.status);
       const t = await r.json();
       if (slug === current) renderTodo(t);
+      if (another && slug === current) loadHumans();
     } catch (e) {
       // Nothing heard: say so, rather than leave "Loading…" (or an empty list) standing.
       if (slug === current && !todoShown) renderTodoWaiting("The list couldn't be reached just now; it's asked for again in a minute.");
@@ -2523,6 +2600,7 @@
   function openTodo(open) {
     todoEl.classList.toggle('open', open);
     store.set('todoOpen', open);
+    if (open) loadHumans();
   }
   if (store.get('todoOpen', false) && !matchMedia(PHONE).matches) todoEl.classList.add('open');
   document.getElementById('todoTab').addEventListener('click', () => openTodo(true));
@@ -2530,6 +2608,43 @@
   document.getElementById('todoEdit').addEventListener('click', () => { todoShown = null; });
   document.getElementById('todoPage').addEventListener('click', () => { todoShown = null; });  // back from editing: ask afresh
   setInterval(() => loadTodo(), 60000);
+
+  // --- the people under the list (services/humans.py; Justin, 3 Nov) ---------------
+  const humansEl = document.getElementById('humans');
+  const humansH = store.get('humansHeight', 0);
+  if (humansH) humansEl.style.setProperty('--humans-h', humansH + 'px');
+  async function loadHumans() {
+    if (!current || todoEl.hidden || !todoEl.classList.contains('open')) return;
+    let d;
+    try { const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/humans/'); if (!r.ok) return; d = await r.json(); }
+    catch (e) { return; }
+    const who = n => `<button type="button" class="person" data-person="${esc(n)}" title="${esc(shown(n))}: their card">${icon(n, true)}${nameHtml(n)}</button>`;
+    document.getElementById('humansHere').innerHTML = d.here.map(h =>
+      `<li>${who(h.name)}<time title="${esc(stamp(h.at))}">${esc(blocksAgo(h.at))} blocks</time></li>`).join('')
+      || '<li class="none">Nobody here yet.</li>';
+    document.getElementById('humansRule').hidden = !d.elsewhere.length;
+    document.getElementById('humansElsewhere').innerHTML = d.elsewhere.map(h =>
+      `<li>${who(h.name)}<time title="${esc(stamp(h.at))}">${esc(blocksAgo(h.at))} blocks</time>`
+      + `<span class="where">${h.where === 'tiding' ? 'on Tidings: ' : '#'}<a href="${esc(h.url)}">${esc(h.title)}</a></span></li>`).join('');
+  }
+  humansEl.addEventListener('click', e => {
+    const b = e.target.closest('button.person');
+    if (b) openPersonCard(b.dataset.person);
+  });
+  document.getElementById('humansGrip').addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const startY = e.clientY, startH = humansEl.getBoundingClientRect().height;
+    document.body.classList.add('sizing-humans');
+    const move = ev => humansEl.style.setProperty('--humans-h', Math.max(80, Math.min(innerHeight - 160, startH + startY - ev.clientY)) + 'px');
+    const up = () => {
+      document.body.classList.remove('sizing-humans');
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      store.set('humansHeight', Math.round(humansEl.getBoundingClientRect().height));
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
+  document.getElementById('humansGrip').addEventListener('dblclick', () => { humansEl.style.removeProperty('--humans-h'); store.set('humansHeight', 0); });
+  setInterval(loadHumans, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadTodo(todoShown === null); });
 
   // --- the chain's height: from the explorer now and then, a block every 12 s between ---
@@ -3259,6 +3374,192 @@
   }).observe(document.body, { childList: true, subtree: true });
   watchReleases(document);
 
+  // The small player that follows you (Justin, 3 Nov: "If I browse away from that tidings page, where the
+  // video is playing, I want it to follow me and keep playing (and make it obvious how to close it or browse
+  // back to the tiding)"). A Tidings page hands its playing video here as it's left (mood_tiding.html,
+  // magentaHandoff): to another page of Tidings, or out of Tidings altogether. It plays on from that moment, at
+  // its speed and quality (the same remembered choices), captions too. Its title goes back to the page; that
+  // page takes the video back from here, from where it is now. ✕ closes it. Playing another video ends it.
+  const mini = { el: null, state: null, carried: null };
+  function miniVideo() { return mini.el && mini.el.querySelector('video'); }
+  function miniClose() {
+    const v = miniVideo();
+    if (v) { if (v._hls) v._hls.destroy(); v.pause(); v.removeAttribute('src'); v.load(); }
+    if (mini.el) mini.el.remove();
+    mini.el = mini.state = null;
+    miniDodge();
+  }
+  // The Mood makes room for it, on whichever side of the Mood it sits (its bar can move it), when there's
+  // room left for a column beside it.
+  const MINI_GAP = 16, MINI_ROOM = 360;
+  function miniDodge() {
+    const main = document.getElementById('main');
+    if (!main) return;
+    const had = main.style.paddingRight || main.style.paddingLeft;
+    main.style.paddingLeft = main.style.paddingRight = '';
+    if (mini.el) mini.el.classList.remove('dodged');
+    if (!mini.el || document.body.classList.contains('in-section')) return keepPlace(had);
+    mini.el.classList.add('dodged');  // where it sits when the Mood makes room for it
+    const m = main.getBoundingClientRect(), p = mini.el.getBoundingClientRect();
+    const covers = p.left < m.right && p.right > m.left && p.top < m.bottom && p.bottom > m.top;
+    const onRight = p.left + p.width / 2 > m.left + m.width / 2;
+    const room = onRight ? m.right - p.left + MINI_GAP : p.right - m.left + MINI_GAP;
+    if (!covers || m.width - room < MINI_ROOM) {
+      mini.el.classList.remove('dodged');
+      return keepPlace(had);
+    }
+    main.style[onRight ? 'paddingRight' : 'paddingLeft'] = Math.ceil(room) + 'px';
+    keepPlace(true);
+  }
+  // The column narrowing grows its messages taller: held at the newest, it stays at the newest.
+  function keepPlace(changed) {
+    const main = document.getElementById('main');
+    if (!changed || !main || !main._miniAtEnd) return;
+    main.scrollTop = main.scrollHeight;
+  }
+  {
+    const main = document.getElementById('main');
+    if (main) {
+      // The Mood's width changing (the window, the to-do list, the Moods list folding, a section shown): again.
+      // Its border box, so the room it makes doesn't wake it.
+      new ResizeObserver(() => { if (mini.el) miniDodge(); }).observe(main, { box: 'border-box' });
+      main.addEventListener('scroll', () => { main._miniAtEnd = main.scrollHeight - main.scrollTop - main.clientHeight < 40; },
+        { passive: true });
+    }
+  }
+  function miniNow() {
+    const v = miniVideo();
+    if (!v) return null;
+    // Not loaded yet (just shown, or carried from the last page): it's still where it was handed over.
+    if (v.readyState < 1) return { ...mini.state };
+    return { ...mini.state, t: v.currentTime, rate: v.playbackRate, muted: v.muted };
+  }
+  async function miniShow(state) {
+    miniClose();
+    if (!state || typeof state.back !== 'string' || !state.back.startsWith('/moods/tidings/')) return;
+    mini.state = state;
+    const el = mini.el = Object.assign(document.createElement('div'), { className: 'miniplayer' + (state.portrait ? ' portrait' : '') });
+    el.setAttribute('role', 'region');
+    el.setAttribute('aria-label', 'Playing: ' + state.title);
+    el.innerHTML = '<div class="minibar"><button type="button" class="miniback" title="Back to its page on Tidings">↩ <span></span></button>'
+      + '<button type="button" class="miniclose" title="Close" aria-label="Close the player">✕</button></div>'
+      + '<div class="embed"><video controls playsinline data-watched="1"></video></div>';
+    el.querySelector('.miniback span').textContent = state.title || 'back to it';
+    const v = el.querySelector('video');
+    if (state.poster) v.poster = state.poster;
+    if (state.captions) {
+      const track = Object.assign(document.createElement('track'), { kind: 'subtitles', label: 'Captions', srclang: 'en',
+        src: URL.createObjectURL(new Blob([state.captions], { type: 'text/vtt' })) });
+      v.append(track);
+      track.addEventListener('load', () => { if (track.track) track.track.mode = state.cc ? 'showing' : 'hidden'; });
+      if (track.track) track.track.mode = state.cc ? 'showing' : 'hidden';
+    }
+    document.body.append(el);
+    miniDodge();
+    v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(state.t || 0, v.duration || state.t || 0); }, { once: true });
+    if (state.hls) {
+      v.dataset.hls = state.hls;
+      v.dataset.src = state.src || '';
+      await attachRelease(v);
+    } else {
+      v.src = state.src;
+    }
+    if (mini.el !== el) return;  // closed while it loaded
+    v.defaultPlaybackRate = v.playbackRate = state.rate || 1;
+    v.muted = !!state.muted;
+    v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });  // no sound allowed yet: its own controls unmute it
+  }
+  function tidingsFrame() { return sectionFrames.querySelector('iframe[data-section="tidings"]:not([data-fresh])'); }
+  function miniBack() {
+    const state = mini.state;
+    if (!state) return;
+    showSection('tidings', true);  // which takes it back, if Tidings is still at its page
+    const frame = tidingsFrame();
+    if (mini.state && frame) frame.src = state.back + '?embed=1';  // elsewhere in Tidings: there, and it takes it on arrival
+  }
+  // Coming back to Tidings while it's still at the page this came from: that page plays on, this goes.
+  function miniHome() {
+    const frame = tidingsFrame();
+    if (!mini.state || !frame) return;
+    try {
+      if (frame.contentWindow.location.pathname === mini.state.back && frame.contentWindow.magentaResume) {
+        const now = miniNow();
+        miniClose();
+        frame.contentWindow.magentaResume(now);
+      }
+    } catch (e) {}
+  }
+  document.addEventListener('click', e => {
+    if (!mini.el || !mini.el.contains(e.target)) return;
+    if (mini.dragged) { mini.dragged = false; return; }  // the end of a drag, not a press
+    if (e.target.closest('.miniclose')) miniClose();
+    else if (e.target.closest('.miniback')) miniBack();
+  });
+  // Its bar moves it, out of the way of whatever it covers: the title too, which is most of the bar. A press
+  // that doesn't go anywhere is still a press, and takes you back.
+  document.addEventListener('pointerdown', e => {
+    const bar = mini.el && e.target.closest('.miniplayer .minibar');
+    if (!bar || e.target.closest('.miniclose')) return;
+    const box = mini.el.getBoundingClientRect(), dx = e.clientX - box.left, dy = e.clientY - box.top;
+    const x0 = e.clientX, y0 = e.clientY;
+    mini.dragged = false;
+    const move = m => {
+      if (!mini.el) return;
+      if (!mini.dragged && Math.hypot(m.clientX - x0, m.clientY - y0) < 5) return;
+      mini.dragged = true;
+      mini.el.classList.add('moved');
+      mini.el.style.left = Math.max(0, Math.min(innerWidth - box.width, m.clientX - dx)) + 'px';
+      mini.el.style.top = Math.max(0, Math.min(innerHeight - 40, m.clientY - dy)) + 'px';
+      mini.el.style.right = mini.el.style.bottom = 'auto';
+    };
+    const up = () => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      if (mini.dragged) miniDodge();
+      setTimeout(() => { mini.dragged = false; });  // a drag that ended off its bar sends no click to clear it
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+  });
+  // Another video played here ends it: one at a time.
+  document.addEventListener('play', e => { if (mini.el && e.target.tagName === 'VIDEO' && !mini.el.contains(e.target)) miniClose(); }, true);
+  window.magentaMini = {
+    show: miniShow,
+    close: miniClose,
+    take(id) {  // a Tidings page arriving: if this is its video, where it is now, and this goes
+      if (mini.carried && mini.carried.id === id) { const was = mini.carried; mini.carried = null; return was; }
+      if (!mini.state || mini.state.id !== id) return null;
+      const now = miniNow();
+      miniClose();
+      return now;
+    },
+  };
+  // Leaving the one page altogether -- the logo, signing in and coming back, a reload, a new version -- it
+  // follows too (Justin, 4 Nov: "even if the user is not signed in, I still want the video to follow them"):
+  // what's playing waits in this tab, and the page that comes next plays it on from there.
+  const MINI_CARRY = 'magentaMiniCarry', MINI_CARRY_MS = 10 * 60 * 1000;
+  addEventListener('pagehide', () => {
+    const v = miniVideo();
+    let state = v && !v.paused && !v.ended ? miniNow() : null;
+    if (!state && sectionNow === 'tidings') {
+      try { const w = tidingsFrame() && tidingsFrame().contentWindow; state = w && w.magentaPlaying ? w.magentaPlaying() : null; } catch (e) {}
+    }
+    try {
+      if (state) sessionStorage.setItem(MINI_CARRY, JSON.stringify({ ...state, carried: Date.now() }));
+      else sessionStorage.removeItem(MINI_CARRY);
+    } catch (e) {}
+  });
+  // Back from the browser's cache instead, the page is as it was: nothing to carry.
+  addEventListener('pageshow', e => { if (e.persisted) try { sessionStorage.removeItem(MINI_CARRY); } catch (err) {} });
+  try {
+    const carried = JSON.parse(sessionStorage.getItem(MINI_CARRY) || 'null');
+    sessionStorage.removeItem(MINI_CARRY);
+    if (carried && Date.now() - carried.carried < MINI_CARRY_MS) {
+      // Arriving at that very tiding: its own player goes on from there, as its page asks (magentaMini.take).
+      if (location.pathname.replace(/\/?$/, '/') === carried.back) mini.carried = carried;
+      else setTimeout(() => miniShow(carried));  // once the rest of this script is read: what it uses is all there
+    }
+  } catch (e) {}
+
   // A memo recorded in a browser doesn't say how long it is (MediaRecorder writes no
   // duration), so its player can't place its bar: it races ahead, then crawls.
   // Asked to seek far past the end, the browser reads to the end and finds out;
@@ -3464,6 +3765,7 @@
     // A signed statement always stands on its own, heading and ✓ in view.
     const cont = !t.attested && prev && prev.sender === t.sender && at - prev.at < RUN_MS;
     prev = t.attested ? null : { sender: t.sender, at };
+    el.dataset.tour = 'message-actions';  // the guided tour points at the newest one (services/tour.py)
     el.className = 'turn ' + (t.is_human ? 'human' : 'agent') + (cont ? ' cont' : '') + (t.attested ? ' attested' : '') + (isNew ? ' new' : '');
     if (cont) el.title = t.sender + ' · ' + stamp(t.created_at);
     el.dataset.mentions = JSON.stringify(t.mentions || []);
@@ -3495,7 +3797,7 @@
     const mayPin = keyHolder && !t.deleted;
     const moreBtn = mayEdit || mayDelete || mayPromote || mayNote || mayPin
       ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
-        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" data-pin="${mayPin ? 1 : ''}" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
+        + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" data-pin="${mayPin ? 1 : ''}" data-tour="more-menu" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
     const onTidings = onTidingsMark(t.tidings || []);
     const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
@@ -3586,7 +3888,7 @@
   // Mood brings every poll's votes, and a vote or a close answers with that poll as it now stands.
   let pollsNow = {};
   const pollCtx = { human: n => human[n] !== false, color: n => agentColor(n), shown: n => shown(n), stamp: iso => stamp(iso),
-                    get viewer() { return viewer; }, get admin() { return viewerAdmin; } };
+                    get viewer() { return viewer; }, get admin() { return viewerAdmin; }, get words() { return WORDS; } };
   function renderPoll(el) {
     const box = el.querySelector(':scope > .body.poll');
     if (!box || !box._asked) return;
@@ -4212,6 +4514,15 @@
       prev = null;
       return;
     }
+    if (e.type === 'helper-cut') {  // a helper its run stopped before it reported (views_runner.finish_turn)
+      el.className = 'event warn';
+      const mins = Math.round((e.took || 0) / 60);
+      el.innerHTML = `⚠ ${esc(e.agent || 'an emergent')}'s helper “${esc(e.label || '')}” stopped when its run ended, before it reported`
+        + ` · ${e.steps || 0} steps${mins ? `, ${mins} min` : ''} · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'interrupt' || e.type === 'created') {  // someone pressed stop; someone started this Mood
       el.className = 'event';
       el.innerHTML = e.type === 'created'
@@ -4221,7 +4532,7 @@
       prev = null;
       return;
     }
-    if (e.type === 'agent-settings' || e.type === 'agent-settings-refused') {  // services/agent_settings.py
+    if (e.type === 'agent-settings' || e.type === 'agent-settings-refused') {  // services/emergent_settings.py
       // Shown when it's used: above an agent's first turn on settings other than its last turn's (Justin, 24 Oct).
       el.className = 'event';
       // "at justin's ask, #m-…": the word "ask" goes to the words that asked.
@@ -4401,7 +4712,9 @@
   const serversEl = document.getElementById('servers');
   const serverPop = document.createElement('div');
   serverPop.id = 'serverPop'; serverPop.hidden = true;
-  document.querySelector('header').appendChild(serverPop);
+  const stateMenu = document.getElementById('stateMenu'), stateBtn = document.getElementById('stateBtn');
+  const sprintLine = document.getElementById('sprintLine');
+  stateMenu.appendChild(serverPop);
   let serversAt = 0, serverList = [];
   const PAGE_VERSION = "{{ page_version|escapejs }}";
   const reloadNudge = document.getElementById('reloadNudge');
@@ -4409,19 +4722,23 @@
   async function refreshServers(force) {
     if (!force && Date.now() - serversAt < 60000) return;
     serversAt = Date.now();
+    let got;
     try {
       const r = await fetch('/api/servers/');
       if (!r.ok) return;
-      const got = await r.json();
+      got = await r.json();
       serverList = got.servers;
       if (got.page && got.page !== PAGE_VERSION) reloadNudge.hidden = false;
     } catch (e) { return; }
-    serversEl.innerHTML = serverList.map(sv => {
-      const state = sv.deploying ? 'deploying' : sv.up ? 'up' : 'down';
-      const words = sv.deploying ? 'redeploying' : sv.up ? 'up' : 'not answering';
-      return `<span class="srv ${state}" title="${esc(sv.name)}: ${esc(words)}"></span>`;
-    }).join('');
-    if (!serverPop.hidden) renderServerPop();
+    // Folded, one dot: red if any isn't answering, amber if one is redeploying, else green.
+    const states = serverList.map(sv => sv.deploying ? 'deploying' : sv.up ? 'up' : 'down');
+    const worst = states.includes('down') ? 'down' : states.includes('deploying') ? 'deploying' : 'up';
+    serversEl.innerHTML = serverList.length ? `<span class="srv ${worst}"></span>` : '';
+    stateBtn.title = serverList.map((sv, i) => `${sv.name}: ${states[i] === 'deploying' ? 'redeploying' : states[i] === 'up' ? 'up' : 'not answering'}`).join('\n')
+      + (got.sprint ? `\nsprint: ${got.sprint.name}` : '');
+    sprintLine.hidden = !got.sprint;
+    if (got.sprint) sprintLine.innerHTML = `sprint: <a href="${esc(got.sprint.url)}" target="_blank" rel="noopener"><b>${esc(got.sprint.name)}</b></a>`;
+    renderServerPop();
   }
   // A server's portrait, light and dark where its page has both. The light one as it always was
   // (2.6px, #serverPop pre.art); the dark one, a drawing of its own (maybelle's: 50 columns, the
@@ -4447,17 +4764,21 @@
         : `${d.state === 'failed' ? 'redeploy failed' : 'redeployed'} ${ago(d.at)}${d.commit ? ' · ' + d.commit.slice(0, 8) : ''}`) : 'no redeploy told yet';
       const logLink = d && d.state !== 'started' ? deployLog(d.note) : '';
       const name = sv.url ? `<a href="${esc(sv.url)}" target="_blank" rel="noopener" title="${esc(sv.name)} on PickiPedia"><b>${esc(sv.name)}</b></a>` : `<b>${esc(sv.name)}</b>`;
-      return `<div>${portraits(sv)}<span>${name}`
+      const dot = `<span class="servers"><span class="srv ${sv.deploying ? 'deploying' : sv.up ? 'up' : 'down'}"></span></span>`;
+      return `<div>${dot}${portraits(sv)}<span>${name}`
         + `${sv.role ? ` <span class="role">${esc(sv.role)}</span>` : ''} · ${sv.deploying ? 'redeploying' : sv.up ? 'up' : '<b>not answering</b>'}`
         + `<br><span class="note">${esc(sv.about)} · ${esc(last)}${logLink}</span></span></div>`;
     }).join('');
   }
-  serversEl.addEventListener('click', e => {
+  serverPop.hidden = false;
+  stateBtn.addEventListener('click', e => {
     e.stopPropagation();
-    serverPop.hidden = !serverPop.hidden;
-    if (!serverPop.hidden) renderServerPop();
+    stateMenu.hidden = !stateMenu.hidden;
+    stateBtn.setAttribute('aria-expanded', String(!stateMenu.hidden));
   });
-  document.addEventListener('click', e => { if (!serverPop.hidden && !e.target.closest('#serverPop')) serverPop.hidden = true; });
+  document.addEventListener('click', e => {
+    if (!stateMenu.hidden && !e.target.closest('#stateMenu')) { stateMenu.hidden = true; stateBtn.setAttribute('aria-expanded', 'false'); }
+  });
   setInterval(() => refreshServers(false), 60000);
   refreshServers(true);
 
@@ -4565,7 +4886,7 @@
   wordsFrom(document.getElementById('closeNote'), 'close-note');
   wordsFrom(document.getElementById('closeGo'), 'close-button');
   const closeBox = document.getElementById('closeBox');
-  const HANDOFF_AGENT = 'magent';  // who incorporates a thread (services/agent_commands.HANDOFF_AGENT)
+  const HANDOFF_AGENT = 'magent';  // who incorporates a thread (services/emergent_commands.HANDOFF_AGENT)
   document.addEventListener('click', async e => {
     if (e.target.closest('#rename')) {
       document.getElementById('renameTitle').value = headMood.title;
@@ -4696,7 +5017,7 @@
     if (!agentsFor[parent] || !closeBox._was) {
       try {
         const r = await fetch('/api/moods/' + encodeURIComponent(parent) + '/turns/?limit=1');
-        if (r.ok) noteAgents(parent, (await r.json()).agents);
+        if (r.ok) noteAgents(parent, (await r.json()).emergents);
       } catch (e) {}
     }
     const a = (agentsFor[parent] || {})[HANDOFF_AGENT];
@@ -4731,7 +5052,7 @@
       // Its model and effort there first, if changed here: set as any of its settings are, noted as from here.
       for (const [key, value] of Object.entries(closeBox._chosen || {})) {
         if (value === (closeBox._was || {})[key]) continue;
-        const r = await post('/api/settings/', { key, value, mood: closeBox._parent, agent: HANDOFF_AGENT, note: 'from the close dialog' });
+        const r = await post('/api/settings/', { key, value, mood: closeBox._parent, emergent: HANDOFF_AGENT, note: 'from the close dialog' });
         if (!r.ok) { showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
       }
       closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
@@ -5164,7 +5485,7 @@
   }
   // Working only if it's the newest thing here and the agent is at work now.
   function isWorking(b) {
-    return b.parentNode && lastOf(b.parentNode) === b && acts.some(a => a.agent === b._agent && (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')));
+    return b.parentNode && lastOf(b.parentNode) === b && acts.some(a => a.emergent === b._agent && (a.doing !== 'held' || /a turn is under way/i.test(a.why || '')));
   }
   // A turn that a person spoke after is over, whether or not its end was marked.
   function closeBlock(container) {
@@ -5414,7 +5735,7 @@
       return `<a class="note${old ? ' seen' : ''}" href="/moods/${encodeURIComponent(n.mood)}/#m-${esc(n.turn.id)}" data-mood="${esc(n.mood)}" data-id="${esc(n.turn.id)}">`
         + `<span class="who">${icon(n.turn.sender, n.from !== 'agent')}<b>${esc(shown(n.turn.sender))}</b>${what ? ' ' + what : ''}</span>`
         + ` <span class="where">#${esc(title)} · ${esc(ago(n.turn.created_at))}</span>`
-        + `<span class="said">${esc(plainText(n.turn.text).slice(0, 120))}</span></a>`;
+        + `<span class="said">${esc(plainText(n.turn.text).slice(0, 300))}</span></a>`;
     };
     document.getElementById('bellList').innerHTML = (rows.length ? rows.map(n => row(n, false)).join('') : '<div class="none">Nothing new for you.</div>')
       + (seen.length ? '<div class="sep">seen</div>' + seen.map(n => row(n, true)).join('') : '');
@@ -5473,7 +5794,7 @@
       // A Mood opened since this page loaded: list it first, so its badge
       // has somewhere to go and its notification its title.
       if (notices.some(n => !moods.some(m => m.slug === n.mood))) loadMoods();
-      let ding = null;  // one chime per look, however many came: a mention's, if any was one
+      let ding = null, dingFrom = null;  // one chime per look, however many came: a mention's, if any was one
       const ahead_ = [];
       for (const n of notices) {
         if (counted.has(n.turn.id)) continue;
@@ -5484,7 +5805,7 @@
         if (n.turn.created_at > alertsFrom && !inView) {
           const by = n.from || 'person';
           if (n.kind === 'mention' && sounds[by + '-mention']) ding = 'mention';
-          else if (sounds[by] && ding !== 'mention') ding = 'message';
+          else if (sounds[by] && ding !== 'mention') { ding = 'message'; dingFrom = by; }
           if (n.kind === 'said' && tellAll[by]) notify(n);
         }
         if (n.kind === 'said') continue;  // not a badge: badges count what's for you
@@ -5499,7 +5820,7 @@
       // The newest few unread, asked for now: what the bell is most likely to be clicked for.
       ahead_.sort((a, b) => a.turn.created_at < b.turn.created_at ? -1 : 1).slice(-AHEAD_KEPT)
         .forEach(n => fetchAhead(n.mood, n.turn.id));
-      if (ding) chime(ding === 'mention');
+      if (ding) chime(ding === 'mention', dingFrom);
       badgeCursor = next;
     } catch (e) {}
     countBadges(); renderNav(); setTitle();
@@ -5603,8 +5924,14 @@
   // and answers; it can also tell of every message from people or agents --
   // here, and by push with magenta closed (services/push.py).
   const alertsBox = document.getElementById('alerts');
-  let sounds = store.get('sounds', {});    // 'person', 'agent', 'person-mention', 'agent-mention' -> true
-  let tellAll = store.get('tellAll', {});  // 'person', 'agent' -> true
+  // Until this browser chooses, the team's defaults: Magenta:Sounds (services/interface_words.SOUND_DEFAULTS).
+  const soundDefaults = () => Object.fromEntries(['person', 'agent'].flatMap(k =>
+    [[k, WORDS['sound-' + k] === 'all'], [k + '-mention', ['all', 'mention'].includes(WORDS['sound-' + k])]]));
+  let sounds = store.get('sounds', null) || soundDefaults();  // 'person', 'agent', 'person-mention', 'agent-mention' -> true
+  const tellDefaults = () => ({ person: WORDS['tell-person'] === 'all', agent: WORDS['tell-agent'] === 'all' });
+  let tellAll = store.get('tellAll', null) || tellDefaults();
+  // Every message from them takes in their mentions of me, with a mention's own chime.
+  for (const k of ['person', 'agent']) if (sounds[k]) sounds[k + '-mention'] = true;
   let alertsFrom = new Date().toISOString();  // nothing from before a page opened, or an alert was turned on
   function alertsWanted() {
     return Object.values(sounds).some(Boolean) || (notifying() && Object.values(tellAll).some(Boolean));
@@ -5612,20 +5939,29 @@
   function renderAlerts() {
     alertsBox.hidden = !me;
     const canTell = 'Notification' in window;
-    alertsBox.querySelectorAll('[data-sound]').forEach(i => { i.checked = !!sounds[i.dataset.sound]; });
-    alertsBox.querySelectorAll('[data-tell]').forEach(i => { i.checked = !!tellAll[i.dataset.tell]; i.closest('label').hidden = !canTell; });
+    alertsBox.querySelectorAll('[data-sound]').forEach(i => {
+      const k = i.dataset.sound;
+      i.value = sounds[k] ? 'all' : sounds[k + '-mention'] ? 'mention' : '';
+    });
+    alertsBox.querySelectorAll('[data-tell]').forEach(i => { i.value = tellAll[i.dataset.tell] ? 'all' : ''; i.closest('label').hidden = !canTell; });
     document.getElementById('tellHead').hidden = !canTell;
     document.getElementById('tellHint').hidden = !canTell;
   }
+  // Chosen on the settings page (its own frame, the same browser): followed here at once.
+  addEventListener('storage', e => {
+    if (e.key === 'moods.sounds') { sounds = store.get('sounds', null) || soundDefaults(); renderAlerts(); }
+    if (e.key === 'moods.tellAll') { tellAll = store.get('tellAll', null) || tellDefaults(); renderAlerts(); if (notifying()) pushOn(); }
+  });
   alertsBox.addEventListener('change', e => {
     const box = e.target;
-    if (box.checked) alertsFrom = new Date().toISOString();
+    if (box.value) alertsFrom = new Date().toISOString();
     if (box.dataset.sound) {
-      sounds[box.dataset.sound] = box.checked; store.set('sounds', sounds);
-      if (box.checked) chime(box.dataset.sound.endsWith('mention'));  // what it will sound like
+      const k = box.dataset.sound;
+      sounds[k] = box.value === 'all'; sounds[k + '-mention'] = !!box.value; store.set('sounds', sounds);
+      if (box.value) chime(box.value === 'mention', k);  // what it will sound like
     }
     if (box.dataset.tell) {
-      tellAll[box.dataset.tell] = box.checked; store.set('tellAll', tellAll);
+      tellAll[box.dataset.tell] = box.value === 'all'; store.set('tellAll', tellAll);
       if (notifying()) pushOn();  // the server's copy, for pushes with magenta closed
     }
   });
@@ -5636,7 +5972,15 @@
     if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     return audioCtx;
   }
-  function chime(mention) {
+  // A message's sound, if Magenta:Sounds names a file for its sender's kind (chime-person: File:…); else the tone.
+  function chimeFile(from) {
+    // Plain or as a link: File:X.flac, [[File:X.flac]], [[:File:X.flac|words]].
+    const name = (WORDS['chime-' + from] || '').replace(/^\s*\[\[:?|(\|[^\]]*)?\]\]\s*$/g, '').replace(/^\s*(File|Image):/i, '').trim();
+    return name ? `${WIKI}/wiki/Special:FilePath/${encodeURIComponent(name.replace(/ /g, '_'))}` : '';
+  }
+  function chime(mention, from) {
+    const file = !mention && from && chimeFile(from);
+    if (file) { new Audio(file).play().catch(() => chime(mention)); return; }
     const ctx = sound();
     if (!ctx) return;
     (mention ? [784, 1175] : [659]).forEach((freq, i) => {
@@ -6013,7 +6357,7 @@
           data = await r.json();
         } catch (e) { continue; }
         if (m.slug === current || drawn.has(m.slug) || keptOf(m.slug)) continue;
-        noteAgents(m.slug, data.agents);
+        noteAgents(m.slug, data.emergents);
         primed.set(m.slug, grow({ has_earlier: !!data.has_earlier, version: KEPT_VERSION }, data));
       }
     } finally { priming = false; }
@@ -6031,7 +6375,7 @@
     } catch (e) { return; }
     if (slug === current) return;  // opened meanwhile: its own poll asks
     preloadedTo[slug] = data.now;
-    noteAgents(slug, data.agents);
+    noteAgents(slug, data.emergents);
     // Kept without the server's time: what changed since was not asked, and opening it still asks.
     keep(slug, { ...data, now: undefined }, false, false);
     if (primed.has(slug)) grow(primed.get(slug), { ...data, now: undefined });
@@ -6123,7 +6467,7 @@
     if (!data) return false;
     const items = itemsOf(data);
     if (!items.length) return false;
-    noteAgents(current, data.agents);  // the thread is now a window at the message; the Mood head keeps its own
+    noteAgents(current, data.emergents);  // the thread is now a window at the message; the Mood head keeps its own
     if (!document.getElementById('turns')) {
       prev = null;
       inner.innerHTML = renderHead(data.mood);
@@ -6289,8 +6633,8 @@
     renderActivity();
     tasks = data.tasks || [];
     renderTasks();
-    renderAgents(data.agents || {});
-    noteAgents(current, data.agents);
+    renderAgents(data.emergents || {});
+    noteAgents(current, data.emergents);
     renderLocked(data.scram || null);
     typingNow = (data.typing || []).filter(n => n !== viewer);
     recordingNow = data.recording || [];
@@ -6394,7 +6738,8 @@
       msgMenu.innerHTML = (more.dataset.pin ? `<button type="button" role="menuitem" data-act="pin">${pinsNow.some(p => p.id === more.dataset.more) ? '📌 Unpin' : '📌 Pin to the top'}</button>` : '')
         + (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
         + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my sprint notes</button>'
-          + '<button type="button" role="menuitem" data-act="wiki">⧉ Copy for PickiPedia</button>' : '')
+          + '<button type="button" role="menuitem" data-act="wiki">⧉ Copy for PickiPedia</button>'
+          + '<button type="button" role="menuitem" data-act="wiki-inline">⧉ Copy as a PickiPedia citation</button>' : '')
         + ((more.dataset.promote || more.dataset.note) && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
         + (more.dataset.edit ? '<button type="button" role="menuitem" data-act="edit">✎ Edit</button>' : '')
         + (more.dataset.edit && more.dataset.delete ? '<hr>' : '')
@@ -6419,6 +6764,7 @@
     else if (act.dataset.act === 'note') noteMessage(from.dataset.more);
     else if (act.dataset.act === 'pin') pinMessage(from.dataset.more);
     else if (act.dataset.act === 'wiki') copyForWiki(from.dataset.more);
+    else if (act.dataset.act === 'wiki-inline') copyForWiki(from.dataset.more, true);
     else deleteMessage(from.dataset.more);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !msgMenu.hidden) closeMsgMenu(); });
@@ -6477,13 +6823,15 @@
     } catch (err) { showNote(`Not added: ${err.message}`, 9000); }
   }
   // The message as a card for PickiPedia (Template:Magenta message, words and all), onto the clipboard to paste.
-  async function copyForWiki(id) {
+  // inline: a one-line citation for prose (who, when, which Mood, linked), not the card.
+  async function copyForWiki(id, inline) {
     try {
-      const r = await fetch(`/api/messages/${encodeURIComponent(id)}/wiki/`);
+      const r = await fetch(`/api/messages/${encodeURIComponent(id)}/wiki/${inline ? '?inline=1' : ''}`);
       const body = await r.json();
       if (!r.ok) throw new Error(body.error || r.status);
       await navigator.clipboard.writeText(body.wikitext);
-      showNote('Copied: paste it into any PickiPedia page. chars= sets how much of it shows (280, or all).', 8000);
+      showNote(inline ? 'Copied: paste it into a line of any PickiPedia page; it reads as who said it, when, and where, linked.'
+        : 'Copied: paste it into any PickiPedia page. chars= sets how much of it shows (280, or all).', 8000);
     } catch (err) { showNote(`Not copied: ${err.message}`, 8000); }
   }
   function toldChanged(done) {
@@ -6670,12 +7018,12 @@
         if (agentsFor[m.slug] || m.slug === current) continue;
         try {
           const r = await fetch('/api/moods/' + encodeURIComponent(m.slug) + '/turns/?limit=1', { signal: AbortSignal.timeout(POLL_WAIT_MS) });
-          if (r.ok) noteAgents(m.slug, (await r.json()).agents);
+          if (r.ok) noteAgents(m.slug, (await r.json()).emergents);
         } catch (e) {}
       }
     } finally { warming = false; }
   }
-  // For an agent whose harness reports what it can run (Pi: api_agent_models),
+  // For an agent whose harness reports what it can run (Pi: api_emergent_models),
   // two menus: the vendor, greyed out without a key on the agent's machine,
   // then that vendor's models. The setting is the one vendor/model id Pi reads.
   // Fetched once a page.
@@ -6911,7 +7259,7 @@
     const key = input.dataset.pace, value = Number(input.value) * Number(input.dataset.scale);
     const r = await fetch('/api/settings/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ key, value, mood: current, agent: null, note: 'from the Mood' }),
+      body: JSON.stringify({ key, value, mood: current, emergent: null, note: 'from the Mood' }),
     });
     if (!r.ok) showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status));
     agentsShown = '';
@@ -6937,7 +7285,7 @@
     }
     const r = await fetch('/api/settings/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-      body: JSON.stringify({ key, value, mood: current, agent: select.dataset.agent, note: 'from the Mood' }),
+      body: JSON.stringify({ key, value, mood: current, emergent: select.dataset.agent, note: 'from the Mood' }),
     });
     if (!r.ok) showError(key + ': ' + ((await r.json().catch(() => ({}))).error || r.status));
     agentsShown = '';
@@ -7005,7 +7353,8 @@
     const oldest = Math.min(...tasks.map(t => t.since));
     tasksEl.querySelector('.sum').textContent = `⚙ ${tasks.length} running · longest ${elapsed(oldest)} ${tasksEl.classList.contains('open') ? '▾' : '▸'}`;
     tasksEl.querySelector('.list').innerHTML = tasks.map(t =>
-      `<button type="button" class="task ${t.kind === 'helper' ? 'helper' : ''}${t.id === taskShown ? ' on' : ''}" data-id="${esc(t.id)}" title="what it is">${esc(t.label)} · ${elapsed(t.since)}</button>`).join('');
+      `<button type="button" class="task ${t.kind === 'helper' ? 'helper' : ''}${t.id === taskShown ? ' on' : ''}" data-id="${esc(t.id)}" title="what it is">${esc(t.label)} · ${elapsed(t.since)}${t.kind === 'helper' && t.doing
+        ? ` · ${esc(t.doing)}, ${t.steps || 0} steps` : ''}</button>`).join('');  // a helper: what it's at (Justin, 5 Nov)
   }
   function drawTaskDetail() {
     const box = tasksEl.querySelector('.detail');
@@ -7059,7 +7408,7 @@
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
     box.innerHTML = ((m && m.asked) || []).map(t =>
       `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
-        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.agent, true)}<b>${esc(shown(t.agent))}</b>`
+        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.emergent, true)}<b>${esc(shown(t.emergent))}</b>`
         + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
         + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`).join('<br>');
   }
@@ -7082,15 +7431,15 @@
     if (typeof agent !== 'string') agent = null;
     if (!agent && (!act || (act.doing === 'held' && !/a turn is under way/i.test(act.why || '')))) return false;
     if (!keyHolder || !current) return false;
-    agent = agent || act.agent;
+    agent = agent || act.emergent;
     stopBtn.disabled = true;
     try {
       const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/interrupt/', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-        body: JSON.stringify({ agent }),
+        body: JSON.stringify({ emergent: agent }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
-      acts = acts.filter(a => a.agent !== agent);
+      acts = acts.filter(a => a.emergent !== agent);
       act = [...acts].reverse().find(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || '')) || null;
       renderActivity();
       await poll(false);
@@ -7109,28 +7458,28 @@
     if (lastHead && lastHead._turns && roundOngoing(lastHead) !== lastHead.classList.contains('ongoing')) drawRunHead(lastHead);  // lit while its round goes on
     const isHeld = a => a.doing === 'held' && !/a turn is under way/i.test(a.why || '');
     const working = acts.filter(a => a.doing !== 'held' || /a turn is under way/i.test(a.why || ''));
-    document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('busy', working.some(a => el.dataset.who === a.agent)));
+    document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('busy', working.some(a => el.dataset.who === a.emergent)));
     activityEl.classList.toggle('on', acts.length > 0);
     markLive();
     // One at work: the stop button. Several: a little stop sign by each one's name instead (Justin, 28 Oct:
     // the button named only one of them).
     const several = working.length > 1;
     stopBtn.hidden = !(keyHolder && act && (act.doing !== 'held' || /a turn is under way/i.test(act.why || ''))) || several;
-    stopBtn.textContent = act && act.agent ? `■ stop ${act.agent}` : '■ stop';  // which one (Justin, 2 Nov)
+    stopBtn.textContent = act && act.emergent ? `■ stop ${act.emergent}` : '■ stop';  // which one (Justin, 2 Nov)
     const stopOne = a => keyHolder && several && (a.doing !== 'held' || /a turn is under way/i.test(a.why || ''))
-      ? `<button type="button" class="stopone" data-agent="${esc(a.agent)}" title="Stop ${esc(a.agent)}" aria-label="Stop ${esc(a.agent)}">🛑</button>` : '';
+      ? `<button type="button" class="stopone" data-agent="${esc(a.emergent)}" title="Stop ${esc(a.emergent)}" aria-label="Stop ${esc(a.emergent)}">🛑</button>` : '';
     if (!acts.length) return;
     const hhmm = iso => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     // A line for each, in its colour: two woken by one post, or one asked and one looking in.
-    activityText.innerHTML = acts.map(a => `<span class="one${isHeld(a) ? ' held' : ''}" style="--who: ${agentColor(a.agent)}"><span class="dot"></span>`
+    activityText.innerHTML = acts.map(a => `<span class="one${isHeld(a) ? ' held' : ''}" style="--who: ${agentColor(a.emergent)}"><span class="dot"></span>`
       + (a.doing === 'waking'
-        ? `waking ${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${stopOne(a)}${elapsed(a.since)}`
+        ? `waking ${icon(a.emergent, false)}<b>${esc(a.emergent)}</b> · ${stopOne(a)}${elapsed(a.since)}`
         : isHeld(a) && /^waiting for /.test(a.why || '')  // it chose to wait for another asked too
-        ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> is ${waitedFor(a.why)}` + (a.until ? ` · checks in by ${esc(hhmm(a.until))}` : '')
+        ? `${icon(a.emergent, false)}<b>${esc(a.emergent)}</b> is ${waitedFor(a.why)}` + (a.until ? ` · checks in by ${esc(hhmm(a.until))}` : '')
         : isHeld(a)
-        ? `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · held: ${esc(a.why || 'not yet')}`
+        ? `${icon(a.emergent, false)}<b>${esc(a.emergent)}</b> · held: ${esc(a.why || 'not yet')}`
           + (a.until ? ` · answers about ${esc(hhmm(a.until))}` : '') + ` · asked ${elapsed(a.since)} ago`
-        : `${icon(a.agent, false)}<b>${esc(a.agent)}</b> · ${esc(a.doing || 'at work')}`
+        : `${icon(a.emergent, false)}<b>${esc(a.emergent)}</b> · ${esc(a.doing || 'at work')}`
           + (/a turn is under way/i.test(a.why || '') ? ` <span class="meta">(next turn queued)</span>` : '')
           + ` · ${stopOne(a)}${elapsed(a.since)}`
           + ([a.model, a.effort].filter(Boolean).length ? ` · ${esc([a.model, a.effort].filter(Boolean).join(' · '))}` : ''))
@@ -7249,7 +7598,7 @@
       return m.turns.map(t => t.tokens).join(' + ') + (costs.length ? ' · ' + costs.join(' + ') : '');
     };
     const dots = m => {
-      const answered = new Set(m.turns.map(t => t.agent));
+      const answered = new Set(m.turns.map(t => t.emergent));
       return [...new Set([...m.asked, ...answered])].map(a =>
         `<span class="dot${answered.has(a) ? '' : ' unanswered'}" style="--who: ${agentColor(a)}" title="${esc(a)}${answered.has(a) ? ' answered' : ' was asked'}"></span>`).join('');
     };
@@ -7345,7 +7694,7 @@
       return clips;
     } catch (e) { return []; }
   }
-  // Slash commands (services/agent_commands, and /clips): offered as soon as / starts the box,
+  // Slash commands (services/emergent_commands, and /clips): offered as soon as / starts the box,
   // with the form each takes; then, for an agent's command, the agents. Formal on purpose
   // (Justin, 17 Oct): "/compact magent what to keep", and the server refuses anything else.
   const SLASH_COMMANDS = JSON.parse("{{ slash_commands|escapejs }}" || '[]');
@@ -7532,6 +7881,13 @@
   });
   const menu = document.getElementById('menu');
   menu.addEventListener('click', () => {
+    // On a phone, ☰ is the Moods: from a section, it goes back to them, with their list open.
+    if (document.body.classList.contains('in-section')) {
+      showSection('moods', true);
+      document.body.classList.add('menu-open');
+      menu.setAttribute('aria-expanded', 'true');
+      return;
+    }
     menu.setAttribute('aria-expanded', document.body.classList.toggle('menu-open'));
   });
   nav.addEventListener('click', e => {
@@ -8639,7 +8995,7 @@
     // "X is thinking" only as the latest news: when nothing else is waiting, it says something's
     // coming. With more to hear, or its answer already in, it's left out (Justin, 19 Oct).
     if (item.kind === 'thinking' && (readQueue.length || (item.waiting
-        ? !((liveData[item.mood] || {}).waiting || []).some(w => w.agent === item.agent)  // its wait is over
+        ? !((liveData[item.mood] || {}).waiting || []).some(w => w.emergent === item.agent)  // its wait is over
         : (liveData[item.mood] || {}).busy !== item.agent))) { readNext(); return; }
     const now = readNow = { item, skipped: false };
     renderReadBar();
@@ -8674,7 +9030,7 @@
         const r = await fetch('/api/voice/narrate/', { method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
           body: JSON.stringify(item.kind === 'deploy' ? { mood: current, deploy: item.row }
-                               : { mood: item.mood, agent: item.agent, where: readMode === 'everywhere', still: !!item.still,
+                               : { mood: item.mood, emergent: item.agent, where: readMode === 'everywhere', still: !!item.still,
                                    ...(item.waiting ? { waiting: item.waiting, to: item.waitingTo || '' } : {}) }) });
         const body = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(body.error || r.status);
@@ -9356,8 +9712,38 @@
     if (e.key === 'Escape' && replyTo && !suggest.classList.contains('on')) { e.preventDefault(); e.stopImmediatePropagation(); cancelReply(); }
   }, { capture: true });
 
-  const noAgents = document.getElementById('noAgents');
-  noAgents.querySelector('button').addEventListener('click', () => { noAgents.close(); sayBox.focus(); });
+  // Signed in with PickiPedia, an @emergent is plain text (Justin, 3 Nov: no modal in their way): a hint under
+  // the box while one is typed, and after sending, once a Mood a visit, a note to them alone -- never in the
+  // record. Both in Magenta:System Messages' words.
+  const systemSaid = (key, fields = {}) => said(key, fields)
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (all, page, words) =>
+      `<a href="${esc(WIKI + '/wiki/' + encodeURIComponent(page.trim().replace(/ /g, '_')).replace(/%3A/g, ':').replace(/%2F/g, '/'))}" target="_blank" rel="noopener">${words || page}</a>`);
+  function wikiMentionHint() {
+    if (viewerTier !== 'wiki') return;
+    const addressed = agentsAddressed(sayBox.value);
+    let hint = composer.querySelector('.note.wiki-mention');
+    if (!addressed.length) { if (hint) hint.remove(); return; }
+    if (!hint) {
+      hint = document.createElement('span');
+      hint.className = 'note wiki-mention';
+      hint.title = 'Magenta:System Messages · wiki-mention-hint';
+      composer.appendChild(hint);
+    }
+    hint.innerHTML = systemSaid('wiki-mention-hint', { agent: esc(addressed.join(', @')) });
+  }
+  sayBox.addEventListener('input', wikiMentionHint);
+  const wikiNoted = new Set();
+  function wikiMentionNote(text, id) {
+    if (viewerTier !== 'wiki' || !agentsAddressed(text).length || wikiNoted.has(current)) return;
+    wikiNoted.add(current);
+    const note = document.createElement('div');
+    note.className = 'event sysnote';
+    note.title = 'Magenta:System Messages · wiki-mention: shown to you alone, not kept';
+    note.innerHTML = '⚙ ' + systemSaid('wiki-mention');
+    const turns = document.getElementById('turns');
+    const mine = id && document.getElementById('m-' + id);
+    if (mine) mine.after(note); else if (turns) turns.appendChild(note);
+  }
   async function say() {
     // A memo still recording or uploading: stop it, and send once it's in the box.
     if (recorder || memoSaving) {
@@ -9388,15 +9774,8 @@
     const sendOn = () => { makeDraft.dataset.then = 'page'; makeDraft.click(); delete makeDraft.dataset.then; };
     if (!text && makeDraft) { sendOn(); return; }
     if (!text || !current) return;
-    if (viewerTier === 'wiki') {
-      const addressed = agentsAddressed(text);
-      if (addressed.length) {
-        noAgents.querySelector('.who').textContent = addressed.map(n => '@' + n).join(', ');
-        noAgents.showModal();
-        return;
-      }
-    }
     sendBtn.disabled = true;
+    composer.querySelectorAll('.note.wiki-mention').forEach(el => el.remove());
     const old = composer.querySelector('.err'); if (old) old.remove();
     // Shown at once, faint, while it's on its way; the box is free for the next.
     const pending = memoPending || showPending(text);
@@ -9407,6 +9786,7 @@
     tray = []; renderTray(); saveDraft();
     if (voicePending) { voicePending.state = 'sending'; renderVoiceMode(); }
     else { voicePending = { state: 'sending', text, who: viewer, mood: current }; renderVoiceMode(); }
+    let sent = false;  // the server has it: from here, nothing goes back in the box
     try {
       const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/say/', {
         method: 'POST',
@@ -9415,6 +9795,8 @@
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
       const done = await r.json().catch(() => ({}));
+      sent = true;
+      wikiMentionNote(text, done.id);
       if (pending && done.pending) {
         // A memo whose words aren't in yet: posted once they are (voice.post_when_heard). Its place stays, saying so.
         pending.dataset.memo = done.pending;
@@ -9444,6 +9826,15 @@
       if (makeDraft && makeDraft.isConnected) sendOn();
     } catch (e) {
       voicePending = null; renderVoiceMode();
+      if (sent) {
+        // Posted, and something after it broke (Skyler, 4 Nov: a tab from before a deploy threw on drawing the new
+        // reply). Said as a failure, the words went back in the box and Enter posted them twice. Now it's sent, the
+        // next poll draws it, and the page offers a reload; what broke is in the console.
+        console.error('sent, then:', e);
+        if (pending) pendingSays(pending, 'sent');
+        reloadNudge.hidden = false;
+        return;
+      }
       if (pending) pending.remove();
       if (!sayBox.value.trim()) { sayBox.value = words; fitSay(); showDiscard(); }  // not sent: the words back where they were
       if (!tray.length) { tray = sentTray; renderTray(); }                // and the pictures
@@ -9531,6 +9922,22 @@
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
   const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
+  // The address follows the Tidings frame while it shows (Justin, 4 Nov): a tiding opened from the list is
+  // its own address, to reload or share, and ‹ Tidings back to the list is /moods/tidings/ again.
+  function tidingsAddress(f) {
+    let at;
+    try { at = f.contentWindow.location; } catch (err) { return null; }
+    if (!at.pathname.startsWith('/moods/tidings/')) return null;
+    const rest = new URLSearchParams(at.search);
+    rest.delete('embed');
+    return at.pathname + (rest.size ? '?' + rest : '') + at.hash;
+  }
+  sectionFrames.addEventListener('load', e => {
+    const f = e.target;
+    if (!(f instanceof HTMLIFrameElement) || f.dataset.section !== 'tidings' || f.hidden || sectionNow !== 'tidings') return;
+    const want = tidingsAddress(f);
+    if (want && location.pathname + location.search + location.hash !== want) history.replaceState(history.state, '', want);
+  }, true);  // a frame's load doesn't bubble; it's caught on the way down
   // A section drawn again behind the scenes when what it shows has changed (a promotion here, a comment or a
   // link from someone else): a fresh frame loads hidden and takes the old one's place once it's in, so
   // nobody waits on it (Justin, 21 Oct). Never under the reader's eyes: open, it's done when they leave.
@@ -9594,12 +10001,18 @@
   }
   function showSection(name, push) {
     const left = sectionNow;
+    // Leaving Tidings with a video playing there: it follows (the small player, above).
+    if (left === 'tidings' && name !== 'tidings') {
+      try { const w = tidingsFrame() && tidingsFrame().contentWindow; if (w && w.magentaHandoff) w.magentaHandoff(); } catch (e) {}
+    }
     sectionNow = name;
     if (left !== name && left === 'tidings') markTidingsSeen();  // what came while they read it is seen too
     if (left !== name && sectionPending[left]) { delete sectionPending[left]; refreshSection(left); }
     document.body.classList.toggle('in-section', name !== 'moods');
     sectionFrames.hidden = name === 'moods';
     if (name === 'tidings') markTidingsSeen();  // the badges count from this visit on
+    if (name === 'tidings' && left !== 'tidings') miniHome();
+    miniDodge();
     if (name !== 'moods') {
       const frame = frameFor(name);
       frame.hidden = false;
@@ -9614,8 +10027,11 @@
     document.querySelectorAll('header [data-section]').forEach(a => {
       if (a.dataset.section === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
-    const url = name === 'moods' ? (current ? '/moods/' + encodeURIComponent(current) + '/' : '/moods/') : `/moods/${name}/`;
-    if (push && location.pathname !== url) history.pushState({ section: name, slug: current }, '', url);
+    // Back to Tidings: the address is where its frame is, a tiding's own page if it was left there.
+    const url = name === 'moods' ? (current ? '/moods/' + encodeURIComponent(current) + '/' : '/moods/')
+      : (name === 'tidings' && tidingsAddress(frameFor('tidings'))) || `/moods/${name}/`;
+    const here = name === 'tidings' ? location.pathname + location.search + location.hash : location.pathname;
+    if (push && here !== url) history.pushState({ section: name, slug: current }, '', url);
     const moreBtn = document.getElementById('sectionsMoreBtn');
     if (moreBtn) moreBtn.classList.toggle('active', ['prompts', 'status', 'todo', 'verify'].includes(name));
     setTitle();
@@ -9711,12 +10127,29 @@
     }
     if (!slug) { location.href = to.href; return; }  // somewhere else: go there
     showSection('moods', false);
-    if (id || message) openAndReveal(decodeURIComponent(slug), id || message);
-    else open(decodeURIComponent(slug), true);
+    // Its address, once, whether or not that Mood was already the one behind the section: Back returns to
+    // where the link was, not out of magenta.
+    const at = '/moods/' + encodeURIComponent(decodeURIComponent(slug)) + '/';
+    if (location.pathname !== at) history.pushState({ slug: decodeURIComponent(slug) }, '', at + (id ? '#m-' + id : ''));
+    if (id || message) openAndReveal(decodeURIComponent(slug), id || message, false);
+    else open(decodeURIComponent(slug), false);
   });
   window.addEventListener('popstate', e => {
     if (e.state && e.state.lightbox) return;  // forward into a picture's step: nothing to open
     const sectionTo = sectionOf(location.pathname);
+    // Back to Tidings, or to one tiding's own page (left by a link in it into a Mood): Tidings, its frame
+    // where the address says.
+    const tidingAt = location.pathname.match(/^\/moods\/tidings\/([0-9a-f-]{36})\/?$/);
+    if (sectionTo === 'tidings' || tidingAt) {
+      showSection('tidings', false);
+      const frame = tidingsFrame(), there = frame && tidingsAddress(frame);
+      if (frame && there !== null && there.split('#')[0] !== location.pathname + location.search) {
+        const asked = new URLSearchParams(location.search);
+        asked.set('embed', '1');
+        frame.src = `${location.pathname}?${asked}${location.hash}`;
+      }
+      return;
+    }
     if (sectionTo) { showSection(sectionTo, false); return; }
     if (sectionNow !== 'moods') showSection('moods', false);
     const slug = (e.state && e.state.slug) || location.pathname.split('/')[2];
@@ -9727,8 +10160,13 @@
     await null;  // the rest of this script read first: what showSection uses is all there
     // Loaded in the background: ready the moment it's wanted. Opened at a link's own address (from the
     // front page, or a #t- link elsewhere), it opens at that link's discussion.
+    // Its order (?order=new) and a comment's #c- come along: a frame's own address opened on its own is
+    // sent here without ?embed (views_settings._opened_on_its_own), and lands where it pointed.
     const tidingAt = location.pathname.match(/^\/moods\/tidings\/[0-9a-f-]{36}\/?$/);
-    frameFor('tidings', true, tidingAt ? tidingAt[0].replace(/\/?$/, '/') + '?embed=1' : undefined);
+    const tidingsAt = tidingAt ? tidingAt[0].replace(/\/?$/, '/') : sectionOf(location.pathname) === 'tidings' ? '/moods/tidings/' : null;
+    const asked = new URLSearchParams(location.search);
+    asked.set('embed', '1');
+    frameFor('tidings', true, tidingsAt ? `${tidingsAt}?${asked}${location.hash}` : undefined);
     // Asked for a section: shown at once, before the Moods load behind it -- not a Mood first, then the
     // section (Justin, 23 Oct: from the front page, a link took "quite a while").
     if (initialSection !== 'moods') showSection(initialSection, false);
@@ -9749,7 +10187,89 @@
     else await open(slug, false);
     if (sharing_) { history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/'); offerShare(); }
     setInterval(() => { poll(false); fetchBadges(); }, POLL_MS);
+    if (new URLSearchParams(location.search).has('tour')) startTour();
   })();
+
+  // The guided tour (services/tour.py; Justin, 4 Nov: "run in the user's browser and use the live site"):
+  // steps from Magenta:Tour's trusted revision, each pointing at a data-tour anchor on this page, drawn by
+  // driver.js (vendored, loaded only now). A step whose anchor isn't on the page, or isn't for this visitor
+  // (needs=signin, key, voice, signedout), is left out. Inside a closed menu (data-tour-open names its
+  // button), the menu is opened. Scrolling panes (the Moods, the messages) move the highlight with them:
+  // driver.js follows only the window's scroll (tried on the live page, 4 Nov), so any scroll refreshes it.
+  let tourLoaded = null;
+  function tourAssets() {
+    if (window.driver && window.driver.js) return Promise.resolve();
+    return tourLoaded || (tourLoaded = new Promise((done, failed) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = '/moods/tour/driver.css';
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = '/moods/tour/driver.js'; js.onload = () => done(); js.onerror = () => { tourLoaded = null; failed(new Error('driver.js did not load')); };
+      document.head.appendChild(js);
+    }));
+  }
+  const tourFor = { signin: () => !!viewer, key: () => keyHolder, voice: () => voiceOn, signedout: () => !viewer };
+  function tourShown(el) { return !!el && el.getClientRects().length > 0 && !el.closest('[hidden]'); }
+  // The newest one shown: for a message, the last in the column.
+  function tourAnchor(name) {
+    const all = [...document.querySelectorAll(`[data-tour="${CSS.escape(name)}"]`)];
+    // Shown, or out of sight only because the menu it's in is closed (opened when its step comes); an item the
+    // menu itself hides (voice mode, with no voices here) is left out.
+    const shown = all.filter(el => tourShown(el) || (el.closest('[data-tour-open]') && !(el.hidden && !el.dataset.tourOpen)));
+    return shown.length ? shown[shown.length - 1] : null;
+  }
+  // What the tour opened, closed again once a step points elsewhere (driver.js keeps its clicks to itself, so
+  // a menu's own click-outside never hears them).
+  let tourOpened = null;
+  function tourClose(keepFor) {
+    if (!tourOpened || (keepFor && tourOpened.holder.contains(keepFor))) return;
+    if (tourShown(tourOpened.holder)) tourOpened.opener.click();
+    tourOpened = null;
+  }
+  function tourReveal(el) {
+    tourClose(el);
+    if (!tourShown(el)) {
+      const holder = el.closest('[data-tour-open]');
+      const opener = holder && document.getElementById(holder.dataset.tourOpen);
+      if (opener && tourShown(opener)) { opener.click(); tourOpened = { holder, opener }; }
+    }
+    if (tourShown(el)) el.scrollIntoView({ block: 'nearest' });
+    return el;
+  }
+  async function startTour() {
+    let got;
+    try {
+      const [r] = await Promise.all([fetch('/api/tour/'), tourAssets()]);
+      got = await r.json();
+    } catch (err) { showNote(`The tour couldn't start: ${err.message}`, 8000); return; }
+    const steps = (got.steps || []).filter(s => !s.needs || (tourFor[s.needs] || (() => false))())
+      .filter(s => tourAnchor(s.at));
+    if (!steps.length) { showNote(got.error ? `No tour yet: ${got.error}` : 'No tour yet: Magenta:Tour has no steps for this page.', 8000); return; }
+    // Moving on a beat later: a click on Next closes an open menu first, then the next step opens what it needs.
+    const later = fn => setTimeout(fn, 0);
+    const tour = window.driver.js.driver({
+      showProgress: true, popoverClass: 'magenta-tour', smoothScroll: false,
+      nextBtnText: 'Next →', prevBtnText: '← Back', doneBtnText: 'Done',
+      onNextClick: () => later(() => tour.moveNext()),
+      onPrevClick: () => later(() => tour.movePrevious()),
+      onDestroyed: () => { document.removeEventListener('scroll', follow, true); tourClose(null); },
+      steps: steps.map(s => ({
+        element: () => tourReveal(tourAnchor(s.at) || document.body),
+        popover: { description: s.text },
+        ...(s.try ? { advanceOnClick: true } : {}),
+      })),
+    });
+    let frame = 0;
+    const follow = () => { if (tour.isActive() && !frame) frame = requestAnimationFrame(() => { frame = 0; tour.refresh(); }); };
+    document.addEventListener('scroll', follow, true);
+    tour.drive();
+  }
+  document.getElementById('tourLink').addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('userMenu').hidden = true;
+    document.getElementById('userBtn').setAttribute('aria-expanded', 'false');
+    startTour();
+  });
 
   // The Tidings button's two badges: what's new since the viewer last opened Tidings (Justin, 21 Oct).
   // Never opened here: counted from now, not from the first link ever promoted.
@@ -9876,7 +10396,7 @@
         }
       }
     } else {
-      for (const a of acts.filter(a => a.doing !== 'held')) out.push(`<b>${esc(shown(a.agent))}</b> ${esc(a.doing)} · ${esc(elapsed(a.since))}`);
+      for (const a of acts.filter(a => a.doing !== 'held')) out.push(`<b>${esc(shown(a.emergent))}</b> ${esc(a.doing)} · ${esc(elapsed(a.since))}`);
     }
     return out;
   }

@@ -63,7 +63,7 @@ GLOBAL_KNOBS = {
     'tidings_age_hours': (12.0, 'Tidings ranking: the hours one unit of a link\'s age is. Fewer: links fade faster.'),
     'tidings_gravity': (1.5, 'Tidings ranking: how hard age pulls a link down. More: it fades faster.'),
     'tidings_comment_weight': (0.5, 'Tidings ranking: what one comment counts for, beside one upvote (1).'),
-    # Who may set agents' per-Mood settings from a reply (services/agent_settings.py), when a person asks: a
+    # Who may set agents' per-Mood settings from a reply (services/emergent_settings.py), when a person asks: a
     # grant, so adding an agent is a value a person changes, not code (Justin and re, 24 Oct). magent at first.
     # Which models each vendor offers in the model menus (Justin, 28 Oct: "disable anthropic models through
     # openrouter"): {vendor: [a maker (its group, as 'anthropic') or a model's own id]}, each one switched off.
@@ -343,7 +343,7 @@ def clean(key, value):
         if isinstance(value, str):
             value = [v for v in re.split(r'[\s,]+', value) if v]
         if not isinstance(value, list) or not all(isinstance(v, str) and re.fullmatch(r'[\w.-]{1,50}', v) for v in value):
-            raise Invalid('settings_may_set: agents\' names')
+            raise Invalid('settings_may_set: emergents\' names')
         return list(dict.fromkeys(v.lower() for v in value))[:20]
     if key == TIDINGS_PINNED:
         import uuid
@@ -370,7 +370,7 @@ def looks():
     fields = {'name_art': 'art', 'name_colours': 'colours', 'name_backs': 'backs', 'icon_colour': 'colour'}
     found = {}
     for row in Setting.objects.filter(key__in=list(fields), mood__isnull=True).order_by('created_at'):
-        found.setdefault(row.agent_id, {'art': '', 'colours': '', 'backs': '', 'colour': ''})[fields[row.key]] = row.value or ''
+        found.setdefault(row.emergent_id, {'art': '', 'colours': '', 'backs': '', 'colour': ''})[fields[row.key]] = row.value or ''
     for name, look in found.items():
         for codes in ('colours', 'backs'):
             look[codes] = stored(cells(look[codes])[:len(look['art'])]) if look['art'] else ''
@@ -380,11 +380,11 @@ def looks():
 
 
 def latest(rows):
-    """{(mood slug, agent_id, key): row}, the newest row per slot."""
+    """{(mood slug, emergent, key): row}, the newest row per slot."""
     from conversations.models import mood_slug
     current = {}
     for row in sorted(rows, key=lambda r: r.created_at):
-        current[(mood_slug(row.mood_id), row.agent_id, row.key)] = row
+        current[(mood_slug(row.mood_id), row.emergent_id, row.key)] = row
     return current
 
 
@@ -439,14 +439,14 @@ def set_by(mood, agent, keys, rows=None):
 def mood_flagged(key):
     """The Moods where `key` (a MOOD_KEYS flag) is on now: the newest row for each says so."""
     from conversations.models import Setting
-    rows = Setting.objects.filter(key=key, agent=None, mood__isnull=False)
+    rows = Setting.objects.filter(key=key, emergent=None, mood__isnull=False)
     return {slug for (slug, _, _), row in latest(rows).items() if row.value}
 
 
 def mood_value(slug, key):
     """A MOOD_KEYS setting for one Mood, as it stands now (its default if never set)."""
     from conversations.models import Setting
-    row = Setting.objects.filter(key=key, agent=None, mood__slug=slug).order_by('-created_at').first()
+    row = Setting.objects.filter(key=key, emergent=None, mood__slug=slug).order_by('-created_at').first()
     return row.value if row is not None else default(key)
 
 
@@ -458,7 +458,7 @@ def global_values(keys):
     """{key: its value now} for several settings at once: one question of the database, not one each."""
     from conversations.models import Setting
     found = {}
-    for row in Setting.objects.filter(key__in=keys, mood=None, agent=None).order_by('-created_at'):
+    for row in Setting.objects.filter(key__in=keys, mood=None, emergent=None).order_by('-created_at'):
         found.setdefault(row.key, row.value)
     return {key: found[key] if key in found else default(key) for key in keys}
 
@@ -473,7 +473,7 @@ def model_off(vendor, model, off=None):
 
 
 def offered(vendors, off=None):
-    """A harness's catalog (api_agent_models: [{name, usable, models: [[id, context], ...]}]) less what's off."""
+    """A harness's catalog (api_emergent_models: [{name, usable, models: [[id, context], ...]}]) less what's off."""
     off = global_value('models_off') if off is None else off
     return [{**v, 'models': [m for m in v.get('models') or () if not model_off(v.get('name'), str(m[0]), off)]}
             for v in vendors]
@@ -481,14 +481,14 @@ def offered(vendors, off=None):
 
 def global_value(key):
     from conversations.models import Setting
-    row = Setting.objects.filter(key=key, mood=None, agent=None).order_by('-created_at').first()
+    row = Setting.objects.filter(key=key, mood=None, emergent=None).order_by('-created_at').first()
     return row.value if row is not None else default(key)
 
 
 def scram():
     """The scram in force, or None: {'by': ..., 'at': ..., 'note': ...}."""
     from conversations.models import Setting
-    row = Setting.objects.filter(key='scram', mood=None, agent=None).order_by('-created_at').first()
+    row = Setting.objects.filter(key='scram', mood=None, emergent=None).order_by('-created_at').first()
     if row is None or not row.value:
         return None
     return {'by': row.set_by_id, 'at': row.created_at.isoformat(), 'note': row.note}
@@ -496,7 +496,7 @@ def scram():
 
 def banned(name):
     from conversations.models import Setting
-    row = Setting.objects.filter(key='banned', mood=None, agent_id=name).order_by('-created_at').first()
+    row = Setting.objects.filter(key='banned', mood=None, emergent_id=name).order_by('-created_at').first()
     return bool(row and row.value)
 
 
@@ -508,12 +508,12 @@ def change(key, value, mood=None, agent=None, by=None, note=''):
     if key in GLOBAL_KNOBS and (mood is not None or agent is not None):
         raise Invalid(f'{key} applies everywhere at once')
     if key in MOOD_KEYS and (mood is None or agent is not None):
-        raise Invalid(f'{key} is set for one Mood, not for an agent')
+        raise Invalid(f'{key} is set for one Mood, not for an emergent')
     if key in PACE_KEYS and agent is not None:
         raise Invalid(f'{key} is a Mood\'s pace, the same for every emergent in it')
     if key in PERSON_KEYS and (agent is None or mood is not None):
-        raise Invalid(f'{key} is set for one person or agent, everywhere')
-    row = Setting.objects.create(mood=mood, agent=agent, key=key, value=clean(key, value), set_by=by,
+        raise Invalid(f'{key} is set for one person or emergent, everywhere')
+    row = Setting.objects.create(mood=mood, emergent=agent, key=key, value=clean(key, value), set_by=by,
                                  note=str(note or '')[:200])
     if key in ('archived', 'pinned'):
         from .mood_cache import bust_moods_cache
@@ -536,6 +536,6 @@ def change_every_mood(key, value, agent, by=None, note=''):
 
 def describe(row):
     return {
-        'mood': row.mood.slug if row.mood_id else None, 'agent': row.agent_id, 'key': row.key, 'value': row.value,
+        'mood': row.mood.slug if row.mood_id else None, 'emergent': row.emergent_id, 'key': row.key, 'value': row.value,
         'set_by': row.set_by_id, 'note': row.note, 'at': row.created_at.isoformat(),
     }

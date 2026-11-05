@@ -87,7 +87,7 @@ class VoiceLibraryTest(TestCase):
         added = [a for a in self.fake.asked if '/voices/add/' in a[1]]
         self.assertEqual(added[0][1].rsplit('/voices/add/', 1)[1], f'owner123abc/{LIBRARY_ID}')
         self.assertEqual(added[0][2]['json'], {'new_name': 'Old Timey Banjo'})
-        self.assertEqual(Setting.objects.filter(key='speaker_voice', agent=self.skyler).latest('created_at').value, LIBRARY_ID)
+        self.assertEqual(Setting.objects.filter(key='speaker_voice', emergent=self.skyler).latest('created_at').value, LIBRARY_ID)
 
     def test_an_id_pasted_is_taken_as_it_is(self):
         said = self.client_for(self.justin).post('/api/voice/speaker/', json.dumps({'name': 'justin', 'voice': 'Pasted0Voice0Id00001'}),

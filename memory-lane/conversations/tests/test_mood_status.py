@@ -65,9 +65,9 @@ class StatusPageTests(TestCase):
         self.assertIn('.pie.pulse', moods_html)
 
     def test_api_status_returns_agent_settings_in_every_mood_and_vendors(self):
-        Setting.objects.create(key='discretion', mood=self.mood_a, agent=self.re, value='reserved', set_by=self.justin)
+        Setting.objects.create(key='discretion', mood=self.mood_a, emergent=self.re, value='reserved', set_by=self.justin)
         HarnessModels.objects.create(
-            agent=self.re,
+            emergent=self.re,
             harness='pi 1.1.0',
             vendors=[
                 {'name': 'openrouter', 'usable': True, 'models': [['deepseek/deepseek-v4-pro', 200000]]},
@@ -90,8 +90,8 @@ class StatusPageTests(TestCase):
 
         moods = {m['slug']: m for m in data['moods']}
         self.assertEqual(set(moods.keys()), {'magenta-interface', 'docs-tests-qa'})
-        self.assertEqual(moods['magenta-interface']['agents']['re']['discretion'], 'reserved')
-        self.assertEqual(moods['magenta-interface']['agents']['re']['catalog'], 'pi 1.1.0')
+        self.assertEqual(moods['magenta-interface']['emergents']['re']['discretion'], 'reserved')
+        self.assertEqual(moods['magenta-interface']['emergents']['re']['catalog'], 'pi 1.1.0')
         self.assertIn('magent', data['everywhere'])
         self.assertEqual(len(data['harnesses']), 1)
         self.assertEqual(data['harnesses'][0]['vendors'], [

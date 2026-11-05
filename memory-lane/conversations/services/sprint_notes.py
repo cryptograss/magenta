@@ -60,6 +60,27 @@ def current(http=None):
     return name, page
 
 
+def shown():
+    """{'name', 'url'} of the current sprint, for the header's menu (Justin, 3 Nov); None if there's none or the
+    wiki can't say. Kept ten minutes, a failure one, so a page load never waits on the wiki twice running."""
+    from django.conf import settings
+    from django.core.cache import cache
+    if not getattr(settings, 'INTERFACE_WORDS_FROM_WIKI', True):  # off under test, as the interface's words
+        return None
+    kept = cache.get('current-sprint')
+    if kept is not None:
+        return kept or None
+    try:
+        name, page = current()
+    except Exception:  # noqa: BLE001 -- no sprint, or the wiki away: the menu just doesn't say
+        cache.set('current-sprint', {}, 60)
+        return None
+    wiki = getattr(settings, 'PICKIPEDIA_URL', 'https://pickipedia.xyz').rstrip('/')
+    found = {'name': name, 'url': f"{wiki}/wiki/{(page or POINTER).replace(' ', '_')}"}
+    cache.set('current-sprint', found, 600)
+    return found
+
+
 def notes_page(sprint, person):
     """Magenta:Sprints/<sprint>/<their PickiPedia name>."""
     from .wiki_auth import names

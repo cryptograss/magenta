@@ -31,12 +31,12 @@ import re
 # Each command: what it's for (the composer's suggestions say so), and whether it
 # takes words after its agents (True: required, 'optional': allowed but optional, False: none).
 COMMANDS = {
-    'compact': ('compact an agent: shorten its memory of this Mood (optionally saying what to keep)', 'optional'),
-    'context': ("what fills an agent's context here, by kind", False),
+    'compact': ('compact an emergent: shorten its memory of this Mood (optionally saying what to keep)', 'optional'),
+    'context': ("what fills an emergent's context here, by kind", False),
     'usage': ("the subscription's limits, used so far", False),
     'cost': ('the same as /usage', False),
 }
-FORM = {name: f'/{name} <agent>[,<agent>…]' + (' [what to keep]' if words == 'optional' else ' <what to keep>' if words else '')
+FORM = {name: f'/{name} <emergent>[,<emergent>…]' + (' [what to keep]' if words == 'optional' else ' <what to keep>' if words else '')
         for name, (_, words) in COMMANDS.items()}
 HANDOFF_AGENT = 'magent'
 INCORPORATE_FORM = '/incorporate #<thread> [what to be sure to carry back]'
@@ -69,25 +69,25 @@ def parse(text, agents):
         old = re.search(r'@([\w.-]+)[\s,:]*/([a-z]+)\b', prose, re.I)
         if old and old.group(1).lower() in agents and old.group(2).lower() in COMMANDS:
             name, agent = old.group(2).lower(), old.group(1).lower()
-            raise Invalid(f'commands for agents start the message now: '
-                          f'{FORM[name].replace("<agent>[,<agent>…]", agent)}')
+            raise Invalid(f'commands for emergents start the message now: '
+                          f'{FORM[name].replace("<emergent>[,<emergent>…]", agent)}')
         return None
     name = head.group(1).lower()
     rest = text[head.end():].strip()
     listed = re.match(r'@?[\w.-]+(?:\s*,\s*@?[\w.-]+)*', rest)
     if not listed:
-        raise Invalid(f'which agent? {FORM[name]}')
+        raise Invalid(f'which emergent? {FORM[name]}')
     named = [n.strip().lstrip('@').lower() for n in listed.group(0).split(',')]
     unknown = [n for n in named if n not in agents]
     if unknown:
-        raise Invalid(f"{', '.join(unknown)}: not an agent here (agents: {', '.join(sorted(agents))}). {FORM[name]}")
+        raise Invalid(f"{', '.join(unknown)}: not an emergent here (emergents: {', '.join(sorted(agents))}). {FORM[name]}")
     named = list(dict.fromkeys(named))
     words = rest[listed.end():].strip()
     takes_words = COMMANDS[name][1]
     if takes_words is True and not words:
         raise Invalid(f'say what the compaction should keep: {FORM[name]}')
     if not takes_words and words:
-        raise Invalid(f'/{name} takes nothing after its agents: {FORM[name]}')
+        raise Invalid(f'/{name} takes nothing after its emergents: {FORM[name]}')
     return name, named, words
 
 
@@ -100,7 +100,7 @@ def suggestions():
     return out + [['clips', '/clips <name> | save <name> <yarn link> | forget <name>',
                    "the team's saved clips: post one by name, save one, forget one, or list them"],
                   ['poll', '/poll <question> | <choice> | <choice> …',
-                   'ask everyone, agents too: a button per choice, and who chose what (none given: yes and no)']]
+                   'ask everyone, emergents too: a button per choice, and who chose what (none given: yes and no)']]
 
 
 def commanded(text, agents):

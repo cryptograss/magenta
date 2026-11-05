@@ -22,8 +22,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_feed, wiki_ledger, wiki_upload
-from .services import agent_commands, mood_auth
-from .services.emergent_names import named  # emergent or, until the rename's last step, agent
+from .services import emergent_commands, mood_auth
 from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.mood_view import (
     from_wiki_tier,
@@ -73,8 +72,8 @@ def moods_page(request, slug=None, section=''):
         'push_key': push_key(),
         'page_version': page_version(),
         'git_commit': git_commit() or page_version()[:10],
-        # The slash commands, for the composer to offer as one is typed (services/agent_commands).
-        'slash_commands': json.dumps(agent_commands.suggestions()),
+        # The slash commands, for the composer to offer as one is typed (services/emergent_commands).
+        'slash_commands': json.dumps(emergent_commands.suggestions()),
         # The words people read where they're settable on PickiPedia (Magenta:Interface; services/interface_words.py).
         'interface_words': json.dumps(interface_words()),
     })
@@ -144,12 +143,20 @@ def page_version():
     otherwise stay broken in it)."""
     from django.template.loader import get_template
     from .services import embeds, mood_view
-    digest = hashlib.sha256()
-    for path in (get_template('conversations/moods.html').origin.name,
-                 get_template('conversations/name_art_css.html').origin.name, mood_view.__file__, embeds.__file__):
-        with open(path, 'rb') as f:
-            digest.update(f.read())
-    return digest.hexdigest()[:12]
+    paths = (get_template('conversations/moods.html').origin.name,
+             get_template('conversations/name_art_css.html').origin.name, mood_view.__file__, embeds.__file__)
+    # Hashed again only when a file changes: ~700 KB read and hashed on every /api/servers otherwise.
+    stamp = tuple((path, os.stat(path).st_mtime_ns, os.stat(path).st_size) for path in paths)
+    if _page_version[0] != stamp:
+        digest = hashlib.sha256()
+        for path in paths:
+            with open(path, 'rb') as f:
+                digest.update(f.read())
+        _page_version[:] = [stamp, digest.hexdigest()[:12]]
+    return _page_version[1]
+
+
+_page_version = [None, '']
 
 
 @require_GET
@@ -355,7 +362,7 @@ def api_mood_turns(request, slug):
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'thread', 'into', 'was', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
-                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools', 'lines', 'job', 'stage', 'url')},
+                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools', 'lines', 'steps', 'job', 'stage', 'url')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
@@ -444,7 +451,7 @@ def api_mood_turns(request, slug):
         'has_earlier': clock('earlier', lambda: bool(limit or (start and before)) and first is not None and mood.messages.filter(
             is_sidechain=False, created_at__lt=first).exists()),
         'activity': clock('activity', activity, mood),
-        # Every agent at work here, each with its own line on the page.
+        # Every emergent at work here, each with its own line on the page.
         'activities': clock('activities', activities, mood),
         # Who reads without signing in: how many, to everyone; their addresses, to an SSH-key sign-in.
         **clock('watchers', _watchers, request, mood),
@@ -452,8 +459,8 @@ def api_mood_turns(request, slug):
         'tasks': clock('tasks', background_tasks, mood),
         # Whether each agent is listening here (the hush menu in the head).
         'listening': {name: a['listening'] for name, a in agents.items()},
-        # Each agent here: listening, model, effort, and how full its context is.
-        'agents': agents,
+        # Each emergent here: listening, model, effort, and how full its context is.
+        'emergents': agents,
         'scram': clock('scram', settings_scram),
         'typing': clock('typing', typing_in, mood.slug),
         # Each one's own pronouns, as set on their own account: the emergents and the people here. The runner
@@ -479,11 +486,11 @@ def agents_in(mood):
     agents = ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)
     shown = ('listening', 'model', 'mention_effort', 'ultracode', 'catch_up_tokens', 'discretion', 'verbosity')
     rows = list(Setting.objects.filter(key__in=shown))
-    from .services import agent_settings
-    every = agent_settings._rows()
-    # Which harness reported what it can run (the menu fetches the list itself, from api_agent_models).
+    from .services import emergent_settings
+    every = emergent_settings._rows()
+    # Which harness reported what it can run (the menu fetches the list itself, from api_emergent_models).
     from .models import HarnessModels
-    catalogs = dict(HarnessModels.objects.values_list('agent_id', 'harness'))
+    catalogs = dict(HarnessModels.objects.values_list('emergent_id', 'harness'))
     from .models import Message
     out = {}
     for name in agents:
@@ -507,8 +514,8 @@ def agents_in(mood):
                      'set_by': knobs.set_by(mood.slug, name, shown, rows=rows),
                      'context': context, 'runs': runs,
                      'catalog': catalogs.get(name)}
-        # What's changed in its settings here since its last word: told at its next wake (agent_settings).
-        changes, by, note = agent_settings.changed_since(mood.slug, name, rows=every)
+        # What's changed in its settings here since its last word: told at its next wake (emergent_settings).
+        changes, by, note = emergent_settings.changed_since(mood.slug, name, rows=every)
         if changes:
             out[name]['changed'] = {'changes': changes, 'by': by, 'note': note}
     return out
@@ -660,7 +667,8 @@ def message_page(request, message_id):
 @require_GET
 def api_message_wiki(request, message_id):
     """{"wikitext"}: the message as a card for PickiPedia, {{Magenta message|...}} with its words in it
-    (services/wiki_embed.py). ?chars=N or all: how many characters the card shows (else the template's 280)."""
+    (services/wiki_embed.py). ?chars=N or all: how many characters the card shows (else the template's 280);
+    ?inline=1: a one-line citation for prose instead of the card."""
     from .models import MessageChange
     from .services import wiki_embed
     message = _in_a_mood(message_id)
@@ -669,7 +677,8 @@ def api_message_wiki(request, message_id):
     chars = request.GET.get('chars') or None
     if chars is not None and chars != 'all' and not (chars.isdigit() and 0 < int(chars) <= 100000):
         return JsonResponse({'error': 'chars: a number, or all'}, status=400)
-    return JsonResponse({'wikitext': wiki_embed.template_call(message, chars=chars)})
+    inline = request.GET.get('inline') in ('1', 'yes', 'true')
+    return JsonResponse({'wikitext': wiki_embed.template_call(message, chars=chars, inline=inline)})
 
 
 @require_GET
@@ -699,7 +708,7 @@ def api_pulse(request):
     from .services import settings as knobs
 
     humans = set(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True))
-    agent = named(request.GET, 'magent')
+    agent = request.GET.get('emergent', 'magent')
     rows = list(Setting.objects.exclude(key__in=knobs.MODERATION_KEYS))
     archived = knobs.archived_slugs()
     wiki_feed.nudge()  # asked every second by the runner: the wiki feed's clock (at most once a minute)
@@ -727,7 +736,7 @@ def api_pulse(request):
     from .services import access
     return JsonResponse({
         'now': timezone.now().isoformat(),
-        'agent': agent,
+        'emergent': agent,
         # Who has just signed in, for a runner to greet if it knows them (services/access.py).
         'arrivals': access.recent_arrivals(),
         # An admin's emergency stop: while set, a runner wakes nothing.
@@ -985,7 +994,7 @@ def api_search(request):
             return JsonResponse({'q': q, 'mood': mood, 'hits': [], 'more': None})
         rows = rows.filter(mood_id__in=mood_and_threads(found)) if request.GET.get('threads') == '1' else rows.filter(mood=found)
     who = (request.GET.get('who') or '').strip()
-    if who in ('human', 'emergent', 'agent'):
+    if who in ('human', 'emergent'):
         rows = rows.filter(sender_id__in=ThinkingEntity.objects.filter(
             is_biological_human=who == 'human').values_list('name', flat=True))
     elif who:
@@ -1086,7 +1095,7 @@ def api_recent(request):
     for row in Setting.objects.filter(created_at__gt=since).order_by(order)[:limit]:
         value = row.value if not isinstance(row.value, dict) else (row.value.get('mode') or row.value)
         events.append({'kind': 'set', 'at': row.created_at.isoformat(), 'mood': mood_slug(row.mood_id),
-                       'who': row.set_by_id or '', 'text': f"{row.key} for {row.agent_id or 'every agent'}: {value}"[:140]})
+                       'who': row.set_by_id or '', 'text': f"{row.key} for {row.emergent_id or 'every emergent'}: {value}"[:140]})
 
     told = set()  # a redeploy is announced in several Moods; list it once
     for row in (Message.objects.filter(source_file='deploy', created_at__gt=since).order_by(order)
@@ -1208,9 +1217,23 @@ def notices_for(name, since, limit=NOTICES_MAX, everything=False):
         kept = [n for n in found if n['kind'] == 'mention'] + mentions
         rest = [n for n in found if n['kind'] != 'mention']
         found = kept + rest[:max(0, limit - len(kept))]
-    found += talk_page_notices(name, since)
+    found += talk_page_notices(name, since) + helper_cut_notices(name, since)
     found.sort(key=lambda n: n['turn']['created_at'], reverse=True)
     return found if len(found) <= limit else _mentions_first(found, limit)
+
+
+def helper_cut_notices(name, since):
+    """A helper stopped before it reported, told to whoever woke the turn that started it (views_runner.finish_turn)."""
+    out = []
+    for msg in (Message.objects.filter(source_file='helper', created_at__gt=since, content__type='helper-cut')
+                .select_related('mood').order_by('-created_at')[:20]):
+        c = msg.content
+        if name not in (c.get('for') or []) or msg.mood is None:
+            continue
+        out.append({'kind': 'mention', 'from': 'agent', 'mood': msg.mood.slug, 'turn': {
+            'id': str(msg.id), 'sender': c.get('agent'), 'created_at': msg.created_at.isoformat(),
+            'text': f"⚠ its helper “{c.get('label')}” stopped when the run ended, before it reported"}})
+    return out
 
 
 def _mentions_first(found, limit):
@@ -1271,6 +1294,14 @@ def api_wiki_preview(request):
 
 
 @require_GET
+@require_GET
+def api_mood_humans(request, slug):
+    """The people pane under the to-do list (services/humans.py): who spoke here lately, then everyone else."""
+    from .services import humans
+    get_object_or_404(Mood, slug=slug)
+    return JsonResponse(humans.pane(slug))
+
+
 def api_person_card(request, name):
     """A person's card, for a click on their name (services/person_card.py): their User page in brief, last
     messages with what answering them took, last PickiPedia edits, and their trail across the Moods.
@@ -1720,10 +1751,10 @@ def api_moods_live(request):
         entry['said'] = said.isoformat() if said else None
         if mood.slug in {r['mood__slug'] for r in spoke}:  # only a Mood with recent words can have work under way
             doing = activities(mood)
-            working = [a['agent'] for a in doing if a.get('doing') != 'held' or 'a turn is under way' in str(a.get('why') or '')]
+            working = [a['emergent'] for a in doing if a.get('doing') != 'held' or 'a turn is under way' in str(a.get('why') or '')]
             # An agent waiting for another asked too (poller's _WAIT_REPLY): read aloud as thinking is.
             # 'waiting for re to settle the schema': for 're', to 'settle the schema'.
-            waiting = [{'agent': a['agent'], **dict(zip(('for', 'to'), a['why'][len('waiting for '):].split(' to ', 1)))}
+            waiting = [{'emergent': a['emergent'], **dict(zip(('for', 'to'), a['why'][len('waiting for '):].split(' to ', 1)))}
                        for a in doing if a.get('doing') == 'held' and str(a.get('why') or '').startswith('waiting for ')]
             if waiting:
                 entry['waiting'] = waiting

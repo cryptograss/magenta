@@ -59,17 +59,19 @@
       }).join('');
       const mayClose = ctx.viewer && (ctx.viewer === p.by || ctx.admin);
       const counted = !total ? 'no votes yet' : plural(total, 'vote', 'votes')
-        + (agents && people ? ` (${plural(people, 'person', 'people')}, ${plural(agents, 'agent', 'agents')})`
-           : agents ? ` (all agents)` : '');
+        + (agents && people ? ` (${plural(people, 'person', 'people')}, ${plural(agents, 'emergent', 'emergents')})`
+           : agents ? ` (all emergents)` : '');
       const state = p.closed
         ? `<span class="pstate">closed by ${esc(p.closed.by === ctx.viewer ? 'you' : ctx.shown(p.closed.by))}${ctx.stamp ? ' · ' + esc(ctx.stamp(p.closed.at)) : ''}</span>`
           + (leaders.length > 1 ? `<span>a tie</span>` : '')
         : `<span class="pstate open">open</span>${mayClose ? '' : `<span>${esc(ctx.shown(p.by))} closes it</span>`}`;
+      const nudge = open && ctx.viewer && ctx.viewer === p.by
+        ? `<button type="button" class="pnudge" title="${esc((ctx.words || {})['poll-nudge-title'] || '')}">${esc((ctx.words || {})['poll-nudge-button'] || '🔔')}</button>` : '';  // Magenta:Interface
       const button = mayClose ? `<button type="button" class="pclose" title="${p.closed ? 'Open it again, for more votes' : 'Close it: no more votes, the result stands'}">${p.closed ? 'reopen' : 'close the poll'}</button>` : '';
       const where = ctx.where ? `<div class="pwhere">${esc(ctx.shown(p.by))} asked in <a href="/moods/${esc(p.mood)}/#m-${esc(p.id)}">#${esc(p.mood)}</a>${ctx.stamp ? ' · ' + esc(ctx.stamp(p.created_at)) : ''}</div>` : '';
       return `<div class="pollcard" data-poll="${esc(p.id)}" data-mood="${esc(p.mood)}">${where}`
         + `<div class="pq">🗳 ${p.question_html}</div>${p.detail_html ? `<div class="pdetail">${p.detail_html}</div>` : ''}`
-        + `<ul>${rows}</ul><div class="pfoot"><span>${counted}</span>${state}${button}</div></div>`;
+        + `<ul>${rows}</ul><div class="pfoot"><span>${counted}</span>${state}${nudge}${button}</div></div>`;
     }
     async function send(card, what, body, csrf) {
       const r = await fetch(`/api/moods/${encodeURIComponent(card.dataset.mood)}/messages/${encodeURIComponent(card.dataset.poll)}/${what}/`, {
@@ -78,17 +80,23 @@
       if (!r.ok) throw new Error(got.error || r.status);
       return got.poll;
     }
-    // Votes and closes from any card under root; each answer, the poll as it now stands, to took(poll).
+    // Votes, nudges and closes from any card under root; each answer, the poll as it now stands, to took(poll).
     function bind(root, csrf, took, failed) {
       root.addEventListener('click', async e => {
         const card = e.target.closest('.pollcard');
         if (!card) return;
-        const choice = e.target.closest('.pchoice:not(:disabled)'), close = e.target.closest('.pclose');
-        if (!choice && !close) return;
+        const choice = e.target.closest('.pchoice:not(:disabled)'), close = e.target.closest('.pclose'),
+              nudge = e.target.closest('.pnudge:not(:disabled)');
+        if (!choice && !close && !nudge) return;
         e.preventDefault();
+        if (nudge) nudge.disabled = true;  // one press, one reply
         try {
-          took(choice ? await send(card, 'vote', { choice: choice.dataset.choice }, csrf) : await send(card, 'close-poll', null, csrf));
-        } catch (err) { failed((choice ? 'vote: ' : 'poll: ') + err.message); }
+          took(choice ? await send(card, 'vote', { choice: choice.dataset.choice }, csrf)
+            : nudge ? await send(card, 'nudge', null, csrf) : await send(card, 'close-poll', null, csrf));
+        } catch (err) {
+          if (nudge) nudge.disabled = false;
+          failed((choice ? 'vote: ' : nudge ? 'nudge: ' : 'poll: ') + err.message);
+        }
       });
     }
     return { html, bind };

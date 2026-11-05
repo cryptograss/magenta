@@ -108,7 +108,7 @@ class TurnBundleTest(TestCase):
 
     def record(self, rid, sha, minutes, agent='magent', mood='connectome'):
         from conversations.models import BundleRecord
-        return BundleRecord.objects.create(id=rid, agent=agent, mood=mood, sha256=sha * 64,
+        return BundleRecord.objects.create(id=rid, emergent=agent, mood=mood, sha256=sha * 64,
                                            requested_at=T0 + timedelta(minutes=minutes), parts=['x'])
 
     def test_a_turn_knows_its_bundle_and_whether_it_was_new(self):

@@ -62,14 +62,36 @@ def clip(text, limit=EACH):
 # --- who it is, and since when -----------------------------------------------
 
 def arrival(agent):
-    """(created_at, block) of the start of the agent's first conversation -- the first message of the
+    """(when, block) of the start of the agent's first conversation, by when it was said (said_at) -- the first message of the
     session its first word is in, or that word, with no session -- or (None, None): not arrived yet."""
-    first = Message.objects.filter(sender_id=agent).order_by('created_at').first()
+    first = first_said(Message.objects.filter(sender_id=agent))
     if first is None:
         return None, None
     if first.session_id:
-        first = Message.objects.filter(session_id=first.session_id).order_by('created_at').first()
-    return first.created_at, first.eth_blockheight
+        first = first_said(Message.objects.filter(session_id=first.session_id))
+    return said_at(first), first.eth_blockheight
+
+
+def first_said(messages):
+    """The earliest said of these messages, in one query, by when it was said rather than when it was
+    imported: created_at is the import's time, so a conversation imported late would look newer than
+    it is. The Cursor imports have no times and are the oldest in the record, so they come first; any
+    other row without a time comes after every row with one."""
+    from django.db.models import Case, F, IntegerField, Value, When
+    from conversations.services.eras import CURSOR_HEAPS
+    cursor = Case(When(CURSOR_HEAPS & Q(timestamp__isnull=True), then=Value(0)), default=Value(1),
+                  output_field=IntegerField())
+    return (messages.annotate(cursor_last=cursor)
+            .order_by('cursor_last', F('timestamp').asc(nulls_last=True), 'created_at').first())
+
+
+def said_at(message):
+    """When it was said: its own time where it has one, else when it reached the record. Never later
+    than its created_at, so `created_at >= said_at(first)` keeps everything said after it."""
+    from datetime import datetime, timezone
+    if message.timestamp is None:
+        return message.created_at
+    return min(datetime.fromtimestamp(message.timestamp / 1000, tz=timezone.utc), message.created_at)
 
 
 def arrival_line(agent):
@@ -704,15 +726,15 @@ def how_i_speak_text(agent, count=12, fresh=False, others=False, now=None, short
 
 # --- bootstrap_memory, per agent --------------------------------------------------
 
-AGENT_NAMESPACE = 3010  # PickiPedia's Agent: namespace (its LocalSettings.php): each agent writes only its own
+EMERGENT_NAMESPACE = 3010  # PickiPedia's Emergent: namespace (its LocalSettings.php): each emergent writes only its own
 
 
 def journal_prefix(agent):
-    return f'Agent:{agent[:1].upper()}{agent[1:]}/Journal/'
+    return f'Emergent:{agent[:1].upper()}{agent[1:]}/Journal/'
 
 
 def journal_entries(agent, count=2, http=None):
-    """[(title, wikitext)]: the agent's newest journal entries, Agent:<Name>/Journal/<block>, newest first
+    """[(title, wikitext)]: the emergent's newest journal entries, Emergent:<Name>/Journal/<block>, newest first
     by block; [] with none, None if PickiPedia can't be read. Its own words, in its own namespace."""
     import requests
 
@@ -722,7 +744,7 @@ def journal_entries(agent, count=2, http=None):
     prefix = journal_prefix(agent).split(':', 1)[1]
     try:
         found = http.get(api, timeout=5, headers=headers, params={
-            'action': 'query', 'list': 'allpages', 'apnamespace': AGENT_NAMESPACE, 'apprefix': prefix,
+            'action': 'query', 'list': 'allpages', 'apnamespace': EMERGENT_NAMESPACE, 'apprefix': prefix,
             'aplimit': 500, 'format': 'json', 'formatversion': '2'}).json()['query']['allpages']
         blocks = sorted(((int(p['title'].rsplit('/', 1)[1].replace(',', '')), p['title']) for p in found
                          if re.fullmatch(r'[\d,]+', p['title'].rsplit('/', 1)[1])), reverse=True)[:count]

@@ -44,8 +44,8 @@ ClaudeCodeWaker. Another harness needs another waker, nothing else.
 With two (--also-harness), Harnesses chooses between them per turn, by
 the Mood's model: Anthropic's on Claude Code, other vendors' on Pi.
 
-    python poller/mood_poller.py --agent magent            # run forever
-    python poller/mood_poller.py --agent magent --once --dry-run
+    python poller/mood_poller.py --emergent magent            # run forever
+    python poller/mood_poller.py --emergent magent --once --dry-run
 """
 
 import argparse
@@ -127,12 +127,6 @@ def parse_time(iso):
     return datetime.fromisoformat(iso.replace('Z', '+00:00'))
 
 
-def either(d, new, old):
-    """d[new], or d[old] from a memory-lane that still says the name before the emergent rename
-    (User:Magent/Emergent rename on PickiPedia); the rename's last step drops the old name."""
-    return d.get(new) if d.get(new) is not None else d.get(old)
-
-
 class MoodAPI:
     def __init__(self, base_url, http=requests, key=''):
         self.base = base_url.rstrip('/')
@@ -167,7 +161,7 @@ class MoodAPI:
         """Every Mood at a glance -- newest message, newest web post, typing,
         activity, and how `agent` is to carry itself there -- plus the scram
         and the day's budget."""
-        return self._get('/api/moods/pulse/', emergent=agent, agent=agent)
+        return self._get('/api/moods/pulse/', emergent=agent)
 
     def recent(self, slug, limit=40):
         """A Mood's newest turns (and its title and description), for context."""
@@ -196,7 +190,7 @@ class MoodAPI:
     def agents(self):
         """Every agent magenta knows ('blu', 'magent', 're', ...), or None if it can't be asked."""
         try:
-            return list(either(self._get('/api/settings/'), 'emergents', 'agents') or [])
+            return list(self._get('/api/settings/').get('emergents') or [])
         except Exception:  # noqa: BLE001 -- instructions without a roster, not a turn without instructions
             return None
 
@@ -223,7 +217,7 @@ class MoodAPI:
     def interrupt(self, slug, agent):
         """{'scram', 'interrupt'}: whether an AZ5 is in force, and the newest
         time someone stopped `agent` in `slug` ({'by', 'at', ...} or None)."""
-        return self._get(f'/api/moods/{slug}/interrupt/', emergent=agent, agent=agent)
+        return self._get(f'/api/moods/{slug}/interrupt/', emergent=agent)
 
     def plan(self, info):
         """Say how much of the Claude plan's rolling windows a turn found used (Claude Code's rate_limit_info)."""
@@ -1043,8 +1037,9 @@ def fresh_repos(workspace):
 
 
 def refresh_fresh(workspace, run=None):
-    """Bring each repo's read-only copy under <workspace>/.fresh/<name> to its origin's default branch, as files:
-    a fetch alone moves refs, and a look-only turn reads files (Read, Grep), never refs (magent, re, blu, 29 Oct).
+    """Bring each repo's read-only copy under <workspace>/.fresh/<name> to its origin's production branch when the
+    branch exists, else its default branch, as files: a fetch alone moves refs, and a look-only turn reads files
+    (Read, Grep), never refs (magent, re, blu, 29 Oct).
     Nobody works in .fresh, so a hard reset there can't lose anything; the agents' own checkouts are never
     touched. Returns [problems], one line per repo that couldn't be refreshed; [] when all were."""
     import shutil, subprocess
@@ -1055,11 +1050,23 @@ def refresh_fresh(workspace, run=None):
         copy = fresh / name
         cloning = not (copy / '.git').exists()
         try:
+            # magent, re, 3 Nov: maybelle-config and pickipedia serve production from a branch of that name, so
+            # .fresh tracks it where it exists; an older repo has no production branch, and HEAD is its default.
+            # ls-remote --heads tells the two apart: a zero exit with no output says the branch is absent; a
+            # nonzero exit says the network or the remote is down, and HEAD must not be a fallback for that -- a
+            # failing network must never quietly hand back the dead default branch, so the refresh reports the
+            # failure and skips the repo instead. Asked of the origin URL, so a first clone lands on it too.
+            remote = run(['git', 'ls-remote', '--heads', url, 'production'])
+            if remote.returncode != 0:
+                problems.append(f'{name}: {_fresh_error(remote)}'[:200])
+                continue
+            branch = 'production' if (remote.stdout or '').strip() else None
             if cloning:
                 fresh.mkdir(parents=True, exist_ok=True)
-                done = run(['git', 'clone', '-q', '--depth', '1', url, str(copy)])
+                done = run(['git', 'clone', '-q', '--depth', '1'] + (['--branch', branch] if branch else [])
+                           + [url, str(copy)])
             else:
-                done = run(['git', '-C', str(copy), 'fetch', '-q', '--depth', '1', 'origin', 'HEAD'])
+                done = run(['git', '-C', str(copy), 'fetch', '-q', '--depth', '1', 'origin', branch or 'HEAD'])
                 if done.returncode == 0:
                     done = run(['git', '-C', str(copy), 'reset', '-q', '--hard', 'FETCH_HEAD'])
             if done.returncode != 0:
@@ -1285,8 +1292,8 @@ def also_asked(owed, agent, page, may_wait=True, texts=None):
     With one of them taking it (TAKE_OFFER, taking_on), told so, and offered the wait on that one; else, when it
     may wait, offered the take too."""
     page = page or {}
-    working = {either(a, 'emergent', 'agent'): a.get('doing') for a in page.get('activities') or [] if either(a, 'emergent', 'agent')}
-    agents = set(either(page, 'emergents', 'agents') or {}) | set(working)
+    working = {a.get('emergent'): a.get('doing') for a in page.get('activities') or [] if a.get('emergent')}
+    agents = set(page.get('emergents') or {}) | set(working)
     asked = []
     for turn in owed:
         for name in turn.get('mentions') or []:
@@ -1338,7 +1345,7 @@ SETTINGS_CHANGED = recovered('line', 'settings-changed')  # words: Cryptograss:E
 def settings_changed(agent, page, texts=None):
     """Lines telling a woken agent its settings here changed since its last word here, and who changed them
     (re, 24 Oct: told, with a place to object). `page`: the Mood's turns API."""
-    changed = ((either(page or {}, 'emergents', 'agents') or {}).get(agent) or {}).get('changed')
+    changed = (((page or {}).get('emergents') or {}).get(agent) or {}).get('changed')
     if not changed or not changed.get('changes'):
         return []
     said = ', '.join(f"{SETTING_WORDS.get(c['key'], c['key'])} {c.get('was') or 'default'} → {c.get('now') or 'default'}"
@@ -1434,7 +1441,7 @@ def near_misses(agent, page, seen):
     return lines, keys
 
 
-# /incorporate #<thread> (memory-lane services/agent_commands): the handoff agent folds a thread back into the
+# /incorporate #<thread> (memory-lane services/emergent_commands): the handoff agent folds a thread back into the
 # Mood it came from -- one account, full length whatever the Mood's verbosity, with the handoff's own model and
 # effort (Justin, 27 Oct). Its words live here and on the Dials page (dial 'incorporate'), not in each agent's orders.
 INCORPORATE = re.compile(r'\A\s*(?:↩ #m-[0-9a-f-]+\n)?/incorporate\s+#([a-z0-9][a-z0-9-]{0,79})(?![\w-])\s*(.*)\Z', re.I | re.S)
@@ -1657,7 +1664,7 @@ COMMANDS = {
 
 def command_request(text, agent):
     """For a post like "/compact magent what to keep" -- the one form a command
-    takes (memory-lane services/agent_commands, which the server holds posts
+    takes (memory-lane services/emergent_commands, which the server holds posts
     to) -- the command line to run for `agent`: '/compact what to keep'. None
     if the post isn't a command, or isn't for this agent."""
     text = re.sub(r'\A\s*↩ #m-[0-9a-f-]+\n', '', text or '')  # sent as a reply: the command is what follows
@@ -2356,7 +2363,7 @@ class MoodPoller:
             words = recovery.read_text() if recovery.exists() else 'Your instructions could not be gathered.'
             text = (f'<instructions emergent="{self.agent}" mood="{slug}">\n<recovery>\n{words}\n'
                     '</recovery>\n</instructions>')
-            record = {'id': record_id, 'emergent': self.agent, 'agent': self.agent, 'mood': slug, 'parts': [text], 'stamps': {},
+            record = {'id': record_id, 'emergent': self.agent, 'mood': slug, 'parts': [text], 'stamps': {},
                       'sha256': hashlib.sha256(text.encode()).hexdigest(), 'error': f'{type(e).__name__}: {e}'[:300]}
         block = self.api.block() if hasattr(self.api, 'block') else None
         record.update(requested_at=requested, produced_at=utc_seconds(), commit=self.commit,
@@ -2423,7 +2430,8 @@ class MoodPoller:
         if not match or not owed:
             return
         ids = [t['id'] for t in owed]
-        allowed = others_asked(owed, self.agent) + self.state['wait_also'].pop(slug, []) + self.people_typing(slug)
+        allowed = (others_asked(owed, self.agent) + self.state['wait_also'].pop(slug, [])
+                   + self.state.setdefault('typing_at_wake', {}).pop(slug, []) + self.people_typing(slug))
         wanted = [n for n in re.split(r'[\s,]+', match.group(1).lower()) if n]
         names = [n for n in wanted if n in allowed]
         again = any(i in self.state['waited'] for i in ids)
@@ -2476,7 +2484,7 @@ class MoodPoller:
                 page = self.api.recent(slug, limit=1)
             except Exception:
                 page = {}
-        doing = {either(a, 'emergent', 'agent'): a.get('doing') for a in page.get('activities') or [] if either(a, 'emergent', 'agent')}
+        doing = {a.get('emergent'): a.get('doing') for a in page.get('activities') or [] if a.get('emergent')}
         typing = set(page.get('typing') or ())  # a person typing, or recording a memo, is at work too (Justin, 28 Oct)
         return [n for n in names if doing.get(n) not in (None, 'held') or n in typing]
 
@@ -2504,7 +2512,7 @@ class MoodPoller:
                     page = self.api.recent(slug, limit=60)
                 except Exception:
                     page = {}
-                doing = {either(a, 'emergent', 'agent'): a for a in page.get('activities') or [] if either(a, 'emergent', 'agent')}
+                doing = {a.get('emergent'): a for a in page.get('activities') or [] if a.get('emergent')}
                 said = [t for t in page.get('turns') or []
                         if t.get('sender') in names and parse_time(t['created_at']) > since and ended(t)]
                 busy = self.at_work(slug, names, page)
@@ -2536,7 +2544,7 @@ class MoodPoller:
 
     def handed_on(self, slug, said, names, page):
         """What an answer waited for handed on: agents it mentioned who are at work here now, to wait for in turn."""
-        agents = set(either(page, 'emergents', 'agents') or {})
+        agents = set(page.get('emergents') or {})
         named = [n for t in said for n in t.get('mentions') or []
                  if n not in names and n != self.agent and n != t.get('sender') and n in agents]
         busy = [n for n in dict.fromkeys(named) if n in self.at_work(slug, named, page)]
@@ -2921,7 +2929,7 @@ class MoodPoller:
             page = self.api.recent(slug, limit=200)
         except Exception:
             page = None
-        return (self.typing_lines(page) + self.pronoun_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
+        return (self.typing_lines(page, slug) + self.pronoun_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
                 + self.nearmiss_lines(slug, page)
                 # Open polls, on every kind of wake: a quiet look too (re's review of #157).
                 + (open_polls(self.agent, page) if page else [])
@@ -2941,10 +2949,14 @@ class MoodPoller:
         shown = ([f'you ({mine})'] if mine else []) + [f'{n} ({p})' for n, p in shown if p]
         return ['', wake_line(self.texts, 'pronouns', PRONOUNS_NOTE, said='; '.join(shown))] if shown else []
 
-    def typing_lines(self, page):
+    def typing_lines(self, page, slug=None):
         """Who is typing or recording here right now (Justin, 28 Oct: "the emergents are able to see both and
         consider whether you might want to wait"): a line, and how to wait for them."""
         typing = [n for n in (page or {}).get('typing') or () if n != self.agent]
+        if slug:
+            # Kept for the reply: a keystroke counts as typing for 8 s (views_moods.TYPING_FOR), a turn takes longer,
+            # so by its end they'd seem to have stopped and the wait this line offered was refused (Justin, 4 Nov).
+            self.state.setdefault('typing_at_wake', {})[slug] = typing
         if not typing:
             return []
         rec = set((page or {}).get('recording') or ())
@@ -3562,7 +3574,7 @@ def runner_key():
 
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('--emergent', '--agent', dest='agent', default='magent')  # --agent: the name before the rename
+    parser.add_argument('--emergent', dest='agent', default='magent')
     parser.add_argument('--base', default=os.environ.get('MEMORY_LANE_URL', DEFAULT_BASE))
     parser.add_argument('--state', default='~/.local/state/magenta/mood_poller.json')
     parser.add_argument('--log', default='~/.local/state/magenta/mood_poller.log',
@@ -3614,7 +3626,7 @@ def build_parser():
                         help="The dials' texts from PickiPedia (Cryptograss:Moods/Dials); no: this file's own only")
     parser.add_argument('--wiki-rules-editors', default=','.join(EDITORS),
                         help="PickiPedia names whose revisions of that page count (comma-separated)")
-    parser.add_argument('--emergent-wakes-per-hour', '--agent-wakes-per-hour', dest='agent_wakes_per_hour', type=int, default=10,
+    parser.add_argument('--emergent-wakes-per-hour', dest='agent_wakes_per_hour', type=int, default=10,
                         help="Wakes per Mood per hour owed only to other agents' mentions")
     parser.add_argument('--only-poller', choices=('yes', 'no'), default='no',
                         help="This is the agent's only poller: a session of its not on this disk was lost "

@@ -82,7 +82,7 @@ class ResolveTest(TestCase):
     def test_pace_is_the_rooms_not_an_emergents(self):
         with self.assertRaises(knobs.Invalid):
             knobs.change('consider_after', 30, agent=self.magent, by=self.justin)
-        Setting.objects.create(key='consider_after', value=99, agent=self.magent)  # from before: passed over
+        Setting.objects.create(key='consider_after', value=99, emergent=self.magent)  # from before: passed over
         knobs.change('consider_after', 20, by=self.justin)
         knobs.change('consider_after', 5, mood=self.m26, by=self.justin)
         self.assertEqual(knobs.resolve('general', 'magent')['consider_after'], 20)
@@ -185,7 +185,7 @@ class SettingsAPITest(TestCase):
         with self.as_(self.magent):
             self.assertEqual(self.post({'key': 'verbosity', 'value': 'brief'}).status_code, 403)
         with self.as_(self.justin):
-            made = self.post({'key': 'verbosity', 'value': 'brief', 'mood': 'm26', 'agent': 'magent',
+            made = self.post({'key': 'verbosity', 'value': 'brief', 'mood': 'm26', 'emergent': 'magent',
                               'note': 'casual'})
         self.assertEqual(made.status_code, 201)
         state = self.client.get('/api/settings/').json()
@@ -195,7 +195,7 @@ class SettingsAPITest(TestCase):
     def test_set_in_every_mood_from_the_page(self):
         knobs.change('mention_effort', 'low', mood=self.m26, agent=self.magent, by=self.justin)
         with self.as_(self.justin):
-            made = self.post({'key': 'mention_effort', 'value': 'max', 'agent': 'magent', 'every_mood': True})
+            made = self.post({'key': 'mention_effort', 'value': 'max', 'emergent': 'magent', 'every_mood': True})
             self.assertEqual(made.status_code, 201)
             self.assertEqual(len(made.json()['set']), 2)
             self.assertEqual(self.post({'key': 'model', 'value': 'opus', 'every_mood': True}).status_code, 400)
@@ -223,7 +223,7 @@ class SettingsAPITest(TestCase):
         from conversations.models import Message
         knobs.change('model', 'sonnet', mood=self.m26, agent=self.magent, by=self.justin)
         knobs.change('mention_effort', 'max', mood=self.m26, agent=self.magent, by=self.justin)
-        magent = self.client.get('/api/moods/m26/turns/').json()['agents']['magent']
+        magent = self.client.get('/api/moods/m26/turns/').json()['emergents']['magent']
         self.assertEqual((magent['model'], magent['effort'], magent['context']), ('sonnet', 'max', None))
         for tokens, model in ((150_000, 'claude-opus-5-5'), (210_000, 'claude-opus-5-5')):
             Message.objects.create(id=uuid.uuid4(), sender_id='magent', mood=self.m26, content='x',
@@ -232,7 +232,7 @@ class SettingsAPITest(TestCase):
         # A helper's line is its own context, not the agent's.
         Message.objects.create(id=uuid.uuid4(), sender_id='magent', mood=self.m26, content='x', is_sidechain=True,
                                model_backend='claude-haiku-4-5', input_tokens=9_000)
-        context = self.client.get('/api/moods/m26/turns/').json()['agents']['magent']['context']
+        context = self.client.get('/api/moods/m26/turns/').json()['emergents']['magent']['context']
         self.assertEqual((context['tokens'], context['window'], context['model']),
                          (210_015, 1_000_000, 'claude-opus-5-5'))
 
@@ -311,7 +311,7 @@ class SettingsAPITest(TestCase):
         with self.assertRaises(knobs.Invalid):
             knobs.clean('ultracode', 'sometimes')
         knobs.change('ultracode', True, mood=self.m26, agent=self.magent, by=self.justin)
-        self.assertIs(self.client.get('/api/moods/m26/turns/').json()['agents']['magent']['ultracode'], True)
+        self.assertIs(self.client.get('/api/moods/m26/turns/').json()['emergents']['magent']['ultracode'], True)
 
     def test_installable_as_an_app(self):
         manifest = self.client.get('/moods/manifest.webmanifest')
@@ -356,6 +356,10 @@ class SettingsAPITest(TestCase):
         self.assertEqual(context_window('claude-haiku-4-5', 150_000), 200_000)
         self.assertEqual(context_window('claude-haiku-4-5', 300_000), 1_000_000)  # seen past it: the larger one
         self.assertEqual(context_window(None), 200_000)
+        # Justin, 5 Nov: Fable 5.1 taken as 200k showed 100% full.
+        for model in ('claude-fable-5-1', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'anthropic/claude-fable-5-1'):
+            self.assertEqual(context_window(model, 190_000), 1_000_000, model)
+        self.assertEqual(context_window('openrouter/google/gemini-3.7-flash', 100_000), 200_000)
 
 
 class SetByTest(TestCase):
@@ -370,7 +374,7 @@ class SetByTest(TestCase):
         knobs.change('model', 'opus', mood=general, agent=magent, by=skyler)
         knobs.change('mention_effort', 'low', by=justin)  # everywhere
         knobs.change('verbosity', 'thorough')  # by nobody recorded
-        agents = self.client.get('/api/moods/general/turns/').json()['agents']
+        agents = self.client.get('/api/moods/general/turns/').json()['emergents']
         set_by = agents['magent']['set_by']
         self.assertEqual((agents['magent']['model'], set_by['model']['by']), ('opus', 'skyler'))
         self.assertEqual(set_by['mention_effort']['by'], 'justin')

@@ -41,6 +41,79 @@
   .thelink .embed { margin-top: 8px; max-width: 560px; }
   .thelink .embed iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #000; }
   .thelink .embed video { width: 100%; max-height: 420px; border-radius: 8px; }
+  /* A release, played here (tiding_links.release_embed): its speed, and the moments people talked about. */
+  .embed .speed { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; font-size: 12px; }
+  .embed .speed span { color: var(--muted); margin-right: 2px; }
+  .embed .speed button { font: inherit; padding: 1px 8px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .embed .speed button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .embed .moments { position: relative; height: 14px; margin: 6px 2px 0; border-radius: 7px; background: var(--code); }
+  .embed .moments .now { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 7px; background: var(--accent-soft); pointer-events: none; }
+  .embed .moments button { all: unset; position: absolute; top: 1px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 0 2px var(--panel); cursor: pointer; }
+  .embed .moments button:hover, .embed .moments button:focus-visible { transform: scale(1.3); }
+  .embed .cant { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  /* A release (tiding_links._release_of): its stage. On a wide screen the player keeps its place beside what's
+     said about it, so a moment can be clicked and watched without scrolling away; an upright phone video
+     gets a column its own shape. Narrow: the player above, as for any link. */
+  main.wide { max-width: 1280px; }
+  .stage { display: grid; gap: 24px; align-items: start; margin-top: 10px;
+           grid-template-columns: minmax(0, 1.55fr) minmax(340px, 1fr); }
+  .stage.portrait { grid-template-columns: minmax(0, min(470px, calc((100vh - 120px) * 0.5625))) minmax(340px, 1fr); }
+  .stage .player { position: sticky; top: 10px; }
+  .stage .embed video { display: block; width: 100%; max-height: calc(100vh - 120px); background: #000; border-radius: 12px;
+                        box-shadow: 0 6px 28px rgba(0, 0, 0, .22); }
+  .stage.portrait .embed video { aspect-ratio: 9 / 16; object-fit: contain; }
+  .embed .quality { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; font-size: 12px; }
+  .embed .quality[hidden] { display: none; }
+  .embed .quality span { color: var(--muted); margin-right: 2px; }
+  .embed .quality button { font: inherit; padding: 1px 8px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .embed .quality button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .stage .embed .controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+  .stage .embed .controls .speed { margin-top: 0; }
+  .embed button.cc { font: 600 12px/1 inherit; padding: 3px 9px; border-radius: 10px; cursor: pointer;
+                     border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+  .embed button.cc[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+  /* Captions, styled here, not burned in (as on PickiPedia, pickipedia#170). */
+  .embed video::cue { font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+                      line-height: 1.3; color: #fff; background: rgba(12, 10, 14, .72); }
+  .embed video::cue(v) { color: #ffe6fb; }
+  .embed video::cue(i) { color: #d6ecff; }
+  .side { min-width: 0; }
+  .thelink.release { border-bottom: 0; padding-top: 0; }
+  .thelink.release .body { flex: 1; min-width: 0; }
+  .thelink.release h1 { font-size: 23px; line-height: 1.22; margin: 6px 0 4px; font-weight: 650; letter-spacing: -.01em; }
+  .thelink.release h1 a { color: var(--ink); }
+  .thelink.release h1 .title { font-size: inherit; font-weight: inherit; }
+  .thelink.release .chip.rel { display: inline-block; font-size: 11px; padding: 0 8px; border-radius: 10px;
+                               border: 1px solid var(--accent); color: var(--accent); }
+  .thelink.release .with { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .thelink.release .desc { margin-top: 10px; font-size: 15px; max-width: 65ch; white-space: pre-line; overflow-wrap: anywhere; }
+  .thelink.release figure { margin: 12px 0 0; padding: 8px 12px; border-left: 3px solid var(--accent);
+                            background: var(--accent-soft); border-radius: 0 8px 8px 0; }
+  .thelink.release figure blockquote { margin: 0; font-size: 14.5px; white-space: pre-line; overflow-wrap: anywhere; }
+  .thelink.release figure figcaption { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+  .thelink.release figure .role { margin-left: 5px; padding: 0 6px; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
+  .thelink.release .wiki { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  /* Moments: every time said about it, in the order they play -- the video's own table of contents. */
+  .momentsec { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); }
+  .momentsec h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 6px; }
+  .momentsec ol { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+  .momentsec li button { all: unset; box-sizing: border-box; display: flex; gap: 8px; align-items: baseline; width: 100%;
+                         padding: 4px 6px; border-radius: 6px; cursor: pointer; font-size: 13.5px; }
+  .momentsec li button:hover, .momentsec li button:focus-visible, .momentsec li button.now { background: var(--accent-soft); }
+  .momentsec .t { flex: none; min-width: 3.4em; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); }
+  .momentsec .who { flex: none; font-weight: 600; }
+  .momentsec .what { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  @media (max-width: 900px) {
+    .stage, .stage.portrait { grid-template-columns: minmax(0, 1fr); }
+    .stage .player { position: static; }
+    .stage.portrait .embed video { width: auto; height: 72vh; max-width: 100%; margin: 0 auto; }
+  }
+  a.tc { font-variant-numeric: tabular-nums; font-weight: 600; border-radius: 4px; padding: 0 3px; background: var(--accent-soft); }
+  .comment.at-moment > .said > .words { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; transition: outline-color .6s; }
+  .say button.stamp { background: none; color: var(--accent); border: 1px solid var(--accent); padding: 5px 10px; font-variant-numeric: tabular-nums; }
   /* What's been said: a tree, HN-style, each comment's score beside it (Justin, 21 Oct). */
   .comments { margin: 14px 0 0 0; }
   /* The post's own words, under who posted it: drawn as a comment's are. */
@@ -124,6 +197,8 @@
     const to = new URL(a.href, location.href);
     if (to.origin !== location.origin) { a.target = '_top'; return; }
     if (a.target === '_top') return;  // signing in: the whole page goes, and comes back here
+    // Its title: this page's own address, to share or open in a tab. Pressed here, it's here already.
+    if (a.matches('h1 a.title') && to.pathname === location.pathname) { e.preventDefault(); scrollTo({ top: 0 }); return; }
     if (to.pathname.startsWith('/moods/tidings/')) return;  // the listing or another discussion: in this frame
     if (a.matches('.words a.img')) return;  // a picture: the one page's lightbox (mood_tiding_tools.html)
     e.preventDefault();
@@ -444,16 +519,52 @@
 {% endif %}
 </head>
 <body>
-<main>
+<main{% if tiding.release %} class="wide"{% endif %}>
   <a class="back" href="/moods/tidings/?embed=1">‹ Tidings</a>
 
+  {% if tiding.release %}
+  {% with r=tiding.release %}
+  <!-- A release, at its best (Justin, 3 Nov: "I want Releases to look really superb as tidings"). -->
+  <div class="stage{% if r.portrait %} portrait{% endif %}">
+    <div class="player">
+      <div class="embed" id="theEmbed">
+        <video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
+        <!-- Each comment that names a moment ("2:14 that slide!") is a mark on this line, and a link that plays from it. -->
+        <div class="moments" aria-label="Moments people talked about" hidden></div>
+        <div class="quality" aria-label="Quality" hidden></div>
+        <div class="controls"><div class="speed" aria-label="Speed"></div><button type="button" class="cc" hidden title="Captions on or off">CC</button></div>
+        {% if r.captions %}{{ r.captions|json_script:"captionsVtt" }}{% endif %}
+      </div>
+    </div>
+    <div class="side">
+      <div class="thelink release" id="t-{{ tiding.id }}">
+        <span class="rank"><button type="button" class="vote{% if tiding.mine %} mine{% endif %}" data-vote="/api/tidings/{{ tiding.id }}/vote/"
+                title="{% if tiding.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
+          <span class="score">{{ tiding.score }}</span></span>
+        <span class="body">
+          <span class="chip rel">release</span>
+          <h1><a class="title" href="/moods/tidings/{{ tiding.id }}/" title="This tiding's own page: its link to share">{{ tiding.title }}</a>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}</h1>
+          <div class="meta muted">uploaded by {{ r.by|default:tiding.said_by|default:"someone" }}{% if r.upload_block_s %} at block {{ r.upload_block_s }}{% endif %} · promoted by {{ tiding.by|default:"someone" }}
+            · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
+            {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
+          {% if r.performers %}<div class="with">with {% for p in r.performers %}<a href="{{ p.page }}" target="_blank" rel="noopener">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+          {% if r.description %}<div class="desc">{{ r.description }}</div>{% endif %}
+          {% if tiding.post %}<div class="post"><div class="words">{{ tiding.post|safe }}</div></div>{% endif %}
+          {% for note in r.commentary %}<figure><blockquote>{{ note.text }}</blockquote><figcaption>— {{ note.by|default:"someone" }}{% if note.role %}<span class="role">{{ note.role }}</span>{% endif %}</figcaption></figure>{% endfor %}
+          {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
+          <div class="wiki"><a href="{{ r.page|default:tiding.url }}" target="_blank" rel="noopener">its Release page</a>{% if r.captions_page %} · {% if r.captions %}captions on · <a href="{{ r.captions_page }}?action=edit" target="_blank" rel="noopener">edit them</a>{% else %}no captions yet · <a href="{{ r.captions_page }}?action=edit" target="_blank" rel="noopener">add them</a>{% endif %}{% endif %} · <a href="{{ tiding.embed.src }}" target="_blank" rel="noopener">on IPFS</a></div>
+        </span>
+      </div>
+      <section class="momentsec" hidden><h2>Moments</h2><ol class="momentlist"></ol></section>
+  {% endwith %}
+  {% else %}
   <div class="thelink" id="t-{{ tiding.id }}">
     <span class="rank"><button type="button" class="vote{% if tiding.mine %} mine{% endif %}" data-vote="/api/tidings/{{ tiding.id }}/vote/"
             title="{% if tiding.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
       <span class="score">{{ tiding.score }}</span></span>
     <span class="body">
       <a class="title" href="{{ tiding.url }}" rel="noopener noreferrer" target="_blank">{{ tiding.title }}</a><span class="host">({{ tiding.host }})</span>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}
-      <div class="meta muted">{% if tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
+      <div class="meta muted">{% if tiding.embed.kind == 'release' %}uploaded by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% elif tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
         · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
         {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
       {% if tiding.post %}
@@ -462,9 +573,15 @@
       <div class="post"><div class="words">{{ tiding.post|safe }}</div></div>
       {% endif %}
       {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
-      {% if tiding.embed %}<div class="embed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen></iframe>{% else %}<video src="{{ tiding.embed.src }}" controls preload="none"></video>{% endif %}</div>{% endif %}
+      {% if tiding.embed %}<div class="embed" id="theEmbed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen allow="autoplay; fullscreen"></iframe>{% elif tiding.embed.kind == 'release' %}<video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
+        <!-- Each comment that names a moment ("2:14 that slide!") is a mark on this line, and a link that plays from it. -->
+        <div class="moments" aria-label="Moments people talked about" hidden></div>
+        <div class="speed" aria-label="Speed"></div>{% else %}<video src="{{ tiding.embed.src }}" controls preload="metadata"></video>
+        <div class="moments" aria-label="Moments people talked about" hidden></div>{% endif %}</div>{% endif %}
     </span>
   </div>
+
+  {% endif %}
 
   <!-- The box right under the post, as HN has it (Justin, 24 Oct): what's said here is a top-level comment;
        "reply" on a comment brings it under that one, and "cancel" back here. -->
@@ -479,6 +596,7 @@
     </div>
     <div class="bar">
       <button type="submit">add comment</button>
+      <button type="button" class="stamp" hidden title="Put where the video is now into what you're saying: it becomes a link that plays from there">⏱ 0:00</button>
       <span class="replying" id="replyToNote"></span><button type="button" class="cancelreply" hidden>cancel</button>
       <span class="err"></span>
     </div>
@@ -496,10 +614,348 @@
     {% for comment in tiding.comments %}
       {% include "conversations/mood_tiding_comment.html" %}
     {% empty %}
-      <p class="muted">Nothing said yet. Say something here, or reply to it in the Mood: both land here.</p>
+      <p class="muted">Nothing said yet. Say something here, or reply to it in the Mood: both land here.{% if tiding.release %} A time you write, like 2:14, plays from there; ⏱ by the box puts in where it is now.{% endif %}</p>
     {% endfor %}
   </section>
+  {% if tiding.release %}</div></div>{% endif %}
 
 </main>
+{{ tiding.title|json_script:"tidingTitle" }}
+<script>
+  // Talking about a video by the moment (Justin, 3 Nov: "timecoded comments first"). A time said in a comment
+  // -- 2:14, or 1:02:03 -- is a link that plays the video from there; each is a mark on a line under the
+  // player; as it plays past one, that comment lights; and ⏱ by the box puts where it is now into what you
+  // say. A release plays as everywhere else here: hls.js, pinned and checked by its hash, where there's Media
+  // Source; the browser's own HLS otherwise; the plain file if the CID isn't a stream.
+  (function () {
+    const embed = document.getElementById('theEmbed');
+    if (!embed) return;
+    const v = embed.querySelector('video'), frame = embed.querySelector('iframe');
+    const fmt = s => {
+      s = Math.max(0, Math.floor(s));
+      const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, '0');
+      return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`;
+    };
+    const secs = t => t.split(':').reduce((a, p) => a * 60 + Number(p), 0);
+    const store = {
+      get(k, d) { try { const x = localStorage.getItem('moods.' + k); return x === null ? d : JSON.parse(x); } catch (e) { return d; } },
+      set(k, x) { try { localStorage.setItem('moods.' + k, JSON.stringify(x)); } catch (e) {} },
+    };
+
+    // --- the player ---
+    const HLS_JS = { src: 'https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.min.js',
+                     integrity: 'sha384-cciJ0zi8d1uMKC2zJd7jvPY4HQt7W4ByUI/FlMkltvBi31aW61rcpVBhpmW8/NwX' };
+    function loadHls() {
+      if (window.Hls) return Promise.resolve(window.Hls);
+      return new Promise((ok, fail) => {
+        const s = Object.assign(document.createElement('script'), { src: HLS_JS.src, integrity: HLS_JS.integrity, crossOrigin: 'anonymous' });
+        s.onload = () => ok(window.Hls);
+        s.onerror = () => fail(new Error('hls.js did not load'));
+        document.head.appendChild(s);
+      });
+    }
+    function cantPlay() {
+      if (embed.querySelector('.cant')) return;
+      embed.append(Object.assign(document.createElement('div'), { className: 'cant',
+        textContent: 'This browser can\'t play it: it\'s AV1, which Firefox and Chrome play anywhere, and Safari only on newer Apple chips.' }));
+    }
+    async function attach() {
+      const plain = () => { if (v._hls) { v._hls.destroy(); v._hls = null; } v.src = v.dataset.src; };
+      const native = v.canPlayType('application/vnd.apple.mpegurl') !== '';
+      const mse = 'MediaSource' in window || 'ManagedMediaSource' in window;
+      if (!mse && native) { v.src = v.dataset.hls; return; }  // iOS: the browser's own, which picks the quality
+      let Hls = null;
+      try { Hls = await loadHls(); } catch (e) { Hls = null; }
+      if (!Hls || !Hls.isSupported()) { if (native) v.src = v.dataset.hls; else plain(); return; }
+      const hls = v._hls = hlsFor(Hls, plain);
+      hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => addQualities(Hls, plain, data.levels || hls.levels));
+      hls.loadSource(v.dataset.hls);
+      hls.attachMedia(v);
+    }
+    function hlsFor(Hls, plain, options) {
+      const hls = new Hls({ maxBufferLength: 12, ...(options || {}) });
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) cantPlay(); else plain();  // no playlist there: one plain file
+      });
+      return hls;
+    }
+
+    // --- quality, as the Moods' player has it (Justin, 3 Nov: "I don't see a quality selector"): Auto, each
+    // picture largest first, Audio only; remembered with the Moods' own choice (moods.releaseQuality) ---
+    const levelName = l => l.width && l.height ? Math.min(l.width, l.height) + 'p' : 'Audio only';
+    function reload(Hls, plain, url, level) {  // Audio only is its own playlist; hls.js can't drop the picture in place
+      const at = v.currentTime, playing = !v.paused, rate = v.playbackRate;
+      if (v._hls) v._hls.destroy();
+      const hls = v._hls = hlsFor(Hls, plain, { startPosition: at, startLevel: level });
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (level >= 0) hls.currentLevel = level;
+        v.playbackRate = rate;
+        if (playing) v.play().catch(() => {});
+      });
+      hls.loadSource(url);
+      hls.attachMedia(v);
+    }
+    function addQualities(Hls, plain, levels) {
+      const row = embed.querySelector('.quality');
+      if (!row || levels.length < 2 || row.dataset.made) return;
+      row.dataset.made = '1';
+      const choices = [{ name: 'Auto', index: -1 }, ...levels.map((level, index) => ({ name: levelName(level), index, level }))
+        .sort((a, b) => (b.level.width || 0) * (b.level.height || 0) - (a.level.width || 0) * (a.level.height || 0))];
+      const audio = choices.find(c => c.name === 'Audio only');
+      row.innerHTML = '<span>Quality</span>';
+      for (const c of choices) row.append(Object.assign(document.createElement('button'), { type: 'button', textContent: c.name, value: c.name }));
+      const paint = name => { for (const b of row.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.value === name)); };
+      function choose(choice, remember) {
+        if (remember) store.set('releaseQuality', choice.name);
+        paint(choice.name);
+        if (choice === audio) {
+          if (!v._audioOnly) { v._audioOnly = true; reload(Hls, plain, choice.level.uri || [].concat(choice.level.url)[0], -1); }
+          return;
+        }
+        if (v._audioOnly) { v._audioOnly = false; reload(Hls, plain, v.dataset.hls, choice.index); return; }
+        v._hls.currentLevel = choice.index;  // -1: hls.js picks by bandwidth; a level: switched at once
+      }
+      row.addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (b) choose(choices.find(c => c.name === b.value), true);
+      });
+      row.hidden = false;
+      const wanted = choices.find(c => c.name === store.get('releaseQuality', 'Auto')) || choices[0];
+      if (wanted.index === -1) paint('Auto'); else choose(wanted, false);
+      v._quality = () => (row.querySelector('[aria-pressed="true"]') || {}).value || 'Auto';
+    }
+    if (v && v.dataset.hls) {
+      attach();
+      v.addEventListener('error', () => { if (v.src === v.dataset.hls) v.src = v.dataset.src; else cantPlay(); });
+    }
+
+    // --- speed, as under every release's player (remembered with the Moods' own: moods.releaseSpeed) ---
+    const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+    const speedRow = embed.querySelector('.speed');
+    if (v && speedRow) {
+      speedRow.innerHTML = '<span>Speed</span>' + SPEEDS.map(r => `<button type="button" data-rate="${r}">${r}×</button>`).join('');
+      const paint = () => { for (const b of speedRow.querySelectorAll('button')) b.setAttribute('aria-pressed', String(Number(b.dataset.rate) === v.playbackRate)); };
+      const set = r => { v.defaultPlaybackRate = r; v.playbackRate = r; };
+      speedRow.addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        set(Number(b.dataset.rate));
+        store.set('releaseSpeed', Number(b.dataset.rate));
+      });
+      v.addEventListener('ratechange', paint);
+      v.addEventListener('loadedmetadata', () => set(Number(store.get('releaseSpeed', 1)) || 1));  // a new source resets it
+      set(SPEEDS.includes(Number(store.get('releaseSpeed', 1))) ? Number(store.get('releaseSpeed', 1)) : 1);
+      paint();
+    }
+
+    // --- captions: Release:<CID>/captions, a real text track (on unless this viewer turned them off) ---
+    const vtt = document.getElementById('captionsVtt'), cc = embed.querySelector('button.cc');
+    if (v && vtt && cc) {
+      const track = Object.assign(document.createElement('track'), { kind: 'subtitles', label: 'Captions', srclang: 'en',
+        src: URL.createObjectURL(new Blob([JSON.parse(vtt.textContent)], { type: 'text/vtt' })) });
+      v.appendChild(track);
+      const tt = () => track.track || v.textTracks[0];
+      const on = yes => { if (tt()) tt().mode = yes ? 'showing' : 'hidden'; cc.setAttribute('aria-pressed', String(yes)); };
+      cc.hidden = false;
+      cc.addEventListener('click', () => { const yes = !(tt() && tt().mode === 'showing'); on(yes); store.set('captions', yes ? 'on' : 'off'); });
+      v.textTracks.addEventListener && v.textTracks.addEventListener('change', () => cc.setAttribute('aria-pressed', String(!!tt() && tt().mode === 'showing')));
+      on(store.get('captions', 'on') !== 'off');
+    }
+
+    // --- moments: times in what's been said, as links ---
+    const TC = /(^|[^\w:.\/])((?:\d{1,2}:)?[0-5]?\d:[0-5]\d)(?![\w:])/g;
+    const moments = [];
+    for (const words of document.querySelectorAll('.comment .said > .words, .thelink .post .words')) {
+      const walker = document.createTreeWalker(words, NodeFilter.SHOW_TEXT, {
+        acceptNode: n => n.parentElement.closest('a, code, pre') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      const comment = words.closest('.comment');
+      for (const node of nodes) {
+        const text = node.nodeValue;
+        TC.lastIndex = 0;
+        if (!TC.test(text)) continue;
+        TC.lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        let at = 0, m;
+        while ((m = TC.exec(text))) {
+          const start = m.index + m[1].length;
+          frag.append(text.slice(at, start));
+          const a = Object.assign(document.createElement('a'), { className: 'tc', href: '#t=' + m[2], textContent: m[2],
+                                                                 title: 'Play from ' + m[2] });
+          a.dataset.t = secs(m[2]);
+          frag.append(a);
+          at = start + m[2].length;
+          moments.push({ t: secs(m[2]), comment, who: comment ? (comment.querySelector('.who b') || {}).textContent || '' : '',
+                         text: words.textContent.replace(/\s+/g, ' ').trim().slice(0, 100), link: a });
+        }
+        frag.append(text.slice(at));
+        node.replaceWith(frag);
+      }
+    }
+
+    function light(t) {  // the comments that named this moment
+      for (const m of moments) {
+        if (!m.gone && m.comment && Math.abs(m.t - t) < 1) {
+          m.comment.classList.add('at-moment');
+          setTimeout(() => m.comment.classList.remove('at-moment'), 3500);
+        }
+      }
+    }
+    function seek(t) {
+      light(t);
+      if (v) {
+        v.currentTime = t;
+        v.play().catch(() => {});
+        embed.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+      if (frame) {  // YouTube and Vimeo: their players, asked to start there
+        const u = new URL(frame.src);
+        if (u.hostname.includes('vimeo')) u.hash = `t=${Math.floor(t)}s`;
+        else u.searchParams.set('start', String(Math.floor(t)));
+        u.searchParams.set('autoplay', '1');
+        frame.src = u.toString();
+        embed.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+    document.addEventListener('click', e => {
+      const a = e.target.closest('a.tc');
+      if (!a) return;
+      e.preventDefault();
+      seek(Number(a.dataset.t));
+    });
+
+    // --- the line of marks under a video, once its length is known; a moment past it isn't one ---
+    const line = embed.querySelector('.moments');
+    function drawLine() {
+      if (!v || !line || !isFinite(v.duration) || !v.duration) return;
+      line.innerHTML = '<span class="now"></span>';
+      let any = false;
+      for (const m of moments) {
+        if (m.t > v.duration + 1) { m.link.replaceWith(document.createTextNode(m.link.textContent)); m.gone = true; continue; }
+        any = true;
+        const b = Object.assign(document.createElement('button'), { type: 'button', title: `${fmt(m.t)} · ${m.who}: ${m.text}` });
+        b.style.left = `${Math.min(100, m.t / v.duration * 100)}%`;
+        b.setAttribute('aria-label', `${fmt(m.t)}, ${m.who}`);
+        b.addEventListener('click', () => { seek(m.t); if (m.comment) m.comment.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+        line.append(b);
+      }
+      line.hidden = !any;
+      listMoments();
+    }
+    // The Moments list beside a release: each time said, in the order it plays; a click plays from it.
+    const sec = document.querySelector('.momentsec'), list = sec && sec.querySelector('ol');
+    function listMoments() {
+      if (!list) return;
+      const shown = moments.filter(m => !m.gone).sort((a, b) => a.t - b.t);
+      list.innerHTML = '';
+      for (const m of shown) {
+        const b = Object.assign(document.createElement('button'), { type: 'button', title: `Play from ${fmt(m.t)}` });
+        b.append(Object.assign(document.createElement('span'), { className: 't', textContent: fmt(m.t) }),
+                 Object.assign(document.createElement('span'), { className: 'who', textContent: m.who }),
+                 Object.assign(document.createElement('span'), { className: 'what', textContent: m.text.replace(fmt(m.t), '').replace(/^[\s:\-–—,.]+/, '') || m.text }));
+        b.addEventListener('click', () => { seek(m.t); if (m.comment) m.comment.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+        m.row = b;
+        const li = document.createElement('li');
+        li.append(b);
+        list.append(li);
+      }
+      sec.hidden = !shown.length;
+    }
+    if (v) {
+      v.addEventListener('durationchange', drawLine);
+      v.addEventListener('loadedmetadata', drawLine);
+      // As it plays past a moment, the comment that named it lights for a moment.
+      let last = 0;
+      v.addEventListener('timeupdate', () => {
+        const now = v.currentTime;
+        const bar = line && line.querySelector('.now');
+        if (bar && v.duration) bar.style.width = `${now / v.duration * 100}%`;
+        for (const m of moments) if (m.row) m.row.classList.toggle('now', !m.gone && now >= m.t && now < m.t + 4);
+        if (!v.paused && now > last && now - last < 2) {
+          for (const m of moments) {
+            if (!m.gone && m.comment && m.t > last && m.t <= now) {
+              m.comment.classList.add('at-moment');
+              setTimeout(() => m.comment.classList.remove('at-moment'), 3500);
+            }
+          }
+        }
+        last = now;
+      });
+    }
+
+    // --- ⏱ by the box: where it is now, into what's being said ---
+    const stamp = document.querySelector('form.say button.stamp'), box = document.getElementById('say');
+    if (v && stamp && box) {
+      stamp.hidden = false;
+      const show = () => { stamp.textContent = '⏱ ' + fmt(v.currentTime); };
+      v.addEventListener('timeupdate', show);
+      v.addEventListener('seeked', show);
+      stamp.addEventListener('click', () => {
+        const at = box.selectionStart ?? box.value.length, end = box.selectionEnd ?? at;
+        const before = box.value.slice(0, at), after = box.value.slice(end);
+        const words = (before && !/\s$/.test(before) ? ' ' : '') + fmt(v.currentTime) + ' ';
+        box.value = before + words + after;
+        box.focus();
+        box.setSelectionRange((before + words).length, (before + words).length);
+      });
+    }
+
+    // --- #t=2:14 in the page's address: start there ---
+    const asked = /[#&]t=([0-9:]+)/.exec(location.hash || '');
+    if (asked && v) {
+      const t = secs(asked[1]);
+      v.addEventListener('loadedmetadata', () => { v.currentTime = Math.min(t, v.duration || t); }, { once: true });
+    }
+
+    // --- it follows you (Justin, 3 Nov: "If I browse away from that tidings page, where the video is playing, I
+    // want it to follow me and keep playing"). Leaving this page while it plays -- another page of Tidings, or
+    // another part of magenta -- hands it to the one page's small player (moods.html, magentaMini), which
+    // plays on from the same moment; coming back here takes it back from there. ---
+    const mini = (() => { try { return parent !== window && parent.magentaMini ? parent.magentaMini : null; } catch (e) { return null; } })();
+    const tidingId = '{{ tiding.id }}';
+    if (v && mini && (v.dataset.hls || v.getAttribute('src'))) {
+      let gone = false;
+      // What's playing, and where: what the small player needs to play it on. Nothing if it isn't playing.
+      window.magentaPlaying = () => (gone || v.paused || v.ended) ? null : {
+        id: tidingId, title: JSON.parse(document.getElementById('tidingTitle').textContent),
+        back: `/moods/tidings/${tidingId}/`, hls: v.dataset.hls || '', src: v.dataset.src || v.currentSrc || v.getAttribute('src') || '',
+        poster: v.getAttribute('poster') || '', t: v.currentTime, rate: v.playbackRate, muted: v.muted,
+        captions: vtt ? JSON.parse(vtt.textContent) : '', cc: !!(v.textTracks[0] && v.textTracks[0].mode === 'showing'),
+        portrait: !!(v.videoHeight > v.videoWidth) };
+      window.magentaHandoff = () => {  // asked by the one page as it leaves Tidings, and on our way out
+        const state = window.magentaPlaying();
+        if (!state) return false;
+        gone = true;
+        mini.show(state);
+        v.pause();
+        return true;
+      };
+      // Back here, by its button or by any link: what it's played since is where this one goes on.
+      window.magentaResume = state => {
+        gone = false;
+        const go = () => { v.currentTime = state.t; v.playbackRate = state.rate || v.playbackRate; v.play().catch(() => { v.muted = true; v.play().catch(() => {}); }); };
+        if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
+        embed.scrollIntoView({ block: 'nearest' });
+      };
+      // Only when it's in front of them: a copy of Tidings redrawn out of sight (moods.html, refreshSection)
+      // leaves the small player be; coming back to Tidings brings it here then (moods.html, miniHome).
+      const seen = () => {
+        try {
+          if (!frameElement) return true;
+          const box = frameElement.closest('#sectionFrames');  // out of sight: the Moods are showing instead
+          return !frameElement.hidden && !frameElement.dataset.fresh && !(box && box.hidden);
+        } catch (e) { return true; }
+      };
+      const back = seen() ? mini.take(tidingId) : null;
+      if (back) window.magentaResume(back);
+      window.addEventListener('pagehide', () => window.magentaHandoff());
+      // One video at a time: playing this one ends whatever the small player was playing.
+      v.addEventListener('play', () => { gone = false; mini.close(tidingId); });
+    }
+  })();
+</script>
 </body>
 </html>

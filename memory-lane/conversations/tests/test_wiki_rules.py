@@ -138,7 +138,7 @@ class WakeLinesTest(TestCase):
     def asked(self, texts):
         from poller.mood_poller import also_asked
         owed = [{'mentions': ['magent', 're'], 'sender': 'justin', 'created_at': '2026-10-25T23:00:00'}]
-        return also_asked(owed, 'magent', {'agents': {'re': {}}}, texts=texts)[1]
+        return also_asked(owed, 'magent', {'emergents': {'re': {}}}, texts=texts)[1]
 
     def test_the_pages_words_with_the_codes_fields(self):
         self.assertEqual(self.asked(self.texts()), 'Also asked: re, not at work here yet. Or wait for re with <wait for="re"/>, as magent.')

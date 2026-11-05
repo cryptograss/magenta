@@ -81,7 +81,7 @@ def _brief(message, mood_slug, agents):
         'block': message.eth_blockheight,
         'text': text,
         'snippet': snippet_of(text)[:280],
-        'agents': agents or [],
+        'emergents': agents or [],
     }
 
 
@@ -138,7 +138,7 @@ def _add_turn(entry, agent, messages):
     metrics = _run_metrics(messages)
     if metrics is not None:
         usd = metrics['usd']
-        entry['turns'].append({'agent': agent, **metrics, 'tokens': f"{_k(metrics['in'])}→{_k(metrics['out'])}",
+        entry['turns'].append({'emergent': agent, **metrics, 'tokens': f"{_k(metrics['in'])}→{_k(metrics['out'])}",
                                # As the page's usdText; nothing when no call had a price (a model the list lacks).
                                'cost': '' if not metrics['priced'] else '<$0.01' if usd < 0.005 else f'${usd:.2f}'})
 
@@ -146,7 +146,7 @@ def _add_turn(entry, agent, messages):
 def prompt_tidings(per_human=PROMPTS_PER_HUMAN):
     """prompt_scan, kept PROMPTS_KEPT seconds."""
     from django.core.cache import cache
-    key = f'tidings:prompts:{per_human}'
+    key = f'tidings:prompts:{per_human}:emergents'  # not a copy kept before the rename's keys
     found = cache.get(key)
     if found is None:
         found = prompt_scan(per_human)
@@ -189,7 +189,7 @@ def prompt_scan(per_human=PROMPTS_PER_HUMAN):
 
         for message in heapq.merge(human_rows, agent_rows, key=lambda m: m.created_at):
             if message.sender_id in agents:
-                if answering is not None and message.sender_id in entries[answering]['agents']:
+                if answering is not None and message.sender_id in entries[answering]['emergents']:
                     answers[(answering, message.sender_id)].append(message)
                 continue
             answering = None  # a person's post ends every turn, as on the page
@@ -420,6 +420,83 @@ def release_scan(limit=RELEASES, http=None):
     return out
 
 
+def to_webvtt(text):
+    """Captions as a text track wants them: WebVTT as written, or SRT turned into it (as PickiPedia's own
+    player does, ext.pickipediaReleases.videoPlayer.js). '' if there are no cues."""
+    import re
+    text = str(text or '').lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n').strip()
+    if '-->' not in text:
+        return ''
+    if text.startswith('WEBVTT'):
+        return text + '\n'
+    return 'WEBVTT\n\n' + re.sub(r'(\d{1,2}:\d{2}:\d{2}),(\d{3})', r'\1.\2', text) + '\n'
+
+
+def release_info(cid, http=None):
+    """What a release's page on Tidings shows besides its player, from its Release page on the wiki: its
+    title, uploader, blocks, performers, description and commentary (pickipedia#170), its captions
+    (Release:<CID>/captions, WebVTT or SRT) and its shape -- an upright phone video is drawn beside what's
+    said about it, not above. Kept RELEASES_KEPT; {} if the wiki didn't answer (kept RELEASES_MISS)."""
+    from django.core.cache import cache
+    key = f'tidings:release:{cid}'
+    found = cache.get(key)
+    if found is not None:
+        return found
+    try:
+        found = _release_info(cid, http)
+        cache.set(key, found, RELEASES_KEPT)
+    except Exception:  # noqa: BLE001 -- the page plays without it
+        found = {}
+        cache.set(key, found, RELEASES_MISS)
+    return found
+
+
+def _release_info(cid, http=None):
+    import requests
+    import yaml
+    http = http or requests
+    page = 'Release:' + cid[:1].upper() + cid[1:]
+    got = http.get(f'{pickipedia_url()}/api.php', timeout=4, headers={'User-Agent': 'memory-lane (magenta; tidings)'},
+                   params={'action': 'query', 'prop': 'revisions', 'rvprop': 'content', 'rvslots': 'main',
+                           'format': 'json', 'formatversion': 2, 'titles': f'{page}|{page}/captions'}).json()
+    texts = {}
+    for found in got['query']['pages']:
+        if found.get('revisions'):
+            texts[found['title']] = found['revisions'][0]['slots']['main']['content']
+    data = yaml.safe_load(texts.get(page) or '') if texts.get(page) else None
+    if not isinstance(data, dict):
+        return {}
+    transcode = data.get('transcode') if isinstance(data.get('transcode'), dict) else {}
+    source = transcode.get('source') if isinstance(transcode.get('source'), dict) else {}
+    width, height = transcode.get('output_width') or source.get('width'), transcode.get('output_height') or source.get('height')
+    commentary = []
+    for note in data.get('commentary') or []:
+        if isinstance(note, dict) and str(note.get('text') or '').strip():
+            commentary.append({'by': str(note.get('by') or '')[:80], 'role': str(note.get('role') or '')[:40],
+                               'text': str(note['text']).strip()[:2000]})
+    performers = [str(p)[:80] for p in (data.get('performers') or []) if isinstance(p, (str, int))][:20]
+
+    def block(x):
+        try:
+            return int(x)
+        except (TypeError, ValueError):
+            return None
+    return {
+        'title': str(data.get('title') or '').strip()[:200],
+        'description': str(data.get('description') or '').strip()[:4000],
+        'by': str(data.get('uploaded_by') or '').removeprefix('wiki:')[:80],
+        'block': block(data.get('blockheight')),
+        'upload_block': block(data.get('upload_blockheight')),
+        'upload_block_s': f"{block(data.get('upload_blockheight')):,}" if block(data.get('upload_blockheight')) else '',
+        'performers': [{'name': p, 'page': f"{pickipedia_url()}/wiki/{p.replace(' ', '_')}"} for p in performers],
+        'commentary': commentary,
+        'captions': to_webvtt(texts.get(f'{page}/captions')),
+        'captions_page': f"{pickipedia_url()}/wiki/{page}/captions",
+        'portrait': bool(width and height and int(height) > int(width)),
+        'page': f'{pickipedia_url()}/wiki/{page}',
+    }
+
+
 def stream(pictures, releases):
     """The pictures and releases as one list, newest first: each {'kind': 'picture'|'release', 'at', 'item'}."""
     from datetime import datetime, timezone as tz
@@ -435,8 +512,11 @@ def tidings_state(viewer=None, order='top'):
     `preview` is its small form for the gallery; see views_moods.media_preview.)
     `viewer` is who's looking: each link says whether they voted for it. `order`: top (pinned, then ranked) or new."""
     from conversations.services import tiding_links
+    # Each release says whether it's on Tidings, and where it's talked about (tiding_links.promote_release).
+    on = tiding_links.released()
+    releases = [{**release, 'tiding': on.get(release['cid'], '')} for release in release_tidings()]
     return {'links': tiding_links.listed(viewer=viewer, order=order), 'pictures': picture_tidings(),
-            'releases': release_tidings()}
+            'releases': releases}
 
 
 def prompts_state():

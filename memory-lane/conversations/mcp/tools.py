@@ -87,6 +87,13 @@ async def handle_get_latest_continuation():
     return [types.TextContent(type="text", text=str(continuation.content))]
 
 
+def era_line(message):
+    """The message's era, as Cryptograss:Eras declares it (services/eras.py)."""
+    from conversations.services.eras import era_of
+    era = era_of(message)
+    return f"{era.number}, {era.name}" if era else "unknown (no block, or no verified era holds it)"
+
+
 async def handle_get_message_by_id(arguments):
     """Get a specific message by UUID"""
     message_id = arguments.get("message_id")
@@ -106,10 +113,16 @@ async def handle_get_message_by_id(arguments):
         f"Sender: {message.sender_id}",
         f"Created: {message.created_at.isoformat()}",
         f"Timestamp: {message.timestamp}",
+        f"Block: {message.eth_blockheight}",
+        f"Era: {await sync_to_async(with_fresh_connection(lambda: era_line(message)))()}",
         f"Context Heap: {message.context_heap_id}",
         f"Message Number: {message.message_number}",
         f"\nContent:\n{str(message.content)}"
     ]
+    if message.mood_id:  # how a PickiPedia page cites it in a line of prose (services/wiki_embed.py)
+        from conversations.services.wiki_embed import template_call
+        cite = await sync_to_async(with_fresh_connection(lambda: template_call(message, inline=True)))()
+        lines.insert(1, f"Cite on PickiPedia: {cite}")
 
     return [types.TextContent(type="text", text='\n'.join(lines))]
 

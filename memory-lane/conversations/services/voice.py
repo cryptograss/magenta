@@ -339,7 +339,7 @@ def chosen_voices():
     'speaker_voice' setting), and the narrator's ('narrator_voice')."""
     from conversations.models import Setting
     from conversations.services import settings as knobs
-    rows = Setting.objects.filter(key='speaker_voice', mood=None, agent__isnull=False)
+    rows = Setting.objects.filter(key='speaker_voice', mood=None, emergent__isnull=False)
     chosen = {agent: row.value for (_, agent, _), row in knobs.latest(rows).items() if row.value}
     if knobs.global_value('narrator_voice'):
         chosen[NARRATOR] = knobs.global_value('narrator_voice')

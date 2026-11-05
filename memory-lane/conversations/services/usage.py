@@ -60,7 +60,7 @@ def _row_chars(row):
 
 
 def calls(since, until=None, mood=None, chars=False):
-    """Each model response from `since` (in `mood`, if named), once: dicts with its turn, agent, Mood, model,
+    """Each model response from `since` (in `mood`, if named), once: dicts with its turn, emergent, Mood, model,
     harness, tokens and cost -- and with `chars`, the characters it wrote as thinking, words and tool calls
     (spend_kinds.py). One rule for every page that counts: a usage repeated in a session is one response.
     A helper's calls (sidechains) are its turn's. A row with no usage of its own (Pi puts a response's usage
@@ -75,7 +75,7 @@ def calls(since, until=None, mood=None, chars=False):
         rows = rows.filter(created_at__lt=until)
     if mood:
         rows = rows.filter(mood__slug=mood)
-    fields = dict(zip(('id', 'session', 'agent', 'mood', 'at', 'model', 'client', 'fresh', 'out', 'read',
+    fields = dict(zip(('id', 'session', 'emergent', 'mood', 'at', 'model', 'client', 'fresh', 'out', 'read',
                        'written', 'paid'), FIELDS))
     if chars:
         rows = rows.annotate(thinking_chars=Length(KT('content__0__thinking')),
@@ -94,7 +94,7 @@ def calls(since, until=None, mood=None, chars=False):
             usd = r['paid'] if r['paid'] is not None else call_usd(r['model'], r['fresh'], r['out'], r['read'],
                                                                     r['written'])
             call = found[key] = {
-                'id': str(r['id']), 'turn': str(session or r['id']), 'agent': r['agent'], 'mood': r['mood'] or '',
+                'id': str(r['id']), 'turn': str(session or r['id']), 'emergent': r['emergent'], 'mood': r['mood'] or '',
                 'at': r['at'], 'model': model_label(r['model']) or (r['model'] or ''), 'harness': harness_of(r['client']),
                 'ctx': (r['fresh'] or 0) + (r['read'] or 0) + (r['written'] or 0), 'cached': r['read'] or 0,
                 'out': r['out'] or 0, 'usd': usd, 'paid': r['paid'] is not None}
@@ -113,9 +113,9 @@ def bucket_of(at, unit):
 
 
 def usage_state(hours=24, now=None):
-    """{"hours", "unit", "buckets", "slices", "agents", "moods", "models", "totals", "top"}.
+    """{"hours", "unit", "buckets", "slices", "emergents", "moods", "models", "totals", "top"}.
 
-    slices: [[bucket index, agent, mood, model, harness, calls, ctx, cached, out, usd, unpriced calls]].
+    slices: [[bucket index, emergent, mood, model, harness, calls, ctx, cached, out, usd, unpriced calls]].
     top: the most expensive turns of the past day by harness, {"anthropic": [...], "openrouter": [...]}."""
     hours = hours if hours in RANGES else 24
     unit = RANGES[hours]
@@ -135,7 +135,7 @@ def usage_state(hours=24, now=None):
     totals = {h: {'calls': 0, 'ctx': 0, 'cached': 0, 'out': 0, 'usd': 0.0, 'paid_usd': 0.0, 'unpriced': 0}
               for h in HARNESSES}
     for call in calls(since):
-        s = slices[(index.get(bucket_of(call['at'], unit), 0), call['agent'], call['mood'], call['model'],
+        s = slices[(index.get(bucket_of(call['at'], unit), 0), call['emergent'], call['mood'], call['model'],
                     call['harness'])]
         s[0] += 1
         s[1] += call['ctx']
@@ -156,7 +156,7 @@ def usage_state(hours=24, now=None):
                 t['paid_usd'] += call['usd']
         if call['at'] >= day_ago:
             turn = turns.setdefault(call['turn'], {
-                'turn': call['turn'], 'first': call['id'], 'at': call['at'].isoformat(), 'agent': call['agent'],
+                'turn': call['turn'], 'first': call['id'], 'at': call['at'].isoformat(), 'emergent': call['emergent'],
                 'mood': call['mood'], 'harness': call['harness'], 'models': [], 'calls': 0, 'ctx': 0,
                 'cached': 0, 'out': 0, 'max_ctx': 0, 'usd': 0.0, 'paid': False, 'unpriced': 0})
             if call['model'] and call['model'] not in turn['models']:
@@ -193,7 +193,7 @@ def usage_state(hours=24, now=None):
         'buckets': [b.isoformat() for b in buckets],
         'slices': [[k[0], k[1], k[2], k[3], k[4], *s[:4], round(s[4], 5), s[5]] for k, s in slices.items()],
         # Each dimension's names, most tokens first: the order a chart's colours are given in.
-        'agents': ranked(1), 'moods': ranked(2), 'models': ranked(3),
+        'emergents': ranked(1), 'moods': ranked(2), 'models': ranked(3),
         'totals': {h: {**t, 'usd': round(t['usd'], 2), 'paid_usd': round(t['paid_usd'], 2)}
                    for h, t in totals.items()},
         'top': top,

@@ -54,7 +54,7 @@ class AskTest(TestCase):
                           ('re', 'requested a merge for the polls PR', 'merge'),
                           ('re', 'requested a redeploy of hunter', 'deploy')])
         got = self.asked()
-        self.assertEqual([(t['kind'], t['agent'], t['for']) for t in got],
+        self.assertEqual([(t['kind'], t['emergent'], t['for']) for t in got],
                          [('tools', 're', 'push the fix'), ('merge', 're', 'the polls PR'),
                           ('deploy', 're', 'hunter')])
         self.assertTrue(all(t['id'] for t in got))  # the notice links to the message
@@ -153,7 +153,7 @@ class AskTest(TestCase):
         self.say('re', '<tools to="push the fix"/>', 2, session=self.sid)
         self.assertEqual([(t['kind'], t['for']) for t in self.asked()], [('tools', 'push the fix')])
         bundle, fresh = uuid.uuid4(), uuid.uuid4()
-        BundleRecord.objects.create(id=bundle, agent='re', mood='jams', requested_at=timezone.now(), sha256='0' * 64)
+        BundleRecord.objects.create(id=bundle, emergent='re', mood='jams', requested_at=timezone.now(), sha256='0' * 64)
         Message.objects.create(id=uuid.uuid4(), sender_id='mood-poller', mood=self.mood, session_id=fresh, timestamp=3,
                                content=[{'type': 'text', 'text': '<mood-wake mood="jams"> ... This turn has your full tools, '
                                          f'as in your terminal ... Your instructions this turn are bundle {bundle} (Special:AgentBundles).'}])
@@ -166,7 +166,7 @@ class AskTest(TestCase):
         self.say('magent', '<tools to="review code"/>', 2, session=uuid.uuid4())
         cache.clear()
         got = self.asked()
-        self.assertEqual([(t['kind'], t['agent'], t['for']) for t in got],
+        self.assertEqual([(t['kind'], t['emergent'], t['for']) for t in got],
                          [('tools', 're', 'push the fix'), ('tools', 'magent', 'review code')])
 
     def test_one_type_icon_regardless_of_request_count_in_template(self):
@@ -176,7 +176,7 @@ class AskTest(TestCase):
         html = template.read_text()
         # Justin, 1 Nov: each kind's dots beside its icon (askGroups): one icon a kind, a dot an ask.
         self.assertIn("if (!kinds.has(icon)) kinds.set(icon, []);", html)
-        self.assertIn("kinds.get(icon).push(t.agent);", html)
+        self.assertIn("kinds.get(icon).push(t.emergent);", html)
 
 
 

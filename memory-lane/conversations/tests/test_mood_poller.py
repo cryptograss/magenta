@@ -1104,8 +1104,8 @@ class MentionContextTest(TestCase):
         from poller.mood_poller import also_asked
         owed = [dict(turn('ask', 'justin', 100, '@magent @re @blu and @skyler, thoughts?'),
                      mentions=['magent', 're', 'blu', 'skyler'])]
-        page = {'agents': {'magent': {}, 're': {}, 'blu': {}},
-                'activities': [{'agent': 're', 'doing': 'thinking'}, {'agent': 'blu', 'doing': 'held'}]}
+        page = {'emergents': {'magent': {}, 're': {}, 'blu': {}},
+                'activities': [{'emergent': 're', 'doing': 'thinking'}, {'emergent': 'blu', 'doing': 'held'}]}
         lines = also_asked(owed, 'magent', page)
         self.assertIn('Others mentioned, and likely woken, by what woke you: re, at work here now; blu, not at work here yet.', lines[1])
         self.assertIn('read_mood', lines[1])
@@ -1144,7 +1144,7 @@ class MentionContextTest(TestCase):
     def test_the_wake_says_who_else_was_asked_after_what_was_asked(self):
         class API(FakeAPI):
             def recent(inner, slug, limit=40):
-                return {'turns': [], 'agents': {'magent': {}, 're': {}}, 'activities': [{'agent': 're', 'doing': 'thinking'}]}
+                return {'turns': [], 'emergents': {'magent': {}, 're': {}}, 'activities': [{'emergent': 're', 'doing': 'thinking'}]}
         owed = dict(turn('ask', 'justin', 100, '@magent @re which first?'), via='web', mentions=['magent', 're'])
         api = API([mention('m26', owed)], sessions={'m26': ['s-local']})
         state = Path(tempfile.mkdtemp()) / 'state.json'
@@ -1726,7 +1726,7 @@ class ConsiderLoopTest(TestCase):
         self.assertEqual(poller.consider_once(), [])
 
     def test_nothing_while_the_agent_is_already_at_work_there(self):
-        api = ConsiderAPI(activity={'agent': 'magent', 'doing': 'thinking'})
+        api = ConsiderAPI(activity={'emergent': 'magent', 'doing': 'thinking'})
         poller = self.make(api, FakeScreen())
         api.add(post('a', 1))
         self.at(minutes=2)
@@ -2079,7 +2079,7 @@ class GlovesOffTest(TestCase):
 
 class CompactTest(TestCase):
     """"/compact magent <what to keep>" from someone trusted compacts the session instead of
-    taking a turn -- in that form only (memory-lane services/agent_commands; Justin, 17 Oct)."""
+    taking a turn -- in that form only (memory-lane services/emergent_commands; Justin, 17 Oct)."""
 
     def run_for(self, *posts):
         api = FakeAPI([mention('m26', dict(turn(f'm{i}', who, i, text), via='web'))
@@ -2151,7 +2151,7 @@ class StopAPI(FakeAPI):
 
     def interrupt(self, slug, agent):
         at = (T0 + timedelta(minutes=self.stopped)).isoformat() if self.stopped is not None else None
-        return {'scram': self.scram, 'interrupt': at and {'agent': agent, 'by': 'justin', 'at': at}}
+        return {'scram': self.scram, 'interrupt': at and {'emergent': agent, 'by': 'justin', 'at': at}}
 
 
 class StopTest(TestCase):
@@ -2740,7 +2740,7 @@ class WaitingTest(TestCase):
 
     def make(self, replies, mentions=('magent', 're')):
         clock = self.clock = [T0 + timedelta(minutes=1)]
-        self.page = {'turns': [], 'activities': [], 'agents': {'magent': {}, 're': {}, 'blu': {}}}
+        self.page = {'turns': [], 'activities': [], 'emergents': {'magent': {}, 're': {}, 'blu': {}}}
         test = self
 
         class API(FakeAPI):
@@ -2768,7 +2768,7 @@ class WaitingTest(TestCase):
         self.assertIn('reply with only <wait for="re" to="a few words"/>', first)   # offered, where another was asked
         self.assertIn('m26', poller.state['waits'])
         self.assertIn(('m26', 'waiting for re'), [(h[0], h[1]) for h in self.api.holds])
-        self.page['activities'] = [{'agent': 're', 'doing': 'thinking'}]
+        self.page['activities'] = [{'emergent': 're', 'doing': 'thinking'}]
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), [])                   # re at work: still waiting
         self.page['activities'] = []
@@ -2800,6 +2800,17 @@ class WaitingTest(TestCase):
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), ['m26'])               # posted: its turn now, the rest in view
         self.assertIn('You chose to wait for justin', self.waker.woken[1][1])
+
+    def test_a_wait_for_someone_typing_at_the_wake_holds_though_they_paused_since(self):
+        # Justin, 4 Nov: woken with "justin is typing", the wait for him was refused -- "nobody ... goes by justin".
+        # A keystroke counts for 8 s; by the turn's end he seemed to have stopped. The wake's word is what counts.
+        poller = self.make(['<wait for="justin" to="finish the thought"/>'], mentions=('magent',))
+        self.page['typing'] = ['justin']
+        poller.people_typing = lambda slug, page=None: []   # as the reply is read: no keystroke in the last 8 s
+        poller.poll_once()
+        self.assertIn('Right now, here: justin is typing.', self.waker.woken[0][1])
+        self.assertIn('m26', poller.state['waits'])
+        self.assertFalse(poller.state['waits']['m26'].get('refused'))
 
     def test_an_answer_between_the_ask_and_the_wait_taking_releases_the_wait(self):
         # Justin, 29 Oct: blu waited for magent, who had already answered the very question a minute before
@@ -2833,7 +2844,7 @@ class WaitingTest(TestCase):
     def test_at_work_at_its_check_in_the_wait_goes_on_with_no_turn_spent(self):
         poller = self.make(['<wait for="re"/>'])
         poller.poll_once()
-        self.page['activities'] = [{'agent': 're', 'doing': 'working'}]
+        self.page['activities'] = [{'emergent': 're', 'doing': 'working'}]
         for _ in range(3):                                          # fifteen minutes and more of re at work
             self.clock[0] += WAIT_FOR + timedelta(seconds=1)
             self.assertEqual(poller.poll_once(), [])
@@ -2860,7 +2871,7 @@ class WaitingTest(TestCase):
         poller = self.make(['<wait for="re"/>', '<wait for="blu"/>'])
         poller.poll_once()
         self.page['turns'] = [dict(turn('r1', 're', 2, 'Half of it; @blu knows the rest.'), mentions=['blu'])]
-        self.page['activities'] = [{'agent': 'blu', 'doing': 'thinking'}]
+        self.page['activities'] = [{'emergent': 'blu', 'doing': 'thinking'}]
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), ['m26'])
         self.assertIn('re mentioned blu, at work here now. Answer now, or reply with only <wait for="blu" to="a few words"/>',
@@ -2873,7 +2884,7 @@ class WaitingTest(TestCase):
         poller.poll_once()
         self.assertIn('<wait for="re" to="a few words"/>', self.waker.woken[0][1])      # offered so
         self.assertEqual(self.api.holds[-1][:2], ('m26', 'waiting for re to settle the schema first, then the rest of'))
-        self.page['activities'] = [{'agent': 're', 'doing': 'working'}]
+        self.page['activities'] = [{'emergent': 're', 'doing': 'working'}]
         self.clock[0] += WAIT_FOR + timedelta(seconds=1)
         poller.poll_once()                                                               # a check-in: still so
         self.assertEqual(self.api.holds[-1][:2], ('m26', 'waiting for re to settle the schema first, then the rest of'))
@@ -2881,14 +2892,14 @@ class WaitingTest(TestCase):
     def test_what_another_waits_for_doesnt_make_it_wait_for_this_one(self):
         poller = self.make(['<wait for="re"/>'])                    # magent named first
         poller.poll_once()
-        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for blu to ask magent'}]
+        self.page['activities'] = [{'emergent': 're', 'doing': 'held', 'why': 'waiting for blu to ask magent'}]
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), [])                    # re waits for blu, not for magent
 
     def test_waiting_on_each_other_the_first_named_answers(self):
         poller = self.make(['<wait for="re"/>'])                    # magent named first
         poller.poll_once()
-        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for magent'}]
+        self.page['activities'] = [{'emergent': 're', 'doing': 'held', 'why': 'waiting for magent'}]
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), ['m26'])
         self.assertIn('re is waiting for you; you were named first', self.waker.woken[1][1])
@@ -2896,7 +2907,7 @@ class WaitingTest(TestCase):
     def test_named_second_it_keeps_waiting_for_the_first(self):
         poller = self.make(['<wait for="re"/>'], mentions=('re', 'magent'))
         poller.poll_once()
-        self.page['activities'] = [{'agent': 're', 'doing': 'held', 'why': 'waiting for magent'}]
+        self.page['activities'] = [{'emergent': 're', 'doing': 'held', 'why': 'waiting for magent'}]
         self.clock[0] += timedelta(minutes=1)
         self.assertEqual(poller.poll_once(), [])                    # re goes first
 
@@ -2938,7 +2949,7 @@ class TakingTest(TestCase):
 
     def make(self, replies, agent='magent', mentions=('magent', 're'), **kwargs):
         clock = self.clock = [T0 + timedelta(seconds=5)]
-        self.page = {'turns': [], 'activities': [], 'quiet': [], 'agents': {'magent': {}, 're': {}, 'blu': {}}}
+        self.page = {'turns': [], 'activities': [], 'quiet': [], 'emergents': {'magent': {}, 're': {}, 'blu': {}}}
         test = self
 
         class API(FakeAPI):
@@ -3300,6 +3311,8 @@ class FreshCopiesTest(TestCase):
         calls = []
         def run(args):
             calls.append(args)
+            if args[1] == 'ls-remote':
+                return subprocess.run(args, capture_output=True, text=True, timeout=120)
             raise subprocess.TimeoutExpired(args, 120)
         problems = refresh_fresh(ws, run=run)
         self.assertTrue(any('magenta' in p for p in problems))
@@ -3334,6 +3347,94 @@ class FreshCopiesTest(TestCase):
         self.assertIn('magenta: fatal: unable to access', line)
         poller.fresh_problems = []
         self.assertEqual(poller.fresh_line(), '')
+
+    def test_a_repo_with_a_production_branch_refreshes_to_production_not_head(self):
+        # magent, re, 3 Nov: maybelle-config and pickipedia serve production from a branch of that name; .fresh
+        # tracks it where the branch exists. Here production appears after the first clone, and the next
+        # refresh's ls-remote moves the copy onto it.
+        import subprocess
+        from poller.mood_poller import refresh_fresh
+        ws, seed = self.make_workspace()
+        self.assertEqual(refresh_fresh(ws), [])   # no production yet: the clone takes the default branch
+        for args in (['config', 'user.email', 't@t'], ['config', 'user.name', 't'],
+                     ['checkout', '-qb', 'production']):
+            subprocess.run(['git', '-C', str(seed)] + args, check=True, capture_output=True)
+        (seed / 'a.txt').write_text('production\n')
+        for args in (['commit', '-qam', 'prod'], ['push', '-q', 'origin', 'production'],
+                     ['checkout', '-q', '-'], ['commit', '--allow-empty', '-qm', 'default'],
+                     ['push', '-q', 'origin', 'HEAD']):
+            subprocess.run(['git', '-C', str(seed)] + args, check=True, capture_output=True)
+        self.assertEqual(refresh_fresh(ws), [])   # ls-remote says production exists: it is fetched, not HEAD
+        self.assertEqual((ws / '.fresh' / 'magenta' / 'a.txt').read_text(), 'production\n')
+
+    def test_a_first_clone_lands_on_production_when_the_branch_exists(self):
+        # re, magent, 3 Nov: a plain clone takes the default branch, so a new copy of maybelle-config would show
+        # dead main until its second refresh. ls-remote runs before the clone too, and the clone takes production.
+        import subprocess
+        from poller.mood_poller import refresh_fresh
+        ws, seed = self.make_workspace()
+        for args in (['config', 'user.email', 't@t'], ['config', 'user.name', 't'], ['checkout', '-qb', 'production']):
+            subprocess.run(['git', '-C', str(seed)] + args, check=True, capture_output=True)
+        (seed / 'a.txt').write_text('production\n')
+        for args in (['commit', '-qam', 'prod'], ['push', '-q', 'origin', 'production']):
+            subprocess.run(['git', '-C', str(seed)] + args, check=True, capture_output=True)
+        self.assertEqual(refresh_fresh(ws), [])
+        self.assertEqual((ws / '.fresh' / 'magenta' / 'a.txt').read_text(), 'production\n')
+
+    def test_a_failing_ls_remote_before_a_first_clone_makes_no_copy(self):
+        from poller.mood_poller import refresh_fresh
+        ws, _ = self.make_workspace()
+        class Done:
+            returncode = 128
+            stderr = 'fatal: network down'
+            stdout = ''
+        calls = []
+        def run(args):
+            calls.append(args)
+            return Done()
+        problems = refresh_fresh(ws, run=run)
+        self.assertTrue(any('network down' in p for p in problems))
+        self.assertEqual([a[1] for a in calls], ['ls-remote'])          # no clone tried
+        self.assertFalse((ws / '.fresh' / 'magenta').exists())
+
+    def test_an_ls_remote_zero_exit_with_no_output_fetches_head_the_branch_is_absent(self):
+        # magent, re, 3 Nov: ls-remote exit 0 with no output says the branch is absent -- an older repo's case.
+        # HEAD is fetched, exactly as before the production check existed.
+        import subprocess
+        from poller.mood_poller import refresh_fresh
+        ws, _ = self.make_workspace()
+        self.assertEqual(refresh_fresh(ws), [])   # first refresh clones the default branch
+        ls_remote, fetch_refs = [], []
+        def run(args):
+            done = subprocess.run(args, capture_output=True, text=True, timeout=120)
+            if args[1] == 'ls-remote':
+                ls_remote.append((done.returncode, done.stdout))
+            elif args[3] == 'fetch':
+                fetch_refs.append(args[8])
+            return done
+        self.assertEqual(refresh_fresh(ws, run=run), [])
+        self.assertEqual(ls_remote, [(0, '')])    # exit 0, empty output: the branch is absent
+        self.assertEqual(fetch_refs, ['HEAD'])    # so HEAD, as before the check existed
+
+    def test_a_failing_ls_remote_is_reported_and_the_repo_skipped_not_fetched_from_head(self):
+        # magent, re, 3 Nov: a failing network must never fall back to HEAD, or a stale default branch would sit
+        # in .fresh as if it were live. The refresh reports the failure and skips the repo; nothing runs after it.
+        from poller.mood_poller import refresh_fresh
+        ws, _ = self.make_workspace()
+        self.assertEqual(refresh_fresh(ws), [])   # the copy exists now; a failing ls-remote must leave it be
+        class Done:
+            returncode = 128
+            stderr = "fatal: unable to access 'https://github.com/c/origin.git/': network down"
+            stdout = ''
+        calls = []
+        def run(args):
+            calls.append(args)
+            if args[1] == 'ls-remote':
+                return Done()
+            raise AssertionError(f'nothing runs past a failing ls-remote: {args}')
+        problems = refresh_fresh(ws, run=run)
+        self.assertTrue(any('magenta' in p and 'network down' in p for p in problems))
+        self.assertEqual([a[1] for a in calls], ['ls-remote'])   # reported, skipped, nothing after it
 
 
 

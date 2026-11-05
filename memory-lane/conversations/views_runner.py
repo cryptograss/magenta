@@ -27,6 +27,7 @@ import hmac
 import json
 import re
 import uuid
+import time
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -42,10 +43,10 @@ MAX_EVENTS = 500
 TURN_ENDS = {'end_turn', 'refusal', 'stop_sequence', 'max_tokens'}
 
 
-def runner_agent(request):
+def runner_emergent(request):
     """The agent a valid runner key speaks for, or None."""
-    from memory_viewer.runner_keys import agent_for
-    return agent_for(request.headers.get('Authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
+    from memory_viewer.runner_keys import emergent_for
+    return emergent_for(request.headers.get('Authorization', ''), getattr(settings, 'MOOD_RUNNER_KEYS', {}))
 
 
 def stream_line(event, now_iso):
@@ -125,10 +126,17 @@ def final_usage(session_id, agent, events):
             Message.objects.filter(id__in=ids, session_id=session_id, sender_id=agent).update(**fields)
 
 
+_UUID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
+
 def finish_turn(mood, session_id, agent, result, asked=()):
     """The run is over: stamp the turn's last message, and keep what it cost; its answer to Tidings, if
     something there asked it (`asked`: what woke it)."""
     stop = result.get('stop_reason') if result.get('stop_reason') in TURN_ENDS else 'end_turn'
+    # Helpers it started in the background and that never reported: the run's end stops them (Justin, 5 Nov: an
+    # audit in #rabbithole cut off, unseen). Read before the turn-result, which would count them over.
+    from .services.mood_view import background_tasks
+    cut = [t for t in background_tasks(mood, of_session=session_id) if t['kind'] == 'helper']
     last = (Message.objects.filter(session_id=session_id, sender_id=agent, is_sidechain=False)
             .order_by('-created_at').first())
     if last is not None and last.stop_reason is None:
@@ -155,6 +163,17 @@ def finish_turn(mood, session_id, agent, result, asked=()):
         'sender': system, 'content': summary, 'mood': mood, 'session_id': session_id,
         'source_file': f'ingest-{SOURCE}',
     })
+    if cut:
+        # Said in the Mood, and to whoever woke the turn (views_moods.notices_for).
+        from conversations.models import ThinkingEntity
+        people = set(ThinkingEntity.objects.filter(is_biological_human=True).values_list('name', flat=True))
+        askers = sorted(set(Message.objects.filter(id__in=[a for a in map(str, asked) if _UUID.match(a)], sender_id__in=people)
+                            .values_list('sender_id', flat=True))) if asked else []
+        for task in cut:
+            Message.objects.get_or_create(id=uuid.uuid5(uuid.NAMESPACE_URL, f'helper-cut:{session_id}:{task["id"]}'), defaults={
+                'sender': system, 'mood': mood, 'session_id': session_id, 'source_file': 'helper',
+                'content': {'type': 'helper-cut', 'agent': agent, 'label': task['label'], 'steps': task.get('steps', 0),
+                            'took': round(time.time() - task['since']), 'for': askers}})
     if asked and not result.get('is_error'):
         from .services import tiding_links
         tiding_links.answer_asked(mood, session_id, agent, asked)
@@ -172,7 +191,7 @@ def api_stream(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     mood = Mood.by_slug_or_404(slug)
@@ -312,7 +331,7 @@ def api_quiet(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     mood = Mood.by_slug_or_404(slug)
@@ -353,7 +372,7 @@ def api_held(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     Mood.by_slug_or_404(slug)
@@ -381,7 +400,7 @@ def api_degraded(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     Mood.by_slug_or_404(slug)
@@ -408,7 +427,7 @@ def api_running(request, slug):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     Mood.by_slug_or_404(slug)
@@ -431,7 +450,7 @@ def api_plan(request):
 
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    agent = runner_agent(request)
+    agent = runner_emergent(request)
     if agent is None:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     try:
@@ -550,7 +569,13 @@ def api_servers(request):
     """
     from .services import servers
     from .views_moods import page_version
-    return JsonResponse({'servers': servers.status(), 'page': page_version()})
+    from .services import sprint_notes
+    # The current sprint rides along, for the header's menu (Justin, 3 Nov): asked every minute, kept ten.
+    from .views_moods import LookClock
+    clock = LookClock()
+    body = {'servers': clock('servers', servers.status), 'page': clock('page', page_version),
+            'sprint': clock('sprint', sprint_notes.shown)}
+    return clock.report(JsonResponse(body), 'servers')
 
 
 VENDOR_NAME = re.compile(r'[A-Za-z0-9._\-]{1,60}')
@@ -580,7 +605,7 @@ def clean_vendors(vendors):
 
 
 @csrf_exempt  # a POST is authenticated by the runner's key; reading is open, like the Moods
-def api_agent_models(request, name):
+def api_emergent_models(request, name):
     """What `name`'s harness can run, for the model menu: GET it, or (its
     runner, with its key) POST it.
 
@@ -591,19 +616,19 @@ def api_agent_models(request, name):
     """
     from .models import HarnessModels, ThinkingEntity
     if request.method == 'GET':
-        found = HarnessModels.objects.filter(agent_id=name).first()
+        found = HarnessModels.objects.filter(emergent_id=name).first()
         if found is None:
             return JsonResponse({'error': f'{name} has reported no models'}, status=404)
         from .services import settings as knobs
         # Less what's switched off (settings: models offered); ?all=1, everything, for that very list.
         vendors = found.vendors if request.GET.get('all') == '1' else knobs.offered(found.vendors)
-        return JsonResponse({'agent': name, 'harness': found.harness, 'vendors': vendors,
+        return JsonResponse({'emergent': name, 'harness': found.harness, 'vendors': vendors,
                              'reported_at': found.reported_at.isoformat()})
     if request.method != 'POST':
         return JsonResponse({'error': 'GET or POST'}, status=405)
     if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
         return JsonResponse({'error': 'no runners are configured'}, status=503)
-    if runner_agent(request) != name:
+    if runner_emergent(request) != name:
         return JsonResponse({'error': 'unauthorized'}, status=401)
     agent = ThinkingEntity.objects.filter(name=name).first()
     if agent is None:
@@ -614,5 +639,5 @@ def api_agent_models(request, name):
         vendors = clean_vendors(body.get('vendors'))
     except (ValueError, AttributeError, TypeError) as e:
         return JsonResponse({'error': str(e) or 'expected {"harness": ..., "vendors": [...]}'}, status=400)
-    HarnessModels.objects.update_or_create(agent=agent, defaults={'harness': harness, 'vendors': vendors})
-    return JsonResponse({'agent': name, 'vendors': len(vendors), 'models': sum(len(v['models']) for v in vendors)})
+    HarnessModels.objects.update_or_create(emergent=agent, defaults={'harness': harness, 'vendors': vendors})
+    return JsonResponse({'emergent': name, 'vendors': len(vendors), 'models': sum(len(v['models']) for v in vendors)})
