@@ -5765,7 +5765,7 @@
       // A Mood opened since this page loaded: list it first, so its badge
       // has somewhere to go and its notification its title.
       if (notices.some(n => !moods.some(m => m.slug === n.mood))) loadMoods();
-      let ding = null;  // one chime per look, however many came: a mention's, if any was one
+      let ding = null, dingFrom = null;  // one chime per look, however many came: a mention's, if any was one
       const ahead_ = [];
       for (const n of notices) {
         if (counted.has(n.turn.id)) continue;
@@ -5776,7 +5776,7 @@
         if (n.turn.created_at > alertsFrom && !inView) {
           const by = n.from || 'person';
           if (n.kind === 'mention' && sounds[by + '-mention']) ding = 'mention';
-          else if (sounds[by] && ding !== 'mention') ding = 'message';
+          else if (sounds[by] && ding !== 'mention') { ding = 'message'; dingFrom = by; }
           if (n.kind === 'said' && tellAll[by]) notify(n);
         }
         if (n.kind === 'said') continue;  // not a badge: badges count what's for you
@@ -5791,7 +5791,7 @@
       // The newest few unread, asked for now: what the bell is most likely to be clicked for.
       ahead_.sort((a, b) => a.turn.created_at < b.turn.created_at ? -1 : 1).slice(-AHEAD_KEPT)
         .forEach(n => fetchAhead(n.mood, n.turn.id));
-      if (ding) chime(ding === 'mention');
+      if (ding) chime(ding === 'mention', dingFrom);
       badgeCursor = next;
     } catch (e) {}
     countBadges(); renderNav(); setTitle();
@@ -5895,8 +5895,11 @@
   // and answers; it can also tell of every message from people or agents --
   // here, and by push with magenta closed (services/push.py).
   const alertsBox = document.getElementById('alerts');
-  let sounds = store.get('sounds', {});    // 'person', 'agent', 'person-mention', 'agent-mention' -> true
-  let tellAll = store.get('tellAll', {});  // 'person', 'agent' -> true
+  // Until this browser chooses, the team's defaults: Magenta:Sounds (services/interface_words.SOUND_DEFAULTS).
+  const soundDefaults = () => Object.fromEntries(['person', 'agent'].flatMap(k =>
+    [[k, WORDS['sound-' + k] === 'all'], [k + '-mention', ['all', 'mention'].includes(WORDS['sound-' + k])]]));
+  let sounds = store.get('sounds', null) || soundDefaults();  // 'person', 'agent', 'person-mention', 'agent-mention' -> true
+  let tellAll = store.get('tellAll', null) || { person: WORDS['tell-person'] === 'all', agent: WORDS['tell-agent'] === 'all' };
   // Every message from them takes in their mentions of me, with a mention's own chime.
   for (const k of ['person', 'agent']) if (sounds[k]) sounds[k + '-mention'] = true;
   let alertsFrom = new Date().toISOString();  // nothing from before a page opened, or an alert was turned on
@@ -5920,7 +5923,7 @@
     if (box.dataset.sound) {
       const k = box.dataset.sound;
       sounds[k] = box.value === 'all'; sounds[k + '-mention'] = !!box.value; store.set('sounds', sounds);
-      if (box.value) chime(box.value === 'mention');  // what it will sound like
+      if (box.value) chime(box.value === 'mention', k);  // what it will sound like
     }
     if (box.dataset.tell) {
       tellAll[box.dataset.tell] = box.value === 'all'; store.set('tellAll', tellAll);
@@ -5934,7 +5937,14 @@
     if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     return audioCtx;
   }
-  function chime(mention) {
+  // A message's sound, if Magenta:Sounds names a file for its sender's kind (chime-person: File:…); else the tone.
+  function chimeFile(from) {
+    const name = (WORDS['chime-' + from] || '').replace(/^\s*(File|Image):/i, '').trim();
+    return name ? `${WIKI}/wiki/Special:FilePath/${encodeURIComponent(name.replace(/ /g, '_'))}` : '';
+  }
+  function chime(mention, from) {
+    const file = !mention && from && chimeFile(from);
+    if (file) { new Audio(file).play().catch(() => chime(mention)); return; }
     const ctx = sound();
     if (!ctx) return;
     (mention ? [784, 1175] : [659]).forEach((freq, i) => {

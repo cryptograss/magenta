@@ -23,6 +23,7 @@ PAGE = 'Magenta:Interface'
 # What the system tells a person about what just happened (Justin, 3 Nov): longer, kept on their own page, the
 # same '*' line a text; [[Page]] and [[Page|words]] in them become links.
 SYSTEM_PAGE = 'Magenta:System Messages'
+SOUNDS_PAGE = 'Magenta:Sounds'
 FRESH_FOR = 600
 KEPT_FOR = 86400
 MAX_LENGTH = 300
@@ -65,6 +66,17 @@ DEFAULTS = {
     'move-button': 'Move the thread',
 }
 
+# The team's defaults for the bell's sounds and notifications, for a browser whose person hasn't chosen (Justin,
+# 5 Nov), and the sound a message makes: a PickiPedia File: (FLAC, Ogg, MP3), else magenta's own tone.
+SOUND_DEFAULTS = {
+    'sound-person': 'off',    # off | mention | all
+    'sound-agent': 'off',
+    'tell-person': 'only',    # only (mentions and answers) | all
+    'tell-agent': 'only',
+    'chime-person': '',       # File:Something.flac
+    'chime-agent': '',
+}
+
 _SHOWN = re.compile(r'<!--.*?-->|<nowiki>.*?</nowiki>|<pre>.*?</pre>', re.S | re.I)
 _LINE = re.compile(r'^\*\s*([a-z][a-z-]*)\s*:\s*(.+?)\s*$')
 
@@ -99,7 +111,8 @@ def words(fetch=None):
     """The words in force, Magenta:Interface's and Magenta:System Messages': each page's, as a trusted editor
     last left it; else what was read last; else these."""
     return {**_words(PAGE, DEFAULTS, MAX_LENGTH, 'interface-words', fetch),
-            **_words(SYSTEM_PAGE, SYSTEM_DEFAULTS, SYSTEM_MAX_LENGTH, 'system-messages', fetch and (lambda: None))}
+            **_words(SYSTEM_PAGE, SYSTEM_DEFAULTS, SYSTEM_MAX_LENGTH, 'system-messages', fetch and (lambda: None)),
+            **_words(SOUNDS_PAGE, SOUND_DEFAULTS, MAX_LENGTH, 'sound-defaults', fetch and (lambda: None))}
 
 
 def _words(page, defaults, longest, key, fetch=None):
