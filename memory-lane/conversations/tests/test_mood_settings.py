@@ -356,6 +356,10 @@ class SettingsAPITest(TestCase):
         self.assertEqual(context_window('claude-haiku-4-5', 150_000), 200_000)
         self.assertEqual(context_window('claude-haiku-4-5', 300_000), 1_000_000)  # seen past it: the larger one
         self.assertEqual(context_window(None), 200_000)
+        # Justin, 5 Nov: Fable 5.1 taken as 200k showed 100% full.
+        for model in ('claude-fable-5-1', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'anthropic/claude-fable-5-1'):
+            self.assertEqual(context_window(model, 190_000), 1_000_000, model)
+        self.assertEqual(context_window('openrouter/google/gemini-3.7-flash', 100_000), 200_000)
 
 
 class SetByTest(TestCase):
