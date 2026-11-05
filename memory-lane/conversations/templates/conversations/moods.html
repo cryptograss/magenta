@@ -190,7 +190,8 @@
   #bellMenu #alerts .head { color: var(--ink); font-size: 12px; font-weight: 600; margin-top: 2px; }
   #bellMenu #alerts .hint { color: var(--muted); font-size: 12px; }
   #bellMenu #alerts .hint[hidden] { display: none; }
-  #bellMenu #alerts.bell-off [data-tell] { opacity: .5; }  /* chosen, but nothing tells until the bell's on */
+  #bellMenu #alerts.bell-off [data-tell] { opacity: .5; }
+  #bellMenu #alerts select { font: inherit; margin-left: auto; }  /* chosen, but nothing tells until the bell's on */
   #bellMenu #alerts label[hidden] { display: none; }
   /* The block, the servers and the sprint: one button, its menu under it (Justin, 3 Nov). */
   header .statewrap { position: relative; display: inline-flex; align-items: center; }
@@ -1711,15 +1712,14 @@
       <div class="bellpane" data-pane="for"><label class="replies"><input type="checkbox" id="bellReplies"> include replies</label><div id="bellList"></div></div>
       <div class="bellpane" data-pane="set" hidden><div class="belltoggle"><button id="notify" type="button" hidden aria-label="Notifications"></button></div>
       <div id="alerts" hidden>
+        <!-- Each sender's kind, one choice: every message takes in their mentions of me (Justin, 5 Nov). -->
         <span class="head">Sounds</span>
-        <label><input type="checkbox" data-sound="person-mention"> people mentioning me</label>
-        <label><input type="checkbox" data-sound="agent-mention"> emergents mentioning me</label>
-        <label><input type="checkbox" data-sound="person"> every message from people</label>
-        <label><input type="checkbox" data-sound="agent"> every message from emergents</label>
+        <label>people <select data-sound="person"><option value="">off</option><option value="mention">mentioning me</option><option value="all">every message</option></select></label>
+        <label>emergents <select data-sound="agent"><option value="">off</option><option value="mention">mentioning me</option><option value="all">every message</option></select></label>
         <span class="head" id="tellHead">Notifications</span>
-        <span class="hint" id="tellHint">Mentions of me and answers to me, and also:</span>
-        <label><input type="checkbox" data-tell="person"> every message from people</label>
-        <label><input type="checkbox" data-tell="agent"> every message from emergents</label>
+        <span class="hint" id="tellHint">Mentions of me and answers to me, always; and from</span>
+        <label>people <select data-tell="person"><option value="">only those</option><option value="all">every message</option></select></label>
+        <label>emergents <select data-tell="agent"><option value="">only those</option><option value="all">every message</option></select></label>
       </div></div></div>
   </span>
   <span class="account">
@@ -5897,6 +5897,8 @@
   const alertsBox = document.getElementById('alerts');
   let sounds = store.get('sounds', {});    // 'person', 'agent', 'person-mention', 'agent-mention' -> true
   let tellAll = store.get('tellAll', {});  // 'person', 'agent' -> true
+  // Every message from them takes in their mentions of me, with a mention's own chime.
+  for (const k of ['person', 'agent']) if (sounds[k]) sounds[k + '-mention'] = true;
   let alertsFrom = new Date().toISOString();  // nothing from before a page opened, or an alert was turned on
   function alertsWanted() {
     return Object.values(sounds).some(Boolean) || (notifying() && Object.values(tellAll).some(Boolean));
@@ -5904,20 +5906,24 @@
   function renderAlerts() {
     alertsBox.hidden = !me;
     const canTell = 'Notification' in window;
-    alertsBox.querySelectorAll('[data-sound]').forEach(i => { i.checked = !!sounds[i.dataset.sound]; });
-    alertsBox.querySelectorAll('[data-tell]').forEach(i => { i.checked = !!tellAll[i.dataset.tell]; i.closest('label').hidden = !canTell; });
+    alertsBox.querySelectorAll('[data-sound]').forEach(i => {
+      const k = i.dataset.sound;
+      i.value = sounds[k] ? 'all' : sounds[k + '-mention'] ? 'mention' : '';
+    });
+    alertsBox.querySelectorAll('[data-tell]').forEach(i => { i.value = tellAll[i.dataset.tell] ? 'all' : ''; i.closest('label').hidden = !canTell; });
     document.getElementById('tellHead').hidden = !canTell;
     document.getElementById('tellHint').hidden = !canTell;
   }
   alertsBox.addEventListener('change', e => {
     const box = e.target;
-    if (box.checked) alertsFrom = new Date().toISOString();
+    if (box.value) alertsFrom = new Date().toISOString();
     if (box.dataset.sound) {
-      sounds[box.dataset.sound] = box.checked; store.set('sounds', sounds);
-      if (box.checked) chime(box.dataset.sound.endsWith('mention'));  // what it will sound like
+      const k = box.dataset.sound;
+      sounds[k] = box.value === 'all'; sounds[k + '-mention'] = !!box.value; store.set('sounds', sounds);
+      if (box.value) chime(box.value === 'mention');  // what it will sound like
     }
     if (box.dataset.tell) {
-      tellAll[box.dataset.tell] = box.checked; store.set('tellAll', tellAll);
+      tellAll[box.dataset.tell] = box.value === 'all'; store.set('tellAll', tellAll);
       if (notifying()) pushOn();  // the server's copy, for pushes with magenta closed
     }
   });
