@@ -122,6 +122,10 @@ def agent_reacted(session_id, agent):
                 if hit:
                     react_on(hit, agent, emoji)
                 words = head.group(2).strip()
+                if hit and not words.startswith('↩'):
+                    # Shown with what it reacted to, as a reply is (Justin, 5 Nov: "indicate that the message is
+                    # associated with the reaction").
+                    words = f'↩ #m-{hit.id}\n{words}'
                 message.content = [{**content[0], 'text': words}] if block else words
                 message.save(update_fields=['content'])
             continue
@@ -133,6 +137,10 @@ def agent_reacted(session_id, agent):
                 if hit:
                     react_on(hit, agent, emoji)
                 words = tail.group(1).rstrip()
+                if hit and not words.startswith('↩'):
+                    # Shown with what it reacted to, as a reply is (Justin, 5 Nov: "indicate that the message is
+                    # associated with the reaction").
+                    words = f'↩ #m-{hit.id}\n{words}'
                 message.content = [{**content[0], 'text': words}] if block else words
                 message.save(update_fields=['content'])
             continue
