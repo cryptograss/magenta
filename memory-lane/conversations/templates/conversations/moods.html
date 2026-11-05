@@ -9758,6 +9758,7 @@
     tray = []; renderTray(); saveDraft();
     if (voicePending) { voicePending.state = 'sending'; renderVoiceMode(); }
     else { voicePending = { state: 'sending', text, who: viewer, mood: current }; renderVoiceMode(); }
+    let sent = false;  // the server has it: from here, nothing goes back in the box
     try {
       const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/say/', {
         method: 'POST',
@@ -9766,6 +9767,7 @@
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
       const done = await r.json().catch(() => ({}));
+      sent = true;
       wikiMentionNote(text, done.id);
       if (pending && done.pending) {
         // A memo whose words aren't in yet: posted once they are (voice.post_when_heard). Its place stays, saying so.
@@ -9796,6 +9798,15 @@
       if (makeDraft && makeDraft.isConnected) sendOn();
     } catch (e) {
       voicePending = null; renderVoiceMode();
+      if (sent) {
+        // Posted, and something after it broke (Skyler, 4 Nov: a tab from before a deploy threw on drawing the new
+        // reply). Said as a failure, the words went back in the box and Enter posted them twice. Now it's sent, the
+        // next poll draws it, and the page offers a reload; what broke is in the console.
+        console.error('sent, then:', e);
+        if (pending) pendingSays(pending, 'sent');
+        reloadNudge.hidden = false;
+        return;
+      }
       if (pending) pending.remove();
       if (!sayBox.value.trim()) { sayBox.value = words; fitSay(); showDiscard(); }  // not sent: the words back where they were
       if (!tray.length) { tray = sentTray; renderTray(); }                // and the pictures
