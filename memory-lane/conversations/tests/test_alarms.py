@@ -95,8 +95,10 @@ class StillRedTest(TestCase):
         return alarms.still_red(now=at or self.now, get=wiki(self.pages if pages is None else pages))
 
     def test_a_check_red_past_a_round_wakes_the_task_once(self):
-        self.red('maybelle disk', 9)
+        row = self.red('maybelle disk', 9)
         [(stage, line)] = self.still()
+        row.refresh_from_db()
+        self.assertEqual(row.content['woke'], str(line.id))  # the red row holds the line it woke
         self.assertEqual((stage, line.content['state'], line.content['by'], line.mood.slug),
                          ('maybelle disk', 'asked', 'jenkins', 'ops'))
         self.assertEqual(line.content['text'], 'Jenkins says cron-health · maybelle disk has been red since '
