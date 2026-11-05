@@ -26,7 +26,7 @@ class InterfaceWordsTest(TestCase):
         self.assertNotIn('letter', interface_words.DEFAULTS['new-hint'])  # the letter was retired
 
     def test_no_page_the_defaults_and_the_wiki_away_the_last_good_read(self):
-        self.assertEqual(interface_words.words(fetch=lambda: None), {**interface_words.DEFAULTS, **interface_words.SYSTEM_DEFAULTS})
+        self.assertEqual(interface_words.words(fetch=lambda: None), {**interface_words.DEFAULTS, **interface_words.SYSTEM_DEFAULTS, **interface_words.SOUND_DEFAULTS})
         cache.clear()
         self.assertEqual(interface_words.words(fetch=lambda: '* fork: kept')['fork'], 'kept')
         cache.delete('interface-words')
@@ -35,7 +35,7 @@ class InterfaceWordsTest(TestCase):
             raise OSError('no wiki')
         self.assertEqual(interface_words.words(fetch=away)['fork'], 'kept')
         cache.delete('interface-words')
-        self.assertEqual(interface_words.words(fetch=lambda: None), {**interface_words.DEFAULTS, **interface_words.SYSTEM_DEFAULTS})  # no page: never a stale read
+        self.assertEqual(interface_words.words(fetch=lambda: None), {**interface_words.DEFAULTS, **interface_words.SYSTEM_DEFAULTS, **interface_words.SOUND_DEFAULTS})  # no page: never a stale read
 
     def test_system_messages_have_their_own_page_and_room(self):
         # Justin, 3 Nov: Magenta:System Messages, not a page each; longer than an interface label.
@@ -57,3 +57,16 @@ class InterfaceWordsTest(TestCase):
             page = self.client.get('/moods/').content.decode()
         self.assertIn('close-ask', page)
         self.assertIn('its emergents go on from where they are there', page)
+
+
+class SoundDefaultsTest(TestCase):
+    """Magenta:Sounds: the team's defaults for the bell's sounds, and a message's sound file (Justin, 5 Nov)."""
+
+    def test_the_page_sets_them_and_leaves_the_rest(self):
+        from conversations.services import interface_words
+        page = "* sound-person: all\n* chime-person: File:Mandolin chop.flac\n* nonsense: x"
+        found = interface_words.parse(page, interface_words.SOUND_DEFAULTS)
+        self.assertEqual(found['sound-person'], 'all')
+        self.assertEqual(found['chime-person'], 'File:Mandolin chop.flac')
+        self.assertEqual(found['sound-agent'], 'off')
+        self.assertNotIn('nonsense', found)
