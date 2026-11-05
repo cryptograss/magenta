@@ -33,7 +33,7 @@ INTERRUPT_SOURCE = 'interrupt'
 NEW_MOOD_SOURCE = 'mood-new'
 EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
                  'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task', 'instructions', 'sprint-note',
-                 'helper')  # helper: a helper its run stopped before it reported (views_runner.finish_turn)  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
+                 'helper', 'alarm')  # helper: a helper its run stopped before it reported (views_runner.finish_turn); alarm: services/alarms.py  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).
 POSTED = ('mood-web', 'mood-attest')
@@ -526,6 +526,9 @@ def event_line(content):
         return f"■ {by or 'someone'} stopped {c.get('agent', 'an agent')}"
     if kind == 'task':
         from .tasks import line
+        return line(c)
+    if kind == 'alarm':  # services/alarms.py
+        from .alarms import line
         return line(c)
     if kind == 'degraded':  # services/instructions_state.py
         who = c.get('agent', 'an emergent')

@@ -4548,6 +4548,17 @@
       prev = null;
       return;
     }
+    if (e.type === 'alarm') {  // a Jenkins check on maybelle turned red, or green again (services/alarms.py)
+      el.className = 'event';
+      const what = `<b>${esc(e.job || 'a job')}</b> · ${esc(e.stage || 'a stage')}`;
+      const link = e.url ? ` · <a href="${esc(e.url)}" target="_blank" rel="noopener">the build</a>` : '';
+      const note = e.note ? `: ${esc(e.note)}` : '';
+      el.innerHTML = (e.state === 'green' ? `✓ ${what} is green again` : `🚨 ${what} went red`)
+        + note + link + ` · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'degraded') {  // an emergent's instructions bundle degraded, or whole again (services/instructions_state.py)
       el.className = 'event';
       const who = `<b>${esc(shown(e.agent || 'an emergent'))}</b>`;
