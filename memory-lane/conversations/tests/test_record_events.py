@@ -340,8 +340,10 @@ class AgentReactsTest(TestCase):
         self.assertEqual(self.reply('<react emoji="yes" to="re"/>'), ['<react emoji="yes" to="re"/>'])  # not an emoji
         # Words, then the tag (Justin, 28 Oct): the words said, the tag taken out, the nod given if there's a post.
         self.assertEqual(self.reactions(), {})
-        self.assertEqual(self.reply('I agree <react emoji="🎻" to="re"/>'), ['I agree'])
+        said = self.reply('I agree <react emoji="🎻" to="re"/>')
+        nodded = list(self.reactions())
         self.assertEqual([list(r) for r in self.reactions().values()], [['🎻']])  # and re's post got its nod
+        self.assertEqual(said, [f'↩ #m-{nodded[0]}\nI agree'])  # the words, as a reply to it (Justin, 5 Nov)
 
     def test_the_poller_counts_it_as_silent(self):
         from poller.mood_poller import _SILENT_REPLY
