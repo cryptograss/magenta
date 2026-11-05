@@ -1359,10 +1359,30 @@ def settings_changed(agent, page, texts=None):
 # every word of it is a pronoun on the allowlist (Cryptograss:Pronouns, trusted revisions only; this list when the wiki
 # can't be read), so an account's preference can't carry a sentence into a prompt. Anything else: nothing, and the
 # line's default holds: call them by name (Justin, 2 Nov, #emergence). In the wake (content, weighed), never in the bundle's roster (obeyed).
+LOCAL_TIME_NOTE = recovered('line', 'local-time')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
 PRONOUNS_PAGE = 'Cryptograss:Pronouns'
 PRONOUNS_KNOWN = {'he', 'him', 'his', 'she', 'her', 'hers', 'it', 'its', 'they', 'them', 'their', 'theirs',
                   'xe', 'xem', 'xyr', 'ze', 'zir', 'hir', 'any', 'all'}
 PRONOUNS_NOTE = recovered('line', 'pronouns')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+
+
+def local_time(now, zone):
+    """'17:45 (America/Chicago, UTC-06:00)' for a zone this machine knows, or '17:45 (UTC-06:00)' for a fixed
+    offset; '' for anything else. `now` is aware."""
+    from datetime import timedelta, timezone as tz
+    zone = (zone or '').strip()
+    if re.fullmatch(r'[+-](?:0\d|1[0-4]):[0-5]\d', zone):
+        sign, hours, minutes = zone[0], int(zone[1:3]), int(zone[4:6])
+        there = now.astimezone(tz(timedelta(hours=hours, minutes=minutes) * (-1 if sign == '-' else 1)))
+        return f"{there.strftime('%H:%M')} (UTC{zone})"
+    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_+-]{0,31}(?:/[A-Za-z0-9_+-]{1,32}){0,3}', zone):
+        return ''
+    try:
+        import zoneinfo
+        there = now.astimezone(zoneinfo.ZoneInfo(zone))
+    except Exception:
+        return ''
+    return f"{there.strftime('%H:%M')} ({zone}, UTC{there.strftime('%z')[:3]}:{there.strftime('%z')[3:]})"
 
 
 def pronouns_shown(said, known):
@@ -2929,7 +2949,7 @@ class MoodPoller:
             page = self.api.recent(slug, limit=200)
         except Exception:
             page = None
-        return (self.typing_lines(page, slug) + self.pronoun_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
+        return (self.typing_lines(page, slug) + self.pronoun_lines(page) + self.local_time_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
                 + self.nearmiss_lines(slug, page)
                 # Open polls, on every kind of wake: a quiet look too (re's review of #157).
                 + (open_polls(self.agent, page) if page else [])
@@ -2948,6 +2968,21 @@ class MoodPoller:
         shown = [(n, pronouns_shown(p, known)) for n, p in sorted(said.items()) if n != self.agent]
         shown = ([f'you ({mine})'] if mine else []) + [f'{n} ({p})' for n, p in shown if p]
         return ['', wake_line(self.texts, 'pronouns', PRONOUNS_NOTE, said='; '.join(shown))] if shown else []
+
+    def local_time_lines(self, page):
+        """What time it is where each is, for those who've set a time zone on their own account (Justin,
+        #interfaces, 5 Nov 2026: "you're always confused about what time it is for me"). The one woken first,
+        as "you". A zone is said only if this machine knows it; a fixed offset (+05:30) as it is."""
+        zones = (page or {}).get('zones') or {}
+        if not zones:
+            return []
+        now = self.now()
+        shown = []
+        for name, zone in [(self.agent, zones.get(self.agent))] + sorted((n, z) for n, z in zones.items() if n != self.agent):
+            local = local_time(now, zone)
+            if local:
+                shown.append(f'{"you" if name == self.agent else name} {local}')
+        return ['', wake_line(self.texts, 'local-time', LOCAL_TIME_NOTE, said='; '.join(shown))] if shown else []
 
     def typing_lines(self, page, slug=None):
         """Who is typing or recording here right now (Justin, 28 Oct: "the emergents are able to see both and

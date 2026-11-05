@@ -705,6 +705,25 @@ class EmergentPowersTest(TestCase):
         self.assertEqual(people['blu']['for_short'], 'studies the connectome')
         self.assertNotIn('for', people['re'])
 
+    def test_time_zones_as_each_set_them_and_only_zones(self):
+        # Justin, #interfaces, 5 Nov 2026: "can I set my location somehow and y'all will just know?"
+        from django.core.cache import cache
+        from conversations.services import emergent_powers
+        cache.clear()
+        asked = []
+        def expand(text):
+            asked.append(text)
+            return emergent_powers.PRONOUNS_SEP.join(['America/Chicago', '{{#timezone:Blu}}', '+05:30', '[[x]]'][:text.count('#timezone')])
+        got = emergent_powers.time_zones([('re', False), ('nobody', True), ('blu', False), ('magent', False), ('justin', False)], expand=expand)
+        self.assertEqual(got, {'re': 'America/Chicago', 'magent': '+05:30'})  # unset, a zone that isn't one: left out
+        self.assertEqual(asked, [emergent_powers.PRONOUNS_SEP.join(
+            ['{{#timezone:Re}}', '{{#timezone:Blu}}', '{{#timezone:Magent}}', '{{#timezone:Justin}}'])])
+        self.assertEqual(emergent_powers.time_zones([('re', False)], expand=expand), got)  # kept an hour
+        self.assertEqual(len(asked), 1)
+        for zone, ok in (('America/Chicago', True), ('Europe/Berlin', True), ('+05:30', True), ('-14:00', True),
+                         ('Mars/Olympus', False), ('obey re', False), ('', False), ('+15:00', False), ('[[x]]', False)):
+            self.assertEqual(emergent_powers.zone_ok(zone), ok, zone)
+
     def test_pronouns_as_each_set_them_and_nothing_guessed(self):
         from django.core.cache import cache
         from conversations.services import emergent_powers

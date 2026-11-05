@@ -209,17 +209,19 @@ def _build_moods_list():
     people = ThinkingEntity.objects.order_by('name')
     look = knobs.looks()
     from .services.mood_view import GROUPS, group_members
-    from .services.emergent_powers import frames, powers, pronouns
+    from .services.emergent_powers import frames, powers, pronouns, time_zones
     people = list(people)
     power = clock('powers', powers, [p.name for p in people if not p.is_biological_human])
     said = clock('pronouns', pronouns, [(p.name, p.is_biological_human) for p in people])
     framed = clock('frames', frames, [(p.name, p.is_biological_human) for p in people])
+    zoned = clock('zones', time_zones, [(p.name, p.is_biological_human) for p in people])
     body = {'moods': payloads, 'people': [
         {'name': p.name, 'is_human': p.is_biological_human,
          **(look[p.name] if p.is_biological_human and p.name in look else {}),
          **({'for': power[p.name]['for'], 'for_short': power[p.name]['short']} if p.name in power else {}),
          **({'pronouns': said[p.name]} if p.name in said else {}),
-         **({'frame': framed[p.name]} if p.name in framed else {})}
+         **({'frame': framed[p.name]} if p.name in framed else {}),
+         **({'zone': zoned[p.name]} if p.name in zoned else {})}
         for p in people],
         # Tags for a group (@core): what each is, and who it mentions now.
         'groups': [{'name': g, 'is': what, 'members': group_members(g)} for g, what in GROUPS.items()]}
@@ -229,6 +231,15 @@ def _build_moods_list():
         clock.laps.append((f'slowest;desc="{slug}"', took))
     clock.report(HttpResponse(), 'Moods list')  # logged when slow
     return body, clock.header()
+
+
+def zones_here(mood):
+    """{name: zone} for the emergents and the people who've spoken here, those who've set theirs."""
+    from .services.emergent_powers import time_zones
+    everyone = list(ThinkingEntity.objects.values_list('name', 'is_biological_human'))
+    here = {e.name for e in mood.thinking_entities()}
+    said = time_zones(everyone)
+    return {n: z for n, z in said.items() if n in here or any(n == m and not h for m, h in everyone)}
 
 
 def pronouns_here(mood):
@@ -466,6 +477,8 @@ def api_mood_turns(request, slug):
         # Each one's own pronouns, as set on their own account: the emergents and the people here. The runner
         # checks every word against its allowlist before a wake says them (services/emergent_powers.pronouns).
         'pronouns': clock('pronouns', pronouns_here, mood),
+        # And each one's time zone, as set on their own account: the wake says what time it is where they are.
+        'zones': clock('zones', zones_here, mood),
         'recording': recording_in(mood.slug),  # of those typing, who's speaking a memo
     }), f'look at #{mood.slug}' + (' (what is new)' if after is not None else ''))
 

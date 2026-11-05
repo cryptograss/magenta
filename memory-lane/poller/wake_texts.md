@@ -130,6 +130,11 @@
 {{Sent to agents|dial=line|value=pronouns|text=Pronouns here, as each set their own: {said}. Anyone not named here has set none: call them by name, never a guessed pronoun.
 }}
 
+'''local-time''': what time it is where each is, for those who've set a time zone on their own PickiPedia account (Special:Preferences, Appearance, Time offset; {{#timezone:Name}}). {said} is each, the one woken first as "you" (Justin, 5 Nov, #interfaces).
+
+{{Sent to agents|dial=line|value=local-time|text=Local time, where each is now: {said}. The hour there says whether it is their working day, their dinner or their night; for anyone not named here, don't guess.
+}}
+
 '''typing''': someone is typing in the Mood right now. {said} says who, {first} the first of them.
 
 {{Sent to agents|dial=line|value=typing|text=Right now, here: {said}. More may be coming. If what you would say depends on the rest of it, you may reply with only <wait for="{first}" to="a few words"/> to be woken once they have posted or stopped; if it stands on its own, or the talk is lively, say it now.
