@@ -1302,6 +1302,34 @@ def api_mood_humans(request, slug):
     return JsonResponse(humans.pane(slug))
 
 
+def person_page(request, name):
+    """A person's page (services/person_feed.py): their last posts in the Moods and their last edits on
+    PickiPedia as one stream, pictures shown, sounds and Releases playing. 404 for anyone who isn't a person
+    here. ?embed=1 draws it without its own bar, for the one page."""
+    from .services import person_feed
+    found = person_feed.feed(name.lower())
+    if found is None:
+        raise Http404
+    device = mood_auth.device_for(request)
+    return render(request, 'conversations/mood_person.html', {
+        'person': found,
+        'viewer': device.entity_id if device else '',
+        'embed': bool(request.GET.get('embed')),
+    })
+
+
+@require_GET
+def api_person_feed(request, name):
+    """The person's page as JSON (services/person_feed.py): {"name", "wiki_name", "page", "profile", "items"}."""
+    from .services import person_feed
+    found = person_feed.feed(name.lower())
+    if found is None:
+        raise Http404
+    for item in found['items']:
+        item['at'] = item['at'].isoformat()
+    return JsonResponse(found)
+
+
 def api_person_card(request, name):
     """A person's card, for a click on their name (services/person_card.py): their User page in brief, last
     messages with what answering them took, last PickiPedia edits, and their trail across the Moods.
