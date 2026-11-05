@@ -5939,7 +5939,8 @@
   }
   // A message's sound, if Magenta:Sounds names a file for its sender's kind (chime-person: File:…); else the tone.
   function chimeFile(from) {
-    const name = (WORDS['chime-' + from] || '').replace(/^\s*(File|Image):/i, '').trim();
+    // Plain or as a link: File:X.flac, [[File:X.flac]], [[:File:X.flac|words]].
+    const name = (WORDS['chime-' + from] || '').replace(/^\s*\[\[:?|(\|[^\]]*)?\]\]\s*$/g, '').replace(/^\s*(File|Image):/i, '').trim();
     return name ? `${WIKI}/wiki/Special:FilePath/${encodeURIComponent(name.replace(/ /g, '_'))}` : '';
   }
   function chime(mention, from) {
