@@ -1453,12 +1453,16 @@ def _when(msg):
 # resume into. Windows by model; the record shows Opus 5.5 sessions passing
 # 865k tokens, so its window is 1M. Anything unlisted is taken as 200k,
 # and a session seen past its window is taken to have the larger one.
-CONTEXT_WINDOWS = (('claude-opus-5', 1_000_000),)
+# First match wins. Every current Claude model reads 1M (Fable 5/5.1, Opus 5/5.5 and 4.6-4.8, Sonnet 5/5.5 and
+# 4.6, Haiku 5.5); Haiku 4.5 and older, 200k. Justin, 5 Nov: Fable 5.1, taken as 200k, showed a context at 100%.
+CONTEXT_WINDOWS = (('claude-haiku-4', 200_000), ('claude-sonnet-4-5', 200_000), ('claude-opus-4-5', 200_000),
+                   ('claude-3', 200_000), ('claude-', 1_000_000))
 DEFAULT_WINDOW = 200_000
 
 
 def context_window(model, tokens=0):
-    window = next((w for prefix, w in CONTEXT_WINDOWS if (model or '').startswith(prefix)), DEFAULT_WINDOW)
+    name = (model or '').rsplit('/', 1)[-1]  # anthropic/claude-fable-5-1: the model, not its vendor
+    window = next((w for prefix, w in CONTEXT_WINDOWS if name.startswith(prefix)), DEFAULT_WINDOW)
     return window if tokens <= window else max(window, 1_000_000)
 
 
