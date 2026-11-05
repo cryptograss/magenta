@@ -106,6 +106,19 @@ class PreviewEndpointTest(TestCase):
         self.assertEqual(first['url'], 'https://pickipedia.xyz/wiki/Cryptograss:Maybelle')
         self.assertTrue(first['art'])
 
+    def test_a_card_asks_again_once_its_copy_is_old(self):
+        # A link's hover keeps a page six hours; a person card wants their User page within minutes.
+        http = self.wiki(SERVER)
+        with mock.patch('time.time', return_value=1000.0):
+            wiki_preview.preview('Cryptograss:Maybelle', http=http)
+            wiki_preview.preview('Cryptograss:Maybelle', http=http, newer_than=120)
+        self.assertEqual(http.get.call_count, 1)
+        with mock.patch('time.time', return_value=1200.0):
+            wiki_preview.preview('Cryptograss:Maybelle', http=http)
+            self.assertEqual(http.get.call_count, 1)
+            wiki_preview.preview('Cryptograss:Maybelle', http=http, newer_than=120)
+        self.assertEqual(http.get.call_count, 2)
+
     def test_no_such_page_or_no_title_is_404(self):
         with mock.patch('requests.get', self.wiki(None, 'Nope').get):
             self.assertEqual(self.client.get('/api/wiki/preview/', {'title': 'Nope'}).status_code, 404)
