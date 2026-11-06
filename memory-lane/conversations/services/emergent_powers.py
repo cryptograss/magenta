@@ -106,6 +106,50 @@ def pronouns(entities, expand=None):
     return found
 
 
+# --- each one's time zone, as their own preference says (Justin, #interfaces, 5 Nov 2026: "can I set my
+# location somehow and y'all will just know?") ---------------------------------------------------------------
+# MediaWiki's time offset preference (Special:Preferences, Appearance), read through {{#timezone:Name}} as
+# {{#pronouns:}} is, and kept as long. A zone is an IANA name this machine knows, or a fixed +HH:MM offset.
+ZONES_KEY = 'time-zones'
+_OFFSET = re.compile(r'^[+-](?:0\d|1[0-4]):[0-5]\d$')
+
+
+def zone_ok(zone):
+    """True for a zone the wake may say: an IANA name zoneinfo knows, or a fixed offset."""
+    zone = (zone or '').strip()
+    if _OFFSET.match(zone):
+        return True
+    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_+-]{0,31}(?:/[A-Za-z0-9_+-]{1,32}){0,3}', zone):
+        return False
+    try:
+        import zoneinfo
+        zoneinfo.ZoneInfo(zone)
+        return True
+    except Exception:
+        return False
+
+
+def time_zones(entities, expand=None):
+    """{name: 'America/Chicago'} for those who've set theirs; kept a while (ZONES_KEY). `entities`: [(name, is_human)]."""
+    kept = cache.get(ZONES_KEY)
+    if kept is not None:
+        return kept
+    from .wiki_auth import names
+    people_names, agents = names(), {n for n, human in entities if not human}
+    asked = [(n, wiki_name(n, people_names, agents)) for n, _ in entities]
+    asked = [(n, w) for n, w in asked if w and re.fullmatch(r"[\w .'-]{1,80}", w)]
+    try:
+        text = PRONOUNS_SEP.join(f'{{{{#timezone:{w}}}}}' for _, w in asked)
+        said = (expand or _expand)(text).split(PRONOUNS_SEP) if asked else []
+        found = {n: z.strip() for (n, _), z in zip(asked, said) if zone_ok(z)}
+        cache.set(ZONES_KEY, found, KEEP)
+        cache.set(ZONES_KEY + ':last', found, None)
+    except Exception:
+        found = cache.get(ZONES_KEY + ':last') or {}
+        cache.set(ZONES_KEY, found, KEEP_FAILED)
+    return found
+
+
 def _expand(text):
     from poller.wiki_rules import API, USER_AGENT
     url = API + '?' + urllib.parse.urlencode({'action': 'expandtemplates', 'text': text, 'prop': 'wikitext',
