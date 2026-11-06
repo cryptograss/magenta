@@ -4,7 +4,7 @@ Justin, #interfaces, 6 Nov 2026: "Magenta has a clear discrete list of pages tha
 happen when those pages change (ie, hooks). When a page that's the subject of a hook changes, the full
 hook runs. That all gets logged somewhere."
 
-HOOKS is the list. Each names the pages it is for and what it does: forget what this server kept of the
+wiki_hooks.yml, beside this file, is the list (HOOKS, as read from it). Each names the pages it is for and what it does: forget what this server kept of the
 page and read it again now, so the words, the card or the instructions are warm before anyone looks.
 A page no hook is for still has what's kept of it forgotten (services/wiki_changes.forget), and is read
 again when someone next asks for it.
@@ -33,7 +33,6 @@ SOURCE = 'wiki-hook'      # a failed run's line in #ops
 ROOM = 'ops'
 KEPT = 2000               # rows of the log kept
 _MOOD_PAGE = re.compile(r'^Cryptograss:Moods/([^/]+)/(Instructions|todo)$', re.I)
-_EMERGENT = re.compile(r'^Cryptograss:Emergents/', re.I)
 
 
 @dataclass(frozen=True)
@@ -155,27 +154,32 @@ def _release(_title, _user):
     return 'release lists forgotten'
 
 
-HOOKS = [
-    Hook('words', "The interface's words, read again now", 'Magenta:Interface, Magenta:System Messages, Magenta:Sounds',
-         _is('Magenta:Interface', 'Magenta:System Messages', 'Magenta:Sounds'), _words),
-    Hook('faq', 'The FAQ, read again now', 'Magenta:FAQ', _is('Magenta:FAQ'), _faq),
-    Hook('clips', 'The clips and what each is for, read again now', 'Magenta:Clips', _is('Magenta:Clips'), _clips),
-    Hook('voice', 'The voice words (pronunciations), read again now', 'Magenta:Voice', _is('Magenta:Voice'), _voice),
-    Hook('tour', 'The tour steps, read again now', 'Magenta:Tour', _is('Magenta:Tour'), _tour),
-    Hook('slogans', 'The front page slogans, read again now', 'Magenta:Slogans', _is('Magenta:Slogans'), _slogans),
-    Hook('eras', 'The eras, read again now', 'Cryptograss:Eras', _is('Cryptograss:Eras'), _eras),
-    Hook('sprint', 'Which sprint is current, read again now', 'Magenta:Current sprint', _is('Magenta:Current sprint'), _sprint),
-    Hook('card', "A person's card (their User page in brief), read again now", 'User:*',
-         lambda t: t.startswith('User:') and '/' not in t, _card),
-    Hook('emergent', "Each emergent's page (what it is for), read again now", 'Cryptograss:Emergents/*',
-         lambda t: bool(_EMERGENT.match(t)), _emergent),
-    Hook('mood-doc', "A Mood's instructions (its description), read again now", 'Cryptograss:Moods/*/Instructions',
-         lambda t: bool(_MOOD_PAGE.match(t) and _MOOD_PAGE.match(t).group(2).lower() == 'instructions'), _mood_doc),
-    Hook('todo', "A Mood's to-do list, forgotten so open pages ask for it now", 'Cryptograss:Moods/*/todo',
-         lambda t: bool(_MOOD_PAGE.match(t) and _MOOD_PAGE.match(t).group(2).lower() == 'todo'), _todo),
-    Hook('file', "A picture's embed, read again now", 'File:*', lambda t: t.startswith('File:'), _file),
-    Hook('release', 'The release lists (players, Tidings), forgotten', 'Release:*', lambda t: t.startswith('Release:'), _release),
-]
+def _pattern(page):
+    """A page entry as a matcher: an exact title, or a pattern: * for any text short of a / (a User: subpage is
+    not a card), ** for any text (every page under Cryptograss:Emergents/)."""
+    page = page.replace('_', ' ')
+    if '*' not in page:
+        return lambda title: title.lower() == page.lower()
+    rx = re.compile('^' + ''.join('.+' if part == '**' else '[^/]+' if part == '*' else re.escape(part)
+                                  for part in re.split(r'(\*\*|\*)', page)) + '$', re.I)
+    return lambda title: bool(rx.match(title))
+
+
+def _load():
+    """The registry, from wiki_hooks.yml beside this file: each entry's run names a function here."""
+    import pathlib
+    import yaml
+    entries = yaml.safe_load(pathlib.Path(__file__).with_name('wiki_hooks.yml').read_text()) or []
+    hooks = []
+    for e in entries:
+        pages = [str(p) for p in (e.get('pages') or [])]
+        matchers = [_pattern(p) for p in pages]
+        hooks.append(Hook(str(e['name']), str(e.get('about', '')), ', '.join(pages),
+                          lambda title, ms=matchers: any(m(title) for m in ms), globals()['_' + str(e['run'])]))
+    return hooks
+
+
+HOOKS = _load()
 
 
 def hooks_for(title):

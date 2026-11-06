@@ -1,0 +1,77 @@
+# What happens here when a page changes on PickiPedia (wiki_hooks.py). One entry a hook:
+#   name:   the hook, as the log /wiki-hooks/ and #ops name it
+#   pages:  the pages it is for: exact titles, or a pattern: * stands for any text short of a /, ** for any text
+#   about:  what it does, in words, for /wiki-hooks/
+#   run:    the function in wiki_hooks.py that does it, (title, editor) -> what came of it
+# A page no entry is for still has what's kept of it forgotten, and is read again when next asked for.
+# The push (PickiPedia's PageSaveComplete) and the minute sweep both run this list.
+
+- name: words
+  pages: [Magenta:Interface, Magenta:System Messages, Magenta:Sounds]
+  about: The interface's words, read again now
+  run: words
+
+- name: faq
+  pages: [Magenta:FAQ]
+  about: The FAQ, read again now
+  run: faq
+
+- name: clips
+  pages: [Magenta:Clips]
+  about: The clips and what each is for, read again now
+  run: clips
+
+- name: voice
+  pages: [Magenta:Voice]
+  about: The voice words (pronunciations), read again now
+  run: voice
+
+- name: tour
+  pages: [Magenta:Tour]
+  about: The tour steps, read again now
+  run: tour
+
+- name: slogans
+  pages: [Magenta:Slogans]
+  about: The front page slogans, read again now
+  run: slogans
+
+- name: eras
+  pages: [Cryptograss:Eras]
+  about: The eras, read again now
+  run: eras
+
+- name: sprint
+  pages: [Magenta:Current sprint]
+  about: Which sprint is current, read again now
+  run: sprint
+
+- name: card
+  pages: ["User:*"]
+  about: A person's card (their User page in brief), read again now
+  run: card
+
+- name: emergent
+  pages: ["Cryptograss:Emergents/**"]
+  about: Each emergent's page (what it is for), read again now
+  run: emergent
+
+- name: mood-doc
+  pages: ["Cryptograss:Moods/*/Instructions"]
+  about: A Mood's instructions (its description), read again now
+  run: mood_doc
+
+- name: todo
+  pages: ["Cryptograss:Moods/*/todo"]
+  about: A Mood's to-do list, forgotten so open pages ask for it now
+  run: todo
+
+- name: file
+  pages: ["File:*"]
+  about: A picture's embed, read again now
+  run: file
+
+- name: release
+  pages: ["Release:*"]
+  about: The release lists (players, Tidings), forgotten
+  run: release
