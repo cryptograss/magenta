@@ -6201,6 +6201,7 @@
     }
   }
   // Bring a message into view, reaching back to it in one ask if need be.
+  const isDrawn = id => !!(document.getElementById('m-' + id) || document.querySelector(`.step[data-id="${CSS.escape(id)}"]`));
   async function reveal(id) {
     if (!id) return false;
     stopSettling();  // taken to a message: the newest no longer pulls
@@ -6225,8 +6226,14 @@
       // any poll asks, and the thread kept -- not swapped for a window holding only that message, behind the
       // mask (Justin, 1 Nov).
       if (lastId && document.getElementById('turns')) {
+        // A poll out already was asked before the notice reached us, and a poll takes seconds on a busy
+        // server (4 to 6 s on 6 Nov, with one nearly always out): what it brings may predate the message.
+        // Once it lands, ask once more, fresh, and reach back only if that too lacks it (Justin, 6 Nov: a
+        // three-word message at the end of the Mood he was in put "finding it…" over the thread for 10 s).
+        const joined = !!polling;
         await poll(false);
-        if (document.getElementById('m-' + id) || document.querySelector(`.step[data-id="${CSS.escape(id)}"]`)) continue;
+        if (!isDrawn(id) && joined) await poll(false);
+        if (isDrawn(id)) continue;
       }
       const got = await reaching(() => loadAt(id));
       if (!got) return got;  // null: they've gone to another Mood meanwhile
