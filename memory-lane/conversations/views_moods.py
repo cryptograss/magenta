@@ -21,7 +21,7 @@ from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
-from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_changes, wiki_feed, wiki_ledger, wiki_upload
+from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_changes, wiki_feed, wiki_hooks, wiki_ledger, wiki_upload
 from .services import emergent_commands, mood_auth
 from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.mood_view import (
@@ -798,6 +798,9 @@ def api_pulse(request):
         # An admin's emergency stop: while set, a runner wakes nothing.
         'scram': knobs.scram(),
         'budget': {'consider_usd_per_day': knobs.global_value('consider_usd_per_day')},  # the runner's own
+        # The newest wiki hook run's id (services/wiki_hooks.seq): moved on, a page changed on PickiPedia,
+        # and the runner asks /api/wiki-hooks/?since= which, to forget its own copies (poller/wiki_rules).
+        'wiki': {'seq': wiki_hooks.seq()},
         'moods': moods,
     })
 
@@ -1820,8 +1823,10 @@ def wiki_hooks_page(request):
 
 @require_GET
 def api_wiki_hooks(request):
+    """The hooks, the log and the push's state; ?since=<run id> gives only the runs after it, for a poller."""
     from .services import wiki_hooks
-    return JsonResponse(wiki_hooks.state())
+    since = request.GET.get('since')
+    return JsonResponse(wiki_hooks.state(since=int(since) if since and since.isdigit() else None))
 
 
 @require_GET
