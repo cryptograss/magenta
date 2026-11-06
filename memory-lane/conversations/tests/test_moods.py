@@ -291,3 +291,41 @@ class SaidInTest(TestCase):
             self.assertEqual(said_in(mood)['message_count'], 1)
         Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=mood, content='second', timestamp=2)
         self.assertEqual(said_in(mood)['message_count'], 2)
+
+
+class PollKeepsWhatDidntChangeTest(TestCase):
+    """A poll for what's new, every 4 s from every tab, doesn't work out again what hasn't changed:
+    at five tabs it took 1.7 s at the median (loadtest/tabs.py against production, 6 Nov)."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        ThinkingEntity.objects.get_or_create(name='justin', defaults={'is_biological_human': True})
+        ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False})
+        self.mood = Mood.objects.create(slug='busy', title='busy')
+        Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=self.mood, content='hi', timestamp=1)
+
+    def poll(self):
+        return self.client.get('/api/moods/busy/turns/?after=' + str(uuid.uuid4())).json()
+
+    def test_the_emergents_settings_are_kept_until_a_setting_or_a_word_changes(self):
+        from conversations import views_moods
+        from conversations.models import Setting
+        real = views_moods._agents_in
+        with mock.patch('conversations.views_moods._agents_in', side_effect=real) as worked:
+            self.poll()
+            self.poll()
+            self.assertEqual(worked.call_count, 1)
+            justin = ThinkingEntity.objects.get(name='justin')
+            Setting.objects.create(key='mention_effort', mood=self.mood, emergent_id='magent', value='high',
+                                   set_by=justin)
+            self.assertEqual(self.poll()['emergents']['magent']['effort'], 'high')  # at the next poll, as before
+            self.assertEqual(worked.call_count, 2)
+            Message.objects.create(id=uuid.uuid4(), sender_id='magent', mood=self.mood, content='yo', timestamp=2)
+            self.poll()
+            self.assertEqual(worked.call_count, 3)
+
+    def test_who_spoke_here_isnt_joined_over_every_message_each_poll(self):
+        self.poll()
+        with mock.patch.object(Mood, 'thinking_entities', side_effect=AssertionError('joined again')):
+            self.poll()
