@@ -25,7 +25,10 @@ from django.conf import settings
 from django.core.cache import cache
 
 ORG = 'cryptograss'
-LOOK_EVERY = 600       # seconds between looks at every repository
+# Seconds between looks at every repository. The webhook (heard) writes a card the moment GitHub
+# says, so the look is a backstop; at ten minutes it took about 45 of the 60 unsigned calls an hour
+# maybelle gets, and the merge asks and to-do ticks starved (#ramp, 31 Oct - 6 Nov 2026).
+LOOK_EVERY = 3600
 PUSHED_WITHIN = 30     # days: a repository pushed to longer ago than this isn't asked about its pull requests
 CLOSED_WITHIN = 14     # days: a closed pull request keeps its card fresh this long after it closed
 _FOOT_DEPLOY = re.compile(r'^\W*deploy(?:ment)?\W*:\s*(.+?)\s*$', re.I | re.M)
