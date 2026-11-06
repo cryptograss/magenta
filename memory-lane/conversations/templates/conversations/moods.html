@@ -553,7 +553,8 @@
                 background: var(--panel); color: var(--ink); padding: 14px 18px 16px; }
   #personCard::backdrop { background: rgba(0,0,0,.35); }
   #personCard .head { display: flex; align-items: baseline; gap: 10px; font-size: 17px; font-weight: 700; color: var(--human); }
-  #personCard .head a { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--accent); text-decoration: none; }
+  #personCard .head .links { margin-left: auto; display: flex; gap: 10px; }
+  #personCard .head a { font-size: 12px; font-weight: 400; color: var(--accent); text-decoration: none; }
   #personCard .head .x { font: inherit; font-size: 18px; line-height: 1; border: none; background: none; color: var(--muted); cursor: pointer; }
   #personCard .profile { display: flex; gap: 10px; margin: 8px 0 2px; font-size: 13px; }
   #personCard .profile img { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; flex: none; }
@@ -7640,7 +7641,8 @@
       `<li><a href="${esc(e.url)}" target="_blank" rel="noopener"><div class="ttl">${esc(e.title)}</div>`
       + `<div class="meta"><span title="${esc(e.at ? stamp(e.at) : '')}">${e.at ? esc(cardAgo(e.at)) : ''}</span>${e.comment ? `<span>${esc(e.comment)}</span>` : ''}</div></a></li>`).join('')}</ul>`
       : '<div class="none">No edits on PickiPedia.</div>';
-    return `<div class="head">${icon(c.name, true)}${nameHtml(c.name)}<a href="${esc(c.page)}" target="_blank" rel="noopener">User page ↗</a>`
+    return `<div class="head">${icon(c.name, true)}${nameHtml(c.name)}<span class="links"><a href="/people/${encodeURIComponent(c.name)}/" title="Their last posts here and edits on PickiPedia, as one stream">Their page →</a>`
+      + `<a href="${esc(c.page)}" target="_blank" rel="noopener">User page ↗</a></span>`
       + `<button type="button" class="x" aria-label="Close">×</button></div>${profile}`
       + `<h4>Trail</h4>${trail}<h4>Last messages</h4>${messages}<h4>Last edits on PickiPedia</h4>${edits}`;
   }

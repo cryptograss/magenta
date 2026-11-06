@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ person.wiki_name }} · magenta</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
+    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --code: #f3efe8;
+    --ok: #2e9e5b; --warn: #d48806; --err: #c0392b; --hover: rgba(0,0,0,.04);
+    --wiki: #2a6f9e; --wiki-soft: #e4f0f8;
+    --who: {{ person.colour|default:"var(--accent)" }};
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
+            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --code: #29252c;
+            --hover: rgba(255,255,255,.05); --wiki: #6fb3e0; --wiki-soft: #1c2a36; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--bg); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex-wrap: wrap; }
+  header .brand { font-weight: 700; color: var(--accent); text-decoration: none; }
+  header nav { display: flex; gap: 12px; font-size: 13px; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  header nav a:hover { color: var(--ink); font-weight: 600; }
+  main { max-width: 760px; margin: 0 auto; padding: 22px 16px 80px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Who: their picture (or their ASCII art, as servers have), their name in their own colour, their User page's
+     opening words and a few facts from its infobox (services/wiki_preview), and where else to look. */
+  .who { display: flex; gap: 18px; align-items: flex-start; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+  .who .face { flex: none; width: 96px; height: 96px; border-radius: 12px; object-fit: cover; background: var(--code);
+               box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--who); }
+  .who pre.art { margin: 0; flex: none; font-size: 2px; line-height: 1.05; letter-spacing: 0; }
+  .who .mark { flex: none; width: 96px; height: 96px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+               font-size: 44px; font-weight: 800; color: #fff; background: var(--who); }
+  .who h1 { margin: 0 0 2px; font-size: 24px; line-height: 1.15; color: var(--who); }
+  .who .summary { margin: 4px 0 0; font-size: 14px; }
+  .who dl { margin: 8px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 12.5px; }
+  .who dt { color: var(--muted); }
+  .who dd { margin: 0; overflow-wrap: anywhere; }
+  .who .where { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+  .legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+  .legend .dot.m { background: var(--who); }
+  .legend .dot.w { background: var(--wiki); }
+
+  /* The stream: one column, newest first, a thread down its left. A post in the Moods is in their colour; a
+     wiki edit is in the wiki's blue, so the eye tells them apart at a glance without reading. */
+  .stream { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 2px solid var(--line); }
+  .item { position: relative; margin: 0 0 14px; padding: 10px 14px 11px; background: var(--panel); border: 1px solid var(--line);
+          border-radius: 10px; }
+  .item::before { content: ''; position: absolute; left: -24px; top: 16px; width: 10px; height: 10px; border-radius: 50%;
+                  background: var(--line); box-shadow: 0 0 0 3px var(--bg); }
+  .item.message::before { background: var(--who); }
+  .item.edit::before, .item.file::before, .item.release::before { background: var(--wiki); }
+  .item .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .item .meta .where { font-weight: 600; color: var(--ink); }
+  .item.message .meta .where { color: var(--who); }
+  .item.edit .meta .where, .item.file .meta .where, .item.release .meta .where { color: var(--wiki); }
+  .item .meta .at { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .item .meta .block { font-variant-numeric: tabular-nums; }
+  .chip { display: inline-block; font-size: 10.5px; padding: 0 6px; border-radius: 9px; border: 1px solid var(--line);
+          color: var(--muted); line-height: 1.5; white-space: nowrap; vertical-align: 1px; }
+  .chip.made { border-color: var(--ok); color: var(--ok); }
+  .chip.rel { border-color: var(--accent); color: var(--accent); }
+  .chip.more { color: var(--ok); } .chip.less { color: var(--err); }
+  .item .text { font-size: 14.5px; overflow-wrap: anywhere; }
+  .item.message .text a { color: inherit; }
+  .item .title { font-size: 15px; font-weight: 600; }
+  .item .title a { color: var(--ink); }
+  .item .comment { font-size: 13px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+  .item .comment::before { content: '“'; } .item .comment::after { content: '”'; }
+
+  /* What they put on the wiki: a picture as itself, zoomable; a sound or a video plays in place; any other
+     file is its name and a link. */
+  .item .media { margin-top: 8px; line-height: 0; }
+  .item .media a.pic { display: inline-block; border-radius: 8px; overflow: hidden; background: var(--code); cursor: zoom-in; max-width: 100%; }
+  .item .media img { display: block; max-width: 100%; max-height: 420px; }
+  .item .media audio { width: 100%; max-width: 480px; }
+  .item .media video { display: block; width: 100%; max-height: 420px; background: #000; border-radius: 8px; }
+  .item .media .filekind { display: inline-block; line-height: 1.4; font-size: 12px; padding: 4px 10px; border-radius: 6px; background: var(--code); }
+
+  /* A Release they uploaded (services/tidings.release_scan: its YAML's uploaded_by): its poster, its own
+     shape, with ▶ on it; a click puts the player in its place and plays, as on Tidings (hls.js where there's
+     MediaSource, the browser's own on iOS, else the file). Eight videos on one page weigh nothing until played. */
+  .item.release { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .item .media .stage { position: relative; display: inline-block; max-width: 100%; border-radius: 8px; overflow: hidden;
+                        background: linear-gradient(135deg, var(--accent-soft), var(--code)); cursor: pointer; }
+  .item .media .stage img { display: block; height: 240px; max-width: 100%; object-fit: cover; }
+  .item .media .stage.bare { width: 320px; height: 180px; }
+  .item .media .stage .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                              font-size: 44px; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.7); transition: transform .15s; }
+  .item .media .stage:hover .play { transform: scale(1.12); }
+  .item .media .stage .kind { position: absolute; left: 10px; bottom: 8px; font: 600 10px/1 ui-monospace, Menlo, monospace;
+                              letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+  .item.release .media video { width: min(100%, 560px); max-height: 420px; }
+  .item.release .media .record { display: flex; gap: 12px; align-items: center; line-height: 1.4; }
+  .item.release .media .record .disc { flex: none; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center;
+                                      justify-content: center; font-size: 22px; background: linear-gradient(135deg, var(--accent-soft), var(--code)); }
+  .none { color: var(--muted); font-size: 13px; padding: 30px 0; text-align: center; }
+  @media (max-width: 560px) {
+    .who { gap: 12px; }
+    .who .face, .who .mark { width: 72px; height: 72px; }
+    .who h1 { font-size: 20px; }
+  }
+</style>
+{% if embed %}<!-- Inside the one page: its bar is that page's; a link here into magenta goes there. -->
+<style>body > header { display: none; }</style>
+<script>
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
+    const to = new URL(a.href, location.href);
+    if (to.origin !== location.origin) { a.target = '_top'; return; }
+    e.preventDefault();
+    parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
+  });
+</script>{% endif %}
+</head>
+<body>
+<header>
+  <a class="brand" href="/moods/">magenta</a>
+  <nav>
+    <a href="/moods/status/">status</a>
+    <a href="/moods/tidings/">tidings</a>
+    <a href="/moods/polls/">polls</a>
+    <a href="/moods/prompts/">prompts</a>
+    <a href="/moods/todo/">todo</a>
+  </nav>
+</header>
+<main>
+  {% with p=person.profile %}
+  <section class="who">
+    {% if p.art %}<pre class="art">{{ p.art }}</pre>{% elif p.image %}<img class="face" src="{{ p.image }}" alt="">{% else %}<div class="mark" aria-hidden="true">{{ person.wiki_name|slice:":1" }}</div>{% endif %}
+    <div>
+      <h1>{{ person.wiki_name }}</h1>
+      {% if p.summary %}<p class="summary">{{ p.summary }}</p>{% endif %}
+      {% if p.facts %}<dl>{% for k, v in p.facts %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>{% endif %}
+      <div class="where">
+        <a href="{{ person.page }}" target="_blank" rel="noopener">User page on PickiPedia ↗</a>
+        <a href="{{ person.contribs_page }}" target="_blank" rel="noopener">All their edits ↗</a>
+      </div>
+    </div>
+  </section>
+  {% endwith %}
+
+  <div class="legend"><span><span class="dot m"></span>said in the Moods</span><span><span class="dot w"></span>done on PickiPedia</span></div>
+  {% if person.items %}
+  <ol class="stream">
+  {% for item in person.items %}
+    <li class="item {{ item.kind }}">
+      {% if item.kind == 'message' %}
+      <div class="meta"><a class="where" href="{{ item.url }}">#{{ item.mood_title }}</a>
+        <span class="at" title="{{ item.at|date:'c' }}">{{ item.at|date:"M j, g:i A" }}{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
+      <div class="text"><a href="{{ item.url }}">{{ item.text }}</a></div>
+
+      {% elif item.kind == 'release' %}
+      <div class="meta"><span class="where">PickiPedia</span><span class="chip rel">release</span>
+        <span class="at" title="{{ item.at|date:'c' }}">{{ item.at|date:"M j, g:i A" }}{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
+      <div class="title"><a href="{{ item.page }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
+      <div class="media">
+        {% if item.player.kind == 'video' %}<div class="stage{% if not item.poster and not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.poster|default:item.player.poster }}">{% if item.poster or item.player.poster %}<img loading="lazy" src="{{ item.poster|default:item.player.poster }}" alt="" onerror="this.remove(); this.parentNode.classList.add('bare')">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
+        {% elif item.player.kind == 'audio' %}<audio src="{{ item.player.src }}" controls preload="none"></audio>
+        {% else %}<div class="record"><span class="disc" aria-hidden="true">💿</span><a href="{{ item.page }}" target="_blank" rel="noopener">Its page on PickiPedia, with its tracks</a></div>{% endif %}
+      </div>
+
+      {% else %}
+      <div class="meta"><span class="where">PickiPedia</span>{% if item.made %}<span class="chip made">new page</span>{% elif item.size %}<span class="chip {% if item.size > 0 %}more{% else %}less{% endif %}">{% if item.size > 0 %}+{% endif %}{{ item.size }}</span>{% endif %}
+        <span class="at" title="{{ item.at|date:'c' }}">{{ item.at|date:"M j, g:i A" }}{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
+      <div class="title"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
+      {% if item.comment %}<div class="comment">{{ item.comment }}</div>{% endif %}
+      {% if item.kind == 'file' %}
+      <div class="media">
+        {% if item.media.kind == 'image' %}<a class="pic" href="{{ item.media.full }}" target="_blank" rel="noopener"><img loading="lazy" src="{{ item.media.src }}" alt="{{ item.name }}"></a>
+        {% elif item.media.kind == 'audio' %}<audio src="{{ item.media.full }}" controls preload="none"></audio>
+        {% elif item.media.kind == 'video' %}<video src="{{ item.media.full }}" controls playsinline preload="metadata"></video>
+        {% else %}<a class="filekind" href="{{ item.media.full }}" target="_blank" rel="noopener">📎 {{ item.name }}{% if item.media.mime %} · {{ item.media.mime }}{% endif %}</a>{% endif %}
+      </div>
+      {% elif item.player %}
+      <div class="media">
+        {% if item.player.kind == 'video' %}<div class="stage{% if not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.player.poster }}">{% if item.player.poster %}<img loading="lazy" src="{{ item.player.poster }}" alt="" onerror="this.remove(); this.parentNode.classList.add('bare')">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
+        {% else %}<audio src="{{ item.player.src }}" controls preload="none"></audio>{% endif %}
+      </div>
+      {% endif %}
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ol>
+  {% else %}
+  <p class="none">Nothing on record yet: no posts in the Moods, no edits on PickiPedia.</p>
+  {% endif %}
+</main>
+<script>
+  // Releases play as on Tidings (mood_tiding.html): hls.js where there's MediaSource, the browser's own HLS on
+  // iOS, else the plain file. Fetched on the first play, not on load: a page of them shouldn't pull a library
+  // for a reader who only scrolls.
+  const HLS_JS = { src: 'https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.min.js',
+                   integrity: 'sha384-cciJ0zi8d1uMKC2zJd7jvPY4HQt7W4ByUI/FlMkltvBi31aW61rcpVBhpmW8/NwX' };
+  let hlsLoading = null;
+  function loadHls() {
+    if (window.Hls) return Promise.resolve(window.Hls);
+    if (hlsLoading) return hlsLoading;
+    return hlsLoading = new Promise((ok, fail) => {
+      const s = document.createElement('script');
+      s.src = HLS_JS.src; s.integrity = HLS_JS.integrity; s.crossOrigin = 'anonymous';
+      s.onload = () => ok(window.Hls);
+      s.onerror = () => fail(new Error('hls.js did not load'));
+      document.head.appendChild(s);
+    });
+  }
+  async function readyToPlay(v) {
+    const plain = () => { if (v._hls) { v._hls.destroy(); v._hls = null; } if (v.dataset.src) v.src = v.dataset.src; };
+    const native = v.canPlayType('application/vnd.apple.mpegurl'), mse = 'MediaSource' in window;
+    if (!v.dataset.hls) { plain(); return; }
+    if (!mse && native) { v.src = v.dataset.hls; return; }
+    let Hls = null;
+    try { Hls = await loadHls(); } catch (e) { Hls = null; }
+    if (!Hls || !Hls.isSupported()) { if (native) v.src = v.dataset.hls; else plain(); return; }
+    const hls = v._hls = new Hls({ maxBufferLength: 12 });
+    hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) plain(); });
+    hls.loadSource(v.dataset.hls);
+    hls.attachMedia(v);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(() => {}));
+  }
+  // A poster with ▶ on it becomes the player when clicked (or Enter'd), and plays.
+  function stagePlay(stage) {
+    const v = document.createElement('video');
+    v.controls = true; v.playsInline = true; v.preload = 'metadata';
+    if (stage.dataset.poster) v.poster = stage.dataset.poster;
+    v.dataset.hls = stage.dataset.hls; v.dataset.src = stage.dataset.src;
+    stage.replaceWith(v);
+    readyToPlay(v).then(() => v.play().catch(() => {}));
+  }
+  document.addEventListener('click', e => { const s = e.target.closest('.stage'); if (s) stagePlay(s); });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const s = e.target.closest && e.target.closest('.stage');
+    if (s) { e.preventDefault(); stagePlay(s); }
+  });
+  // One thing plays at a time.
+  document.addEventListener('play', e => {
+    for (const m of document.querySelectorAll('audio, video')) if (m !== e.target) m.pause();
+  }, true);
+</script>
+</body>
+</html>
