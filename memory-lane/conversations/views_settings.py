@@ -17,6 +17,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .models import Mood, Setting, ThinkingEntity
 from .services import mood_auth
 from .services import settings as knobs
+from pathlib import Path
 
 
 def settings_state():
@@ -529,3 +530,18 @@ def rules_page(request, slug):
     from django.shortcuts import redirect
     return redirect(f'/moods/{slug}/instructions/' + (f'?{request.GET.urlencode()}' if request.GET else ''),
                     permanent=True)
+
+
+@require_GET
+def api_branches(request):
+    """githouse's branches.json: every repository's branches, live, merged and closed, for the composer's
+    repo:branch autocomplete (maybelle-config#250; Cryptograss:Moods/ramp/Plan). Read from
+    settings.GITHOUSE_DIR, maybelle's copy mounted read-only into this container; {} until there is one."""
+    path = Path(getattr(settings, 'GITHOUSE_DIR', '/srv/git')) / 'branches.json'
+    try:
+        branches = json.loads(path.read_text())
+    except (OSError, ValueError):
+        branches = {}
+    response = JsonResponse(branches if isinstance(branches, dict) else {})
+    response['Cache-Control'] = 'public, max-age=60'
+    return response
