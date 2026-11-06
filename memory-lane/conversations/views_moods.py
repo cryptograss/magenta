@@ -233,11 +233,26 @@ def _build_moods_list():
     return body, clock.header()
 
 
+SPOKE_KEEP = 60  # seconds a Mood's speakers are kept: a first word here shows its pronouns within the minute
+
+
+def spoke_in(mood):
+    """The names of everyone who has spoken in this Mood, kept SPOKE_KEEP seconds. Asked twice a poll (pronouns,
+    zones), and each ask was a DISTINCT over every row of the Mood: 100 ms to 1.5 s on a big one (6 Nov)."""
+    from django.core.cache import cache
+    key = f'spoke-in:{mood.slug}'
+    found = cache.get(key)
+    if found is None:
+        found = {e.name for e in mood.thinking_entities()}
+        cache.set(key, found, SPOKE_KEEP)
+    return found
+
+
 def zones_here(mood):
     """{name: zone} for the emergents and the people who've spoken here, those who've set theirs."""
     from .services.emergent_powers import time_zones
     everyone = list(ThinkingEntity.objects.values_list('name', 'is_biological_human'))
-    here = {e.name for e in mood.thinking_entities()}
+    here = spoke_in(mood)
     said = time_zones(everyone)
     return {n: z for n, z in said.items() if n in here or any(n == m and not h for m, h in everyone)}
 
@@ -246,7 +261,7 @@ def pronouns_here(mood):
     """{name: pronouns} for the emergents and the people who've spoken here, those who've set theirs."""
     from .services.emergent_powers import pronouns
     everyone = list(ThinkingEntity.objects.values_list('name', 'is_biological_human'))
-    here = {e.name for e in mood.thinking_entities()}
+    here = spoke_in(mood)
     said = pronouns(everyone)
     return {n: p for n, p in said.items() if n in here or any(n == m and not h for m, h in everyone)}
 
@@ -507,14 +522,11 @@ def agents_in(mood):
     from .models import Message
     out = {}
     for name in agents:
-        resolved = knobs.resolve(mood.slug, name)
+        resolved = knobs.resolve(mood.slug, name, rows=every)  # the rows read once above, not once an agent
         context = context_in(mood, name)
         # No model set and no turn here yet: the one it last ran on anywhere, so the bar
         # names a model, never "default" (Justin, 27 Oct).
-        runs = resolved['model'] or (context or {}).get('model') or (
-            Message.objects.filter(sender_id=name, is_sidechain=False, model_backend__isnull=False)
-            .exclude(model_backend__in=('', '<synthetic>')).order_by('-created_at')
-            .values_list('model_backend', flat=True).first() or '')
+        runs = resolved['model'] or (context or {}).get('model') or last_model_of(name)
         out[name] = {'listening': resolved['listening'], 'model': resolved['model'],
                      'effort': resolved['mention_effort'],
                      'ultracode': bool(resolved['ultracode']),
@@ -532,6 +544,24 @@ def agents_in(mood):
         if changes:
             out[name]['changed'] = {'changes': changes, 'by': by, 'note': note}
     return out
+
+
+LAST_MODEL_KEEP = 600  # seconds: the model an agent last ran on anywhere changes once a day, if that
+
+
+def last_model_of(name):
+    """The model `name` last ran on in any Mood, or ''. Kept LAST_MODEL_KEEP seconds: the ask sorts every row the
+    agent ever sent, and it was asked every poll for each agent with no model set (6 Nov: ~1 s in #general)."""
+    from django.core.cache import cache
+    from .models import Message
+    key = f'last-model:{name}'
+    found = cache.get(key)
+    if found is None:
+        found = (Message.objects.filter(sender_id=name, is_sidechain=False, model_backend__isnull=False)
+                 .exclude(model_backend__in=('', '<synthetic>')).order_by('-created_at')
+                 .values_list('model_backend', flat=True).first() or '')
+        cache.set(key, found, LAST_MODEL_KEEP)
+    return found
 
 
 def settings_scram():
