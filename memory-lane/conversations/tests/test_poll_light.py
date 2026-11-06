@@ -6,7 +6,7 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from conversations.models import Message, Mood, ThinkingEntity
-from conversations.views_moods import last_model_of, pronouns_here, spoke_in
+from conversations.views_moods import last_model_of, pronouns_here
 
 
 class PollLightTest(TestCase):
@@ -19,15 +19,16 @@ class PollLightTest(TestCase):
         Message.objects.create(id=uuid.uuid4(), sender_id='justin', mood=self.mood, timestamp=1,
                                content=[{'type': 'text', 'text': 'hi'}])
 
-    def test_who_spoke_here_is_asked_once_a_minute(self):
-        self.assertEqual(spoke_in(self.mood), {'justin'})
-        with self.assertNumQueries(0):
-            self.assertEqual(spoke_in(self.mood), {'justin'})
-        Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=self.mood, timestamp=2,
+    def test_a_first_word_here_shows_its_pronouns_at_once(self):
+        # Who spoke here comes from said_in (#412): kept until something new lands, not for a minute.
+        cache.set('pronouns', {'justin': 'it/its', 're': 'she/her'}, 60)
+        self.assertEqual(pronouns_here(self.mood), {'justin': 'it/its', 're': 'she/her'})  # re: an emergent, always
+        cache.set('pronouns', {'justin': 'it/its', 'skyler': 'they/them'}, 60)
+        ThinkingEntity.objects.get_or_create(name='skyler', defaults={'is_biological_human': True})
+        self.assertEqual(pronouns_here(self.mood), {'justin': 'it/its'})
+        Message.objects.create(id=uuid.uuid4(), sender_id='skyler', mood=self.mood, timestamp=2,
                                content=[{'type': 'text', 'text': 'hello'}])
-        self.assertEqual(spoke_in(self.mood), {'justin'})  # until the minute is up
-        cache.clear()
-        self.assertEqual(spoke_in(self.mood), {'justin', 're'})
+        self.assertEqual(pronouns_here(self.mood), {'justin': 'it/its', 'skyler': 'they/them'})
 
     def test_pronouns_here_reads_the_kept_speakers(self):
         cache.set('pronouns', {'justin': 'it/its', 'skyler': 'they/them'}, 60)

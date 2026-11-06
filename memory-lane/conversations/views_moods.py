@@ -233,26 +233,12 @@ def _build_moods_list():
     return body, clock.header()
 
 
-SPOKE_KEEP = 60  # seconds a Mood's speakers are kept: a first word here shows its pronouns within the minute
-
-
-def spoke_in(mood):
-    """The names of everyone who has spoken in this Mood, kept SPOKE_KEEP seconds. Asked twice a poll (pronouns,
-    zones), and each ask was a DISTINCT over every row of the Mood: 100 ms to 1.5 s on a big one (6 Nov)."""
-    from django.core.cache import cache
-    key = f'spoke-in:{mood.slug}'
-    found = cache.get(key)
-    if found is None:
-        found = {e.name for e in mood.thinking_entities()}
-        cache.set(key, found, SPOKE_KEEP)
-    return found
-
-
 def zones_here(mood):
     """{name: zone} for the emergents and the people who've spoken here, those who've set theirs."""
     from .services.emergent_powers import time_zones
+    from .services.mood_view import said_in
     everyone = list(ThinkingEntity.objects.values_list('name', 'is_biological_human'))
-    here = spoke_in(mood)
+    here = set(said_in(mood)['participants'])  # kept until something new lands here, not a join every poll
     said = time_zones(everyone)
     return {n: z for n, z in said.items() if n in here or any(n == m and not h for m, h in everyone)}
 
@@ -260,8 +246,9 @@ def zones_here(mood):
 def pronouns_here(mood):
     """{name: pronouns} for the emergents and the people who've spoken here, those who've set theirs."""
     from .services.emergent_powers import pronouns
+    from .services.mood_view import said_in
     everyone = list(ThinkingEntity.objects.values_list('name', 'is_biological_human'))
-    here = spoke_in(mood)
+    here = set(said_in(mood)['participants'])  # kept until something new lands here, not a join every poll
     said = pronouns(everyone)
     return {n: p for n, p in said.items() if n in here or any(n == m and not h for m, h in everyone)}
 
@@ -506,8 +493,33 @@ def todo_stamp():
     return todo.stamp()
 
 
+AGENTS_KEPT = 15  # seconds at most: a listening "until" runs out, a harness reports its models
+
+
 def agents_in(mood):
-    """name -> {listening, model, effort, context} for each agent, in this Mood."""
+    """name -> {listening, model, effort, context} for each agent, in this Mood.
+
+    Every tab asks it with every poll, every 4 s, and it sorts the whole settings history a few
+    times over for each emergent: ~0.4 s alone, over a second under five tabs' load (tabs.py, 6 Nov).
+    So it's kept, stamped with the newest setting and the newest message here: a setting changed or
+    a word said shows at the next poll, as before."""
+    from django.core.cache import cache
+    from django.db.models import Count
+    from .models import Setting
+    settings_now = Setting.objects.aggregate(n=Count('id'), at=Max('created_at'))
+    newest = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()
+    stamp = (settings_now['n'], settings_now['at'] and settings_now['at'].isoformat(),
+             newest and newest.isoformat())
+    key = f'agents-in:{mood.pk}'
+    kept = cache.get(key)
+    if kept and kept['stamp'] == stamp:
+        return kept['agents']
+    agents = _agents_in(mood)
+    cache.set(key, {'stamp': stamp, 'agents': agents}, AGENTS_KEPT)
+    return agents
+
+
+def _agents_in(mood):
     from .services import settings as knobs
     from .services.mood_view import context_in
     from .models import Setting
