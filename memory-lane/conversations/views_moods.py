@@ -534,14 +534,11 @@ def _agents_in(mood):
     from .models import Message
     out = {}
     for name in agents:
-        resolved = knobs.resolve(mood.slug, name)
+        resolved = knobs.resolve(mood.slug, name, rows=every)  # the rows read once above, not once an agent
         context = context_in(mood, name)
         # No model set and no turn here yet: the one it last ran on anywhere, so the bar
         # names a model, never "default" (Justin, 27 Oct).
-        runs = resolved['model'] or (context or {}).get('model') or (
-            Message.objects.filter(sender_id=name, is_sidechain=False, model_backend__isnull=False)
-            .exclude(model_backend__in=('', '<synthetic>')).order_by('-created_at')
-            .values_list('model_backend', flat=True).first() or '')
+        runs = resolved['model'] or (context or {}).get('model') or last_model_of(name)
         out[name] = {'listening': resolved['listening'], 'model': resolved['model'],
                      'effort': resolved['mention_effort'],
                      'ultracode': bool(resolved['ultracode']),
@@ -559,6 +556,24 @@ def _agents_in(mood):
         if changes:
             out[name]['changed'] = {'changes': changes, 'by': by, 'note': note}
     return out
+
+
+LAST_MODEL_KEEP = 600  # seconds: the model an agent last ran on anywhere changes once a day, if that
+
+
+def last_model_of(name):
+    """The model `name` last ran on in any Mood, or ''. Kept LAST_MODEL_KEEP seconds: the ask sorts every row the
+    agent ever sent, and it was asked every poll for each agent with no model set (6 Nov: ~1 s in #general)."""
+    from django.core.cache import cache
+    from .models import Message
+    key = f'last-model:{name}'
+    found = cache.get(key)
+    if found is None:
+        found = (Message.objects.filter(sender_id=name, is_sidechain=False, model_backend__isnull=False)
+                 .exclude(model_backend__in=('', '<synthetic>')).order_by('-created_at')
+                 .values_list('model_backend', flat=True).first() or '')
+        cache.set(key, found, LAST_MODEL_KEEP)
+    return found
 
 
 def settings_scram():

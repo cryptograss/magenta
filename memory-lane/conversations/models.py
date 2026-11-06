@@ -587,6 +587,12 @@ class Message(models.Model):
             models.Index(fields=['session_id', 'timestamp']),
             models.Index(fields=['sender']),
             models.Index(fields=['mood', 'created_at']),
+            # A poll of a Mood asks, per agent, for its latest row here (context, settings changed since,
+            # its activity) and, per Mood, for its pins, polls and reactions by source: without these each
+            # ask walked the Mood's rows (measured 6 Nov: 1.4 to 5.4 s a poll, Server-Timing).
+            models.Index(fields=['mood', 'sender', 'created_at'], name='message_mood_sender_at'),
+            models.Index(fields=['sender', 'created_at'], name='message_sender_at'),
+            models.Index(fields=['mood', 'source_file'], name='message_mood_source'),
             # stamp_blockheights looks for these every few minutes; without
             # this each look is a full scan.
             models.Index(fields=['timestamp'], condition=models.Q(eth_blockheight__isnull=True),
