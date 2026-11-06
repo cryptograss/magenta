@@ -11,8 +11,9 @@ bots' too: the Magenta: pages are often edited by an emergent), on the pulse's c
 feed is (services/wiki_feed.py, which shows people's edits as lines), and forgets what's kept of
 each changed page. The next look fetches it again; nothing is fetched that nobody looks at.
 
-The push (to come: a hook on PickiPedia that tells /api/wiki/hook/ of each save, as GitHub's
-webhook tells of merges) is the fast road; this sweep is the check on it. Once a push has ever
+The push (PickiPediaContent's hook on PickiPedia, telling /api/wiki/hook/ of each save, signed
+with settings.WIKI_HOOK_SECRET, as GitHub's webhook tells of merges) is the fast road; this sweep
+is the check on it. What a change does, by either road, is services/wiki_hooks.py. Once a push has ever
 been heard, a change the sweep finds that no push told of -- after GRACE, to give the push its
 moment -- is said in #ops as a line (Justin, 5 Nov: "if the poll finds something that didn't get
 pushed, we oughta get a notice about that"). Until the first push, no change was expected to be
@@ -93,7 +94,11 @@ def sweep(http=None, now=None):
             titles.append(change['logparams']['target_title'])
         for title in titles:
             if title and cache.add(f'wiki-changes:forgot:{rcid}:{hashlib.sha1(title.encode()).hexdigest()}', 1, 86400):
-                forget(title, change.get('user', ''))
+                # Told of by the push already: its hooks ran then; the sweep only judges it below.
+                if change.get('revid') and was_pushed(change['revid']):
+                    continue
+                from .wiki_hooks import run
+                run(title, change.get('user', ''), change.get('revid'), via='sweep')
                 forgotten.append(title)
         # Judged once it has had its GRACE; the cursor stops short of a change still within it.
         at = _when(change.get('timestamp'))
@@ -171,11 +176,27 @@ _PAGES = _Pages()
 # --- the push, when it comes -----------------------------------------------------------
 
 def note_pushed(title, revid, user=''):
-    """A save PickiPedia told of: forgotten now, and remembered as pushed so the sweep doesn't call it missed."""
+    """A save PickiPedia told of: its hooks run now (services/wiki_hooks.run), and the revision is remembered
+    as pushed so the sweep doesn't call it missed. Returns the log rows."""
+    from .wiki_hooks import run
     cache.set(PUSH_HEARD, int(time.time()), None)
     if revid:
         cache.set(f'wiki-changes:pushed:{int(revid)}', 1, PUSHED_FOR)
-    forget(title, user)
+    return run(title, user, revid, via='push')
+
+
+def heard(outcome, refused=False):
+    """What PickiPedia last sent and what came of it, for /wiki-hooks/; a refused one (unsigned, or signed with
+    another secret) kept apart, so a stray POST can't hide the last good one (as todo.heard does for GitHub)."""
+    cache.set('wiki-changes:hook:refused' if refused else 'wiki-changes:hook:last',
+              {'outcome': outcome, 'at': int(time.time())}, None)
+
+
+def push_state():
+    from django.conf import settings
+    return {'configured': bool(getattr(settings, 'WIKI_HOOK_SECRET', '')),
+            'heard': cache.get(PUSH_HEARD), 'last': cache.get('wiki-changes:hook:last'),
+            'refused': cache.get('wiki-changes:hook:refused')}
 
 
 def was_pushed(revid):

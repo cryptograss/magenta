@@ -289,6 +289,10 @@ GITHUB_TOKEN = os.getenv('GITHUB_TOKEN', '')
 # the to-do lists linking it at once. The repository webhook's secret; unset,
 # /api/github/hook/ refuses everything and lists tick on their own, minutes later.
 GITHUB_WEBHOOK_SECRET = os.getenv('GITHUB_WEBHOOK_SECRET', '')
+# PickiPedia tells /api/wiki/hook/ of each save (PickiPediaContent's hook), signed with this
+# (X-Magenta-Signature); the hooks for the page run at once (conversations/services/wiki_hooks.py).
+# Unset: the minute sweep alone, and no push is expected.
+WIKI_HOOK_SECRET = os.getenv('WIKI_HOOK_SECRET', '')
 # A merged pull request's to-do item, ticked on PickiPedia too (conversations/services/todo_ticks.py):
 # a bot password with "Edit existing pages" and "High-volume (bot) access". Unset: ticked in magenta only.
 PICKIPEDIA_TODO_BOT_USER = os.getenv('PICKIPEDIA_TODO_BOT_USER', '')

@@ -4573,6 +4573,15 @@
       prev = null;
       return;
     }
+    if (e.type === 'wiki-hook') {  // a wiki hook failed (services/wiki_hooks.py)
+      el.className = 'event warn';
+      const page = `${WIKI}/wiki/${encodeURIComponent((e.title || '').replace(/ /g, '_'))}`;
+      el.innerHTML = `⚠ the <b>${esc(e.hook || '?')}</b> hook failed on <a href="${esc(page)}" target="_blank" rel="noopener">${esc(e.title || '')}</a>`
+        + ` (${esc(e.via || 'sweep')}): ${esc(e.error || '')} · <a href="/wiki-hooks/" target="_blank" rel="noopener">the log</a> · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'degraded') {  // an emergent's instructions bundle degraded, or whole again (services/instructions_state.py)
       el.className = 'event';
       const who = `<b>${esc(shown(e.agent || 'an emergent'))}</b>`;

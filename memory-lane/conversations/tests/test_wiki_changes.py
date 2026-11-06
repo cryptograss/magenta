@@ -30,6 +30,10 @@ class SweepTest(TestCase):
 
     def setUp(self):
         cache.clear()
+        # The hooks read the wiki again (services/wiki_hooks.py): not from here.
+        patch = mock.patch('conversations.services.wiki_hooks.HOOKS', [])
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def test_the_first_sweep_only_takes_its_bearings(self):
         forgotten, missed = wiki_changes.sweep(wiki([('User:Slvrbckt', 5, 'Slvrbckt', 600)]), now=NOW)
