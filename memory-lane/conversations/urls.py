@@ -74,6 +74,7 @@ urlpatterns = [
     path('api/messages/<str:message_id>/wiki/', views_moods.api_message_wiki, name='api_message_wiki'),
     path('api/settings/', views_settings.api_settings, name='api_settings'),
     path('api/status/', views_settings.api_status, name='api_status'),
+    path('api/branches/', views_settings.api_branches, name='api_branches'),
     path('api/tidings/', views_settings.api_tidings, name='api_tidings'),
     path('api/polls/', views_settings.api_polls, name='api_polls'),
     path('api/emoji/', views_settings.api_emoji, name='api_emoji'),

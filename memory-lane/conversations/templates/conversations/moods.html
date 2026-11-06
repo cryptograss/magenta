@@ -6988,9 +6988,10 @@
     if (m) return { kind: 'emoji', start: upto.length - m[2].length - 1, prefix: m[2] };
     return null;
   }
-  // Mergeables: every repository's branches as githouse has them (maybelle-config hunter/githouse),
-  // live, merged and closed. A name is used once, so a merged one is still worth naming.
-  const GITHOUSE_BRANCHES = 'https://git.hunter.cryptograss.live/branches.json';
+  // Mergeables: every repository's branches as githouse has them (maybelle-config#250; served here
+  // from maybelle's copy, /api/branches/), live, merged and closed. A name is used once, so a merged
+  // one is still worth naming.
+  const GITHOUSE_BRANCHES = '/api/branches/';
   const OWNED_BRANCH = /^(main|master|production|release\/.*)$/;
   const mergeables = { asked: false, repos: new Set(), owners: new Set(), list: [] };
   function loadMergeables() {
