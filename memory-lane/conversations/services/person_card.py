@@ -49,11 +49,21 @@ def _answered(entry):
                       for t in entry.get('turns', [])]}
 
 
+def _edits_key(user):
+    return 'person-edits:' + hashlib.sha1(user.encode()).hexdigest()
+
+
+def forget_edits(user):
+    """They edited the wiki just now: their card's edits are asked for again (services/wiki_changes.py).
+    `user` as PickiPedia names them."""
+    cache.delete(_edits_key((user or '').replace('_', ' ')))
+
+
 def edits(name, http=None):
     """[{'title', 'at', 'comment', 'url'}]: the last EDITS distinct pages `name` edited on PickiPedia."""
     import requests
     user = wiki_name(name)
-    key = 'person-edits:' + hashlib.sha1(user.encode()).hexdigest()
+    key = _edits_key(user)
     found = cache.get(key)
     if found is not None:
         return found

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wiki hooks · magenta</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
+    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --code: #f3efe8;
+    --ok: #2e9e5b; --warn: #d48806; --err: #c0392b; --hover: rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
+            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --code: #29252c;
+            --hover: rgba(255,255,255,.05); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--bg); }
+  main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 60px; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  h2 { font-size: 15px; margin: 22px 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--code); padding: 1px 4px; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); border-top: 0; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+  tr.failed td { color: var(--err); }
+  .via { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+  .via.push { color: var(--ok); border-color: var(--ok); }
+  .push { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px; }
+  .push .no { color: var(--warn); }
+  .push .bad { color: var(--err); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Wiki hooks</h1>
+  <p class="lede">What happens here when a page changes on PickiPedia. PickiPedia pushes each save to
+    <code>/api/wiki/hook/</code>; a sweep once a minute is the check on the push, and both run the same hooks.
+    Any other page changed is forgotten, and read again when next asked for. A hook that fails is a line in #ops.</p>
+
+  <div class="push">
+    {% if not state.push.configured %}
+      <span class="no">The push isn't set up here (no <code>WIKI_HOOK_SECRET</code>): the sweep alone, and no push is expected.</span>
+    {% elif state.push.last %}
+      Last push heard: <code>{{ state.push.last.outcome }}</code> at <time data-at="{{ state.push.last.at }}">{{ state.push.last.at }}</time>.
+    {% else %}
+      <span class="no">The push is set up, but none has been heard yet.</span>
+    {% endif %}
+    {% if state.push.refused %}
+      <div class="bad">Last refused: {{ state.push.refused.outcome }} at <time data-at="{{ state.push.refused.at }}">{{ state.push.refused.at }}</time>.</div>
+    {% endif %}
+  </div>
+
+  <h2>The hooks</h2>
+  <table>
+    <tr><th>hook</th><th>pages</th><th>what it does</th></tr>
+    {% for h in state.hooks %}
+    <tr><td><code>{{ h.name }}</code></td><td>{{ h.pages }}</td><td>{{ h.about }}</td></tr>
+    {% endfor %}
+    <tr><td><code>forget</code></td><td>any other page</td><td>What's kept of it is forgotten, and read again when next asked for</td></tr>
+  </table>
+
+  <h2>The log <span class="lede">(newest first, the last {{ state.runs|length }})</span></h2>
+  <table>
+    <tr><th>when</th><th>page</th><th>rev</th><th>by</th><th>hook</th><th>via</th><th>took</th><th>result</th></tr>
+    {% for r in state.runs %}
+    <tr{% if r.failed %} class="failed"{% endif %}>
+      <td class="num"><time data-iso="{{ r.at }}">{{ r.at|slice:":16" }}Z</time></td>
+      <td><a href="https://pickipedia.xyz/wiki/{{ r.title|urlencode }}" target="_blank" rel="noopener">{{ r.title }}</a></td>
+      <td class="num">{% if r.revid %}<a href="https://pickipedia.xyz/index.php?diff={{ r.revid }}" target="_blank" rel="noopener">{{ r.revid }}</a>{% endif %}</td>
+      <td>{{ r.user }}</td>
+      <td><code>{{ r.hook }}</code></td>
+      <td><span class="via {{ r.via }}">{{ r.via }}</span></td>
+      <td class="num">{{ r.took_ms }} ms</td>
+      <td>{{ r.result }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="8" class="lede">Nothing yet: no page has changed since this was deployed.</td></tr>
+    {% endfor %}
+  </table>
+</main>
+<script>
+  // Times in the reader's own clock.
+  document.querySelectorAll('time[data-iso]').forEach(t => { t.textContent = new Date(t.dataset.iso).toLocaleString(); });
+  document.querySelectorAll('time[data-at]').forEach(t => { t.textContent = new Date(Number(t.dataset.at) * 1000).toLocaleString(); });
+</script>
+</body>
+</html>

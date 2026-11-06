@@ -1810,6 +1810,27 @@ class BundleRecord(models.Model):
         return [part for part in self.parts if not isinstance(part, str)]
 
 
+class WikiHookRun(models.Model):
+    """One run of a wiki hook (services/wiki_hooks.py): a page changed on PickiPedia, and what was done here.
+    The log /wiki-hooks/ shows (Justin, 6 Nov 2026: "that all gets logged... somewhere")."""
+    title = models.CharField(max_length=300)
+    revid = models.IntegerField(null=True, blank=True)
+    user = models.CharField(max_length=120, blank=True, default='')
+    hook = models.CharField(max_length=40)
+    via = models.CharField(max_length=10)       # 'push' (told by PickiPedia) or 'sweep' (found by the minute sweep)
+    took_ms = models.IntegerField(default=0)
+    result = models.CharField(max_length=300, blank=True, default='')
+    failed = models.BooleanField(default=False)
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'wiki_hook_runs'
+        ordering = ['-at']
+
+    def __str__(self):
+        return f"{self.hook} on {self.title} ({self.via}) at {self.at:%Y-%m-%d %H:%M:%S}"
+
+
 # ============================================================================
 # Import Tracking Constants
 # ============================================================================

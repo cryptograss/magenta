@@ -21,7 +21,7 @@ from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
-from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_feed, wiki_ledger, wiki_upload
+from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_changes, wiki_feed, wiki_ledger, wiki_upload
 from .services import emergent_commands, mood_auth
 from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.mood_view import (
@@ -373,7 +373,7 @@ def api_mood_turns(request, slug):
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'thread', 'into', 'was', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
-                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools', 'lines', 'steps', 'job', 'stage', 'url')},
+                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools', 'lines', 'steps', 'job', 'stage', 'url', 'hook', 'via', 'error')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
@@ -725,6 +725,7 @@ def api_pulse(request):
     rows = list(Setting.objects.exclude(key__in=knobs.MODERATION_KEYS))
     archived = knobs.archived_slugs()
     wiki_feed.nudge()  # asked every second by the runner: the wiki feed's clock (at most once a minute)
+    wiki_changes.nudge()  # and the sweep that forgets what's kept of each page changed on the wiki (once a minute)
     push.nudge()       # and the push clock: notices to send to closed pages (at most every 10 s)
     wiki_ledger.nudge()  # and the Moods' links, written to PickiPedia (at most every 30 s)
     pr_cards.nudge()     # and the pull requests' cards, VersionControl:PRs/... (at most every 10 min)
@@ -1725,6 +1726,51 @@ def api_github_hook(request):
         return JsonResponse({'ticked': f"{name}#{pull.get('number')}"})
     todo.heard(event, 'nothing to do')
     return JsonResponse({'ok': True, 'event': event})
+
+
+@csrf_exempt  # PickiPedia's call, proven by its signature, not a browser's session
+@require_POST
+def api_wiki_hook(request):
+    """PickiPedia's push: a page was saved (PickiPediaContent's PageSaveComplete hook), as JSON
+    {"title", "revid", "user", "at", "kind"}, signed with settings.WIKI_HOOK_SECRET (X-Magenta-Signature:
+    sha256=<hmac of the body>). The page's hooks run now (services/wiki_hooks.run) and the revision is
+    remembered as pushed, so the minute sweep doesn't call it missed (services/wiki_changes.note_pushed).
+    Unsigned, or signed with another secret: 403, and the sweep still catches the change."""
+    import hmac
+    from .services import wiki_changes
+    secret = getattr(settings, 'WIKI_HOOK_SECRET', '')
+    if not secret:
+        return JsonResponse({'error': "the wiki hook isn't set up here"}, status=503)
+    given = request.headers.get('X-Magenta-Signature', '')
+    expected = 'sha256=' + hmac.new(secret.encode(), request.body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(given, expected):
+        wiki_changes.heard('signature not accepted', refused=True)
+        return JsonResponse({'error': 'signature not accepted'}, status=403)
+    try:
+        body = json.loads(request.body or b'{}')
+        title = str(body.get('title') or '').strip()
+        revid = int(body['revid']) if body.get('revid') is not None else None
+    except (ValueError, TypeError):
+        wiki_changes.heard('bad body', refused=True)
+        return JsonResponse({'error': 'expected JSON: {"title": ..., "revid": ..., "user": ...}'}, status=400)
+    if not title or len(title) > 300:
+        wiki_changes.heard('no title', refused=True)
+        return JsonResponse({'error': 'title: a page title'}, status=400)
+    rows = wiki_changes.note_pushed(title, revid, str(body.get('user') or '')[:120])
+    wiki_changes.heard(f"{title} r{revid or '?'}: " + ', '.join(r.hook for r in rows))
+    return JsonResponse({'ok': True, 'title': title, 'revid': revid, 'ran': [r.hook for r in rows]})
+
+
+def wiki_hooks_page(request):
+    """What happens here when a page changes on PickiPedia, and the log of it (services/wiki_hooks.py)."""
+    from .services import wiki_hooks
+    return render(request, 'conversations/mood_wiki_hooks.html', {'state': wiki_hooks.state(), 'embed': True})
+
+
+@require_GET
+def api_wiki_hooks(request):
+    from .services import wiki_hooks
+    return JsonResponse(wiki_hooks.state())
 
 
 @require_GET

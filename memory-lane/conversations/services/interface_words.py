@@ -115,6 +115,16 @@ def words(fetch=None):
             **_words(SOUNDS_PAGE, SOUND_DEFAULTS, MAX_LENGTH, 'sound-defaults', fetch and (lambda: None))}
 
 
+_KEYS = {PAGE: 'interface-words', SYSTEM_PAGE: 'system-messages', SOUNDS_PAGE: 'sound-defaults'}
+
+
+def forget(title):
+    """A words page changed on the wiki: its words are read again on the next ask (services/wiki_changes.py)."""
+    key = _KEYS.get((title or '').replace('_', ' '))
+    if key:
+        cache.delete(key)
+
+
 def _words(page, defaults, longest, key, fetch=None):
     found = cache.get(key)
     if found is not None:
