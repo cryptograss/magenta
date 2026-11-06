@@ -165,7 +165,7 @@
         <span class="at" title="{{ item.at|date:'c' }}">{{ item.at|date:"M j, g:i A" }}{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
       <div class="title"><a href="{{ item.page }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
       <div class="media">
-        {% if item.player.kind == 'video' %}<div class="stage{% if not item.poster and not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.poster|default:item.player.poster }}">{% if item.poster or item.player.poster %}<img loading="lazy" src="{{ item.poster|default:item.player.poster }}" alt="" onerror="this.remove(); this.parentNode.classList.add('bare')">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
+        {% if item.player.kind == 'video' %}<div class="stage{% if not item.poster and not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.poster|default:item.player.poster }}">{% if item.poster or item.player.poster %}<img loading="lazy" src="{{ item.poster|default:item.player.poster }}" alt="" onerror="this.parentNode.classList.add('bare'); this.remove()">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
         {% elif item.player.kind == 'audio' %}<audio src="{{ item.player.src }}" controls preload="none"></audio>
         {% else %}<div class="record"><span class="disc" aria-hidden="true">💿</span><a href="{{ item.page }}" target="_blank" rel="noopener">Its page on PickiPedia, with its tracks</a></div>{% endif %}
       </div>
@@ -184,7 +184,7 @@
       </div>
       {% elif item.player %}
       <div class="media">
-        {% if item.player.kind == 'video' %}<div class="stage{% if not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.player.poster }}">{% if item.player.poster %}<img loading="lazy" src="{{ item.player.poster }}" alt="" onerror="this.remove(); this.parentNode.classList.add('bare')">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
+        {% if item.player.kind == 'video' %}<div class="stage{% if not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.player.poster }}">{% if item.player.poster %}<img loading="lazy" src="{{ item.player.poster }}" alt="" onerror="this.parentNode.classList.add('bare'); this.remove()">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
         {% else %}<audio src="{{ item.player.src }}" controls preload="none"></audio>{% endif %}
       </div>
       {% endif %}

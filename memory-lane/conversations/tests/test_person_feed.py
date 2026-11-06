@@ -137,6 +137,14 @@ class PersonFeedTest(TestCase):
             feed = person_feed.feed('justin', http=Down())
         self.assertEqual([i['kind'] for i in feed['items']], ['message'])
 
+    def test_a_block_the_clock_estimated_reads_as_a_whole_number(self):
+        self.said('Cluck Old Hen', 0)
+        clock = mock.Mock(block_at=lambda ts: 26324303.0)
+        with mock.patch.object(person_feed, '_wiki', side_effect=OSError), \
+                mock.patch('conversations.services.eth_blocks.BlockClock', return_value=clock):
+            page = person_feed.feed('justin', http=FakeWiki())
+        self.assertEqual(page['items'][0]['block_s'], '26,324,303')
+
     def test_only_people_have_pages(self):
         self.assertIsNone(person_feed.feed('magent', http=FakeWiki()))
         self.assertEqual(Client().get('/people/magent/').status_code, 404)

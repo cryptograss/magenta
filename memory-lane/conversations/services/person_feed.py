@@ -178,7 +178,7 @@ def feed(name, http=None):
     for item in items:
         if not item.get('block'):
             item['block'] = clock.block_at(item['at'].timestamp())
-        item['block_s'] = f"{item['block']:,}" if item.get('block') else ''
+        item['block_s'] = f"{int(item['block']):,}" if item.get('block') else ''
     look = knobs.looks().get(name, {})
     return {'name': name, 'wiki_name': user, 'page': f"{pickipedia_url()}/wiki/User:{user.replace(' ', '_')}",
             'contribs_page': f"{pickipedia_url()}/wiki/Special:Contributions/{user.replace(' ', '_')}",
