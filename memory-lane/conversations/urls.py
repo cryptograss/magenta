@@ -152,6 +152,7 @@ urlpatterns = [
     path('api/wikilinks/', views_moods.api_wikilinks, name='api_wikilinks'),
     path('api/mentions/<slug:name>/', views_moods.api_mentions, name='api_mentions'),
     path('api/wiki/preview/', views_moods.api_wiki_preview, name='api_wiki_preview'),
+    path('api/wiki/exists/', views_moods.api_wiki_exists, name='api_wiki_exists'),
     path('api/people/<str:name>/card/', views_moods.api_person_card, name='api_person_card'),
     path('api/people/<str:name>/feed/', views_moods.api_person_feed, name='api_person_feed'),
     path('people/<str:name>/', views_moods.person_page, name='person'),

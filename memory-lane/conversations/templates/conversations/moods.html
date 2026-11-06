@@ -19,6 +19,7 @@
     --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1;
     --human: #2a5d9f; --agent: #b8106b; --code: #f3efe8; --mention: #fff3c4; --for-me: #d9a400;
     --hover: #f6f3ee; --warn-ink: #7a4b00; --warn-bg: #ffe9b0; --dot-edge: #d6cfc2; --err: #b3261e;
+    --wl-blue: #3b6fb6; --wl-red: #b5574d;  /* wiki links: a page that exists, one that doesn't yet */
     --heat-1: #5a9a6e; --heat-2: #2f8a55;  /* a Mood's warmth: sage, then a deeper green (moodWarmth; Justin, 5 Nov: amber and red felt urgent) */
     --spoke-h: #4f9466;  /* a person spoke lately: a soft green (moodWarmth; Justin, 5 Nov: orange felt urgent; 1 Nov: #2e7d32 was "too much") */
   }
@@ -29,6 +30,7 @@
       --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b;
       --human: #86b4f0; --agent: #ef5aa6; --code: #29252c; --mention: #4a3f12; --for-me: #c99a1e;
       --hover: #262228; --warn-ink: #ffd27a; --warn-bg: #3b2c08; --dot-edge: #4d4652; --err: #ff8a80;
+      --wl-blue: #8fb4ea; --wl-red: #e2918a;
       --heat-1: #8fc4a0; --heat-2: #7dd49c;
       --spoke-h: #93c9a4;
     }
@@ -727,6 +729,10 @@
   .turn .body th { background: var(--code); font-weight: 600; }
   .turn .body a { color: var(--human); }
   .turn .body a.wikilink { color: var(--accent); text-decoration: underline dotted; }
+  /* A link to a PickiPedia page that exists is blue, to one that doesn't yet is red, as on the wiki (Justin,
+     6 Nov: "soft and visible in both light and dark modes"); until the wiki has said, the accent. */
+  .turn .body a.wikilink.blue { color: var(--wl-blue); }
+  .turn .body a.wikilink.red { color: var(--wl-red); text-decoration-style: dashed; }
   /* A Yarn clip: a card until pressed, then Yarn's player in its place. */
   .turn .body a.yarn { display: inline-block; margin: 4px 0; padding: 6px 12px; border: 1px solid var(--line);
     border-radius: 8px; background: var(--panel); color: var(--ink); text-decoration: none; font-size: .95em; }
@@ -3666,6 +3672,46 @@
     } catch (err) { note.textContent = err.message; }
   });
 
+  // --- Wiki links: red or blue ----------------------------------------------
+  // Each [[link]] in a message asks, once, whether its page exists (/api/wiki/exists/, titles batched a tick
+  // at a time): blue if so, red if not, as PickiPedia shows them. What's known is kept for the page's life;
+  // a page made meanwhile turns blue on the next message that names it, or a reload.
+  const wikiKnown = new Map();  // title -> true/false
+  let wikiAsking = null;
+  const wikiPending = new Map();  // title -> [a, ...]
+  function wikiTitleOfLink(a) {
+    const m = (a.getAttribute('href') || '').match(/\/wiki\/([^#?]+)/);
+    if (!m) return '';
+    try { return decodeURIComponent(m[1]).replace(/_/g, ' ').trim(); } catch (e) { return ''; }
+  }
+  function paintWikiLink(a, exists) { a.classList.toggle('blue', exists === true); a.classList.toggle('red', exists === false); }
+  function markWikiLinks(el) {
+    el.querySelectorAll('.body a.wikilink').forEach(a => {
+      const title = wikiTitleOfLink(a);
+      if (!title) return;
+      if (wikiKnown.has(title)) { paintWikiLink(a, wikiKnown.get(title)); return; }
+      if (!wikiPending.has(title)) wikiPending.set(title, []);
+      wikiPending.get(title).push(a);
+    });
+    if (wikiPending.size && !wikiAsking) wikiAsking = setTimeout(askWikiExists, 60);
+  }
+  async function askWikiExists() {
+    wikiAsking = null;
+    const titles = [...wikiPending.keys()].slice(0, 50);
+    const links = new Map(titles.map(t => [t, wikiPending.get(t)]));
+    titles.forEach(t => wikiPending.delete(t));
+    try {
+      const r = await fetch('/api/wiki/exists/?titles=' + encodeURIComponent(titles.join('|')));
+      if (!r.ok) return;
+      const d = await r.json();
+      for (const [title, exists] of Object.entries(d.exists || {})) {
+        wikiKnown.set(title, exists);
+        (links.get(title) || []).forEach(a => paintWikiLink(a, exists));
+      }
+    } catch (e) { /* the links keep the accent */ }
+    if (wikiPending.size) wikiAsking = setTimeout(askWikiExists, 60);
+  }
+
   // --- Yarn clips ----------------------------------------------------------
   // The server marks a pasted Yarn clip as a card (a.yarn, data-yarn = its id,
   // checked as a UUID). The card shows Yarn's captioned GIF of the clip,
@@ -3846,6 +3892,7 @@
     markTurn(el, t.mentions || []);
     markAgentMentions(el, t);
     el.querySelectorAll('a.yarn[data-yarn]').forEach(decorateYarn);
+    markWikiLinks(el);
     if (el.querySelector('.body a[href^="http"]:not([class])')) cardsWatch.observe(el);  // a preview, as it nears the screen
     // A memo whose words never came (ElevenLabs out of credit, say): its sender may have it heard again.
     if (t.is_human && viewer && t.sender === viewer && !t.deleted && /🎙 \[voice memo[^\]]*\]\([^)]*\)\n\n\(not transcribed: /.test(t.text || '')) {
@@ -6453,6 +6500,13 @@
   main.addEventListener('wheel', touched, { passive: true });
   main.addEventListener('pointerdown', touched, { passive: true });
   addEventListener('keydown', e => { if (/^(PageUp|ArrowUp|Home)$/.test(e.key)) touched(); });
+  // The footer grows after they've scrolled to the end (someone starts typing, an activity line, the agents'
+  // settings row drawn late): it stands on the last line, and half of it is hidden behind the footer
+  // (slvrbckt, #general, 6 Nov: "the browser resets up a half-line"). At the bottom when it grows: still at
+  // the bottom after. Scrolled up: left alone.
+  let atBottom = true;
+  main.addEventListener('scroll', () => { atBottom = main.scrollHeight - main.scrollTop - main.clientHeight < 3; }, { passive: true });
+  new ResizeObserver(() => { if (atBottom) main.scrollTop = main.scrollHeight; }).observe(document.getElementById('footer'));
   function toNewest() {
     main.scrollTop = main.scrollHeight;
     if (settling) settling.abort();
@@ -10366,9 +10420,11 @@
   });
 
   // The Tidings button's two badges: what's new since the viewer last opened Tidings (Justin, 21 Oct).
-  // Never opened here: counted from now, not from the first link ever promoted.
+  // Never opened here (a new browser, a PWA just installed): counted from a day ago, so what came in
+  // the last day is news here too, not from the first link ever promoted (Justin, 6 Nov: a tiding posted
+  // the day before showed no badge in a browser that had never opened Tidings).
   function tidingsSeenSince() {
-    if (!store.get('tidingsSeen')) store.set('tidingsSeen', new Date().toISOString());
+    if (!store.get('tidingsSeen')) store.set('tidingsSeen', new Date(Date.now() - 86400 * 1000).toISOString());
     return store.get('tidingsSeen');
   }
   let badgesWere = null;  // what the badges said last: more since means Tidings has something new to draw
