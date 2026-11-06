@@ -203,8 +203,12 @@ def from_release(text):
             'image_file': str(data.get('thumbnail') or ''), 'name': str(data.get('title') or '').strip()}
 
 
-def preview(title, http=None):
-    """{'title', 'url', 'summary', 'facts', 'art', 'image'} for a page, or None if there's no such page."""
+def preview(title, http=None, newer_than=None):
+    """{'title', 'url', 'summary', 'facts', 'art', 'image'} for a page, or None if there's no such page.
+
+    newer_than: seconds; a kept copy older than that is fetched again (a person card: an edit to their
+    User page shows within minutes, not the six hours a link's hover waits)."""
+    import time
     import requests
     from . import embeds
     from .mood_view import pickipedia_url
@@ -213,7 +217,7 @@ def preview(title, http=None):
         return None
     key = 'wiki-preview:' + hashlib.sha1(title.encode()).hexdigest()
     found = cache.get(key)
-    if found is not None:
+    if found is not None and not (newer_than and found and time.time() - found.get('at', 0) > newer_than):
         return found or None
     http = http or requests
     try:
@@ -232,6 +236,6 @@ def preview(title, http=None):
     brief = from_release(text) if name.startswith('Release:') else from_wikitext(text)
     image = (embeds.wiki_file(brief['image_file']) or {}).get('src', '') if brief['image_file'] else ''
     found = {'title': brief.get('name') or name, 'url': f"{pickipedia_url()}/wiki/{name.replace(' ', '_')}",
-             'summary': brief['summary'], 'facts': brief['facts'], 'art': brief['art'], 'image': image}
+             'summary': brief['summary'], 'facts': brief['facts'], 'art': brief['art'], 'image': image, 'at': time.time()}
     cache.set(key, found, KEEP_FOR)
     return found

@@ -18,6 +18,7 @@ EDITS = 5
 SNIPPET = 160
 LOOK_BACK = 40       # their newest posts looked through, for the five with words and for the trail's ✎
 EDITS_KEPT = 300     # seconds: what PickiPedia says they edited
+PROFILE_KEPT = 120   # seconds: their User page, in brief (Justin, 5 Nov: an edit there took hours to show)
 
 
 def wiki_name(name):
@@ -115,5 +116,5 @@ def card(name, http=None):
              for slug, at in latest if slug in titles]
 
     return {'name': name, 'wiki_name': user, 'page': f"{pickipedia_url()}/wiki/User:{user.replace(' ', '_')}",
-            'profile': wiki_preview.preview(f'User:{user}', http=http), 'messages': messages,
+            'profile': wiki_preview.preview(f'User:{user}', http=http, newer_than=PROFILE_KEPT), 'messages': messages,
             'edits': edits(name, http=http), 'trail': trail}
