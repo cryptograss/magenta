@@ -1337,6 +1337,15 @@ def api_yarn(request, clip):
     return JsonResponse({'url': url, **({'still': still} if still else {})})
 
 @require_GET
+def api_wiki_exists(request):
+    """?titles=A|B|C (up to 50): {"exists": {title: true/false}}, so a message's [[links]] can be blue or red
+    as PickiPedia shows them (services/wiki_exists.py)."""
+    from .services import wiki_exists
+    titles = [t for t in request.GET.get('titles', '').split('|') if t.strip()][:50]
+    return JsonResponse({'exists': wiki_exists.exists(titles)})
+
+
+@require_GET
 def api_wiki_preview(request):
     """?title=: a PickiPedia page in brief, for the card shown on a link to it (services/wiki_preview.py).
     {'title', 'url', 'summary', 'facts', 'art', 'image'}; 404 if there's no such page."""

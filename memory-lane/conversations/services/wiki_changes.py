@@ -127,8 +127,9 @@ def forget(title, user=''):
     title = re.sub(r'\s+', ' ', (title or '').replace('_', ' ')).strip()
     if not title:
         return
-    from . import interface_words, wiki_preview
+    from . import interface_words, wiki_exists, wiki_preview
     wiki_preview.forget(title)
+    wiki_exists.forget(title)
     interface_words.forget(title)
     if title.startswith('User:'):
         from .emergent_powers import FRAMES_KEY
