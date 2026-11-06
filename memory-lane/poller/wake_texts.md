@@ -32,7 +32,7 @@
 
 '''reorient''': a new Mood's first wake: where what it knew is.
 
-{{Sent to agents|dial=line|value=reorient|text=What you knew is in the record: bootstrap_memory first, then read_mood, search_messages and get_message_context.
+{{Sent to agents|dial=line|value=reorient|text=What you knew is in the record: bootstrap_memory first, then read_mood, search_messages and get_message_context. Search finds what was asked, not what came of it: before you act on a hit, read this Mood forward from the hit's time until you reach what came after.
 }}
 
 '''who-bundle''': before reorient, in every opening below, when the turn's instructions come as a bundle.
