@@ -344,7 +344,7 @@
       + humans.map((h, i) => {
         const wiki = h.wiki_name ? ` <span class="meta">(<a href="https://pickipedia.xyz/wiki/User:${encodeURIComponent(h.wiki_name)}" target="_blank" rel="noopener">${esc(h.wiki_name)}</a>)</span>` : '';
         const how = h.mood ? `<a href="/moods/${encodeURIComponent(h.mood)}/">${esc(h.how)}</a>` : esc(h.how);
-        return `<tr><td>${i + 1}</td><td><b>${esc(h.name)}</b>${wiki}</td>`
+        return `<tr><td>${i + 1}</td><td><b><a href="/people/${encodeURIComponent(h.name)}/" title="Their last posts here and edits on PickiPedia, as one stream">${esc(h.name)}</a></b>${wiki}</td>`
           + `<td><b>${esc(ago(h.last_seen_at))}</b> <span class="meta">(${esc(when(h.last_seen_at))})</span></td>`
           + `<td>${how}</td></tr>`;
       }).join('') + `</tbody></table>`;
