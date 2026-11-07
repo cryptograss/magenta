@@ -1818,7 +1818,7 @@ def api_wiki_hook(request):
 def wiki_hooks_page(request):
     """What happens here when a page changes on PickiPedia, and the log of it (services/wiki_hooks.py)."""
     from .services import wiki_hooks
-    return render(request, 'conversations/mood_wiki_hooks.html', {'state': wiki_hooks.state(), 'embed': True})
+    return render(request, 'conversations/mood_hooks.html', {'state': wiki_hooks.state(), 'embed': True})
 
 
 @require_GET

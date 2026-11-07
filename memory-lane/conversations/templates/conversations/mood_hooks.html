@@ -36,9 +36,42 @@
   .push { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px; }
   .push .no { color: var(--warn); }
   .push .bad { color: var(--err); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex-wrap: wrap; }
+  header .brand { font-weight: 700; color: var(--accent); text-decoration: none; }
+  header nav { display: flex; gap: 12px; font-size: 13px; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  header nav a:hover, header nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
 </style>
+{% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
+     goes there, which opens it without loading anything again. -->
+<style>body > header { display: none; }</style>
+<script>
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
+    const to = new URL(a.href, location.href);
+    if (to.origin !== location.origin) { a.target = '_top'; return; }
+    if (to.pathname === location.pathname && to.hash) return;  // within this page
+    e.preventDefault();
+    parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
+  });
+</script>{% endif %}
 </head>
 <body>
+<header>
+  <a class="brand" href="/moods/">magenta</a>
+  <nav>
+    <a href="/moods/status/">status</a>
+    <a href="/moods/tidings/">tidings</a>
+    <a href="/moods/polls/">polls</a>
+    <a href="/moods/prompts/">prompts</a>
+    <a href="/moods/todo/">todo</a>
+    <a href="/moods/verify/">verify</a>
+    <a href="/moods/hooks/" aria-current="page">wiki hooks</a>
+    <a href="/moods/settings/">settings</a>
+  </nav>
+</header>
 <main>
   <h1>Wiki hooks</h1>
   <p class="lede">What happens here when a page changes on PickiPedia. PickiPedia pushes each save to
