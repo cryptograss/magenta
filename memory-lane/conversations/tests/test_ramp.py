@@ -107,6 +107,22 @@ class RampTest(TestCase):
         self.assertEqual(ramp.temperature({'pushed': self.now - timedelta(days=9), 'mentions': []}, self.now), 'cool')
         self.assertEqual(ramp.temperature({'pushed': None, 'mentions': []}, self.now), 'cold')
 
+    def test_a_slow_record_leaves_the_mentions_out_not_the_page(self):
+        from django.db import OperationalError
+        self.say('re', 'magenta#7 again')
+        with mock.patch.object(ramp, '_candidates', lambda want, now: None):
+            board = ramp.board(now=self.now)
+        self.assertTrue(board['mentions_missing'])
+        self.assertEqual(next(i for i in board['open'] if i['number'] == 7)['mentions'], [])
+        cache.clear()
+        with mock.patch('conversations.models.Message.objects') as objects:
+            objects.filter.side_effect = OperationalError('canceling statement due to statement timeout')
+            self.assertIsNone(ramp._candidates(None, self.now))
+        cache.clear()
+        board = ramp.board(now=self.now)
+        self.assertFalse(board['mentions_missing'])
+        self.assertEqual(len(next(i for i in board['open'] if i['number'] == 7)['mentions']), 1)
+
     def test_an_open_merge_ask_is_shown(self):
         self.say('re', '<merge to="magenta#7, the foo fix"/>')
         pull = next(i for i in ramp.board(now=self.now)['open'] if i['number'] == 7)

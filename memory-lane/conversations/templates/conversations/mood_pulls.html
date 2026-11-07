@@ -107,6 +107,7 @@
     mention, within a day, three, two weeks, or longer.
     <a href="https://pickipedia.xyz/wiki/Cryptograss:Moods/ramp/Plan" target="_blank" rel="noopener">The plan</a>.</p>
   {% if board.error %}<p class="err">{{ board.error }}</p>{% endif %}
+  {% if board.mentions_missing %}<p class="err">The record took too long to say where each was mentioned: "last said" is empty this time.</p>{% endif %}
 
   <h2>Open</h2>
   <p class="sorts">Sort by <button type="button" data-sort="active" aria-pressed="true">last activity</button>

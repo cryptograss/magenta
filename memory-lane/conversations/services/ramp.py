@@ -29,6 +29,10 @@ BOARD_FOR = 60          # seconds the page's data is kept: githouse fetches ever
 CARDS_KEY = 'ramp:cards'
 CARDS_FOR = 300         # seconds the cards are kept: they're written hourly, or when GitHub's webhook says
 MENTIONS_WITHIN = timedelta(days=21)
+MENTIONS_KEY = 'ramp:mentions'
+MENTIONS_FOR = 300      # seconds the mentions are kept: the record is the slow part of the page
+MENTIONS_BUDGET_MS = 4000  # the query's most, on PostgreSQL: past it, the page shows no mentions, not a spinner
+MENTION_ROWS = 3000     # candidate posts read at most, newest first
 MERGED_SHOWN = 5
 NAMES_SHOWN = 12
 LOG_SHOWN = 15
@@ -154,11 +158,32 @@ def _needles(item):
     return out
 
 
-def mentions(items, now):
-    """Each item's last two mentions in any Mood, newest first: item['mentions'] = [{'mood', 'id', 'at', 'who'}]."""
-    from django.db.models import Q, TextField
+def _candidates(want, now):
+    """The posts that might name something, newest first, or None if the record took longer than its budget.
+    One query, every item's needles OR'd: at most MENTION_ROWS posts in MENTIONS_WITHIN days, so a very
+    busy name can crowd a quiet one's out of the window -- a cap, not a promise (re's review of #420)."""
+    from django.db import OperationalError, connection, transaction
+    from django.db.models import TextField
     from django.db.models.functions import Cast
     from conversations.models import Message
+    try:
+        query = (Message.objects.filter(created_at__gte=now - MENTIONS_WITHIN, mood__isnull=False, is_sidechain=False)
+                 .exclude(sender_id__in=_QUIET_SENDERS).annotate(t=Cast('content', TextField())).filter(want)
+                 .select_related('mood').order_by('-created_at')[:MENTION_ROWS])
+        with transaction.atomic():
+            if connection.vendor == 'postgresql':
+                with connection.cursor() as cursor:
+                    cursor.execute(f'SET LOCAL statement_timeout = {int(MENTIONS_BUDGET_MS)}')
+            return [(m.mood.slug, str(m.id), m.created_at, m.sender_id, m.content) for m in query]
+    except OperationalError as e:  # the budget ran out (or the database is away): the page stands without them
+        log.warning('ramp: mentions: %s', e)
+        return None
+
+
+def mentions(items, now):
+    """Each item's last two mentions in any Mood, newest first: item['mentions'] = [{'mood', 'id', 'at', 'who'}].
+    False if the record couldn't say in time (the page says so); True otherwise."""
+    from django.db.models import Q
     from .mood_view import prose
     want, patterns = Q(), []
     for item in items:
@@ -170,19 +195,22 @@ def mentions(items, now):
         for needle in _needles(item):
             want |= Q(t__icontains=needle)
     if not patterns:
-        return items
-    rows = (Message.objects.filter(created_at__gte=now - MENTIONS_WITHIN, mood__isnull=False)
-            .exclude(sender_id__in=_QUIET_SENDERS).annotate(t=Cast('content', TextField())).filter(want)
-            .select_related('mood').order_by('-created_at')[:3000])
-    for m in rows:
-        text = prose(m.content)
+        return True
+    key = MENTIONS_KEY + ':' + str(abs(hash(tuple(sorted(n for i, _ in patterns for n in _needles(i))))))
+    rows = cache.get(key)
+    if rows is None:
+        rows = _candidates(want, now)
+        if rows is None:
+            return False
+        cache.set(key, rows, MENTIONS_FOR)
+    for slug, mid, at, who, content in rows:
+        text = prose(content)
         if not text:
             continue
         for item, pattern in patterns:
             if len(item['mentions']) < 2 and pattern.search(text):
-                item['mentions'].append({'mood': m.mood.slug, 'id': str(m.id), 'at': m.created_at,
-                                         'who': m.sender_id})
-    return items
+                item['mentions'].append({'mood': slug, 'id': mid, 'at': at, 'who': who})
+    return True
 
 
 def asks(items):
@@ -284,7 +312,7 @@ def board(now=None):
                           'deploy': '', 'opened': None, 'pushed': _when(unix), 'head': sha,
                           'size': _size(held[name], base, sha), 'held': True})
     items = [i for i in items if i['state'] != 'merged'] + [i for i in items if i['state'] == 'merged']
-    mentions(items, now)
+    said = mentions(items, now)
     try:
         asks(items)
     except Exception as e:  # noqa: BLE001 -- the asks are a nicety here
@@ -309,7 +337,8 @@ def board(now=None):
                                   'at': _when(unix), 'subject': subject})
     names.sort(key=lambda n: n['at'] or now, reverse=True)
     result = {'open': items, 'merged': merged, 'names': names[:NAMES_SHOWN], 'log': log_tail(),
-              'repos': sorted(held), 'error': got.get('error', ''), 'at': now}
+              'repos': sorted(held), 'error': got.get('error', ''), 'at': now,
+              'mentions_missing': not said}
     cache.set(KEY, result, BOARD_FOR)
     return result
 
