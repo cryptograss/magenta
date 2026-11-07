@@ -282,7 +282,11 @@ MOOD_WIKI_NAMES = os.getenv('MOOD_WIKI_NAMES', '')
 # public key first (services/sealing.py; scripts/recovery_key.py makes a pair). Its private half
 # is kept offline, never here. Unset: nothing can be taken back at all.
 MOOD_RECOVERY_PUBLIC_KEY = os.getenv('MOOD_RECOVERY_PUBLIC_KEY', '')
-# A Mood's to-do list asks GitHub which pull requests are merged (conversations/services/todo.py):
+# githouse's copy of our repositories (conversations/services/githouse.py), maybelle's canonical copies mounted
+# read-only (maybelle-config#250; in a Mood container, hunter's mirror of them): merged is read from git here,
+# and branches.json is served from it at /api/branches/. Missing: GitHub is asked instead.
+GITHOUSE_DIR = os.getenv('GITHOUSE_DIR', '/srv/git')
+# A Mood's to-do list asks GitHub which pull requests are merged when githouse can't say (services/todo.py):
 # unsigned, sixty requests an hour; a read-only token, if set, lifts that.
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN', '')
 # GitHub's webhook (conversations/services/todo.py): a pull request merged ticks

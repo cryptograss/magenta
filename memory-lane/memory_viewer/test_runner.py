@@ -7,10 +7,13 @@ Yarn fetch's thread writing into whichever test was running when Yarn answered).
   MEMORY_LANE_TEST_NETWORK=1 to let it out (to see what reaches it, say).
 - A Yarn clip said in a post is kept in the background (yarn_kept.keep_later): not in tests, whose own
   tests call yarn_kept.keep with a fake Yarn.
+- githouse's mount (settings.GITHOUSE_DIR) is an empty directory: in a Mood container /srv/git is hunter's
+  real mirror, and a test reading it would find #313 merged. A test that wants one makes its own.
 """
 
 import os
 import socket
+import tempfile
 
 from django.conf import settings
 from django.test.runner import DiscoverRunner
@@ -63,6 +66,7 @@ class Runner(DiscoverRunner):
     def setup_test_environment(self, **kwargs):
         super().setup_test_environment(**kwargs)
         self._reopen = shut_network() if os.environ.get('MEMORY_LANE_TEST_NETWORK') != '1' else None
+        settings.GITHOUSE_DIR = tempfile.mkdtemp(prefix='githouse-none-')
         from conversations.services import yarn_kept
         self._keep_later = yarn_kept.keep_later
         yarn_kept.keep_later = lambda text: None

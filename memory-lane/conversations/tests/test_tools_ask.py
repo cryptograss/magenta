@@ -113,6 +113,29 @@ class AskTest(TestCase):
             merged[231] = True
             self.assertEqual(self.asked(), [])
 
+    def test_a_merge_ask_naming_a_mergeable_clears_when_githouse_has_it_merged(self):
+        # Cryptograss:Moods/ramp/Plan, section 1: a mergeable is <repo>:<branch>, named once; merged means its name
+        # moved to refs/merged/ in githouse's copy (services/githouse.py). No GitHub in it at all.
+        import tempfile
+        from unittest import mock
+
+        from django.test import override_settings
+
+        from conversations.services.tools_ask import named_branches
+        mount = tempfile.mkdtemp()
+        with override_settings(GITHOUSE_DIR=mount):
+            self.assertEqual(named_branches('magenta:re/foo, the loop guard'), [('magenta', 're/foo')])
+            self.assertEqual(named_branches('maybelle:re/a and pickipedia:magent/b/c'),
+                             [('maybelle-config', 're/a'), ('pickipedia', 'magent/b/c')])
+            self.assertEqual(named_branches('note: this one; see https://github.com/x/y'), [])
+            self.assertEqual(named_branches('nonesuch:re/foo'), [])  # a repository githouse doesn't hold
+            self.say('re', '<merge to="magenta:re/foo"/>', 1)
+            with mock.patch('conversations.services.githouse.branch_merged', lambda repo, branch: False) as said:
+                self.assertEqual([t['kind'] for t in self.asked()], ['merge'])
+            cache.clear()
+            with mock.patch('conversations.services.githouse.branch_merged', lambda repo, branch: (repo, branch) == ('magenta', 're/foo')):
+                self.assertEqual(self.asked(), [])
+
     def test_a_redeploy_ask_clears_only_when_its_servers_finish(self):
         # Justin, 31 Oct: any deploy event answered a redeploy ask -- pickipedia's for a hunter ask, or one only begun.
         from conversations.services.tools_ask import named_servers
