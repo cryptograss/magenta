@@ -28,11 +28,19 @@ KEY = 'ramp:board'
 BOARD_FOR = 60          # seconds the page's data is kept: githouse fetches every minute
 CARDS_KEY = 'ramp:cards'
 CARDS_FOR = 300         # seconds the cards are kept: they're written hourly, or when GitHub's webhook says
-MENTIONS_WITHIN = timedelta(days=21)
-MENTIONS_KEY = 'ramp:mentions'
-MENTIONS_FOR = 300      # seconds the mentions are kept: the record is the slow part of the page
-MENTIONS_BUDGET_MS = 4000  # the query's most, on PostgreSQL: past it, the page shows no mentions, not a spinner
-MENTION_ROWS = 3000     # candidate posts read at most, newest first
+# Who named what: an index of every post naming a pull request or an owner's branch, built once (in the
+# background) over MENTIONS_WITHIN, then kept up from what's new only -- as links.py keeps the '#m-' links.
+# The page asked the whole record afresh at first (#420), and on maybelle that took past its 4 s budget.
+MENTIONS_WITHIN = timedelta(days=60)
+REFS = 'ramp:refs'                # {key: [mention, mention]}, newest first
+REFS_BUILT = 'ramp:refs:built'    # when the whole index was last built
+REFS_CURSOR = 'ramp:refs:cursor'  # the newest post it has read
+REFS_FRESH = 'ramp:refs:fresh'    # when it last read what's new
+REFS_BUILDING = 'ramp:refs:building'
+REBUILD_EVERY = 3600    # seconds: a post imported out of order is met within the hour
+FRESH_EVERY = 30        # seconds between reads of what's new
+BUILD_BUDGET_MS = 60000  # the build's most, on PostgreSQL; it runs off the request
+BUILD_IN_BACKGROUND = True  # tests build in the request, so nothing writes into another test's database
 MERGED_SHOWN = 5
 NAMES_SHOWN = 12
 LOG_SHOWN = 15
@@ -135,82 +143,161 @@ def _aliases(repo):
 
 
 def _pattern(item):
-    """What naming this piece of work looks like in a post."""
+    """What naming this piece of work looks like in a post (refs_in finds these; kept for reading it plainly)."""
     ways = []
     if item.get('number'):
         n = item['number']
         ways.append(rf'\b(?:{"|".join(map(re.escape, _aliases(item["repo"])))})#{n}\b')
         ways.append(rf'/{re.escape(item["repo"])}/pull/{n}\b')
         if item['repo'] == 'magenta':  # bare, a number is magenta's (tools_ask.named_pulls)
-            ways.append(rf'(?<![\w.#/-])#{n}\b')
+            ways.append(rf'(?<![\w.#/&-])#{n}\b')
     if '/' in (item.get('branch') or ''):
         ways.append(rf'(?<![\w/.-]){re.escape(item["branch"])}(?![\w/-])')
     return re.compile('|'.join(ways), re.I) if ways else None
 
 
-def _needles(item):
-    """Plain strings a post naming it must contain: the database narrows by these, the pattern decides."""
-    out = []
-    if item.get('number'):
-        out += [f'#{item["number"]}', f'/pull/{item["number"]}']
-    if '/' in (item.get('branch') or ''):
-        out.append(item['branch'])
-    return out
+_PULL_REF = re.compile(r'(?:\b([A-Za-z][\w.-]*))?#(\d+)\b')
+_URL_REF = re.compile(r'/cryptograss/([\w.-]+)/pull/(\d+)\b', re.I)
+_BRANCH_REF = re.compile(r'(?<![\w/.-])([a-z][a-z0-9-]*)/([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)')
+# What the database narrows by before a post is read: a number after '#', a pull request's address, or a slash.
+_MAYBE = r'#[0-9]|/pull/[0-9]|[a-z]/[A-Za-z0-9]'
 
 
-def _candidates(want, now):
-    """The posts that might name something, newest first, or None if the record took longer than its budget.
-    One query, every item's needles OR'd: at most MENTION_ROWS posts in MENTIONS_WITHIN days, so a very
-    busy name can crowd a quiet one's out of the window -- a cap, not a promise (re's review of #420)."""
-    from django.db import OperationalError, connection, transaction
+def refs_in(text, owners):
+    """The work a post names: {('pull', repo, n)} and {('branch', '<owner>/<name>')}, owners being the names a
+    branch may start with. Bare, a number is magenta's; a prefix not known here names nothing."""
+    from .tools_ask import _REPOS
+    found = set()
+    for m in _URL_REF.finditer(text):
+        found.add(('pull', m[1].lower(), int(m[2])))
+    for m in _PULL_REF.finditer(text):
+        if m[1] is None and m.start() and text[m.start() - 1] in '#/&.-':  # an entity, a URL's anchor
+            continue
+        repo = _REPOS.get((m[1] or 'magenta').lower())
+        if repo:
+            found.add(('pull', repo, int(m[2])))
+    for m in _BRANCH_REF.finditer(text):
+        if m[1] in owners:
+            found.add(('branch', f'{m[1]}/{m[2]}'.rstrip('.')))
+    return found
+
+
+def _owners():
+    """The names a branch may start with: everyone here, and every prefix githouse holds a branch under."""
+    from conversations.models import ThinkingEntity
+    from . import githouse
+    owners = {n.lower() for n in ThinkingEntity.objects.values_list('name', flat=True)}
+    for name in githouse.repositories():
+        for ref in _refs(githouse.repository(name)):
+            parts = ref.split('/')
+            if len(parts) > 3 and parts[1] in ('heads', 'merged', 'closed'):
+                owners.add(parts[2].lower())
+    return owners
+
+
+def _posts(since):
+    """(mood, id, at, who, text) of every post said in a Mood since then that might name some work, oldest first:
+    no tool calls, thinking, wrappers or wakes -- what a person or an emergent said."""
     from django.db.models import TextField
     from django.db.models.functions import Cast
-    from conversations.models import Message
+    from conversations.models import Message, Mood
+    from .mood_view import MACHINERY_SENDERS, is_wrapper, prose
+    rows = (Message.objects.filter(mood_id__in=list(Mood.objects.values_list('id', flat=True)), is_sidechain=False,
+                                   created_at__gt=since)
+            .exclude(sender_id__in=MACHINERY_SENDERS | set(_QUIET_SENDERS))
+            .annotate(t=Cast('content', TextField())).filter(t__regex=_MAYBE)
+            .select_related('mood', 'tooluse', 'thought').order_by('created_at'))
+    for m in rows:
+        if hasattr(m, 'tooluse') or hasattr(m, 'thought'):
+            continue
+        text = prose(m.content)
+        if text and not is_wrapper(text):
+            yield m.mood.slug, str(m.id), m.created_at, m.sender_id, text
+
+
+def _add(index, owners, posts):
+    """Each post into the index: the two newest per piece of work."""
+    for slug, mid, at, who, text in posts:
+        for key in refs_in(text, owners):
+            here = index.setdefault(key, [])
+            if any(e['id'] == mid for e in here):
+                continue
+            here.insert(0, {'mood': slug, 'id': mid, 'at': at, 'who': who})
+            here.sort(key=lambda e: e['at'], reverse=True)
+            del here[2:]
+
+
+def _build():
+    """The whole index, over MENTIONS_WITHIN; under a budget on PostgreSQL."""
+    from django.db import connection, transaction
+    from django.utils import timezone
+    started = timezone.now()
+    index, owners = {}, _owners()
     try:
-        query = (Message.objects.filter(created_at__gte=now - MENTIONS_WITHIN, mood__isnull=False, is_sidechain=False)
-                 .exclude(sender_id__in=_QUIET_SENDERS).annotate(t=Cast('content', TextField())).filter(want)
-                 .select_related('mood').order_by('-created_at')[:MENTION_ROWS])
         with transaction.atomic():
             if connection.vendor == 'postgresql':
                 with connection.cursor() as cursor:
-                    cursor.execute(f'SET LOCAL statement_timeout = {int(MENTIONS_BUDGET_MS)}')
-            return [(m.mood.slug, str(m.id), m.created_at, m.sender_id, m.content) for m in query]
-    except OperationalError as e:  # the budget ran out (or the database is away): the page stands without them
-        log.warning('ramp: mentions: %s', e)
-        return None
+                    cursor.execute(f'SET LOCAL statement_timeout = {int(BUILD_BUDGET_MS)}')
+            _add(index, owners, _posts(started - MENTIONS_WITHIN))
+        cache.set(REFS, index, None)
+        cache.set(REFS_CURSOR, started, None)
+        cache.set(REFS_BUILT, started.timestamp(), None)
+        cache.set(REFS_FRESH, started.timestamp(), None)
+    except Exception as e:  # noqa: BLE001 -- the next page asks again, an hour on if it ran too long
+        log.warning('ramp: mentions index: %s', e)
+        cache.set(REFS_BUILT, started.timestamp() - REBUILD_EVERY + 600, None)  # again in ten minutes
+    finally:
+        cache.delete(REFS_BUILDING)
+
+
+def mention_index():
+    """{('pull', repo, n) | ('branch', name): [mention, mention]}, or None while it's first being built."""
+    import time
+    found = cache.get(REFS)
+    now = time.time()
+    if found is None or now - (cache.get(REFS_BUILT) or 0) > REBUILD_EVERY:
+        if cache.add(REFS_BUILDING, 1, BUILD_BUDGET_MS // 1000 + 30):
+            if BUILD_IN_BACKGROUND:
+                from .todo import _in_background
+                _in_background(_build)
+            else:
+                _build()
+                found = cache.get(REFS)
+        return found
+    if now - (cache.get(REFS_FRESH) or 0) > FRESH_EVERY and cache.add(REFS_BUILDING + ':fresh', 1, 30):
+        try:
+            from django.utils import timezone
+            started = timezone.now()
+            cursor = (cache.get(REFS_CURSOR) or started) - timedelta(seconds=60)  # a write still in flight
+            _add(found, _owners(), _posts(cursor))
+            cache.set(REFS, found, None)
+            cache.set(REFS_CURSOR, started, None)
+            cache.set(REFS_FRESH, now, None)
+        except Exception as e:  # noqa: BLE001 -- what's new is read next time
+            log.warning('ramp: mentions, what is new: %s', e)
+        finally:
+            cache.delete(REFS_BUILDING + ':fresh')
+    return found
 
 
 def mentions(items, now):
     """Each item's last two mentions in any Mood, newest first: item['mentions'] = [{'mood', 'id', 'at', 'who'}].
-    False if the record couldn't say in time (the page says so); True otherwise."""
-    from django.db.models import Q
-    from .mood_view import prose
-    want, patterns = Q(), []
+    False while the index is first being built (the page says so); True otherwise."""
+    index = mention_index()
     for item in items:
-        item['mentions'] = []
-        pattern = _pattern(item)
-        if pattern is None:
-            continue
-        patterns.append((item, pattern))
-        for needle in _needles(item):
-            want |= Q(t__icontains=needle)
-    if not patterns:
-        return True
-    key = MENTIONS_KEY + ':' + str(abs(hash(tuple(sorted(n for i, _ in patterns for n in _needles(i))))))
-    rows = cache.get(key)
-    if rows is None:
-        rows = _candidates(want, now)
-        if rows is None:
-            return False
-        cache.set(key, rows, MENTIONS_FOR)
-    for slug, mid, at, who, content in rows:
-        text = prose(content)
-        if not text:
-            continue
-        for item, pattern in patterns:
-            if len(item['mentions']) < 2 and pattern.search(text):
-                item['mentions'].append({'mood': slug, 'id': mid, 'at': at, 'who': who})
-    return True
+        keys = []
+        if item.get('number'):
+            keys.append(('pull', item['repo'], item['number']))
+        if '/' in (item.get('branch') or ''):
+            keys.append(('branch', item['branch']))
+        seen, found = set(), []
+        for key in keys:
+            for e in (index or {}).get(key, []):
+                if e['id'] not in seen:
+                    seen.add(e['id'])
+                    found.append(e)
+        item['mentions'] = sorted(found, key=lambda e: e['at'], reverse=True)[:2]
+    return index is not None
 
 
 def asks(items):

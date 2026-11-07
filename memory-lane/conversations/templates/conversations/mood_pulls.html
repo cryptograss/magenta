@@ -107,7 +107,7 @@
     mention, within a day, three, two weeks, or longer.
     <a href="https://pickipedia.xyz/wiki/Cryptograss:Moods/ramp/Plan" target="_blank" rel="noopener">The plan</a>.</p>
   {% if board.error %}<p class="err">{{ board.error }}</p>{% endif %}
-  {% if board.mentions_missing %}<p class="err">The record took too long to say where each was mentioned: "last said" is empty this time.</p>{% endif %}
+  {% if board.mentions_missing %}<p class="why">Reading the record for where each was mentioned: "last said" fills in within a minute.</p>{% endif %}
 
   <h2>Open</h2>
   <p class="sorts">Sort by <button type="button" data-sort="active" aria-pressed="true">last activity</button>
@@ -131,7 +131,7 @@
       <td>{% for m in i.moods %}<a href="/moods/{{ m }}/">#{{ m }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
       <td class="num size">{% if i.size %}<span class="add">+{{ i.size.added }}</span> <span class="rm">−{{ i.size.removed }}</span><br>{{ i.size.commits }} commit{{ i.size.commits|pluralize }}{% elif not i.held %}<span title="githouse doesn't copy this repository">—</span>{% endif %}</td>
       <td class="num">{% if i.pushed %}{{ i.pushed|date:"j M H:i" }}Z{% endif %}</td>
-      <td>{% for m in i.mentions %}<a class="ment" href="/moods/{{ m.mood }}/#m-{{ m.id }}">#{{ m.mood }} · {{ m.who }} · {{ m.at|date:"j M H:i" }}Z</a>{% empty %}<span class="why" title="not said in any Mood in 21 days">—</span>{% endfor %}</td>
+      <td>{% for m in i.mentions %}<a class="ment" href="/moods/{{ m.mood }}/#m-{{ m.id }}">#{{ m.mood }} · {{ m.who }} · {{ m.at|date:"j M H:i" }}Z</a>{% empty %}<span class="why" title="not said in any Mood in 60 days">—</span>{% endfor %}</td>
       <td class="why">{{ i.deploy }}</td>
     </tr>
     {% empty %}
