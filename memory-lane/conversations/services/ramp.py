@@ -40,6 +40,7 @@ REFS_BUILDING = 'ramp:refs:building'
 REBUILD_EVERY = 3600    # seconds: a post imported out of order is met within the hour
 FRESH_EVERY = 30        # seconds between reads of what's new
 BUILD_BUDGET_MS = 60000  # the build's most, on PostgreSQL; it runs off the request
+BUILD_RETRY = 600       # seconds before a build that failed is tried again
 BUILD_IN_BACKGROUND = True  # tests build in the request, so nothing writes into another test's database
 MERGED_SHOWN = 5
 NAMES_SHOWN = 12
@@ -243,11 +244,13 @@ def _build():
         cache.set(REFS_CURSOR, started, None)
         cache.set(REFS_BUILT, started.timestamp(), None)
         cache.set(REFS_FRESH, started.timestamp(), None)
-    except Exception as e:  # noqa: BLE001 -- the next page asks again, an hour on if it ran too long
-        log.warning('ramp: mentions index: %s', e)
-        cache.set(REFS_BUILT, started.timestamp() - REBUILD_EVERY + 600, None)  # again in ten minutes
-    finally:
         cache.delete(REFS_BUILDING)
+    except Exception as e:  # noqa: BLE001 -- tried again in ten minutes, not on the next page
+        log.warning('ramp: mentions index: %s', e)
+        # The lock is held ten minutes: before any index is built, found is None and nothing else stops the next
+        # load from starting another full read (re's review of #421).
+        cache.set(REFS_BUILDING, 1, BUILD_RETRY)
+        cache.set(REFS_BUILT, started.timestamp() - REBUILD_EVERY + BUILD_RETRY, None)
 
 
 def mention_index():

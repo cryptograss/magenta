@@ -130,6 +130,20 @@ class RampTest(TestCase):
         self.assertEqual([e['who'] for e in index[('pull', 'magenta', 7)]], ['justin', 're'])
         self.assertEqual([e['who'] for e in index[('branch', 're/foo')]], ['justin'])
 
+    def test_a_failed_build_waits_ten_minutes_not_one_page(self):
+        tries = []
+
+        def times_out(since):
+            tries.append(since)
+            raise RuntimeError('canceling statement due to statement timeout')
+        with mock.patch.object(ramp, '_posts', times_out):
+            for _ in range(3):
+                self.assertIsNone(ramp.mention_index())
+        self.assertEqual(len(tries), 1)
+        cache.delete(ramp.REFS_BUILDING)  # ten minutes on
+        self.say('re', 'magenta#7 again')
+        self.assertEqual(len(ramp.mention_index()[('pull', 'magenta', 7)]), 1)
+
     def test_while_the_index_is_first_built_the_page_says_so(self):
         self.say('re', 'magenta#7 again')
         with mock.patch.object(ramp, 'BUILD_IN_BACKGROUND', True), \
