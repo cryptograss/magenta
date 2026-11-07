@@ -65,6 +65,8 @@ def makers_offered():
             for vendor, makers in sorted(found.items()) if vendor}
 
 
+RECENT_BUNDLES = 8  # the newest bundles made, shown atop the instructions bundles section
+
 SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'hooks', 'settings')
 
 
@@ -170,7 +172,12 @@ def verify_page(request):
     """The pages the emergents are told from, and which wait for a verify (services/verify.py).
     Justin, 31 Oct: "a page with links to all the places that need to be verified for regular operation"."""
     from .services import verify
-    return render(request, 'conversations/mood_verify.html', {'verify': verify.state(), 'embed': True})
+    from .models import BundleRecord
+    # The newest bundles made, at the top (Justin, 7 Nov: "show the last few generated bundles").
+    recent = BundleRecord.objects.filter(produced_at__isnull=False).order_by('-produced_at')[:RECENT_BUNDLES]
+    return render(request, 'conversations/mood_verify.html', {
+        'verify': verify.state(), 'embed': True, 'recent': recent,
+        'bundles_url': 'https://pickipedia.xyz/wiki/Special:EmergentBundles'})
 
 
 @require_GET
