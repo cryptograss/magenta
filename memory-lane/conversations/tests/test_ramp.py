@@ -1,0 +1,159 @@
+"""The ramp page (/moods/pulls/; services/ramp.py): open work from the cards and githouse, its mentions, asks and
+temperature, the last merged and where they run. Real bare repositories; the wiki's cards stood in for."""
+
+import tempfile
+import uuid
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest import mock
+
+from django.core.cache import cache
+from django.test import TestCase, override_settings
+
+from conversations.models import Message, Mood, ThinkingEntity
+from conversations.services import ramp
+from conversations.tests.test_githouse import Repo, git
+
+
+def card(repo, number, branch, state='open', **more):
+    return {'repo': repo, 'number': str(number), 'title': f'the {branch} work', 'url': f'https://github.com/cryptograss/{repo}/pull/{number}',
+            'author': 'magent-cryptograss', 'state': state, 'base': 'main', 'branch': branch, 'opened': '2026-11-06 10:00:00',
+            'pushed': '2026-11-06 10:00:00', 'merged': more.pop('merged', ''), 'worked_on_by': 'magent, re', 'moods': 'ramp, ops',
+            'deploy': 'redeploy maybelle', **more}
+
+
+class RampTest(TestCase):
+
+    def setUp(self):
+        cache.clear()
+        self.mount = Path(tempfile.mkdtemp())
+        self.settings = override_settings(GITHOUSE_DIR=str(self.mount))
+        self.settings.enable()
+        self.addCleanup(self.settings.disable)
+        self.repo = Repo(self.mount)
+        git(self.repo.work, 'checkout', '-q', '-b', 're/foo')
+        self.foo = self.repo.commit('the foo work')
+        self.repo.ref('refs/pull/7/head', self.foo)
+        git(self.repo.work, 'checkout', '-q', 'main')
+        git(self.repo.work, 'checkout', '-q', '-b', 'magent/bar')
+        self.bar = self.repo.commit('bar, pushed with no pull request')
+        git(self.repo.work, 'checkout', '-q', 'main')
+        self.repo.ref('refs/heads/magent/bar', self.bar)
+        self.repo.ref('refs/closed/magent/old', self.bar)
+        (self.mount / 'githouse.log').write_text('2026-11-07T01:00:00Z first\n2026-11-07T02:00:00Z second\n')
+        self.cards = {'open': [card('magenta', 7, 're/foo')], 'merged': []}
+        patch = mock.patch.object(ramp, 'cards', lambda: self.cards)
+        patch.start()
+        self.addCleanup(patch.stop)
+        ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
+        ThinkingEntity.objects.get_or_create(name='mood-poller', defaults={'is_biological_human': False})
+        ThinkingEntity.objects.get_or_create(name='justin', defaults={'is_biological_human': True})
+        self.mood = Mood.objects.create(slug='jams', title='jams')
+        self.now = datetime.now(timezone.utc)
+
+    def say(self, who, text):
+        return Message.objects.create(id=uuid.uuid4(), sender_id=who, mood=self.mood, session_id=uuid.uuid4(),
+                                      timestamp=int(self.now.timestamp() * 1000),
+                                      content=[{'type': 'text', 'text': text}])
+
+    def test_how_a_piece_of_work_is_named(self):
+        pattern = ramp._pattern({'repo': 'magenta', 'number': 415, 'branch': 'magent/asks-from-githouse'})
+        for said in ('magenta#415', 'merge #415 please', 'PR #415,', 'https://github.com/cryptograss/magenta/pull/415',
+                     'magenta:magent/asks-from-githouse', 'on magent/asks-from-githouse now'):
+            self.assertTrue(pattern.search(said), said)
+        for said in ('pickipedia#415', '#4150', 'magenta#41', 'magent/asks-from-githouse-2', 'cryptograss/pickipedia/pull/415'):
+            self.assertFalse(pattern.search(said), said)
+        maybelle = ramp._pattern({'repo': 'maybelle-config', 'number': 250, 'branch': 'githouse'})
+        self.assertTrue(maybelle.search('maybelle#250'))
+        self.assertTrue(maybelle.search('maybelle-config#250'))
+        self.assertFalse(maybelle.search('#250'))  # bare, a number is magenta's
+
+    def test_open_work_from_cards_and_githouse(self):
+        board = ramp.board(now=self.now)
+        by = {(i['repo'], i['number'], i['branch']): i for i in board['open']}
+        pull = by[('magenta', 7, 're/foo')]
+        self.assertEqual(pull['state'], 'open')
+        self.assertEqual(pull['head'], self.foo)
+        self.assertEqual(pull['size']['commits'], 1)
+        self.assertEqual(pull['moods'], ['ramp', 'ops'])
+        self.assertGreater(pull['pushed'], datetime(2026, 11, 6, 10, 1, tzinfo=timezone.utc))  # githouse's, not the card's
+        pushed = by[('magenta', None, 'magent/bar')]  # a branch on githouse with no pull request
+        self.assertEqual((pushed['state'], pushed['author'], pushed['title'], pushed['base']),
+                         ('pushed', 'magent', 'bar, pushed with no pull request', 'main'))
+        self.assertNotIn(('magenta', None, 'main'), by)  # GitHub's own branches aren't work
+        self.assertEqual([(n['branch'], n['kind']) for n in board['names']], [('magent/old', 'closed')])
+        self.assertEqual(board['log'], ['2026-11-07T02:00:00Z second', '2026-11-07T01:00:00Z first'])
+        self.assertEqual(board['repos'], ['magenta'])
+
+    def test_githouse_knows_a_merge_before_the_card_does(self):
+        git(self.repo.work, 'merge', '-q', '--no-ff', '-m', 'Merge pull request #7', 're/foo')
+        self.repo.push()
+        pull = next(i for i in ramp.board(now=self.now)['open'] if i['number'] == 7)
+        self.assertEqual(pull['state'], 'merged')
+        self.assertEqual(ramp.ordered(ramp.board(now=self.now)['open'], '')[-1]['number'], 7)  # merged sink
+
+    def test_the_last_two_mentions_and_the_temperature(self):
+        self.say('justin', 'what about magenta#7?')
+        self.say('mood-poller', '<mood-wake> [justin] what about magenta#7?')  # a wake quoting it isn't a mention
+        self.say('re', 'Reviewed #7: two bugs.')
+        self.say('re', 'and magent/bar is next')
+        board = ramp.board(now=self.now)
+        pull = next(i for i in board['open'] if i['number'] == 7)
+        self.assertEqual([m['who'] for m in pull['mentions']], ['re', 'justin'])
+        self.assertEqual(pull['temperature'], 'hot')
+        bar = next(i for i in board['open'] if i['branch'] == 'magent/bar')
+        self.assertEqual([m['who'] for m in bar['mentions']], ['re'])
+        self.assertEqual(ramp.temperature({'pushed': self.now - timedelta(days=2), 'mentions': []}, self.now), 'warm')
+        self.assertEqual(ramp.temperature({'pushed': self.now - timedelta(days=9), 'mentions': []}, self.now), 'cool')
+        self.assertEqual(ramp.temperature({'pushed': None, 'mentions': []}, self.now), 'cold')
+
+    def test_a_slow_record_leaves_the_mentions_out_not_the_page(self):
+        from django.db import OperationalError
+        self.say('re', 'magenta#7 again')
+        with mock.patch.object(ramp, '_candidates', lambda want, now: None):
+            board = ramp.board(now=self.now)
+        self.assertTrue(board['mentions_missing'])
+        self.assertEqual(next(i for i in board['open'] if i['number'] == 7)['mentions'], [])
+        cache.clear()
+        with mock.patch('conversations.models.Message.objects') as objects:
+            objects.filter.side_effect = OperationalError('canceling statement due to statement timeout')
+            self.assertIsNone(ramp._candidates(None, self.now))
+        cache.clear()
+        board = ramp.board(now=self.now)
+        self.assertFalse(board['mentions_missing'])
+        self.assertEqual(len(next(i for i in board['open'] if i['number'] == 7)['mentions']), 1)
+
+    def test_an_open_merge_ask_is_shown(self):
+        self.say('re', '<merge to="magenta#7, the foo fix"/>')
+        pull = next(i for i in ramp.board(now=self.now)['open'] if i['number'] == 7)
+        self.assertEqual((pull['asked']['by'], pull['asked']['mood']), ('re', 'jams'))
+
+    def test_where_a_merged_pull_request_runs(self):
+        git(self.repo.work, 'merge', '-q', '--no-ff', '-m', 'Merge pull request #7', 're/foo')
+        self.repo.push()
+        running = git(self.repo.work, 'rev-parse', 'main')
+        self.cards = {'open': [], 'merged': [card('magenta', 7, 're/foo', state='merged', merged='2026-11-07 03:00:00')]}
+        with mock.patch.object(ramp, 'running', lambda: {'magenta': {'maybelle': running}}):
+            self.assertEqual(ramp.board(now=self.now)['merged'][0]['live_on'], ['maybelle'])
+        with mock.patch.object(ramp, 'running', lambda: {'magenta': {'maybelle': self.repo_first()}}):
+            self.assertEqual(ramp.board(now=self.now)['merged'][0]['live_on'], [])  # not yet
+        with mock.patch.object(ramp, 'running', lambda: {}):
+            self.assertIsNone(ramp.board(now=self.now)['merged'][0]['live_on'])  # its deploys don't say
+
+    def repo_first(self):
+        return git(self.repo.work, 'rev-list', '--max-parents=0', 'main')
+
+    def test_the_page(self):
+        self.say('re', 'magenta#7 looks good')
+        page = self.client.get('/moods/pulls/?embed=1')
+        self.assertEqual(page.status_code, 200)
+        text = page.content.decode()
+        for seen in ('magenta#7', 'the re/foo work', 'magenta:magent/bar', 'no PR yet', '#jams', 'magent/old', 'second'):
+            self.assertIn(seen, text)
+
+    def test_with_no_githouse_and_no_wiki(self):
+        self.cards = {'open': [], 'merged': [], 'error': "PickiPedia didn't answer: the cards are missing"}
+        with override_settings(GITHOUSE_DIR=str(self.mount / 'nowhere')):
+            board = ramp.board(now=self.now)
+        self.assertEqual((board['open'], board['repos'], board['log']), ([], [], []))
+        self.assertIn('cards are missing', board['error'])
