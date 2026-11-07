@@ -425,3 +425,55 @@ def line(c):
     if c.get('state') == 'refused':
         return f"✗ {who} didn't start ({how}): {c.get('reason', '')}"
     return f"▶ {who}, started {how}"
+
+
+# --- the tasks section (/moods/tasks/) ---------------------------------------------
+
+BOARD = 'tasks:board'
+BOARD_FOR = 300   # seconds the board is kept; a task page's change forgets it at once (wiki_hooks.yml: tasks)
+RECENT = 15       # the newest task lines shown
+
+
+def board(now=None, get=None, search=None):
+    """Every emergent's tasks as their pages say, each with its last run, and the newest runs: for the tasks
+    section (Justin, 7 Nov: "another page in that list: Tasks"). Read from the wiki at most every BOARD_FOR
+    seconds; what each did, from the record, every time."""
+    from django.core.cache import cache
+    from conversations.models import Message, ThinkingEntity
+    pages = cache.get(BOARD)
+    if pages is None:
+        pages = []
+        for agent in sorted(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True)):
+            try:
+                names = listed(agent, search=search)
+            except Exception as e:  # noqa: BLE001 -- the wiki down: said, and asked again next time
+                pages.append({'agent': agent, 'name': '', 'error': f'could not list its tasks: {e}'})
+                continue
+            for name in names:
+                row = {'agent': agent, 'name': name, 'page': title(agent, name)}
+                try:
+                    t = read(agent, name, get=get)
+                    row.update(revision=t.revision, editor=t.editor, mood=t.mood, schedule=t.schedule, cap=t.cap,
+                               tools=t.tools, blanks=t.blanks, shared=t.shared)
+                except Refused as e:
+                    row['error'] = str(e)
+                pages.append(row)
+        cache.set(BOARD, pages, BOARD_FOR)
+    lines = Message.objects.filter(source_file=SOURCE).order_by('-created_at')
+    last = {}
+    for m in lines.only('content', 'created_at', 'mood_id')[:500]:
+        c = m.content if isinstance(m.content, dict) else {}
+        last.setdefault((c.get('for'), c.get('task')), m)
+    def run(m):
+        c = m.content if isinstance(m.content, dict) else {}
+        return {'at': m.created_at, 'agent': c.get('for', ''), 'task': c.get('task', ''), 'mood': m.mood_slug,
+                'state': c.get('state', ''), 'reason': c.get('reason', ''), 'by': c.get('by', ''),
+                'slot': c.get('slot', ''), 'id': str(m.id)}
+    rows = [dict(r, last=run(last[(r['agent'], r.get('name'))]) if (r['agent'], r.get('name')) in last else None)
+            for r in pages]
+    return {'tasks': rows, 'recent': [run(m) for m in lines[:RECENT]], 'kept_for': BOARD_FOR}
+
+
+def forget_board():
+    from django.core.cache import cache
+    cache.delete(BOARD)
