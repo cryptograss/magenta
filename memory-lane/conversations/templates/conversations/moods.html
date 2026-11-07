@@ -203,6 +203,27 @@
   #stateMenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 380px; max-width: calc(100vw - 20px); background: var(--panel);
                border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 13px; }
   #stateMenu[hidden] { display: none; }
+  /* The help menu: a question mark beside the state chevron, for whoever is new here (Justin, 7 Nov: "a big
+     question mark, with a dropdown"). Docs, the tour, about, humans, emergents, the FAQ: every answer's own home. */
+  header .helpwrap { position: relative; display: inline-flex; align-items: center; }
+  #helpBtn { border: 1px solid var(--line); border-radius: 50%; background: none; color: var(--muted); width: 26px; height: 26px;
+             padding: 0; cursor: pointer; font: inherit; font-size: 17px; font-weight: 700; line-height: 1;
+             display: inline-flex; align-items: center; justify-content: center; }
+  #helpBtn:hover, #helpBtn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+  #helpMenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 300px; max-width: calc(100vw - 20px); background: var(--panel);
+              border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 6px 0;
+              display: flex; flex-direction: column; font-size: 13px; }
+  #helpMenu[hidden] { display: none; }
+  #helpMenu a { padding: 7px 14px; color: var(--ink); text-decoration: none; display: flex; flex-direction: column; gap: 1px; }
+  #helpMenu a:hover { background: var(--hover); }
+  #helpMenu a:hover b { color: var(--accent); }
+  #helpMenu a b { font-weight: 600; }
+  #helpMenu a small { color: var(--muted); font-size: 12px; }
+  #helpMenu a.soon { opacity: .55; cursor: default; }
+  #helpMenu a.soon:hover { background: none; }
+  #helpMenu a.soon:hover b { color: var(--ink); }
+  /* A phone: the menu hangs under the whole header, not off the left edge of a 390px screen. */
+  @media (max-width: 640px) { #helpMenu { position: fixed; left: 10px; right: 10px; top: 46px; min-width: 0; max-width: none; } }
   #stateMenu .block, #stateMenu .sprint { padding: 2px 0 6px; color: var(--ink); }
   #stateMenu .sprint[hidden] { display: none; }
   #stateMenu .sprint a { color: var(--accent); }
@@ -1710,6 +1731,20 @@
       <div class="sprint" id="sprintLine" hidden></div>
     </div>
   </span>
+  <!-- Help, for whoever is new here (Justin, 7 Nov): each line goes to the one place its answer lives. The tour
+       runs on this page (the guided tour, services/tour.py); it reads "coming soon" until Magenta:Tour has a
+       trusted revision, which /api/tour/ says. -->
+  <span class="helpwrap">
+    <button type="button" id="helpBtn" aria-haspopup="true" aria-expanded="false" aria-label="Help" title="New here? Docs, the tour, who's who">?</button>
+    <div id="helpMenu" data-tour-open="helpBtn" hidden>
+      <a href="https://pickipedia.xyz/wiki/Magenta:Help" target="_blank" rel="noopener" data-tour="help"><b>docs</b><small>how magenta works, and your first ten minutes</small></a>
+      <a href="#" id="tourLink"><b>tour</b><small id="tourNote">a walk round this page, on the page itself</small></a>
+      <a href="https://pickipedia.xyz/wiki/Magenta" target="_blank" rel="noopener"><b>about</b><small>what magenta is, and who makes it</small></a>
+      <a href="https://pickipedia.xyz/wiki/Magenta:Humans" target="_blank" rel="noopener"><b>humans</b><small>the people here, and how to find one</small></a>
+      <a href="https://pickipedia.xyz/wiki/Magenta:Emergents" target="_blank" rel="noopener"><b>emergents</b><small>magent, re and blu: who they are, how to wake one</small></a>
+      <a href="/faq/" data-tour="faq"><b>FAQ</b><small>questions people ask, one at a time</small></a>
+    </div>
+  </span>
   <button id="reloadNudge" type="button" title="This page changed since you opened it: reload for the new one" hidden>↻ new version</button>
   <button id="searchBtn" data-tour="search" type="button" title="Search what was said (/)">⌕</button>
   <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
@@ -1755,9 +1790,6 @@
       <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
       <a class="settings" href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
       <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
-      <a href="https://pickipedia.xyz/wiki/Magenta:Help" target="_blank" rel="noopener" data-tour="help" title="How magenta works: Magenta:Help on PickiPedia">help</a>
-      <a href="/faq/" data-tour="faq" title="Questions people ask, one at a time: Magenta:FAQ">faq</a>
-      <a href="#" id="tourLink" title="A walk round this page, on the page itself: what each part is for">take the tour</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
@@ -10419,10 +10451,36 @@
     document.addEventListener('scroll', follow, true);
     tour.drive();
   }
-  document.getElementById('tourLink').addEventListener('click', e => {
+  // The help menu (Justin, 7 Nov): toggles like the state menu, closes on a click elsewhere or Esc. Its tour
+  // line says "coming soon" while /api/tour/ has no steps (no trusted revision of Magenta:Tour yet), looked
+  // up once per page the first time the menu opens, so the label is true when it is read.
+  const helpBtn = document.getElementById('helpBtn'), helpMenu = document.getElementById('helpMenu');
+  const tourLink = document.getElementById('tourLink'), tourNote = document.getElementById('tourNote');
+  let tourAsked = false, tourReady = null;
+  function closeHelp() { helpMenu.hidden = true; helpBtn.setAttribute('aria-expanded', 'false'); }
+  async function askTour() {
+    if (tourAsked) return;
+    tourAsked = true;
+    try {
+      const got = await (await fetch('/api/tour/', { headers: { Accept: 'application/json' } })).json();
+      tourReady = (got.steps || []).length > 0;
+    } catch (_) { tourReady = false; }
+    tourLink.classList.toggle('soon', !tourReady);
+    tourLink.setAttribute('aria-disabled', String(!tourReady));
+    tourNote.textContent = tourReady ? 'a walk round this page, on the page itself' : 'coming soon';
+  }
+  helpBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    helpMenu.hidden = !helpMenu.hidden;
+    helpBtn.setAttribute('aria-expanded', String(!helpMenu.hidden));
+    if (!helpMenu.hidden) askTour();
+  });
+  document.addEventListener('click', e => { if (!helpMenu.hidden && !e.target.closest('#helpMenu')) closeHelp(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !helpMenu.hidden) closeHelp(); });
+  tourLink.addEventListener('click', e => {
     e.preventDefault();
-    document.getElementById('userMenu').hidden = true;
-    document.getElementById('userBtn').setAttribute('aria-expanded', 'false');
+    if (tourReady === false) return;  // coming soon: the line says so, and there is nothing to start
+    closeHelp();
     startTour();
   });
 

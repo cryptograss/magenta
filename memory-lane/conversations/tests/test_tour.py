@@ -1,6 +1,7 @@
 """The guided tour (services/tour.py): Magenta:Tour's steps, read from its trusted revision, against the page's
 data-tour anchors, both ways (Justin and re, 4 Nov, #docs-tests-qa)."""
 
+import re
 from unittest import mock
 
 from django.core.cache import cache
@@ -120,3 +121,34 @@ class TourViewsTest(TestCase):
                     mock.patch.object(status, 'magenta_version', return_value={}), \
                     mock.patch.object(status, 'pickipedia_mcp_status', return_value={}):
                 self.assertEqual(status.full_status()['tour'], {'missing': ['x'], 'unused': []})
+
+
+class HelpMenuTest(TestCase):
+    """The help menu (Justin, 7 Nov, #docs-tests-qa): a ? beside the state chevron, and under it the one place each
+    answer lives. The user menu no longer carries help, faq or the tour, so there is one place to keep current."""
+
+    PAGE = (tour.TEMPLATES / 'moods.html').read_text()
+
+    def menu(self, element_id):
+        start = self.PAGE.index(f'id="{element_id}"')
+        return self.PAGE[start:self.PAGE.index('</div>', start)]
+
+    def test_the_six_lines_in_order(self):
+        menu = self.menu('helpMenu')
+        hrefs = re.findall(r'<a href="([^"]+)"', menu)
+        self.assertEqual(hrefs, ['https://pickipedia.xyz/wiki/Magenta:Help', '#', 'https://pickipedia.xyz/wiki/Magenta',
+                                 'https://pickipedia.xyz/wiki/Magenta:Humans', 'https://pickipedia.xyz/wiki/Magenta:Emergents', '/faq/'])
+        self.assertIn('id="tourLink"', menu)
+        self.assertIn('data-tour-open="helpBtn"', self.PAGE)  # the tour opens it for the help and faq steps
+
+    def test_the_tour_anchors_moved_with_the_links(self):
+        menu = self.menu('helpMenu')
+        self.assertIn('data-tour="help"', menu)
+        self.assertIn('data-tour="faq"', menu)
+        user_menu = self.menu('userMenu')
+        for gone in ('Magenta:Help', '/faq/', 'tourLink'):
+            self.assertNotIn(gone, user_menu)
+
+    def test_the_button_sits_right_of_the_state_chevron(self):
+        self.assertLess(self.PAGE.index('id="stateBtn"'), self.PAGE.index('id="helpBtn"'))
+        self.assertLess(self.PAGE.index('id="helpBtn"'), self.PAGE.index('id="searchBtn"'))
