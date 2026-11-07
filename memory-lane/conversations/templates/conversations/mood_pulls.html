@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pulls · magenta</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
+    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --code: #f3efe8;
+    --ok: #2e9e5b; --warn: #d48806; --err: #c0392b; --hover: rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
+            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --code: #29252c;
+            --hover: rgba(255,255,255,.05); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--bg); }
+  main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 60px; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  h2 { font-size: 15px; margin: 22px 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--code); padding: 1px 4px; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); border-top: 0; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+  tr.failed td { color: var(--err); }
+  .via { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+  .via.push { color: var(--ok); border-color: var(--ok); }
+  .push { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px; }
+  .push .no { color: var(--warn); }
+  .push .bad { color: var(--err); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex-wrap: wrap; }
+  header .brand { font-weight: 700; color: var(--accent); text-decoration: none; }
+  header nav { display: flex; gap: 12px; font-size: 13px; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  header nav a:hover, header nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+  .state { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+  .state.asked { color: var(--ok); border-color: var(--ok); }
+  .state.refused { color: var(--warn); border-color: var(--warn); }
+  tr.broken td { color: var(--err); }
+  .why { color: var(--muted); font-size: 12px; }
+  .temp { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+  .temp.hot { background: #e0452b; } .temp.warm { background: #e8a33a; } .temp.cool { background: #4a90c8; }
+  .temp.cold { background: transparent; border: 1px solid var(--muted); }
+  .work .title { color: var(--ink); }
+  .work .ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .work .branch { color: var(--muted); font-size: 12px; }
+  .size .add { color: var(--ok); } .size .rm { color: var(--err); }
+  .state.draft { color: var(--muted); } .state.pushed { color: var(--accent); border-color: var(--accent); }
+  .state.merged { color: #8250df; border-color: #8250df; }
+  .state.ask { color: var(--ok); border-color: var(--ok); }
+  tr.merged td { opacity: .65; }
+  .ment { display: block; font-size: 12px; white-space: nowrap; }
+  .sorts { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; }
+  .sorts button { font: inherit; background: none; border: 1px solid var(--line); border-radius: 4px; padding: 1px 8px;
+                  color: var(--muted); cursor: pointer; }
+  .sorts button[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); }
+  pre.log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+            font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; }
+  .err { color: var(--err); }
+</style>
+{% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
+     goes there, which opens it without loading anything again. -->
+<style>body > header { display: none; }</style>
+<script>
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
+    const to = new URL(a.href, location.href);
+    if (to.origin !== location.origin) { a.target = '_top'; return; }
+    if (to.pathname === location.pathname && to.hash) return;  // within this page
+    e.preventDefault();
+    parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
+  });
+</script>{% endif %}
+</head>
+<body>
+<header>
+  <a class="brand" href="/moods/">magenta</a>
+  <nav>
+    <a href="/moods/status/">status</a>
+    <a href="/moods/tidings/">tidings</a>
+    <a href="/moods/polls/">polls</a>
+    <a href="/moods/prompts/">prompts</a>
+    <a href="/moods/todo/">todo</a>
+    <a href="/moods/pulls/" aria-current="page">pulls</a>
+    <a href="/moods/tasks/">tasks</a>
+    <a href="/moods/verify/">bundles</a>
+    <a href="/moods/hooks/">wiki hooks</a>
+    <a href="/moods/settings/">settings</a>
+  </nav>
+</header>
+<main>
+  <h1>The ramp</h1>
+  <p class="lede">Every open pull request across our repositories, and every branch pushed to githouse without one yet;
+    the last {{ board.merged|length }} merged. Who worked on it and where come from the foot of its description, by way of its
+    <a href="https://pickipedia.xyz/wiki/Category:Pull_requests" target="_blank" rel="noopener">card</a>; heads, sizes and
+    merges from githouse's copy; mentions and 🪢 asks from the record. The dot is its temperature: the last push or
+    mention, within a day, three, two weeks, or longer.
+    <a href="https://pickipedia.xyz/wiki/Cryptograss:Moods/ramp/Plan" target="_blank" rel="noopener">The plan</a>.</p>
+  {% if board.error %}<p class="err">{{ board.error }}</p>{% endif %}
+
+  <h2>Open</h2>
+  <p class="sorts">Sort by <button type="button" data-sort="active" aria-pressed="true">last activity</button>
+    <button type="button" data-sort="pushed" aria-pressed="false">last push</button>
+    <button type="button" data-sort="mentioned" aria-pressed="false">last mention</button></p>
+  <table id="open">
+    <thead><tr><th></th><th>work</th><th>who</th><th>where</th><th>size</th><th>pushed</th><th>last said</th><th>deploy</th></tr></thead>
+    <tbody>
+    {% for i in open %}
+    <tr class="{{ i.state }}" data-active="{{ i.active|date:'U'|default:0 }}" data-pushed="{{ i.pushed|date:'U'|default:0 }}"
+        data-mentioned="{% if i.mentions %}{{ i.mentions.0.at|date:'U' }}{% else %}0{% endif %}">
+      <td><span class="temp {{ i.temperature }}" title="{{ i.temperature }}{% if i.active %}: {{ i.active|timesince }} ago{% endif %}"></span></td>
+      <td class="work">
+        {% if i.number %}<a class="ref" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.repo }}#{{ i.number }}</a>{% else %}<span class="ref">{{ i.repo }}</span>{% endif %}
+        <span class="title">{{ i.title }}</span>
+        {% if i.state != 'open' %}<span class="state {{ i.state }}"{% if i.state == 'pushed' %} title="on githouse, no pull request yet"{% elif i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{% if i.state == 'pushed' %}no PR yet{% else %}{{ i.state }}{% endif %}</span>{% endif %}
+        {% if i.asked %}<a class="state ask" href="/moods/{{ i.asked.mood }}/#m-{{ i.asked.id }}" title="{{ i.asked.by }} asked for this merge in #{{ i.asked.mood }}">🪢 asked</a>{% endif %}
+        {% if i.branch %}<br><span class="branch">{{ i.repo }}:{{ i.branch }}{% if i.base %} → {{ i.base }}{% endif %}</span>{% endif %}
+      </td>
+      <td>{{ i.worked_on_by|default:i.author }}</td>
+      <td>{% for m in i.moods %}<a href="/moods/{{ m }}/">#{{ m }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
+      <td class="num size">{% if i.size %}<span class="add">+{{ i.size.added }}</span> <span class="rm">−{{ i.size.removed }}</span><br>{{ i.size.commits }} commit{{ i.size.commits|pluralize }}{% elif not i.held %}<span title="githouse doesn't copy this repository">—</span>{% endif %}</td>
+      <td class="num">{% if i.pushed %}{{ i.pushed|date:"j M H:i" }}Z{% endif %}</td>
+      <td>{% for m in i.mentions %}<a class="ment" href="/moods/{{ m.mood }}/#m-{{ m.id }}">#{{ m.mood }} · {{ m.who }} · {{ m.at|date:"j M H:i" }}Z</a>{% empty %}<span class="why" title="not said in any Mood in 21 days">—</span>{% endfor %}</td>
+      <td class="why">{{ i.deploy }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="8">Nothing open.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Merged lately</h2>
+  <table>
+    <tr><th>work</th><th>who</th><th>where</th><th>merged</th><th>deploy</th><th>live on</th></tr>
+    {% for m in board.merged %}
+    <tr>
+      <td class="work"><a class="ref" href="{{ m.url }}" target="_blank" rel="noopener">{{ m.repo }}#{{ m.number }}</a> <span class="title">{{ m.title }}</span></td>
+      <td>{{ m.worked_on_by|default:m.author }}</td>
+      <td>{% for mood in m.moods %}<a href="/moods/{{ mood }}/">#{{ mood }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
+      <td class="num">{% if m.merged %}{{ m.merged|date:"j M H:i" }}Z{% endif %}</td>
+      <td class="why">{{ m.deploy }}</td>
+      <td>{% if m.live_on is None %}<span class="why" title="this repository's deploys don't record what they ran yet">—</span>{% elif m.live_on %}{{ m.live_on|join:", " }}{% else %}<span class="state">not yet</span>{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">None to show.</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Names used</h2>
+  <p class="lede">A branch's name is used once: merged, it moves to <code>refs/merged/</code>; deleted, to <code>refs/closed/</code>, and githouse refuses it again.</p>
+  <table>
+    <tr><th>name</th><th></th><th>last commit</th><th>when</th></tr>
+    {% for n in board.names %}
+    <tr><td class="ref">{{ n.repo }}:{{ n.branch }}</td><td><span class="state {{ n.kind }}">{{ n.kind }}</span></td><td>{{ n.subject }}</td><td class="num">{% if n.at %}{{ n.at|date:"j M H:i" }}Z{% endif %}</td></tr>
+    {% empty %}
+    <tr><td colspan="4">None yet.</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>githouse's log</h2>
+  <p class="lede">Newest first. Repositories copied: {{ board.repos|join:", "|default:"none (githouse isn't mounted here)" }}.</p>
+  {% if board.log %}<pre class="log">{% for line in board.log %}{{ line }}
+{% endfor %}</pre>{% else %}<p class="why">Nothing logged here.</p>{% endif %}
+</main>
+<script>
+  // Sorting the open work, here and now: no reload.
+  const body = document.querySelector('#open tbody');
+  document.querySelectorAll('.sorts button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.sorts button').forEach(o => o.setAttribute('aria-pressed', o === b ? 'true' : 'false'));
+    const key = b.dataset.sort;
+    const rows = [...body.querySelectorAll('tr[data-active]')];
+    rows.sort((x, y) => (x.classList.contains('merged') - y.classList.contains('merged'))
+                        || (Number(y.dataset[key]) - Number(x.dataset[key])));
+    rows.forEach(r => body.append(r));
+  }));
+</script>
+</body>
+</html>
