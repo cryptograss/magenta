@@ -42,9 +42,10 @@ class RampTest(TestCase):
         self.repo.ref('refs/closed/magent/old', self.bar)
         (self.mount / 'githouse.log').write_text('2026-11-07T01:00:00Z first\n2026-11-07T02:00:00Z second\n')
         self.cards = {'open': [card('magenta', 7, 're/foo')], 'merged': []}
-        patch = mock.patch.object(ramp, 'cards', lambda: self.cards)
-        patch.start()
-        self.addCleanup(patch.stop)
+        for patch in (mock.patch.object(ramp, 'cards', lambda: self.cards),
+                      mock.patch.object(ramp, 'BUILD_IN_BACKGROUND', False)):
+            patch.start()
+            self.addCleanup(patch.stop)
         ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
         ThinkingEntity.objects.get_or_create(name='mood-poller', defaults={'is_biological_human': False})
         ThinkingEntity.objects.get_or_create(name='justin', defaults={'is_biological_human': True})
@@ -107,17 +108,49 @@ class RampTest(TestCase):
         self.assertEqual(ramp.temperature({'pushed': self.now - timedelta(days=9), 'mentions': []}, self.now), 'cool')
         self.assertEqual(ramp.temperature({'pushed': None, 'mentions': []}, self.now), 'cold')
 
-    def test_a_slow_record_leaves_the_mentions_out_not_the_page(self):
-        from django.db import OperationalError
+    def test_what_a_post_names(self):
+        owners = {'re', 'magent', 'justin'}
+        self.assertEqual(ramp.refs_in('merge magenta#415 and #416, then maybelle#250; PR #347', owners),
+                         {('pull', 'magenta', 415), ('pull', 'magenta', 416), ('pull', 'maybelle-config', 250),
+                          ('pull', 'magenta', 347)})
+        self.assertEqual(ramp.refs_in('https://github.com/cryptograss/pickipedia/pull/172#issuecomment-1', owners),
+                         {('pull', 'pickipedia', 172)})
+        self.assertEqual(ramp.refs_in('magenta:magent/ramp-view. And re/fix-a, then memory-lane/conversations', owners),
+                         {('branch', 'magent/ramp-view'), ('branch', 're/fix-a')})
+        for nothing in ('&#124; a pipe', 'colour #4a90c8', 'someone#4', 'where/when', '#m-1234abcd', 'issue-#12'):
+            self.assertEqual(ramp.refs_in(nothing, owners), set(), nothing)
+
+    def test_the_index_is_kept_up_from_new_posts_only(self):
+        self.say('re', 'magenta#7 first')
+        self.assertEqual(len(ramp.mention_index()[('pull', 'magenta', 7)]), 1)
+        self.say('justin', 'and #7 again, on re/foo')
+        with mock.patch.object(ramp, 'FRESH_EVERY', -1), \
+                mock.patch.object(ramp, '_build', side_effect=AssertionError('built again')):
+            index = ramp.mention_index()
+        self.assertEqual([e['who'] for e in index[('pull', 'magenta', 7)]], ['justin', 're'])
+        self.assertEqual([e['who'] for e in index[('branch', 're/foo')]], ['justin'])
+
+    def test_a_failed_build_waits_ten_minutes_not_one_page(self):
+        tries = []
+
+        def times_out(since):
+            tries.append(since)
+            raise RuntimeError('canceling statement due to statement timeout')
+        with mock.patch.object(ramp, '_posts', times_out):
+            for _ in range(3):
+                self.assertIsNone(ramp.mention_index())
+        self.assertEqual(len(tries), 1)
+        cache.delete(ramp.REFS_BUILDING)  # ten minutes on
         self.say('re', 'magenta#7 again')
-        with mock.patch.object(ramp, '_candidates', lambda want, now: None):
+        self.assertEqual(len(ramp.mention_index()[('pull', 'magenta', 7)]), 1)
+
+    def test_while_the_index_is_first_built_the_page_says_so(self):
+        self.say('re', 'magenta#7 again')
+        with mock.patch.object(ramp, 'BUILD_IN_BACKGROUND', True), \
+                mock.patch('conversations.services.todo._in_background', lambda fn, *a: None):
             board = ramp.board(now=self.now)
         self.assertTrue(board['mentions_missing'])
         self.assertEqual(next(i for i in board['open'] if i['number'] == 7)['mentions'], [])
-        cache.clear()
-        with mock.patch('conversations.models.Message.objects') as objects:
-            objects.filter.side_effect = OperationalError('canceling statement due to statement timeout')
-            self.assertIsNone(ramp._candidates(None, self.now))
         cache.clear()
         board = ramp.board(now=self.now)
         self.assertFalse(board['mentions_missing'])
