@@ -203,14 +203,14 @@ def _posts(since):
     from django.db.models.functions import Cast
     from conversations.models import Message, Mood
     from .mood_view import MACHINERY_SENDERS, is_wrapper, prose
+    # Tool calls and thinking are left out by the database, not after their content has come back (re's review of
+    # #421): on a 60-day build, that's most of the rows.
     rows = (Message.objects.filter(mood_id__in=list(Mood.objects.values_list('id', flat=True)), is_sidechain=False,
-                                   created_at__gt=since)
+                                   created_at__gt=since, tooluse__isnull=True, thought__isnull=True)
             .exclude(sender_id__in=MACHINERY_SENDERS | set(_QUIET_SENDERS))
             .annotate(t=Cast('content', TextField())).filter(t__regex=_MAYBE)
-            .select_related('mood', 'tooluse', 'thought').order_by('created_at'))
+            .select_related('mood').order_by('created_at'))
     for m in rows:
-        if hasattr(m, 'tooluse') or hasattr(m, 'thought'):
-            continue
         text = prose(m.content)
         if text and not is_wrapper(text):
             yield m.mood.slug, str(m.id), m.created_at, m.sender_id, text
