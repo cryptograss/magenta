@@ -140,8 +140,10 @@ def _merged_elsewhere(purpose):
     from . import githouse
     from .todo import _merged
     pulls, branches = named_pulls(purpose), named_branches(purpose)
-    if not pulls or not branches:  # [] (nothing named) or None (a name in a repository we can't say about):
-        return False               # the ask stands until its event lands, whichever half was unknown
+    if pulls is None or branches is None or not (pulls or branches):
+        # None: a name in a repository we can't say about (re, 7 Nov: never clear on the known half alone);
+        # both []: nothing named. Either way the ask stands until its event lands.
+        return False
     try:
         return (all(_merged(owner, repo, number, requests) for owner, repo, number in pulls)
                 and all(githouse.branch_merged(repo, branch) for repo, branch in branches))
