@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tasks · magenta</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
+    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --code: #f3efe8;
+    --ok: #2e9e5b; --warn: #d48806; --err: #c0392b; --hover: rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
+            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --code: #29252c;
+            --hover: rgba(255,255,255,.05); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--bg); }
+  main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 60px; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  h2 { font-size: 15px; margin: 22px 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--code); padding: 1px 4px; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); border-top: 0; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+  tr.failed td { color: var(--err); }
+  .via { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+  .via.push { color: var(--ok); border-color: var(--ok); }
+  .push { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px; }
+  .push .no { color: var(--warn); }
+  .push .bad { color: var(--err); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex-wrap: wrap; }
+  header .brand { font-weight: 700; color: var(--accent); text-decoration: none; }
+  header nav { display: flex; gap: 12px; font-size: 13px; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  header nav a:hover, header nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+  .state { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+  .state.asked { color: var(--ok); border-color: var(--ok); }
+  .state.refused { color: var(--warn); border-color: var(--warn); }
+  tr.broken td { color: var(--err); }
+  .why { color: var(--muted); font-size: 12px; }
+</style>
+{% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
+     goes there, which opens it without loading anything again. -->
+<style>body > header { display: none; }</style>
+<script>
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
+    const to = new URL(a.href, location.href);
+    if (to.origin !== location.origin) { a.target = '_top'; return; }
+    if (to.pathname === location.pathname && to.hash) return;  // within this page
+    e.preventDefault();
+    parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
+  });
+</script>{% endif %}
+</head>
+<body>
+<header>
+  <a class="brand" href="/moods/">magenta</a>
+  <nav>
+    <a href="/moods/status/">status</a>
+    <a href="/moods/tidings/">tidings</a>
+    <a href="/moods/polls/">polls</a>
+    <a href="/moods/prompts/">prompts</a>
+    <a href="/moods/todo/">todo</a>
+    <a href="/moods/tasks/" aria-current="page">tasks</a>
+    <a href="/moods/verify/">bundles</a>
+    <a href="/moods/hooks/">wiki hooks</a>
+    <a href="/moods/settings/">settings</a>
+  </nav>
+</header>
+<main>
+  <h1>Tasks</h1>
+  <p class="lede">Work an emergent is woken for by a schedule or a person's call, not a mention. Each is a page,
+    <code>Cryptograss:Emergents/&lt;Name&gt;/Tasks/&lt;Task&gt;</code>; only a trusted editor's revision counts. Every minute
+    the ones whose schedule has come round start, each as a line in its Mood. Schedules are UTC, or Ethereum blocks.</p>
+
+  <table>
+    <tr><th>emergent</th><th>task</th><th>Mood</th><th>schedule</th><th>cap</th><th>tools</th><th>last run</th></tr>
+    {% for t in board.tasks %}
+    <tr{% if t.error %} class="broken"{% endif %}>
+      <td>{{ t.agent }}</td>
+      {% if t.name %}
+      <td><a href="https://pickipedia.xyz/wiki/{{ t.page|urlencode }}" target="_blank" rel="noopener">{{ t.name }}</a>{% if t.shared %} <span class="why" title="its instructions are shared: {{ t.shared }}">shared</span>{% endif %}</td>
+      {% else %}<td></td>{% endif %}
+      {% if t.error %}
+      <td colspan="4">{{ t.error }}</td>
+      {% else %}
+      <td>{% if t.mood %}<a href="/moods/{{ t.mood }}/">#{{ t.mood }}</a>{% endif %}</td>
+      <td>{{ t.schedule|default:"on call only" }}</td>
+      <td class="num">{% if t.cap is not None %}${{ t.cap|floatformat:2 }}{% endif %}</td>
+      <td>{{ t.tools }}</td>
+      {% endif %}
+      <td class="num">{% if t.last %}<a href="/moods/{{ t.last.mood }}/#m-{{ t.last.id }}">{{ t.last.at|date:"j M H:i" }}Z</a> <span class="state {{ t.last.state }}"{% if t.last.reason %} title="{{ t.last.reason }}"{% endif %}>{{ t.last.state }}</span>{% else %}never{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">No task pages yet.</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>The newest runs</h2>
+  <table>
+    <tr><th>when</th><th>emergent</th><th>task</th><th>Mood</th><th>by</th><th>state</th></tr>
+    {% for r in board.recent %}
+    <tr>
+      <td class="num"><a href="/moods/{{ r.mood }}/#m-{{ r.id }}">{{ r.at|date:"j M H:i" }}Z</a></td>
+      <td>{{ r.agent }}</td>
+      <td>{{ r.task }}</td>
+      <td><a href="/moods/{{ r.mood }}/">#{{ r.mood }}</a></td>
+      <td>{% if r.slot %}schedule{% else %}{{ r.by }}{% endif %}</td>
+      <td><span class="state {{ r.state }}">{{ r.state }}</span>{% if r.reason %} <span class="why">{{ r.reason }}</span>{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">None yet.</td></tr>
+    {% endfor %}
+  </table>
+</main>
+<script>
+  // Times in the reader's own clock.
+  document.querySelectorAll('time[data-iso]').forEach(t => { t.textContent = new Date(t.dataset.iso).toLocaleString(); });
+  document.querySelectorAll('time[data-at]').forEach(t => { t.textContent = new Date(Number(t.dataset.at) * 1000).toLocaleString(); });
+</script>
+</body>
+</html>

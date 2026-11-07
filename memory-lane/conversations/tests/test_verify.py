@@ -70,3 +70,18 @@ class VerifyTest(TestCase):
         self.assertIn('see the change and verify', html)
         self.assertIn('1 needs a look', html)
         self.assertEqual(self.client.get('/api/verify/').json()['waiting'], 1)
+
+    def test_the_newest_bundles_made_are_atop_it_with_a_link_to_them_all(self):
+        """Justin, 7 Nov: "at the top of the page, show the last few generated bundles", and the special page."""
+        verify.cache.set(verify.KEY, {'pages': [], 'editors': ['JMyles'], 'waiting': 0, 'error': ''}, 60)
+        now = timezone.now()
+        made = BundleRecord.objects.create(id=uuid.uuid4(), emergent='blu', mood='interfaces', harness='claude-code',
+                                           requested_at=now, produced_at=now, delivered_at=now, block=26360334,
+                                           sha256='0' * 64)
+        BundleRecord.objects.create(id=uuid.uuid4(), emergent='re', mood='jams', requested_at=now, sha256='1' * 64)
+        html = self.client.get('/moods/verify/?embed=1').content.decode()
+        self.assertIn('Instructions bundles', html)
+        self.assertIn(f'Special:EmergentBundles/{made.id}', html)
+        self.assertIn('26360334', html)
+        self.assertNotIn('#jams', html)  # asked for, never made: not listed
+        self.assertIn('href="https://pickipedia.xyz/wiki/Special:EmergentBundles"', html)

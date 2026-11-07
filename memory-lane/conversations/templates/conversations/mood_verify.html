@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>verify · magenta</title>
+<title>instructions bundles · magenta</title>
 <style>
   :root {
     --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
@@ -35,6 +35,14 @@
           border: 1px solid var(--line); background: var(--bg); color: var(--muted); line-height: 1.2; }
   .chip.moodchip { font-weight: 600; color: var(--ink); text-decoration: none; }
   .chip.moodchip:hover { border-color: var(--accent); color: var(--accent); }
+  .recent { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--panel); border: 1px solid var(--line);
+            border-radius: 8px; margin: 0 0 6px; }
+  .recent th, .recent td { text-align: left; padding: 5px 8px; border-top: 1px solid var(--line); }
+  .recent th { color: var(--muted); font-weight: 600; font-size: 12px; border-top: none; }
+  .recent .num { font-variant-numeric: tabular-nums; }
+  .recent .undelivered { color: var(--muted); }
+  .more { font-size: 13px; margin: 0 0 22px; }
+  h2 { font-size: 15px; margin: 22px 0 8px; }
   .pages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .pages li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line);
               border-radius: 8px; background: var(--panel); font-size: 13.5px; }
@@ -71,13 +79,32 @@
     <a href="/moods/polls/">polls</a>
     <a href="/moods/prompts/">prompts</a>
     <a href="/moods/todo/">todo</a>
-    <a href="/moods/verify/" aria-current="page">verify</a>
+    <a href="/moods/tasks/">tasks</a>
+    <a href="/moods/verify/" aria-current="page">bundles</a>
     <a href="/moods/hooks/">wiki hooks</a>
     <a href="/moods/settings/">settings</a>
   </nav>
 </header>
 <main>
-  <h1>Verify</h1>
+  <h1>Instructions bundles</h1>
+  <h2>Made lately</h2>
+  {% if recent %}
+  <table class="recent">
+    <tr><th>made</th><th>block</th><th>emergent</th><th>Mood</th><th>harness</th><th>bundle</th></tr>
+    {% for b in recent %}
+    <tr{% if not b.delivered_at %} class="undelivered" title="made, but no harness started with it"{% endif %}>
+      <td class="num">{{ b.produced_at|date:"j M H:i" }}Z</td>
+      <td class="num">{% if b.block %}{{ b.block }}{% endif %}</td>
+      <td>{{ b.emergent }}</td>
+      <td>{% if b.mood %}<a href="/moods/{{ b.mood }}/">#{{ b.mood }}</a>{% endif %}</td>
+      <td>{{ b.harness }}</td>
+      <td><a href="{{ bundles_url }}/{{ b.id }}" target="_blank" rel="noopener"><code>{{ b.id|stringformat:"s"|slice:":8" }}</code></a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="lede">None made yet.</p>{% endif %}
+  <p class="more">Every bundle, with its pages and revisions: <a href="{{ bundles_url }}" target="_blank" rel="noopener">Special:EmergentBundles</a>.</p>
+  <h2>The pages they're made from</h2>
   <p class="lede">Every PickiPedia page the emergents were told from this week, and the wake's own pages. They are told
     a page's newest revision by a verifier ({{ verify.editors|join:", " }}); an edit by anyone else waits here until one
     verifies it. {% if verify.waiting %}<strong>{{ verify.waiting }} need{{ verify.waiting|pluralize:"s," }} a look.</strong>{% else %}All verified.{% endif %}</p>

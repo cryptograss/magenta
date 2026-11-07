@@ -1699,7 +1699,7 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a><a href="/moods/todo/" data-section="todo">todo</a><a href="/moods/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">bundle segments</a><a href="/moods/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a></div></span></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a><a href="/moods/todo/" data-section="todo">todo</a><a href="/moods/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/moods/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/moods/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <!-- The block, the servers and the sprint, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
@@ -10075,7 +10075,7 @@
   // --- one page: the Moods, and tidings, prompts, status and settings beside them -------------------
   // Each section is its own page, loaded into a frame the first time it's shown and kept: going back and
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
-  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'hooks', 'settings'];
+  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'todo', 'tasks', 'verify', 'hooks', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
   // The address follows the Tidings frame while it shows (Justin, 4 Nov): a tiding opened from the list is
   // its own address, to reload or share, and ‹ Tidings back to the list is /moods/tidings/ again.
@@ -10099,7 +10099,7 @@
   const sectionPending = {};
   // A data section's kept copy rots while you're away (Justin, 29 Oct: the prompts were "way outta date"):
   // one shown again after STALE_MS is redrawn behind the scenes and takes its place when it's in, seen or not.
-  const DATA_SECTIONS = new Set(['prompts', 'status', 'todo', 'verify', 'hooks']);
+  const DATA_SECTIONS = new Set(['prompts', 'status', 'todo', 'tasks', 'verify', 'hooks']);
   const STALE_MS = 60000;
   function refreshSection(name, swapOpen) {
     const old = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);

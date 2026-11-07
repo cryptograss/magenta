@@ -65,7 +65,9 @@ def makers_offered():
             for vendor, makers in sorted(found.items()) if vendor}
 
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'hooks', 'settings')
+RECENT_BUNDLES = 8  # the newest bundles made, shown atop the instructions bundles section
+
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'tasks', 'verify', 'hooks', 'settings')
 
 
 def _opened_on_its_own(request):
@@ -156,6 +158,14 @@ def api_tour(request):
     return JsonResponse(tour.runnable())
 
 
+@section('tasks')
+def tasks_page(request):
+    """Every emergent's tasks (services/tasks.py): what each page says, when each last ran, the newest runs.
+    Justin, 7 Nov: "another page in that list: Tasks"."""
+    from .services import tasks
+    return render(request, 'conversations/mood_tasks.html', {'board': tasks.board(), 'embed': True})
+
+
 @section('hooks')
 def hooks_page(request):
     """The wiki hooks: what happens here when a page changes on PickiPedia, the push's state and the log of
@@ -170,7 +180,12 @@ def verify_page(request):
     """The pages the emergents are told from, and which wait for a verify (services/verify.py).
     Justin, 31 Oct: "a page with links to all the places that need to be verified for regular operation"."""
     from .services import verify
-    return render(request, 'conversations/mood_verify.html', {'verify': verify.state(), 'embed': True})
+    from .models import BundleRecord
+    # The newest bundles made, at the top (Justin, 7 Nov: "show the last few generated bundles").
+    recent = BundleRecord.objects.filter(produced_at__isnull=False).order_by('-produced_at')[:RECENT_BUNDLES]
+    return render(request, 'conversations/mood_verify.html', {
+        'verify': verify.state(), 'embed': True, 'recent': recent,
+        'bundles_url': 'https://pickipedia.xyz/wiki/Special:EmergentBundles'})
 
 
 @require_GET
