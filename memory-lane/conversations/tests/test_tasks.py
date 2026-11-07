@@ -212,6 +212,28 @@ class StartingTest(TestCase):
         line = tasks.start(self.task(), 'justin', params={'names': 'x'})
         self.assertEqual(line.content['state'], 'asked')
 
+    def test_the_tasks_section_lists_each_page_its_last_run_and_the_newest_runs(self):
+        """Justin, 7 Nov: "another page in that list: Tasks"."""
+        from django.core.cache import cache
+        cache.delete(tasks.BOARD)
+        search = lambda prefix: [t for t in self.pages if t.startswith(prefix)]
+        tasks.start(self.task(), 'justin', params={'names': ['Peter Rowan']})
+        board = tasks.board(get=wiki(self.pages), search=search)
+        rows = {(r['agent'], r['name']): r for r in board['tasks']}
+        connect = rows[('blu', 'Connect')]
+        self.assertEqual((connect['mood'], connect['schedule'], connect['cap'], connect['tools']),
+                         ('connectome', 'mondays 09:00', 2.0, 'full'))
+        self.assertEqual((connect['last']['state'], connect['last']['by']), ('asked', 'justin'))
+        self.assertIsNone(rows[('blu', 'Weekly')]['last'])
+        self.assertIn('trusted editor', rows[('blu', 'Proposed')]['error'])  # only an agent's revision: said why
+        self.assertEqual([(r['agent'], r['task']) for r in board['recent']], [('blu', 'Connect')])
+        html = self.client.get('/moods/tasks/', {'embed': '1'}).content.decode()  # the board just read is kept
+        self.assertIn('mondays 09:00', html)
+        self.assertIn('#connectome', html)
+        from conversations.services import wiki_hooks
+        wiki_hooks.run(tasks.title('blu', 'Weekly'), 'JMyles', 50, via='push')
+        self.assertIsNone(cache.get(tasks.BOARD))  # a task page changed: read again when next opened
+
     def test_no_mood_nowhere_to_say_it(self):
         task = tasks.parse('blu', 'X', 1, 'JMyles', 'Do this.')
         with self.assertRaisesRegex(tasks.Refused, 'names no mood'):

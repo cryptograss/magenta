@@ -67,7 +67,7 @@ def makers_offered():
 
 RECENT_BUNDLES = 8  # the newest bundles made, shown atop the instructions bundles section
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'hooks', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'tasks', 'verify', 'hooks', 'settings')
 
 
 def _opened_on_its_own(request):
@@ -156,6 +156,14 @@ def api_tour(request):
     only the steps whose anchor this page has."""
     from .services import tour
     return JsonResponse(tour.runnable())
+
+
+@section('tasks')
+def tasks_page(request):
+    """Every emergent's tasks (services/tasks.py): what each page says, when each last ran, the newest runs.
+    Justin, 7 Nov: "another page in that list: Tasks"."""
+    from .services import tasks
+    return render(request, 'conversations/mood_tasks.html', {'board': tasks.board(), 'embed': True})
 
 
 @section('hooks')
