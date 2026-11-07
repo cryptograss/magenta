@@ -104,7 +104,7 @@ class AskTest(TestCase):
         self.assertEqual(named_pulls('PR #295 and maybelle#231'),
                          [('cryptograss', 'magenta', 295), ('cryptograss', 'maybelle-config', 231)])
         self.assertEqual(named_pulls('the polls PR'), [])
-        self.assertEqual(named_pulls('someone-else#4'), [])  # a repository not known here: only its event answers
+        self.assertEqual(named_pulls('someone-else#4'), None)  # a repository not known here: can't say
         self.say('re', '<merge to="#316 and maybelle#231"/>', 1)
         merged = {316: True, 231: False}
         with mock.patch('conversations.services.todo._merged', lambda o, r, n, http: merged[n]):
@@ -128,13 +128,36 @@ class AskTest(TestCase):
             self.assertEqual(named_branches('maybelle:re/a and pickipedia:magent/b/c'),
                              [('maybelle-config', 're/a'), ('pickipedia', 'magent/b/c')])
             self.assertEqual(named_branches('note: this one; see https://github.com/x/y'), [])
-            self.assertEqual(named_branches('nonesuch:re/foo'), [])  # a repository githouse doesn't hold
+            self.assertEqual(named_branches('nonesuch:re/foo'), None)  # a repository githouse doesn't hold: can't say
+            self.assertEqual(named_branches('nonesuch:re/foo and other:none/bar'), None)  # one unknown: can't say any
             self.say('re', '<merge to="magenta:re/foo"/>', 1)
             with mock.patch('conversations.services.githouse.branch_merged', lambda repo, branch: False) as said:
                 self.assertEqual([t['kind'] for t in self.asked()], ['merge'])
             cache.clear()
             with mock.patch('conversations.services.githouse.branch_merged', lambda repo, branch: (repo, branch) == ('magenta', 're/foo')):
                 self.assertEqual(self.asked(), [])
+
+    def test_an_ask_naming_something_unknown_stands_whichever_half_it_is(self):
+        # re, 7 Nov: a mixed ask -- a pull request githouse could say about, and a mergeable in a repository it
+        # doesn't hold -- must stand until the event lands, never clear on the known half alone. The same for a
+        # pull request in a repository we don't know, alone or with one we do.
+        import tempfile
+        from unittest import mock
+
+        from django.test import override_settings
+
+        from conversations.services.tools_ask import _merged_elsewhere, named_pulls
+        mount = tempfile.mkdtemp()
+        with override_settings(GITHOUSE_DIR=mount):
+            self.assertEqual(named_pulls('someone-else#4 and magenta#408'), None)
+            self.assertFalse(_merged_elsewhere('magenta#408 and nonesuch:re/foo'))
+            self.assertFalse(_merged_elsewhere('#408 and someone-else#4'))
+            self.say('re', '<merge to="magenta#408 and nonesuch:re/foo"/>', 1)
+            with mock.patch('conversations.services.githouse.branch_merged', lambda repo, branch: True):
+                with mock.patch('conversations.services.todo._merged', lambda o, r, n, http: True):
+                    self.assertEqual([t['kind'] for t in self.asked()], ['merge'])  # both true: still open
+            self.say('re', '<merge to="magenta#408 and someone-else#4"/>', 2)
+            self.assertEqual([t['kind'] for t in self.asked()], ['merge'])
 
     def test_a_redeploy_ask_clears_only_when_its_servers_finish(self):
         # Justin, 31 Oct: any deploy event answered a redeploy ask -- pickipedia's for a hunter ask, or one only begun.

@@ -107,25 +107,26 @@ _REPOS = {'magenta': 'magenta', 'pr': 'magenta', 'maybelle': 'maybelle-config', 
 
 
 def named_pulls(purpose):
-    """[(owner, repo, number)] a merge ask's words name; [] if none, or one in a repository not known here."""
+    """[(owner, repo, number)] a merge ask's words name; None if any of them is in a repository not known
+    here (the ask stands: whether it merged can't be said), [] if nothing is named."""
     found = []
     for repo, number in _NAMED_PULL.findall(purpose or ''):
         repo = _REPOS.get((repo or 'magenta').lower())
         if repo is None:
-            return []
+            return None
         found.append(('cryptograss', repo, int(number)))
     return found
 
 
 def named_branches(purpose):
-    """[(repo, branch)] the mergeables a merge ask's words name; [] if none, or one in a repository githouse
-    doesn't hold (the alias table, or the mount itself)."""
+    """[(repo, branch)] the mergeables a merge ask's words name; None if any of them is in a repository githouse
+    doesn't hold (the alias table, or the mount itself: the ask stands), [] if nothing is named."""
     from . import githouse
     found = []
     for repo, branch in _NAMED_BRANCH.findall(purpose or ''):
         repo = _REPOS.get(repo.lower(), repo if githouse.repository(repo) else None)
         if repo is None:
-            return []
+            return None
         found.append((repo, branch))
     return found
 
@@ -139,8 +140,8 @@ def _merged_elsewhere(purpose):
     from . import githouse
     from .todo import _merged
     pulls, branches = named_pulls(purpose), named_branches(purpose)
-    if not pulls and not branches:
-        return False
+    if not pulls or not branches:  # [] (nothing named) or None (a name in a repository we can't say about):
+        return False               # the ask stands until its event lands, whichever half was unknown
     try:
         return (all(_merged(owner, repo, number, requests) for owner, repo, number in pulls)
                 and all(githouse.branch_merged(repo, branch) for repo, branch in branches))
