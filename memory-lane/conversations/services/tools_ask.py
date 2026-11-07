@@ -2,7 +2,9 @@
 waiting for that"): a look-only turn's reply of <tools to="…"/>, alone or after its words, (also <merge to="…"/>, <deploy to="…"/>,
 the same ask, other things -- Justin, 29 Oct) is a line in the Mood and an icon by its name until someone does
 it. Each ask stays open until its event lands in that Mood: a full-tools wake answers the tools ask, a merged
-event the merge ask, a deploy event the deploy ask.
+event the merge ask, a deploy event the deploy ask. A merge ask naming what it's for ("#408", "maybelle#250",
+"magenta:re/foo") is also answered by githouse's copy of the repository (services/githouse.py): the pull request's
+head, or the branch's name, is in a deploy branch's history. GitHub is asked only of what githouse doesn't hold.
 """
 
 import re
@@ -97,30 +99,54 @@ def _by_kind(asks):
 
 # A pull request a merge ask names: "#316", "PR #295", "magenta#295", "maybelle-config#231". Bare, it's magenta's.
 _NAMED_PULL = re.compile(r'(?:\b([A-Za-z][\w.-]*))?#(\d+)\b')
+# A mergeable it names, <repo>:<branch> (Cryptograss:Moods/ramp/Plan, section 1): "magenta:re/foo". The branch
+# has a slash, its owner's prefix, so "note: this" and a URL's "https://" name nothing.
+_NAMED_BRANCH = re.compile(r'\b([A-Za-z][\w.-]*):([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+)')
 _REPOS = {'magenta': 'magenta', 'pr': 'magenta', 'maybelle': 'maybelle-config', 'maybelle-config': 'maybelle-config',
-          'pickipedia': 'pickipedia', 'pickipedia-mcp': 'pickipedia-mcp'}
+          'pickipedia': 'pickipedia', 'pickipedia-mcp': 'pickipedia-mcp', 'arthel': 'arthel', 'rabbithole': 'rabbithole'}
 
 
 def named_pulls(purpose):
-    """[(owner, repo, number)] a merge ask's words name; [] if none, or one in a repository not known here."""
+    """[(owner, repo, number)] a merge ask's words name; None if any of them is in a repository not known
+    here (the ask stands: whether it merged can't be said), [] if nothing is named."""
     found = []
     for repo, number in _NAMED_PULL.findall(purpose or ''):
         repo = _REPOS.get((repo or 'magenta').lower())
         if repo is None:
-            return []
+            return None
         found.append(('cryptograss', repo, int(number)))
     return found
 
 
-def _merged_on_github(purpose):
-    """Whether GitHub says every pull request the ask names is merged (Justin, 31 Oct: "a dumb way to resolve a
-    merge request"): no webhook, no to-do list needed -- the same check the to-do lists tick themselves by."""
+def named_branches(purpose):
+    """[(repo, branch)] the mergeables a merge ask's words name; None if any of them is in a repository githouse
+    doesn't hold (the alias table, or the mount itself: the ask stands), [] if nothing is named."""
+    from . import githouse
+    found = []
+    for repo, branch in _NAMED_BRANCH.findall(purpose or ''):
+        repo = _REPOS.get(repo.lower(), repo if githouse.repository(repo) else None)
+        if repo is None:
+            return None
+        found.append((repo, branch))
+    return found
+
+
+def _merged_elsewhere(purpose):
+    """Whether everything the ask names is merged: each pull request by githouse's copy, else GitHub (Justin,
+    31 Oct: "a dumb way to resolve a merge request"; the same check the to-do lists tick themselves by), each
+    mergeable by its name having moved to refs/merged/. Naming nothing, only the Mood's merged event answers."""
     import requests
 
+    from . import githouse
     from .todo import _merged
-    pulls = named_pulls(purpose)
+    pulls, branches = named_pulls(purpose), named_branches(purpose)
+    if pulls is None or branches is None or not (pulls or branches):
+        # None: a name in a repository we can't say about (re, 7 Nov: never clear on the known half alone);
+        # both []: nothing named. Either way the ask stands until its event lands.
+        return False
     try:
-        return bool(pulls) and all(_merged(owner, repo, number, requests) for owner, repo, number in pulls)
+        return (all(_merged(owner, repo, number, requests) for owner, repo, number in pulls)
+                and all(githouse.branch_merged(repo, branch) for repo, branch in branches))
     except Exception:  # noqa: BLE001 -- GitHub unreachable: the ask stands until its event lands
         return False
 
@@ -161,7 +187,7 @@ def _answered(kind, slug, agent, request, purpose=''):
     if source:
         if Message.objects.filter(mood=request.mood, source_file=source, created_at__gt=request.created_at).exists():
             return True
-        return kind == 'merge' and _merged_on_github(purpose)
+        return kind == 'merge' and _merged_elsewhere(purpose)
     wakes = (Message.objects.filter(mood=request.mood, sender_id='mood-poller', created_at__gt=request.created_at)
              .annotate(t=Cast('content', TextField())).filter(t__contains=FULL))
     bundles = {str(b) for b in BundleRecord.objects.filter(emergent=agent, mood=slug, requested_at__gt=request.created_at)

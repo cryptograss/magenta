@@ -228,7 +228,7 @@ def all_todos(http=None):
     return result
 
 
-# --- merges, from GitHub ------------------------------------------------------------
+# --- merges, from githouse's copy, else GitHub ------------------------------------------------------------
 
 _PULL = re.compile(r'^https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?:[/#?].*)?$', re.I)
 CLOSED_FOR = 300       # seconds a repository's recently closed pull requests are kept
@@ -258,7 +258,14 @@ def _recently_merged(owner, repo, http):
 
 
 def _merged(owner, repo, number, http):
-    """Whether GitHub says this pull request was merged (False if it won't say)."""
+    """Whether this pull request was merged: githouse's copy says, by its head's ancestry (services/githouse.py;
+    Cryptograss:Moods/ramp/Plan, section 4), and GitHub is asked only of a repository or a pull request githouse
+    doesn't hold (False if it won't say)."""
+    from . import githouse
+    if same(f'{owner}/{repo}').startswith('cryptograss/'):
+        said = githouse.pull_merged(same(f'{owner}/{repo}').split('/')[1], number)
+        if said is not None:
+            return said
     recent = _recently_merged(owner, repo, http)
     if recent and number in recent:
         return True

@@ -17,7 +17,6 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .models import Mood, Setting, ThinkingEntity
 from .services import mood_auth
 from .services import settings as knobs
-from pathlib import Path
 
 
 def settings_state():
@@ -537,7 +536,8 @@ def api_branches(request):
     """githouse's branches.json: every repository's branches, live, merged and closed, for the composer's
     repo:branch autocomplete (maybelle-config#250; Cryptograss:Moods/ramp/Plan). Read from
     settings.GITHOUSE_DIR, maybelle's copy mounted read-only into this container; {} until there is one."""
-    path = Path(getattr(settings, 'GITHOUSE_DIR', '/srv/git')) / 'branches.json'
+    from .services import githouse
+    path = githouse.root() / 'branches.json'
     try:
         branches = json.loads(path.read_text())
     except (OSError, ValueError):
