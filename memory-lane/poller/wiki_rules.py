@@ -157,6 +157,15 @@ class WikiTexts:
         return [(rev['revid'], rev.get('user', ''), rev['slots']['main']['content'])
                 for rev in page.get('revisions') or [] if not page.get('missing')]
 
+    def forget(self, title):
+        """Drop what's kept of a page, so the next ask reads it again now: told of a change on PickiPedia by the
+        pulse (mood_poller.follow_wiki), rather than waiting out the TTL. Whether anything was kept."""
+        title = title.replace('_', ' ')
+        kept = [k for k in self.pages if (k[1] if isinstance(k, tuple) else k).replace('_', ' ') == title]
+        for k in kept:
+            del self.pages[k]
+        return bool(kept)
+
     def listed(self, title):
         """The '*' lines of a page's newest trusted revision, lowercased, as a set: None if it has none it can read
         (and never could). Kept TTL seconds; the wiki down, what was read last stands."""

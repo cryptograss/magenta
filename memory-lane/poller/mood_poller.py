@@ -163,6 +163,11 @@ class MoodAPI:
         and the day's budget."""
         return self._get('/api/moods/pulse/', emergent=agent)
 
+    def wiki_runs(self, since):
+        """The wiki hook runs after run id `since`, oldest first: each a page changed on PickiPedia
+        (services/wiki_hooks.py), told by its push or found by the sweep."""
+        return self._get('/api/wiki-hooks/', since=since)['runs']
+
     def recent(self, slug, limit=40):
         """A Mood's newest turns (and its title and description), for context."""
         return self._get(f'/api/moods/{slug}/turns/', limit=limit)
@@ -2018,12 +2023,38 @@ class MoodPoller:
             self.settings = {m['slug']: m.get('settings') or {} for m in pulse.get('moods', [])}
             self.known_as = {m['slug']: set(m.get('aliases') or ()) for m in pulse.get('moods', [])}
             self.budget = pulse.get('budget') or {}
+            self.follow_wiki(pulse)
         woken = self.poll_once()
         considered = self.crosstalk_once() if pulse else []
         considered += self.consider_once(pulse) if pulse else []
         if pulse and self.consider_enabled:
             considered += self.greet_arrivals(pulse)
         return woken, considered
+
+    def follow_wiki(self, pulse):
+        """Forget this runner's own copy of each page changed on PickiPedia (poller/wiki_rules.WikiTexts: the wake's
+        lines, the dials, the pronouns list), as soon as the pulse says a change was heard, so an edit reaches the
+        next wake and not the one five minutes on. The pulse carries the newest hook run's id; moved on, the runs
+        since are asked for (one GET, only then) and each title forgotten. Returns the titles forgotten."""
+        seq = (pulse.get('wiki') or {}).get('seq')
+        if seq is None or self.texts is None or not hasattr(self.texts, 'forget'):
+            return []
+        kept = self.state.get('wiki_seq')
+        if kept is not None and seq > kept:
+            try:
+                runs = self.api.wiki_runs(since=kept)
+            except Exception as e:  # the TTL still stands; asked again next cycle
+                logger.warning(f'wiki runs since {kept}: {e}')
+                return []
+            forgotten = [r['title'] for r in runs if r.get('title') and self.texts.forget(r['title'])]
+            if forgotten:
+                logger.info(f"wiki: forgot {', '.join(forgotten)} (changed on PickiPedia)")
+        else:
+            forgotten = []
+        if seq != kept:
+            self.state['wiki_seq'] = seq
+            self.save()
+        return forgotten
 
     def trusted(self, turn):
         """Whether this turn may wake the agent with its full tools: typed into

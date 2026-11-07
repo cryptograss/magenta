@@ -86,6 +86,19 @@ class RunTest(TestCase):
         self.assertContains(page, 'Cryptograss:Moods/interfaces/todo')
         self.assertContains(page, "The push isn't set up here")
 
+    def test_the_pulse_carries_the_newest_run_and_since_gives_the_runs_after_it(self):
+        """hunter's poller keeps its own copies of the wake's pages (poller/wiki_rules): the pulse's seq tells it
+        a page changed, and ?since= which, so it forgets them at once rather than five minutes on."""
+        self.assertEqual(self.client.get('/api/moods/pulse/').json()['wiki'], {'seq': 0})
+        first = wiki_hooks.run('Cryptograss:Emergents/Wake', 'JMyles', 10, via='push')[0]
+        second = wiki_hooks.run('Cryptograss:Moods/Dials', 'JMyles', 11, via='sweep')[0]
+        self.assertEqual(self.client.get('/api/moods/pulse/').json()['wiki'], {'seq': second.id})
+        got = self.client.get('/api/wiki-hooks/', {'since': first.id}).json()
+        self.assertEqual([(r['id'], r['title']) for r in got['runs']], [(second.id, 'Cryptograss:Moods/Dials')])
+        self.assertEqual(got['seq'], second.id)
+        self.assertEqual([r['title'] for r in self.client.get('/api/wiki-hooks/', {'since': 0}).json()['runs']],
+                         ['Cryptograss:Emergents/Wake', 'Cryptograss:Moods/Dials'])  # oldest first
+
 
 @override_settings(WIKI_HOOK_SECRET=SECRET)
 class PushTest(TestCase):

@@ -43,7 +43,9 @@
   <h1>Wiki hooks</h1>
   <p class="lede">What happens here when a page changes on PickiPedia. PickiPedia pushes each save to
     <code>/api/wiki/hook/</code>; a sweep once a minute is the check on the push, and both run the same hooks.
-    Any other page changed is forgotten, and read again when next asked for. A hook that fails is a line in #ops.</p>
+    Any other page changed is forgotten, and read again when next asked for. A hook that fails is a line in #ops.
+    Each emergent's runner on hunter follows this log too, and forgets its own copy of a changed page (the
+    wake's lines, the dials, the pronouns list) the second it hears.</p>
 
   <div class="push">
     {% if not state.push.configured %}

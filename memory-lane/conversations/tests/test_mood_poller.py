@@ -2021,6 +2021,78 @@ class DigestingScreen(FakeScreen):
         return 'THE GIST: they agreed on the bus time.', 0.002
 
 
+class FollowWikiTest(TestCase):
+    """A page changed on PickiPedia reaches this runner's own copies (poller/wiki_rules.WikiTexts) at once:
+    the pulse carries the newest hook run's id, and the runs since are asked for only when it moves on."""
+
+    class API(MentionsAndPulse):
+        def __init__(self, seq=0):
+            super().__init__()
+            self.seq, self.runs, self.asked = seq, [], []
+
+        def changed(self, title):
+            self.seq += 1
+            self.runs.append({'id': self.seq, 'title': title, 'hook': 'forget', 'via': 'push'})
+
+        def pulse(self, agent='magent'):
+            return dict(super().pulse(agent), wiki={'seq': self.seq})
+
+        def wiki_runs(self, since):
+            self.asked.append(since)
+            return [r for r in self.runs if r['id'] > since]
+
+    class Texts:
+        def __init__(self):
+            self.forgotten = []
+
+        def forget(self, title):
+            self.forgotten.append(title)
+            return title == 'Cryptograss:Emergents/Wake'
+
+    def make(self, api, texts):
+        state = Path(tempfile.mkdtemp()) / 'state.json'
+        return MoodPoller(api, FakeWaker(), state_path=state, now=lambda: T0, texts=texts)
+
+    def test_a_changed_page_is_forgotten_once_and_only_when_the_seq_moves(self):
+        api, texts = self.API(seq=40), self.Texts()
+        poller = self.make(api, texts)
+        poller.cycle()  # the first look learns where the log stands: nothing is history to forget
+        self.assertEqual((api.asked, texts.forgotten, poller.state['wiki_seq']), ([], [], 40))
+        poller.cycle()
+        self.assertEqual(api.asked, [])  # nothing moved: no second GET
+        api.changed('Cryptograss:Emergents/Wake')
+        api.changed('User:Skyler')
+        poller.cycle()
+        self.assertEqual(api.asked, [40])
+        self.assertEqual(texts.forgotten, ['Cryptograss:Emergents/Wake', 'User:Skyler'])
+        self.assertEqual(poller.state['wiki_seq'], 42)
+        poller.cycle()
+        self.assertEqual(api.asked, [40])
+        self.assertEqual(json.loads(poller.state_path.read_text())['wiki_seq'], 42)  # kept across a restart
+
+    def test_without_texts_or_a_pulse_that_lacks_it_nothing_is_asked(self):
+        api = self.API(seq=3)
+        poller = self.make(api, None)
+        poller.cycle()
+        api.changed('Cryptograss:Moods/Dials')
+        poller.cycle()
+        self.assertEqual(api.asked, [])
+        old = self.make(MentionsAndPulse(), self.Texts())  # a maybelle from before this: no wiki in its pulse
+        self.assertEqual(old.follow_wiki(old.api.pulse()), [])
+
+    def test_the_runs_endpoint_down_leaves_the_ttl_to_it_and_asks_again(self):
+        api, texts = self.API(seq=1), self.Texts()
+        poller = self.make(api, texts)
+        poller.cycle()
+        api.changed('Cryptograss:Emergents/Wake')
+        api.wiki_runs = lambda since: (_ for _ in ()).throw(RuntimeError('502'))
+        poller.cycle()
+        self.assertEqual((texts.forgotten, poller.state['wiki_seq']), ([], 1))  # not moved on: asked again
+        del api.wiki_runs
+        poller.cycle()
+        self.assertEqual((texts.forgotten, poller.state['wiki_seq']), (['Cryptograss:Emergents/Wake'], 2))
+
+
 class RunnerKeyTest(TestCase):
 
     def test_from_the_environment_else_from_the_file_else_none(self):

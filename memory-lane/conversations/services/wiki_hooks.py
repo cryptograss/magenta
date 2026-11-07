@@ -242,14 +242,26 @@ def line(c):
     return f"⚠ the {c.get('hook', '?')} hook failed on [[{c.get('title', '')}]] ({c.get('via', 'sweep')}): {c.get('error', '')}"
 
 
-def state(limit=200):
-    """For /wiki-hooks/: the registry, the log's newest rows, and what the push last said."""
+def seq():
+    """The newest run's id, 0 before any: the pulse carries it, so hunter's poller knows when a page changed."""
+    from conversations.models import WikiHookRun
+    return WikiHookRun.objects.order_by('-id').values_list('id', flat=True).first() or 0
+
+
+def state(limit=200, since=None):
+    """For /wiki-hooks/: the registry, the log's newest rows, and what the push last said. With `since` (a run
+    id), only the runs after it, oldest first: what hunter's poller asks for when the pulse's seq moves on."""
     from conversations.models import WikiHookRun
     from . import wiki_changes
+    if since is None:
+        runs = WikiHookRun.objects.order_by('-at')[:limit]
+    else:
+        runs = WikiHookRun.objects.filter(id__gt=since).order_by('id')[:limit]
     return {
         'hooks': [{'name': h.name, 'pages': h.pages, 'about': h.about} for h in HOOKS],
         'runs': [{'id': r.id, 'at': r.at.isoformat(), 'title': r.title, 'revid': r.revid, 'user': r.user,
                   'hook': r.hook, 'via': r.via, 'took_ms': r.took_ms, 'result': r.result, 'failed': r.failed}
-                 for r in WikiHookRun.objects.order_by('-at')[:limit]],
+                 for r in runs],
         'push': wiki_changes.push_state(),
+        'seq': seq(),
     }
