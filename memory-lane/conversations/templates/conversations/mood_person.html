@@ -157,22 +157,22 @@
     <li class="item {{ item.kind }}">
       {% if item.kind == 'message' %}
       <div class="meta"><a class="where" href="{{ item.url }}">#{{ item.mood_title }}</a>
-        <span class="at" title="{{ item.at|date:'c' }}">{{ item.at|date:"M j, g:i A" }}{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
+        <span class="at" title="{{ item.at|date:'c' }}"><span class="when">{{ item.at|date:"M j, g:i A" }}</span>{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
       <div class="text"><a href="{{ item.url }}">{{ item.text }}</a></div>
 
       {% elif item.kind == 'release' %}
       <div class="meta"><span class="where">PickiPedia</span><span class="chip rel">release</span>
-        <span class="at" title="{{ item.at|date:'c' }}">{{ item.at|date:"M j, g:i A" }}{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
+        <span class="at" title="{{ item.at|date:'c' }}"><span class="when">{{ item.at|date:"M j, g:i A" }}</span>{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
       <div class="title"><a href="{{ item.page }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
       <div class="media">
-        {% if item.player.kind == 'video' %}<div class="stage{% if not item.poster and not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.poster|default:item.player.poster }}">{% if item.poster or item.player.poster %}<img loading="lazy" src="{{ item.poster|default:item.player.poster }}" alt="" onerror="this.remove(); this.parentNode.classList.add('bare')">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
+        {% if item.player.kind == 'video' %}<div class="stage{% if not item.poster and not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.poster|default:item.player.poster }}">{% if item.poster or item.player.poster %}<img loading="lazy" src="{{ item.poster|default:item.player.poster }}" alt="" onerror="this.parentNode.classList.add('bare'); this.remove()">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
         {% elif item.player.kind == 'audio' %}<audio src="{{ item.player.src }}" controls preload="none"></audio>
         {% else %}<div class="record"><span class="disc" aria-hidden="true">💿</span><a href="{{ item.page }}" target="_blank" rel="noopener">Its page on PickiPedia, with its tracks</a></div>{% endif %}
       </div>
 
       {% else %}
       <div class="meta"><span class="where">PickiPedia</span>{% if item.made %}<span class="chip made">new page</span>{% elif item.size %}<span class="chip {% if item.size > 0 %}more{% else %}less{% endif %}">{% if item.size > 0 %}+{% endif %}{{ item.size }}</span>{% endif %}
-        <span class="at" title="{{ item.at|date:'c' }}">{{ item.at|date:"M j, g:i A" }}{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
+        <span class="at" title="{{ item.at|date:'c' }}"><span class="when">{{ item.at|date:"M j, g:i A" }}</span>{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
       <div class="title"><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
       {% if item.comment %}<div class="comment">{{ item.comment }}</div>{% endif %}
       {% if item.kind == 'file' %}
@@ -184,7 +184,7 @@
       </div>
       {% elif item.player %}
       <div class="media">
-        {% if item.player.kind == 'video' %}<div class="stage{% if not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.player.poster }}">{% if item.player.poster %}<img loading="lazy" src="{{ item.player.poster }}" alt="" onerror="this.remove(); this.parentNode.classList.add('bare')">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
+        {% if item.player.kind == 'video' %}<div class="stage{% if not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.player.poster }}">{% if item.player.poster %}<img loading="lazy" src="{{ item.player.poster }}" alt="" onerror="this.parentNode.classList.add('bare'); this.remove()">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
         {% else %}<audio src="{{ item.player.src }}" controls preload="none"></audio>{% endif %}
       </div>
       {% endif %}
@@ -238,6 +238,12 @@
     readyToPlay(v).then(() => v.play().catch(() => {}));
   }
   document.addEventListener('click', e => { const s = e.target.closest('.stage'); if (s) stagePlay(s); });
+
+  // Times on the reader's own clock, as on the Mood page (the server wrote them in UTC; the title keeps that).
+  for (const at of document.querySelectorAll('.item .at[title]')) {
+    const d = new Date(at.title), when = at.querySelector('.when');
+    if (when && !isNaN(d)) when.textContent = d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
   document.addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const s = e.target.closest && e.target.closest('.stage');

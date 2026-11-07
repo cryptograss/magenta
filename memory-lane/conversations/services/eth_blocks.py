@@ -150,7 +150,7 @@ class BlockClock:
         n1, t1 = self.numbers[i + 1], self.timestamps[i + 1]
         if n1 - n0 > ANCHOR_SPACING:
             return None
-        estimate = n0 + (ts - t0) * (n1 - n0) // (t1 - t0)
+        estimate = int(n0 + (ts - t0) * (n1 - n0) // (t1 - t0))
         return min(max(estimate, n0), n1 - 1)
 
 
