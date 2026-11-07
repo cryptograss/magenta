@@ -63,6 +63,17 @@ class OwnClipsTest(TestCase):
         # Its link, opened: the video.
         self.assertRedirects(self.client.get(f'/clips/{clip.clip}/'), clip.media.url, fetch_redirect_response=False)
 
+    def test_with_no_mood_asked_it_is_saved_and_said_nowhere(self):
+        """Justin, 7 Nov: "No need to announce in #general when someone saves a clip"."""
+        made = self.make(name='quiet-one')
+        self.assertEqual(made.status_code, 201, made.content)
+        self.assertEqual((made.json()['mood'], made.json()['url']), (None, None))
+        saved = Message.objects.get(client_version='magenta-cli/clips')
+        self.assertIsNone(saved.mood)  # said in no Mood: #general hears nothing
+        self.assertEqual(saved.content, f"/clips save quiet-one {made.json()['link']}")
+        self.assertEqual(clips.command('/clips quiet-one', 'skyler')[0], f"/clips quiet-one {made.json()['link']}")
+        self.assertEqual(self.make(name='nowhere-one', mood='nowhere').status_code, 404)
+
     def test_words_under_a_clip_come_with_it(self):
         # Justin, 24 Oct: "if you just add more text in the same message as a clip, on the next line(s)?"
         link = self.make().json()['link']
@@ -112,5 +123,9 @@ class MoodClipToolTest(TestCase):
             self.tool.seconds('1:2:3:4')
 
     def test_a_name_from_the_subtitle(self):
-        self.assertEqual(self.tool.name_from("That's the whole point, man. Really.", 'x.mp4'), 'thats-the-whole-point-man')
+        self.assertEqual(self.tool.name_from("That's the whole point, man. Really.", 'x.mp4'), 'thats-the-whole-point-man-really')
+        # Whole words, up to the server's 80 (Justin, 7 Nov: it was cut at 35).
+        long = self.tool.name_from('the dude abides and i for one take comfort in that knowing hes out there taking her easy for all us sinners', 'x.mp4')
+        self.assertEqual(long, 'the-dude-abides-and-i-for-one-take-comfort-in-that-knowing-hes-out-there-taking')
+        self.assertLessEqual(len(long), 80)
         self.assertEqual(self.tool.name_from('…', 'Old Crow 2019.mov'), 'old-crow-2019')
