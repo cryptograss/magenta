@@ -65,7 +65,7 @@ def makers_offered():
             for vendor, makers in sorted(found.items()) if vendor}
 
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'verify', 'hooks', 'settings')
 
 
 def _opened_on_its_own(request):
@@ -154,6 +154,15 @@ def api_tour(request):
     only the steps whose anchor this page has."""
     from .services import tour
     return JsonResponse(tour.runnable())
+
+
+@section('hooks')
+def hooks_page(request):
+    """The wiki hooks: what happens here when a page changes on PickiPedia, the push's state and the log of
+    runs (services/wiki_hooks.py). Justin, 7 Nov: "Can I see all the hooks as a page under the chevron?"
+    """
+    from .services import wiki_hooks
+    return render(request, 'conversations/mood_hooks.html', {'state': wiki_hooks.state(), 'embed': True})
 
 
 @section('verify')
