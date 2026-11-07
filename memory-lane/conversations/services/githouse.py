@@ -80,8 +80,11 @@ def owned_branches(repo):
 
 
 def _is_ancestor(repo, commit, of):
-    done = subprocess.run(['git', '-c', 'safe.directory=*', '--git-dir', str(repo), 'merge-base', '--is-ancestor',
-                           commit, of], capture_output=True, timeout=20)
+    try:
+        done = subprocess.run(['git', '-c', 'safe.directory=*', '--git-dir', str(repo), 'merge-base', '--is-ancestor',
+                               commit, of], capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):  # git missing, or hung on a dying mount: can't say here
+        return False
     return done.returncode == 0
 
 
