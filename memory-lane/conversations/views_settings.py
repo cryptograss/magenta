@@ -171,10 +171,13 @@ def pulls_page(request):
     """The ramp (services/ramp.py; Cryptograss:Moods/ramp/Plan, section 2): every open pull request and
     githouse branch across our repositories, the last few merged, the names used, githouse's log.
     Justin, 7 Nov: "Does githouse have a UI that I can see?" -- "build the ramp view"."""
-    from .services import ramp
+    from .services import merge_orders, mood_auth, ramp
     board = ramp.board()
+    device = mood_auth.device_for(request)
+    # The Merge buttons, for a merger signed in with their SSH key (Plan, section 10); githouse checks again.
+    can_merge = bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id)
     return render(request, 'conversations/mood_pulls.html',
-                  {'board': board, 'open': ramp.ordered(board['open'], ''), 'embed': True})
+                  {'board': board, 'open': ramp.ordered(board['open'], ''), 'embed': True, 'can_merge': can_merge})
 
 
 @section('hooks')

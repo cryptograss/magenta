@@ -1848,6 +1848,7 @@ class MergeOrder(models.Model):
     repo = models.CharField(max_length=64)
     branch = models.CharField(max_length=200)
     by = models.CharField(max_length=60)
+    pressed = models.CharField(max_length=60, blank=True, default='')   # the merge button: whose press, if by is memory-lane
     expires = models.BigIntegerField()                       # unix time, as the order says
     mood = models.CharField(max_length=100, blank=True, default='')
     received_at = models.DateTimeField(auto_now_add=True, db_index=True)
