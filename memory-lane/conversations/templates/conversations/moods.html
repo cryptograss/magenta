@@ -656,6 +656,10 @@
   .badge.bot, header .badge.bot { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
 
   main { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 22px 0 0; container-type: inline-size; }  /* no bottom padding: it would hold the sticky footer off the bottom */
+  /* The thread scrolls up and down, never sideways: a long link or a Release CID breaks where it must, rather
+     than widening the thread for a finger to drag it off into blank (Skyler, 8 Nov: "I can swipe right for way
+     too long into infinite blank screen"; #general ran to 612px on a 402px phone). A code block keeps its own scroll. */
+  main { overflow-x: hidden; overflow-wrap: anywhere; }
   /* --gutter: what the jump strip takes at the right (25px + margins). When the
      window leaves room beside the column the text never reaches it; when the
      column fills the width (a phone, zoomed in), its text stops short of it. */
