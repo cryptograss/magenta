@@ -1000,7 +1000,7 @@
   .aturn:has(> .ahead:hover) > .abody > article.turn:first-of-type > .who { visibility: visible; transition-delay: 0s; }
   .abody > article.turn:first-of-type:hover > .who button,
   .aturn:has(> .ahead:hover) > .abody > article.turn:first-of-type > .who button { opacity: 1; }
-  @media (pointer: coarse) { .abody > article.turn:first-of-type > .who { position: static; float: right; visibility: visible; margin: 0 0 2px 4px;
+  @media (pointer: coarse) { .abody > article.turn:first-of-type > .who { position: static; float: right; visibility: visible; margin: 0 0 2px 4px; min-width: 0;
       background: none; border: 0; box-shadow: none; padding: 0; } }
   .abody > .turn { padding-top: 2px; padding-bottom: 6px; border-top: 0; }
   .abody > .work:not(.open) { float: right; margin: 0 0 0 8px; position: relative; z-index: 1; }
@@ -1495,6 +1495,11 @@
                                                    margin: 2px 0 4px 10px; padding: 6px 15px; border: 1px solid var(--accent);
                                                    background: var(--bg); box-shadow: 0 1px 6px rgba(0,0,0,.12); }
     .turn.cont { display: flow-root; }
+    /* A message's heading line (time, model, ↩ 🙂 ⋯) beside the floated ▶ ⏩ and its folded steps: with only a sliver
+       left between them it was squeezed to a column a word wide, under ⏩ (Skyler, 8 Nov). Each part keeps its words
+       on one line, the line wraps between parts, and with less than 60% of the width beside the floats it drops below. */
+    .turn .who { flex-wrap: wrap; row-gap: 2px; min-width: 60%; }
+    .turn .who > * { white-space: nowrap; }
     .turn .voices .speak { font-size: 15px; padding: 6px 12px; }
   }
   .turn .body audio { display: block; width: 100%; max-width: 420px; height: 36px; margin: 4px 0; }
