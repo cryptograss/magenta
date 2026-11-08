@@ -36,15 +36,18 @@
 window.magentaMerge = (() => {
   const sheet = document.getElementById('mergeSheet');
   const $ = s => sheet.querySelector(s);
-  let seen = null, mood = '', busy = false;
+  // gen: which open() is current. A preview that answers after another sheet was opened is dropped, so the
+  // sheet never names one piece of work while holding another's commit for the press (re, 8 Nov).
+  let seen = null, mood = '', busy = false, gen = 0;
   const csrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
   const say = (text, kind) => { const el = $('.say'); el.textContent = text; el.className = 'say' + (kind ? ' ' + kind : ''); };
-  const shut = () => { if (!busy) sheet.hidden = true; };
+  const shut = () => { if (!busy) { sheet.hidden = true; gen++; seen = null; } };
   $('.no').addEventListener('click', shut);
   sheet.addEventListener('click', e => { if (e.target === sheet) shut(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !sheet.hidden) shut(); });
 
   async function open(work, inMood) {
+    const mine = ++gen;
     seen = null; mood = inMood || ''; busy = false;
     const name = work.number ? `${work.repo}#${work.number}` : `${work.repo}:${work.branch}`;
     $('.what').textContent = `Merge ${name}?`;
@@ -59,7 +62,8 @@ window.magentaMerge = (() => {
     try {
       r = await fetch('/api/merge-orders/preview/?' + q, { credentials: 'same-origin' });
       body = await r.json();
-    } catch (e) { say('Couldn’t reach memory-lane: ' + e.message, 'err'); return; }
+    } catch (e) { if (mine === gen) say('Couldn’t reach memory-lane: ' + e.message, 'err'); return; }
+    if (mine !== gen || sheet.hidden) return;
     if (!r.ok) { say(body.error || ('memory-lane said ' + r.status), 'err'); return; }
     seen = body;
     $('.sub').textContent = `${body.repo}:${body.branch} at ${body.commit.slice(0, 12)} → ${body.into} at ${body.tip.slice(0, 12)}`;
