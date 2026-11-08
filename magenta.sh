@@ -76,6 +76,15 @@ SUBCOMMANDS:
                         to cut only and look first. Runs mood_clip.py.
   clips list            Every clip: its name, what it's for (from the
                         Magenta:Clips page on PickiPedia) and its link.
+  merge <repo>:<branch> [--into B] [--yes]
+                        Merge a branch without a pull request. Fetches it and
+                        its target from GitHub itself, shows you git log and
+                        the diffstat it computed, and on your yes signs an
+                        order with your SSH key (namespace magenta-merge).
+                        memory-lane only carries it; githouse on maybelle
+                        checks the signature, the nonce and the brakes, then
+                        merges --no-ff and pushes. Only githouse_mergers in
+                        maybelle-config may. Runs mood_merge.py.
   kick <name> --all     Sign <name> out of Moods everywhere: every device
                         and every live login link of theirs. With --ban,
                         their key can't sign in again until `unban`. For a
@@ -200,6 +209,10 @@ case "${1:-}" in
     clips)
         shift
         exec python3 "$MOOD_TOOLS/mood_clip.py" "$@"
+        ;;
+    merge)
+        shift
+        exec python3 "$MOOD_TOOLS/mood_merge.py" "$@"
         ;;
     kick)
         shift

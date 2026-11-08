@@ -288,6 +288,22 @@ def key_holders():
     return set(_holders[stamp])
 
 
+def name_of_key(key):
+    """Whose key this is ('ssh-ed25519 AAAA...'), as allowed_signers says, or None. Only a convenience for
+    `magenta.sh merge`, which needs the name to put in an order: githouse checks it against its own signers."""
+    wanted = ' '.join(str(key).split()[:2])
+    path = allowed_signers_path()
+    if not wanted or not path or not os.path.exists(path):
+        return None
+    with open(path) as f:
+        for line in f:
+            parts = line.split()
+            keys = [i for i, p in enumerate(parts) if p.startswith(('ssh-', 'ecdsa-', 'sk-'))]
+            if parts and keys and ' '.join(parts[keys[0]:keys[0] + 2]) == wanted:
+                return parts[0].split(',')[0].lower()
+    return None
+
+
 def public_key_of(name):
     """The key line allowed_signers holds for `name` (to show beside what it signed)."""
     path = allowed_signers_path()
