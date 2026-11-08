@@ -156,7 +156,7 @@ def main(argv=None, out=sys.stdout, ask=input, source=None, pause=time.sleep):
     args = parser.parse_args(argv)
     source = source or os.environ.get('MAGENTA_MERGE_SOURCE', SOURCE)
     base = args.base.rstrip('/')
-    say = lambda line='': print(line, file=out, flush=True)
+    say = lambda line='': print(shown(line), file=out, flush=True)   # git's errors and githouse's why too
 
     repo, sep, branch = args.work.partition(':')
     if not sep or not repo or not branch:

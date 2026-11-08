@@ -4,7 +4,8 @@ A person signs a merge order with their SSH key (`magenta.sh merge`, tools/mood_
 here; githouse on maybelle fetches what's waiting every few seconds and carries each out itself, checking
 the signature, the nonce and the brakes (maybelle-config's shared/githouse/githouse.py). Only Justin has
 ssh to maybelle, as root; skyler doesn't, and no phone does, so the orders need a carrier, and memory-lane
-is that and nothing more. The signature makes the carrier irrelevant (re, 7 Nov): memory-lane can delay or
+is that and nothing more. It does screen them: only an order its claimed signer's key signed (by hunter's
+inventory) gets in, so strangers can't fill the mailbox; githouse still checks everything itself. The signature makes the carrier irrelevant (re, 7 Nov): memory-lane can delay or
 drop an order, never forge one. What an order claims (repo, branch, by) is kept for showing, unchecked.
 
 What came of an order is read back from githouse's own records, beside the repositories (mounted
@@ -14,11 +15,15 @@ refused before that.
 
 import hashlib
 import json
+import os
 import re
+import subprocess
+import tempfile
 import time
 
 from .githouse import root
 
+NAMESPACE = 'magenta-merge'          # githouse.MERGE_NAMESPACE
 HEADER = 'githouse merge order v1'   # githouse.ORDER_HEADER
 FIELDS = ('repo', 'branch', 'commit', 'into', 'by', 'nonce', 'expires')
 LIFE_MAX = 2 * 3600                  # githouse.ORDER_LIFE_MAX: an order lasts at most this
@@ -30,6 +35,10 @@ _FORMS = {'repo': r'[a-z0-9._-]{1,64}', 'branch': r'[A-Za-z0-9._-]+(/[A-Za-z0-9.
 
 class Invalid(Exception):
     """Not an order memory-lane will carry, and why."""
+
+
+class Limited(Exception):
+    """Too many orders from one signer this minute."""
 
 
 def parse(text):
@@ -51,8 +60,31 @@ def parse(text):
     return found
 
 
-def receive(order, signature, mood='', now=None):
-    """Keep a signed order for githouse; the MergeOrder."""
+def signed_by(order, signature, by):
+    """Whether `by`'s key, as allowed_signers (hunter's inventory) lists it, signed this order in the merge
+    namespace. A screen, not the check: githouse checks against its own signers, of only those who may merge.
+    It keeps strangers out of the mailbox (re, 8 Nov), so junk can't fill it or use up anyone's turn."""
+    from . import mood_auth
+    key = mood_auth.public_key_of(by)
+    if not key:
+        return False
+    with tempfile.TemporaryDirectory() as d:
+        signers, sig = os.path.join(d, 'signers'), os.path.join(d, 'sig')
+        with open(signers, 'w') as f:
+            f.write(f'{by} namespaces="{NAMESPACE}" {key}\n')
+        with open(sig, 'w') as f:
+            f.write(signature)
+        try:
+            done = subprocess.run(['ssh-keygen', '-Y', 'verify', '-f', signers, '-I', by, '-n', NAMESPACE, '-s', sig],
+                                  input=order, capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return False
+    return done.returncode == 0
+
+
+def receive(order, signature, mood='', now=None, under_limit=None):
+    """Keep a signed order for githouse; the MergeOrder. under_limit(bucket, per_minute), if given, is asked
+    once the signature checks out, per signer: a stranger can't use up anyone else's turn."""
     from conversations.models import MergeOrder
     now = int(time.time() if now is None else now)
     if not isinstance(order, str) or not isinstance(signature, str) or len(order) > 1000 or len(signature) > 4000:
@@ -62,6 +94,10 @@ def receive(order, signature, mood='', now=None):
     fields = parse(order)
     if not now <= fields['expires'] <= now + LIFE_MAX + 60:
         raise Invalid(f'an order expires within {LIFE_MAX // 3600} hours, and not before it is sent')
+    if not signed_by(order, signature, fields['by']):
+        raise Invalid(f"not signed by {fields['by']}'s key, in {NAMESPACE}")
+    if under_limit and not under_limit(f"merge-order:{fields['by']}", 20):
+        raise Limited(f"{fields['by']} has sent 20 orders this minute; wait a minute")
     return MergeOrder.objects.create(order=order, signature=signature, nonce=fields['nonce'], repo=fields['repo'],
                                      branch=fields['branch'], by=fields['by'], expires=fields['expires'],
                                      mood=str(mood or '')[:100])

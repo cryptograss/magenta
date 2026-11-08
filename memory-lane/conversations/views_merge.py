@@ -20,15 +20,19 @@ def api_merge_orders(request):
     from .views_auth import _under_limit
     if locked_response():
         return locked_response()
-    if not _under_limit('merge-order', 20):
+    # Bounds the signature checks (an ssh-keygen each) that strangers can cause; the real limit is per signer,
+    # counted only once a signature checks out, so nobody uses up anyone else's turn (re, 8 Nov).
+    if not _under_limit('merge-order-checks', 300):
         return JsonResponse({'error': 'too many orders; wait a minute'}, status=429)
     try:
         body = json.loads(request.body)
-        kept = merge_orders.receive(body['order'], body['signature'], body.get('mood', ''))
+        kept = merge_orders.receive(body['order'], body['signature'], body.get('mood', ''), under_limit=_under_limit)
     except (ValueError, KeyError, TypeError, AttributeError):
         return JsonResponse({'error': 'expected {"order", "signature"}'}, status=400)
     except merge_orders.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
+    except merge_orders.Limited as e:
+        return JsonResponse({'error': str(e)}, status=429)
     return JsonResponse({'id': str(kept.id), **merge_orders.status(kept)}, status=201)
 
 
