@@ -7830,6 +7830,14 @@
     // #mood, as mood_view._HASH links it: not after a word, an & or a / (a URL's #anchor, &#39;).
     m = upto.match(/(^|[^\w&#\/;=])#([a-z0-9][a-z0-9-]{0,79})?$/i);
     if (m) return { kind: 'mood', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
+    // ~ opens every mergeable at once (Justin, 7 Nov: "you have to type the whole name of the repo before it
+    // kicks in"), narrowed by any words of <repo>:<branch>; the ~ goes when one is chosen. Not after a word,
+    // and not ~/ (a home path).
+    m = upto.match(/(^|[\s(`])~(?!\/)([\w.\/:-]*)$/);
+    if (m) {
+      if (!mergeables.asked) loadMergeables();
+      return { kind: 'mergeable', start: upto.length - m[2].length - 1, repo: '', prefix: m[2], anywhere: true };
+    }
     // A mergeable, <repo>:<branch>: after a repository's name and a colon, or an owner's name and a
     // slash (re/…), once githouse's branches are here. Not inside a URL or a path: only after a space,
     // a bracket or a backtick.
@@ -7921,8 +7929,11 @@
       // Live first, then merged, then closed; within each, by name. Words after a slash match too (fix-mtime).
       const p = at.prefix.toLowerCase(), order = { live: 0, merged: 1, closed: 2 };
       const mark = { live: '🟢', merged: '🟣', closed: '⚫' };
-      choices = mergeables.list.filter(b => (!at.repo || b.repo === at.repo)
-          && (b.branch.toLowerCase().startsWith(p) || (at.repo && b.branch.toLowerCase().includes(p))))
+      const words = p.split(/[\s:\/]+/).filter(Boolean);
+      choices = mergeables.list.filter(b => at.anywhere
+          ? words.every(w => `${b.repo}:${b.branch}`.toLowerCase().includes(w))
+          : (!at.repo || b.repo === at.repo)
+            && (b.branch.toLowerCase().startsWith(p) || (at.repo && b.branch.toLowerCase().includes(p))))
         .sort((a, b) => (order[a.state] - order[b.state]) || a.branch.localeCompare(b.branch) || a.repo.localeCompare(b.repo))
         .slice(0, 8)
         .map(b => ({ insert: `${b.repo}:${b.branch} `, html: `<span class="emo">${mark[b.state]}</span>${esc(b.repo)}:<b>${esc(b.branch)}</b><small>${b.state}</small>` }));
