@@ -126,6 +126,11 @@ class AdminTest(TestCase):
         self.admin('unban', 'skyler')
         self.assertEqual(self.brakes('justin', 'skyler').json(), clear)
 
+    def test_a_name_no_one_here_has_is_not_cleared(self):
+        # Nobody can ban a name memory-lane has no one for, so it mustn't answer "not banned" for it.
+        self.assertEqual(self.admin('ban', 'nobody').status_code, 404)
+        self.assertEqual(self.brakes('justin', 'nobody').json()['banned'], {'justin': False, 'nobody': None})
+
     def test_githouse_hears_of_az5_while_it_holds(self):
         self.admin('az5')
         said = self.brakes('justin')

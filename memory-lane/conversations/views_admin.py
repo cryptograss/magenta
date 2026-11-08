@@ -175,6 +175,7 @@ def api_brakes(request):
     is AZ5 on, and is each name banned.
 
     GET ?name=justin&name=skyler -> {"scram": false or who pulled it, "banned": {"justin": false, ...}}
+    (null for a name with no one here: they can't be banned, so they don't merge until they've signed in).
 
     githouse merges only on an explicit false for both, and refuses on no answer, so this can stop
     a merge but never make one. Readable by anyone and answered during AZ5 too: an AZ5 and a ban are
@@ -183,7 +184,11 @@ def api_brakes(request):
     names = request.GET.getlist('name')
     if len(names) > 20 or any(not re.fullmatch(r'[a-z0-9._-]{1,60}', name) for name in names):
         return JsonResponse({'error': 'name: up to 20 names, each as hunter\'s inventory spells it'}, status=400)
-    return JsonResponse({'scram': knobs.scram() or False, 'banned': {name: knobs.banned(name) for name in names}})
+    # A name memory-lane has no one for answers null, not false: a ban needs someone to ban ('no one named'),
+    # so false there would let a merger nobody can ban through. githouse holds anything but false (re).
+    known = set(ThinkingEntity.objects.filter(name__in=names).values_list('name', flat=True))
+    return JsonResponse({'scram': knobs.scram() or False,
+                         'banned': {name: knobs.banned(name) if name in known else None for name in names}})
 
 
 def locked_response():
