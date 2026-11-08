@@ -1837,6 +1837,29 @@ class WikiHookRun(models.Model):
         return f"{self.hook} on {self.title} ({self.via}) at {self.at:%Y-%m-%d %H:%M:%S}"
 
 
+class MergeOrder(models.Model):
+    """A merge order signed with a person's SSH key, kept until githouse fetches it (Cryptograss:Moods/ramp/Plan,
+    section 8; services/merge_orders.py). memory-lane only carries it: githouse checks the signature, the nonce
+    and the brakes itself, so repo, branch and by here are what the order claims, not what anyone checked."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.TextField()
+    signature = models.TextField()
+    nonce = models.CharField(max_length=64, db_index=True)   # not unique: a forgery mustn't take a real order's place
+    repo = models.CharField(max_length=64)
+    branch = models.CharField(max_length=200)
+    by = models.CharField(max_length=60)
+    expires = models.BigIntegerField()                       # unix time, as the order says
+    mood = models.CharField(max_length=100, blank=True, default='')
+    received_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'merge_orders'
+        ordering = ['received_at']
+
+    def __str__(self):
+        return f"{self.repo}:{self.branch} by {self.by} ({self.nonce[:12]})"
+
+
 # ============================================================================
 # Import Tracking Constants
 # ============================================================================

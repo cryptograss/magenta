@@ -7,6 +7,7 @@ from . import views_bundles
 from . import views_runner
 from . import views_settings
 from . import views_admin
+from . import views_merge
 
 urlpatterns = [
     path('', views_moods.front_page, name='front'),
@@ -96,6 +97,11 @@ urlpatterns = [
     path('api/usage/kinds/', views_settings.api_usage_kinds, name='api_usage_kinds'),
     path('api/auth/admin/', views_admin.api_admin, name='api_auth_admin'),
     path('api/brakes/', views_admin.api_brakes, name='api_brakes'),  # githouse asks, before every merge
+    # Merge orders by mail: a person posts one signed, githouse fetches it (Plan, section 8)
+    path('api/merge-orders/', views_merge.api_merge_orders, name='api_merge_orders'),
+    path('api/merge-orders/whose/', views_merge.api_merge_whose, name='api_merge_whose'),
+    path('api/merge-orders/pending/', views_merge.api_merge_orders_pending, name='api_merge_orders_pending'),
+    path('api/merge-orders/<uuid:order_id>/', views_merge.api_merge_order, name='api_merge_order'),
     path('api/moods/<slug:slug>/turns/', views_moods.api_mood_turns, name='api_mood_turns'),
     path('api/moods/<slug:slug>/unfurl/<str:message_id>/', views_moods.api_unfurl, name='api_mood_unfurl'),
     path('api/moods/<slug:slug>/todo/', views_moods.api_mood_todo, name='api_mood_todo'),
