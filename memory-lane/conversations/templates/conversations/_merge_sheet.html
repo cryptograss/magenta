@@ -47,6 +47,7 @@ window.magentaMerge = (() => {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !sheet.hidden) shut(); });
 
   async function open(work, inMood) {
+    if (busy) return;  // a press on its way: its answer belongs to the sheet it was pressed in
     const mine = ++gen;
     seen = null; mood = inMood || ''; busy = false;
     const name = work.number ? `${work.repo}#${work.number}` : `${work.repo}:${work.branch}`;
