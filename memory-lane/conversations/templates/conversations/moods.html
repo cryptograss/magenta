@@ -5972,8 +5972,9 @@
     e.stopPropagation();
     bellMenu.hidden = !bellMenu.hidden;
     bellBtn.setAttribute('aria-expanded', String(!bellMenu.hidden));
-    if (!bellMenu.hidden) { renderBellList(); bellBackfill(); }
+    if (!bellMenu.hidden) { renderBellList(); bellBackfill(); keepOnScreen(bellMenu); }
   });
+  addEventListener('resize', () => { if (!bellMenu.hidden) keepOnScreen(bellMenu); });
   bellMenu.addEventListener('click', e => {
     const a = e.target.closest('a[data-mood]');
     if (a) { e.preventDefault(); bellMenu.hidden = true; a.dataset.id ? openAndReveal(a.dataset.mood, a.dataset.id) : open(a.dataset.mood, true); }
