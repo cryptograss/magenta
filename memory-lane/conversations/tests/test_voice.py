@@ -323,6 +323,30 @@ class VoiceEndpointsTest(SignedInCase):
         self.assertTrue(spoken['url'].split('#')[0].endswith('.mp3'))
         self.assertEqual(elsewhere.status_code, 404)
 
+    def test_a_message_with_nothing_to_say_is_passed_over_before_its_narrator(self):
+        """A picture alone, or words only in [brackets]: "Magent, with tools, says:" and then nothing, again on every
+        retry (Justin, 8 Nov). Asked with ?check=1, the narrator's line isn't made; asked for its words, it says so."""
+        client = self.sign_in()
+        magent = ThinkingEntity.objects.get(name='magent')
+        m26 = Mood.objects.get(slug='m26')
+        said = lambda text: Message.objects.create(id=uuid.uuid4(), sender=magent, mood=m26, timestamp=1,
+                                                   content=[{'type': 'text', 'text': text}])
+        picture = said('![image](/moods/media/abc.png)')
+        tags = said('[Image: original 1206x2622, displayed at 920x2000.]')
+        words = said('[sighs] Soundcheck at five.')
+        eleven = FakeEleven()
+        with mock.patch('requests.post', eleven.post), mock.patch('requests.get', eleven.get):
+            for quiet in (picture, tags):
+                intro = self.post(client, f'/api/moods/m26/speak/{quiet.id}/?intro=1&only=intro&check=1')
+                self.assertEqual((intro.status_code, intro.json().get('nothing')), (400, True))
+                spoken = self.post(client, f'/api/moods/m26/speak/{quiet.id}/')
+                self.assertEqual((spoken.status_code, spoken.json().get('nothing')), (400, True))
+            made = sum(1 for how, url, _ in eleven.asked if how == 'POST' and 'text-to-speech' in url)
+            self.assertEqual(made, 0, 'nothing was made for a message with nothing to say')
+            fine = self.post(client, f'/api/moods/m26/speak/{words.id}/?intro=1&only=intro&check=1')
+        self.assertEqual(fine.status_code, 200)
+        self.assertIn('intro', fine.json())
+
     def test_voices_listed_with_todays_spend(self):
         with mock.patch('requests.get', FakeEleven().get):
             listed = self.client.get('/api/voice/voices/').json()
