@@ -28,6 +28,7 @@ Standard library only, like mood_login.py.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -50,6 +51,16 @@ DEPLOYS_FROM = {'magenta': 'main', 'maybelle-config': 'production', 'pickipedia'
                 'arthel': 'production', 'rabbithole': 'main', 'pickipedia-mcp': 'master'}
 TARGETS = ('production', 'main', 'master')   # for a repository not listed: the first of these it has
 WAIT = 120             # seconds to wait for githouse's answer
+NAME = re.compile(r'[a-z][a-z0-9-]{0,31}')   # githouse's NAME: what an order's `by` may be
+# Control characters, C0 and C1, but newline and tab: a commit's author or subject is whatever its pusher
+# wrote, and an escape sequence in one can move the cursor and rewrite the log or diffstat above the question
+# (re, 8 Nov). What's shown is printed with these made visible, never obeyed.
+CONTROL = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]')
+
+
+def shown(text):
+    """Text as it may reach the terminal: control characters as '?', so nothing in it can redraw the screen."""
+    return CONTROL.sub('?', text)
 
 
 class Stop(Exception):
@@ -162,13 +173,15 @@ def main(argv=None, out=sys.stdout, ask=input, source=None, pause=time.sleep):
             with open(args.key + '.pub') as f:
                 public = f.read().strip()
             name = call(f'{base}/api/merge-orders/whose/?' + urllib.parse.urlencode({'key': public}))['name']
+        if not isinstance(name, str) or not NAME.fullmatch(name):
+            raise Stop(f'{shown(str(name))!r} is not a name githouse takes; give yours with --as')
 
         # What's shown is what git computed here, from the commits fetched here; nothing a service said.
         say(f"{repo}:{branch} at {seen['commit'][:12]}, into {seen['into']} at {seen['tip'][:12]}:")
         say()
-        say(seen['log'].rstrip())
+        say(shown(seen['log'].rstrip()))
         say()
-        say(seen['stat'].rstrip())
+        say(shown(seen['stat'].rstrip()))
         say()
         if not args.yes and ask(f"Merge it, signed as {name}? [y/N] ").strip().lower() not in ('y', 'yes'):
             say('Nothing signed.')

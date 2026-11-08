@@ -105,7 +105,9 @@ def pending(now=None):
     from conversations.models import MergeOrder
     now = int(time.time() if now is None else now)
     waiting = []
-    for order in MergeOrder.objects.filter(expires__gte=now).order_by('received_at')[:200]:
+    # Every unexpired order, not the oldest 200: ones githouse has answered stay unexpired for up to two hours,
+    # and 200 of them ahead of a real order hid it from githouse until they expired (re, 8 Nov).
+    for order in MergeOrder.objects.filter(expires__gte=now).order_by('received_at').iterator():
         if outcome(order) is None:
             waiting.append(order)
         if len(waiting) == AT_ONCE:

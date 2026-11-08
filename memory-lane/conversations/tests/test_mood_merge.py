@@ -110,3 +110,24 @@ class MergeToolTest(TestCase):
         code, said, _ = self.merge('--into', 'nonesuch')
         self.assertIn('no branch nonesuch', said)
         self.assertEqual(code, 1)
+
+    def test_nothing_in_a_commit_or_from_memory_lane_can_redraw_the_screen(self):
+        work = self.tmp / 'work'
+        (work / 'more.py').write_text('x = 1\n')
+        run('git', 'add', '.', cwd=work)
+        subprocess.run(['git', 'commit', '--quiet', '-m', 'tidy\x1b[2A\x1b[2K\x9b8m'], cwd=work, check=True,
+                       env={**ENV, 'GIT_AUTHOR_NAME': 'evil\x1b[1A'})
+        run('git', 'push', '--quiet', 'origin', 'HEAD:re/foo', cwd=work)
+        code, said, shown = self.merge(answer='n')
+        self.assertEqual(code, 1, said)
+        self.assertIn('tidy?[2A?[2K?8m', shown)
+        self.assertNotRegex(said, '[\x1b\x9b]')
+        original = mood_merge.call
+        mood_merge.call = lambda url, payload=None: {'name': 'justin\x1b[3A'}
+        try:
+            code, said, _ = self.merge()
+        finally:
+            mood_merge.call = original
+        self.assertEqual(code, 1)
+        self.assertIn('--as', said)
+        self.assertNotIn('\x1b', said)
