@@ -16,8 +16,8 @@ its revision, who edited it, which hook, by which road, how long it took and wha
 /wiki-hooks/ lists them. A hook that fails is a line in #ops as well (record_failed), so a quiet failure
 is never quiet for long.
 
-The poller (hunter) keeps its own copies of the wake texts and the dials (poller/wiki_rules.py, five
-minutes) and the instructions bundle's layers (poller/instructions.py, by revision): those are its own,
+The poller (hunter) keeps its own copies of the wake texts and the dials (poller/wiki_rules.py: re-read as soon as
+the log here says the page changed, every five minutes as the fallback) and the instructions bundle's layers (poller/instructions.py, by revision): those are its own,
 in another process on another machine, and are not reached from here.
 """
 

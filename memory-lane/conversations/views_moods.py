@@ -1786,7 +1786,7 @@ def api_github_hook(request):
 @require_POST
 def api_wiki_hook(request):
     """PickiPedia's push: a page was saved (PickiPediaContent's PageSaveComplete hook), as JSON
-    {"title", "revid", "user", "at", "kind"}, signed with settings.WIKI_HOOK_SECRET (X-Magenta-Signature:
+    {"title", "revid", "user", "at", "kind"} (and "from", the old title, on a move), signed with settings.WIKI_HOOK_SECRET (X-Magenta-Signature:
     sha256=<hmac of the body>). The page's hooks run now (services/wiki_hooks.run) and the revision is
     remembered as pushed, so the minute sweep doesn't call it missed (services/wiki_changes.note_pushed).
     Unsigned, or signed with another secret: 403, and the sweep still catches the change."""
@@ -1810,8 +1810,16 @@ def api_wiki_hook(request):
     if not title or len(title) > 300:
         wiki_changes.heard('no title', refused=True)
         return JsonResponse({'error': 'title: a page title'}, status=400)
-    rows = wiki_changes.note_pushed(title, revid, str(body.get('user') or '')[:120])
-    wiki_changes.heard(f"{title} r{revid or '?'}: " + ', '.join(r.hook for r in rows))
+    user = str(body.get('user') or '')[:120]
+    rows = wiki_changes.note_pushed(title, revid, user)
+    # A move carries its old title as "from": what was kept under it is stale too, and the sweep won't catch it,
+    # since the move's revision is the one just pushed (re, 8 Nov, #docs-tests-qa).
+    moved_from = str(body.get('from') or '').strip()
+    if moved_from and moved_from != title and len(moved_from) <= 300:
+        from .services.wiki_hooks import run
+        rows = list(rows) + list(run(moved_from, user, revid, via='push'))
+    wiki_changes.heard(f"{title} r{revid or '?'}" + (f" (moved from {moved_from})" if moved_from else '')
+                       + ': ' + ', '.join(r.hook for r in rows))
     return JsonResponse({'ok': True, 'title': title, 'revid': revid, 'ran': [r.hook for r in rows]})
 
 
