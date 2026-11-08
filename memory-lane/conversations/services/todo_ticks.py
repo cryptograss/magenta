@@ -38,7 +38,7 @@ def ticked(text, link):
         lines = item.split('\n')
         if not any(re.fullmatch(r'\s+link:\s*["\']?' + re.escape(link) + r'["\']?\s*', line) for line in lines):
             return item
-        if not _all_named_merged(lines, link):
+        if _waits_for_others(item, link):
             return item  # it names other pull requests still open: it waits for them (todo.pulls_named)
         for i, line in enumerate(lines):
             done = _DONE.match(line)
@@ -63,19 +63,20 @@ def ticked(text, link):
     return _BLOCK.sub(tick_block, text, count=1)
 
 
-def _all_named_merged(lines, link):
-    """Whether every pull request an item's task names has merged, beside the linked one that just did."""
+def _waits_for_others(item, link):
+    """Whether an item names another pull request still open (todo.done_by_merges), read as YAML reads it,
+    as the list does: an unquoted task ends at " #"."""
     from . import todo
-    task = next((re.sub(r'^\s*-?\s*task:\s*', '', line).strip().strip('"\'') for line in lines
-                 if re.match(r'^\s*-?\s*task:', line)), '')
-    others = todo.pulls_named({'task': task, 'link': link})[1:]
-    if not others:
-        return True
     import requests
+    import yaml
     try:
-        return all(todo._merged(o, r, n, requests) for o, r, n in others)
-    except Exception:  # noqa: BLE001 -- GitHub unreachable: left open, as the list shows it
+        task = str((yaml.safe_load(item) or [{}])[0].get('task') or '')
+    except Exception:  # noqa: BLE001 -- not readable alone: the list's own reading decides, which said merged
         return False
+    try:
+        return any(todo.still_open(o, r, n, requests) for o, r, n in todo.pulls_named({'task': task, 'link': link})[1:])
+    except Exception:  # noqa: BLE001 -- GitHub unreachable: left open, as the list shows it
+        return True
 
 
 def _says_done(value):
