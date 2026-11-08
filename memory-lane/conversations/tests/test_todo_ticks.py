@@ -128,6 +128,25 @@ class TickTest(TestCase):
         self.assertEqual(ticks, [(title,)])  # one edit's worth, for that page
         self.assertEqual(todo_ticks._waiting.pop(title), {LINK})
 
+    def test_its_link_merging_before_the_others_still_ticks_when_the_last_does(self):
+        """re, 8 Nov: #33 (the link) merges before #32 (named). Ticks start from the list's own reading, which says
+        done only once nothing named is open, so the page is ticked then, not when #33 merged."""
+        Mood.objects.create(slug='rabbithole', title='rabbithole')
+        link = 'https://github.com/cryptograss/rabbithole/pull/33'
+        page = f'<todo>\n- task: "Merge the rest: #29, #31, #32, #33"\n  link: {link}\n</todo>\n'
+        ticks, still = [], {29: False, 31: False, 32: True}
+        with mock.patch.object(todo, '_raw', return_value=page), mock.patch.object(todo, '_merged', return_value=True), \
+                mock.patch.object(todo, 'still_open', side_effect=lambda o, r, n, http: still[n]), \
+                mock.patch.object(todo, '_in_background', lambda fn, *args: ticks.append(args)):
+            self.assertFalse(todo.for_mood(Mood.objects.get())['items'][0]['done'])
+            self.assertEqual(ticks, [])  # #33 merged, #32 open: nothing asked of the page
+            still[32] = False
+            todo.forget(Mood.objects.get())
+            self.assertTrue(todo.for_mood(Mood.objects.get())['items'][0]['done'])
+            self.assertEqual(todo_ticks.ticked(page, link).count('done: true'), 1)
+        self.assertEqual(ticks, [('Cryptograss:Moods/rabbithole/todo',)])
+        todo_ticks._waiting.pop('Cryptograss:Moods/rabbithole/todo', None)
+
     def test_not_set_up_not_ticked(self):
         with override_settings(PICKIPEDIA_TODO_BOT_USER=''):
             ticks = []
