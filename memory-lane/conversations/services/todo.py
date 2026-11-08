@@ -278,14 +278,40 @@ def _merged(owner, repo, number, http):
     return found
 
 
+# A pull request the task names in its words: a link, "repo#12", or a bare "#12" (the linked one's repository).
+_NAMED = re.compile(r'https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)|(?<![\w/#])(?:([A-Za-z][\w.-]*))?#(\d+)\b')
+
+
+def pulls_named(item):
+    """[(owner, repo, number)]: the linked pull request, then every other one the task's words name. An item that
+    names several ("merge the rest: #29, #31, #32, #33") is done only when all have merged (re, 8 Nov,
+    #docs-tests-qa: it ticked when its link merged, hiding three still open). The note isn't read: notes cite
+    old pull requests for context."""
+    link = _PULL.match(item.get('link') or '')
+    if not link:
+        return []
+    owner, repo = link.group(1), link.group(2)
+    found = [(owner, repo, int(link.group(3)))]
+    for m in _NAMED.finditer(item.get('task') or ''):
+        if m.group(3):
+            named = (m.group(1), m.group(2), int(m.group(3)))
+        else:
+            other = m.group(4)
+            named = (owner if not other or other.lower() == repo.lower() else 'cryptograss', other or repo, int(m.group(5)))
+        if not any(n[1].lower() == named[1].lower() and n[2] == named[2] for n in found):
+            found.append(named)
+    return found
+
+
 def with_merges(items, http):
-    """The items, an open one linking a GitHub pull request that's been merged marked done ('merged': True)."""
+    """The items, an open one linking a GitHub pull request that's been merged marked done ('merged': True):
+    with every other pull request its task names merged too (pulls_named)."""
     out = []
     for item in items:
-        match = _PULL.match(item.get('link') or '')
-        if match and not item['done']:
+        pulls = pulls_named(item)
+        if pulls and not item['done']:
             try:
-                if _merged(match.group(1), match.group(2), int(match.group(3)), http):
+                if all(_merged(o, r, n, http) for o, r, n in pulls):
                     item = {**item, 'done': True, 'merged': True}
             except Exception:  # noqa: BLE001 -- GitHub unreachable: the item stands as written
                 pass

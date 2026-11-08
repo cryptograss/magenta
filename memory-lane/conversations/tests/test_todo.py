@@ -1,3 +1,4 @@
+from unittest import mock
 """A Mood's to-do list: YAML on PickiPedia, shown beside the Mood, pointed to in every wake."""
 
 from django.core.cache import cache
@@ -117,6 +118,28 @@ class ForMoodTest(TestCase):
         cache.delete('todo:magenta-interface')
         todo.for_mood(self.mood, http=wiki)
         self.assertEqual(len(wiki.github), asked)  # kept: GitHub isn't asked again for a while
+
+    def test_an_item_naming_several_ticks_only_when_all_have_merged(self):
+        """re, 8 Nov: "merge the rest: #29, #31, #32, #33" ticked when its link merged, the others still open."""
+        item = {'task': 'Merge the rest, in this order: #29, #31, #32, #33; then redeploy',
+                'link': 'https://github.com/cryptograss/rabbithole/pull/33', 'done': False}
+        self.assertEqual([n for _, _, n in todo.pulls_named(item)], [33, 29, 31, 32])
+        merged = {33: True, 29: True, 31: False, 32: True}
+        with mock.patch.object(todo, '_merged', side_effect=lambda o, r, n, http: merged[n]):
+            self.assertFalse(todo.with_merges([item], None)[0]['done'])
+            merged[31] = True
+            self.assertTrue(todo.with_merges([item], None)[0]['merged'])
+
+    def test_what_a_task_names_and_what_it_doesnt(self):
+        one = {'task': 'Merge memory-lane#113', 'link': 'https://github.com/jMyles/memory-lane/pull/113'}
+        self.assertEqual(todo.pulls_named(one), [('jMyles', 'memory-lane', 113)])  # itself, once
+        other = {'task': 'Merge pickipedia-mcp#51 and https://github.com/cryptograss/magenta/pull/429',
+                 'link': 'https://github.com/cryptograss/magenta/pull/422'}
+        self.assertEqual(todo.pulls_named(other), [('cryptograss', 'magenta', 422), ('cryptograss', 'pickipedia-mcp', 51),
+                                                   ('cryptograss', 'magenta', 429)])
+        noted = {'task': 'Merge #5', 'note': 'after #4 and m-#6', 'link': 'https://github.com/a/b/pull/5'}
+        self.assertEqual(todo.pulls_named(noted), [('a', 'b', 5)])  # the note is context, not a list
+        self.assertEqual(todo.pulls_named({'task': '#1', 'link': 'https://pickipedia.xyz/x'}), [])
 
     def test_an_open_one_stays_open_and_github_down_changes_nothing(self):
         wiki = FakeWiki({'Cryptograss:Moods/magenta-interface/todo': PAGE}, closed={})

@@ -38,6 +38,8 @@ def ticked(text, link):
         lines = item.split('\n')
         if not any(re.fullmatch(r'\s+link:\s*["\']?' + re.escape(link) + r'["\']?\s*', line) for line in lines):
             return item
+        if not _all_named_merged(lines, link):
+            return item  # it names other pull requests still open: it waits for them (todo.pulls_named)
         for i, line in enumerate(lines):
             done = _DONE.match(line)
             if done:
@@ -59,6 +61,21 @@ def ticked(text, link):
         items = [tick_item(body[a:b]) for a, b in zip(starts, starts[1:])]
         return block.group(1) + body[:starts[0]] + ''.join(items) + block.group(4)
     return _BLOCK.sub(tick_block, text, count=1)
+
+
+def _all_named_merged(lines, link):
+    """Whether every pull request an item's task names has merged, beside the linked one that just did."""
+    from . import todo
+    task = next((re.sub(r'^\s*-?\s*task:\s*', '', line).strip().strip('"\'') for line in lines
+                 if re.match(r'^\s*-?\s*task:', line)), '')
+    others = todo.pulls_named({'task': task, 'link': link})[1:]
+    if not others:
+        return True
+    import requests
+    try:
+        return all(todo._merged(o, r, n, requests) for o, r, n in others)
+    except Exception:  # noqa: BLE001 -- GitHub unreachable: left open, as the list shows it
+        return False
 
 
 def _says_done(value):
