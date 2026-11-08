@@ -25,6 +25,7 @@ urlpatterns = [
     path('moods/verify/', views_settings.verify_page, name='mood_verify'),
     path('moods/hooks/', views_settings.hooks_page, name='mood_hooks'),
     path('moods/tasks/', views_settings.tasks_page, name='mood_tasks'),
+    path('moods/journals/', views_settings.journals_page, name='mood_journals'),
     path('moods/pulls/', views_settings.pulls_page, name='mood_pulls'),
     path('moods/tour/<str:name>', views_settings.tour_asset, name='mood_tour_asset'),
     path('api/tour/', views_settings.api_tour, name='api_tour'),

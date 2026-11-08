@@ -67,7 +67,7 @@ def makers_offered():
 
 RECENT_BUNDLES = 8  # the newest bundles made, shown atop the instructions bundles section
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'pulls', 'tasks', 'verify', 'hooks', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'pulls', 'tasks', 'journals', 'verify', 'hooks', 'settings')
 
 
 def _opened_on_its_own(request):
@@ -156,6 +156,14 @@ def api_tour(request):
     only the steps whose anchor this page has."""
     from .services import tour
     return JsonResponse(tour.runnable())
+
+
+@section('journals')
+def journals_page(request):
+    """The emergents' journals (services/journals.py), newest entries first. Justin, 8 Nov: "add journals to the
+    chevron menu"."""
+    from .services import journals
+    return render(request, 'conversations/mood_journals.html', {'board': journals.board(), 'embed': True})
 
 
 @section('tasks')
