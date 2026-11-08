@@ -115,6 +115,31 @@ class AdminTest(TestCase):
         self.assertIsNone(self.client.get('/api/moods/pulse/').json()['scram'])
         self.assertEqual(self.enroll('justin').status_code, 200)
 
+    def brakes(self, *names):
+        return self.client.get('/api/brakes/', {'name': list(names)})
+
+    def test_githouse_hears_of_a_ban_and_an_unban(self):
+        clear = {'scram': False, 'banned': {'justin': False, 'skyler': False}}
+        self.assertEqual(self.brakes('justin', 'skyler').json(), clear)
+        self.admin('ban', 'skyler')
+        self.assertEqual(self.brakes('justin', 'skyler').json()['banned'], {'justin': False, 'skyler': True})
+        self.admin('unban', 'skyler')
+        self.assertEqual(self.brakes('justin', 'skyler').json(), clear)
+
+    def test_githouse_hears_of_az5_while_it_holds(self):
+        self.admin('az5')
+        said = self.brakes('justin')
+        self.assertEqual(said.status_code, 200)  # answered during AZ5, which locks the writes, not this
+        self.assertEqual(said.json()['scram']['by'], 'justin')
+        self.admin('lift')
+        self.assertIs(self.brakes('justin').json()['scram'], False)
+
+    def test_brakes_questions_are_checked(self):
+        self.assertEqual(self.brakes('Justin; drop').status_code, 400)
+        self.assertEqual(self.brakes(*[f'n{i}' for i in range(21)]).status_code, 400)
+        self.assertEqual(self.client.post('/api/brakes/', {'name': 'justin'}).status_code, 405)
+        self.assertEqual(self.brakes().json(), {'scram': False, 'banned': {}})
+
     def test_one_device_can_be_signed_out_alone(self):
         laptop = Device.objects.create(entity=self.skyler, label='laptop', token_hash=mood_auth.digest('sky-laptop'))
         short = laptop.id.hex[:8]

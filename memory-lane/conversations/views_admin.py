@@ -28,7 +28,7 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from .models import Device, LoginCode, Setting, ThinkingEntity
 from .services import mood_auth
@@ -167,6 +167,23 @@ def api_admin(request):
         access.announce('lifted', admin)
     result['scram'] = knobs.scram()
     return JsonResponse(result)
+
+
+@require_GET
+def api_brakes(request):
+    """What githouse asks before every merge order (Cryptograss:Moods/ramp/Plan, section 10):
+    is AZ5 on, and is each name banned.
+
+    GET ?name=justin&name=skyler -> {"scram": false or who pulled it, "banned": {"justin": false, ...}}
+
+    githouse merges only on an explicit false for both, and refuses on no answer, so this can stop
+    a merge but never make one. Readable by anyone and answered during AZ5 too: an AZ5 and a ban are
+    said in #general anyway.
+    """
+    names = request.GET.getlist('name')
+    if len(names) > 20 or any(not re.fullmatch(r'[a-z0-9._-]{1,60}', name) for name in names):
+        return JsonResponse({'error': 'name: up to 20 names, each as hunter\'s inventory spells it'}, status=400)
+    return JsonResponse({'scram': knobs.scram() or False, 'banned': {name: knobs.banned(name) for name in names}})
 
 
 def locked_response():

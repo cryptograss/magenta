@@ -95,6 +95,7 @@ urlpatterns = [
     path('api/usage/plan/', views_runner.api_plan, name='api_usage_plan'),
     path('api/usage/kinds/', views_settings.api_usage_kinds, name='api_usage_kinds'),
     path('api/auth/admin/', views_admin.api_admin, name='api_auth_admin'),
+    path('api/brakes/', views_admin.api_brakes, name='api_brakes'),  # githouse asks, before every merge
     path('api/moods/<slug:slug>/turns/', views_moods.api_mood_turns, name='api_mood_turns'),
     path('api/moods/<slug:slug>/unfurl/<str:message_id>/', views_moods.api_unfurl, name='api_mood_unfurl'),
     path('api/moods/<slug:slug>/todo/', views_moods.api_mood_todo, name='api_mood_todo'),
