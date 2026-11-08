@@ -96,6 +96,13 @@
   .thelink.release figure figcaption { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
   .thelink.release figure .role { margin-left: 5px; padding: 0 6px; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
   .thelink.release .wiki { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  .thelink.release .download { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  .thelink.release .download a.bt { display: inline-block; padding: 9px 16px; border-radius: 8px; background: var(--accent);
+                                    color: #fff; font-size: 15px; font-weight: 650; }
+  .thelink.release .download a.bt:hover { text-decoration: none; filter: brightness(1.08); }
+  @media (prefers-color-scheme: dark) { .thelink.release .download a.bt { color: #160b11; } }
+  .thelink.release .download a.btfile { font-size: 13px; }
+  .thelink.release .download.pending { display: block; }
   /* Moments: every time said about it, in the order they play -- the video's own table of contents. */
   .momentsec { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); }
   .momentsec h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 6px; }
@@ -547,6 +554,10 @@
           <div class="meta muted">uploaded by {{ r.by|default:tiding.said_by|default:"someone" }}{% if r.upload_block_s %} at block {{ r.upload_block_s }}{% endif %} · promoted by {{ tiding.by|default:"someone" }}
             · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
             {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
+          <!-- BitTorrent is the big way to take it home (Justin, 8 Nov: "louder and prouder"): it's what more
+               people know and can open at once. IPFS stays, smaller, with the other links below. -->
+          {% if r.torrent %}<div class="download"><a class="bt" href="{{ r.torrent.magnet }}" title="Opens in your BitTorrent client">⬇ Download with BitTorrent</a>{% if r.torrent.file %}<a class="btfile" href="{{ r.torrent.file }}" download>.torrent file</a>{% endif %}</div>
+          {% elif r.page %}<div class="download pending muted">The BitTorrent download is still being made. Meanwhile it's <a href="{{ tiding.embed.src }}" target="_blank" rel="noopener">on IPFS</a>.</div>{% endif %}
           {% if r.performers %}<div class="with">with {% for p in r.performers %}<a href="{{ p.page }}" target="_blank" rel="noopener">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
           {% if r.description %}<div class="desc">{{ r.description }}</div>{% endif %}
           {% if tiding.post %}<div class="post"><div class="words">{{ tiding.post|safe }}</div></div>{% endif %}
