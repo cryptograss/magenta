@@ -4941,7 +4941,17 @@
     e.stopPropagation();
     stateMenu.hidden = !stateMenu.hidden;
     stateBtn.setAttribute('aria-expanded', String(!stateMenu.hidden));
+    if (!stateMenu.hidden) keepOnScreen(stateMenu);
   });
+  // A menu hung from a button's right edge, kept inside the screen: on a phone the servers' dots sit mid-header,
+  // and hung from there the menu ran off the left (Skyler, 8 Nov: "I can only see a cut off right side of it").
+  function keepOnScreen(menu, margin = 10) {
+    menu.style.right = '';
+    const r = menu.getBoundingClientRect();
+    const shift = r.left < margin ? margin - r.left : r.right > innerWidth - margin ? (innerWidth - margin) - r.right : 0;
+    if (shift) menu.style.right = (parseFloat(getComputedStyle(menu).right) || 0) - shift + 'px';
+  }
+  addEventListener('resize', () => { if (!stateMenu.hidden) keepOnScreen(stateMenu); });
   document.addEventListener('click', e => {
     if (!stateMenu.hidden && !e.target.closest('#stateMenu')) { stateMenu.hidden = true; stateBtn.setAttribute('aria-expanded', 'false'); }
   });
