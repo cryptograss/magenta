@@ -128,6 +128,16 @@ class PushTest(TestCase):
         self.assertEqual(WikiHookRun.objects.get().via, 'push')
         self.assertEqual(wiki_changes.push_state()['last']['outcome'], 'Magenta:Interface r14320: words')
 
+    def test_a_move_runs_the_hooks_for_its_old_title_too(self):
+        """A move's push carries "from": what was kept under the old title is stale too (re, 8 Nov)."""
+        with mock.patch('conversations.services.wiki_hooks.run', side_effect=lambda t, u, r, via: [
+                mock.Mock(hook=f'h:{t}')]) as run:
+            r = self.push({'title': 'Magenta:New', 'revid': 14570, 'user': 'JMyles', 'kind': 'move',
+                           'from': 'Magenta:Old'})
+        self.assertEqual(r.json()['ran'], ['h:Magenta:New', 'h:Magenta:Old'])
+        self.assertEqual([c.args[0] for c in run.call_args_list], ['Magenta:New', 'Magenta:Old'])
+        self.assertIn('moved from Magenta:Old', wiki_changes.push_state()['last']['outcome'])
+
     def test_unsigned_or_wrongly_signed_is_refused_and_kept_apart(self):
         r = self.push({'title': 'Magenta:Interface', 'revid': 1}, signature='sha256=' + 'f' * 64)
         self.assertEqual(r.status_code, 403)
