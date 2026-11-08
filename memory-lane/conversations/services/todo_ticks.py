@@ -38,6 +38,8 @@ def ticked(text, link):
         lines = item.split('\n')
         if not any(re.fullmatch(r'\s+link:\s*["\']?' + re.escape(link) + r'["\']?\s*', line) for line in lines):
             return item
+        if _waits_for_others(item, link):
+            return item  # it names other pull requests still open: it waits for them (todo.pulls_named)
         for i, line in enumerate(lines):
             done = _DONE.match(line)
             if done:
@@ -59,6 +61,22 @@ def ticked(text, link):
         items = [tick_item(body[a:b]) for a, b in zip(starts, starts[1:])]
         return block.group(1) + body[:starts[0]] + ''.join(items) + block.group(4)
     return _BLOCK.sub(tick_block, text, count=1)
+
+
+def _waits_for_others(item, link):
+    """Whether an item names another pull request still open (todo.done_by_merges), read as YAML reads it,
+    as the list does: an unquoted task ends at " #"."""
+    from . import todo
+    import requests
+    import yaml
+    try:
+        task = str((yaml.safe_load(item) or [{}])[0].get('task') or '')
+    except Exception:  # noqa: BLE001 -- not readable alone: the list's own reading decides, which said merged
+        return False
+    try:
+        return any(todo.still_open(o, r, n, requests) for o, r, n in todo.pulls_named({'task': task, 'link': link})[1:])
+    except Exception:  # noqa: BLE001 -- GitHub unreachable: left open, as the list shows it
+        return True
 
 
 def _says_done(value):

@@ -32,6 +32,24 @@ class TickedTest(TestCase):
                          '<todo>\n- task: A\n  link: "https://github.com/a/b/pull/1"\n  done: true\n- task: B\n</todo>\n')
         self.assertEqual(todo_ticks.ticked(text, 'https://github.com/a/b/pull/2'), text)
 
+    def test_an_item_naming_others_still_open_is_left_for_them(self):
+        text = ('<todo>\n- task: "Merge the rest: #29, #31"\n  link: https://github.com/a/b/pull/31\n'
+                '- task: "Merge #31"\n  link: https://github.com/a/b/pull/31\n</todo>')
+        with mock.patch.object(todo, 'still_open', side_effect=lambda o, r, n, http: n == 29):
+            new = todo_ticks.ticked(text, 'https://github.com/a/b/pull/31')
+        self.assertEqual(new.count('done: true'), 1)
+        self.assertIn('"Merge #31"\n  link: https://github.com/a/b/pull/31\n  done: true', new)
+        with mock.patch.object(todo, 'still_open', return_value=False):
+            self.assertEqual(todo_ticks.ticked(text, 'https://github.com/a/b/pull/31').count('done: true'), 2)
+
+    def test_an_unquoted_task_is_read_as_the_list_reads_it(self):
+        """YAML ends an unquoted value at " #": the bot sees the task the list showed, not the raw line."""
+        text = '<todo>\n- task: Merge it #29\n  link: https://github.com/a/b/pull/31\n</todo>'
+        with mock.patch.object(todo, 'still_open', return_value=True) as asked:
+            new = todo_ticks.ticked(text, 'https://github.com/a/b/pull/31')
+        self.assertIn('done: true', new)
+        asked.assert_not_called()
+
     def test_every_item_linking_it_and_a_done_in_words_left_as_said(self):
         # The work and its merge, both linking the pull request (the tidings tab, 20 Oct): the bot
         # ticked only the first, writing "done: true" over what it said.

@@ -278,14 +278,70 @@ def _merged(owner, repo, number, http):
     return found
 
 
+# A pull request the task names in its words: a link, "repo#12", or a bare "#12" (the linked one's repository).
+# Not after a letter, a digit, a slash, '#', '&' or '-': "issue-#12" and "&#124;" name nothing.
+_NAMED = re.compile(r'https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)'
+                    r'|(?<![\w/#&-])(?:([A-Za-z][\w.-]*\w))?#(\d+)\b')
+
+
+def pulls_named(item):
+    """[(owner, repo, number)]: the linked pull request, then every other one the task's words name. The note
+    isn't read; the task's own words cite old ones too ("was #177, closed for #180"), so a named one holds the
+    item only while it is still open (still_open)."""
+    link = _PULL.match(item.get('link') or '')
+    if not link:
+        return []
+    owner, repo = link.group(1), link.group(2)
+    found = [(owner, repo, int(link.group(3)))]
+    for m in _NAMED.finditer(item.get('task') or ''):
+        if m.group(3):
+            named = (m.group(1), m.group(2), int(m.group(3)))
+        else:
+            other = m.group(4)
+            named = (owner if not other or other.lower() == repo.lower() else 'cryptograss', other or repo, int(m.group(5)))
+        if not any(n[1].lower() == named[1].lower() and n[2] == named[2] for n in found):
+            found.append(named)
+    return found
+
+
+def still_open(owner, repo, number, http):
+    """Whether GitHub says this pull request is open. Merged, closed, or no such pull request (an issue, a
+    number cited in passing): False. GitHub unreachable: raises, and the item stands as written."""
+    key = f'todo:open:{same(f"{owner}/{repo}")}#{number}'
+    found = cache.get(key)
+    if found is None:
+        from django.conf import settings
+        token = getattr(settings, 'GITHUB_TOKEN', '')
+        response = http.get(f'https://api.github.com/repos/{owner}/{repo}/pulls/{number}', timeout=6, headers={
+            'Accept': 'application/vnd.github+json', 'User-Agent': 'memory-lane (magenta; todo)',
+            **({'Authorization': f'Bearer {token}'} if token else {})})
+        if response.status_code == 404:
+            found = 'no'
+        elif response.status_code == 200:
+            found = 'yes' if response.json().get('state') == 'open' else 'no'
+        else:
+            raise RuntimeError(f'GitHub said {response.status_code}')
+        cache.set(key, found, OPEN_FOR if found == 'yes' else MERGED_FOR)
+    return found == 'yes'
+
+
+def done_by_merges(item, http):
+    """Its linked pull request merged, and none other its task names still open (re, 8 Nov, #docs-tests-qa:
+    "merge the rest: #29, #31, #32, #33" ticked when its link merged, three still open)."""
+    pulls = pulls_named(item)
+    if not pulls or not _merged(*pulls[0], http):
+        return False
+    return not any(still_open(o, r, n, http) for o, r, n in pulls[1:])
+
+
 def with_merges(items, http):
-    """The items, an open one linking a GitHub pull request that's been merged marked done ('merged': True)."""
+    """The items, an open one linking a GitHub pull request that's been merged marked done ('merged': True),
+    unless its task names another that's still open (done_by_merges)."""
     out = []
     for item in items:
-        match = _PULL.match(item.get('link') or '')
-        if match and not item['done']:
+        if not item['done'] and _PULL.match(item.get('link') or ''):
             try:
-                if _merged(match.group(1), match.group(2), int(match.group(3)), http):
+                if done_by_merges(item, http):
                     item = {**item, 'done': True, 'merged': True}
             except Exception:  # noqa: BLE001 -- GitHub unreachable: the item stands as written
                 pass

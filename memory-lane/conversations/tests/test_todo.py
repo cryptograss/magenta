@@ -1,3 +1,4 @@
+from unittest import mock
 """A Mood's to-do list: YAML on PickiPedia, shown beside the Mood, pointed to in every wake."""
 
 from django.core.cache import cache
@@ -47,7 +48,11 @@ class FakeWiki:
                 return Answer(200, '', [{'number': n, 'merged_at': '2026-10-08T15:22:36Z' if m else None}
                                        for n, m in self.closed.items()])
             number = int(url.rsplit('/', 1)[1])
-            return Answer(200, '', {'number': number, 'merged_at': '2026-10-08T15:22:36Z' if self.single.get(number) else None})
+            state = getattr(self, 'pull_state', {}).get(number)  # for still_open: 'open', 'closed', or 404
+            if state == 404:
+                return Answer(404)
+            return Answer(200, '', {'number': number, 'state': state or 'closed',
+                                    'merged_at': '2026-10-08T15:22:36Z' if self.single.get(number) else None})
         self.asked.append(params['title'])
         return Answer(200, self.pages[params['title']]) if params['title'] in self.pages else Answer(404)
 
@@ -117,6 +122,51 @@ class ForMoodTest(TestCase):
         cache.delete('todo:magenta-interface')
         todo.for_mood(self.mood, http=wiki)
         self.assertEqual(len(wiki.github), asked)  # kept: GitHub isn't asked again for a while
+
+    def test_an_item_naming_several_waits_only_for_those_still_open(self):
+        """re, 8 Nov: "merge the rest: #29, #31, #32, #33" ticked when its link merged, the others still open."""
+        item = {'task': 'Merge the rest, in this order: #29, #31, #32, #33; then redeploy',
+                'link': 'https://github.com/cryptograss/rabbithole/pull/33', 'done': False}
+        self.assertEqual([n for _, _, n in todo.pulls_named(item)], [33, 29, 31, 32])
+        still = {29: False, 31: True, 32: False}
+        with mock.patch.object(todo, '_merged', return_value=True), \
+                mock.patch.object(todo, 'still_open', side_effect=lambda o, r, n, http: still[n]):
+            self.assertFalse(todo.with_merges([item], None)[0]['done'])
+            still[31] = False
+            self.assertTrue(todo.with_merges([item], None)[0]['merged'])
+
+    def test_what_the_words_cite_in_passing_holds_nothing(self):
+        """re's scan of every list, 8 Nov: three items on #magenta-interface cite numbers that will never merge."""
+        items = [
+            {'task': 'Merge #176: tests run with the network shut (closes the flaky run of #104)',
+             'link': 'https://github.com/cryptograss/magenta/pull/176', 'done': False},   # #104: an issue
+            {'task': 'Merge #184 (was #177, closed for #180): the wake\'s fixed lines; then redeploy hunter',
+             'link': 'https://github.com/cryptograss/magenta/pull/184', 'done': False},   # #177 closed unmerged
+            {'task': 'Merge pickipedia-mcp#42 (the four dependabot bumps in one), close #35\u2013#38',
+             'link': 'https://github.com/cryptograss/pickipedia-mcp/pull/42', 'done': False}]  # #35..#38 closed
+        wiki = FakeWiki({})
+        wiki.pull_state = {104: 404, 177: 'closed', 180: 'closed', 35: 'closed', 38: 'closed'}
+        with mock.patch.object(todo, '_merged', return_value=True):
+            self.assertEqual([i['done'] for i in todo.with_merges(items, wiki)], [True, True, True])
+
+    def test_still_open_asks_github_and_keeps_the_answer(self):
+        wiki = FakeWiki({})
+        wiki.pull_state = {7: 'open', 8: 'closed', 9: 404}
+        self.assertEqual([todo.still_open('a', 'b', n, wiki) for n in (7, 8, 9)], [True, False, False])
+        asked = len(wiki.github)
+        todo.still_open('a', 'b', 8, wiki)
+        self.assertEqual(len(wiki.github), asked)
+
+    def test_what_a_task_names_and_what_it_doesnt(self):
+        one = {'task': 'Merge memory-lane#113', 'link': 'https://github.com/jMyles/memory-lane/pull/113'}
+        self.assertEqual(todo.pulls_named(one), [('jMyles', 'memory-lane', 113)])  # itself, once
+        other = {'task': 'Merge pickipedia-mcp#51 and https://github.com/cryptograss/magenta/pull/429',
+                 'link': 'https://github.com/cryptograss/magenta/pull/422'}
+        self.assertEqual(todo.pulls_named(other), [('cryptograss', 'magenta', 422), ('cryptograss', 'pickipedia-mcp', 51),
+                                                   ('cryptograss', 'magenta', 429)])
+        stray = {'task': 'Merge #5: issue-#12, a &#124; b', 'note': 'after #4', 'link': 'https://github.com/a/b/pull/5'}
+        self.assertEqual(todo.pulls_named(stray), [('a', 'b', 5)])  # the note is context; the strays name nothing
+        self.assertEqual(todo.pulls_named({'task': '#1', 'link': 'https://pickipedia.xyz/x'}), [])
 
     def test_an_open_one_stays_open_and_github_down_changes_nothing(self):
         wiki = FakeWiki({'Cryptograss:Moods/magenta-interface/todo': PAGE}, closed={})
