@@ -16,3 +16,14 @@ class SectionNavTest(SimpleTestCase):
             nav = html[html.index('<nav>'):html.index('</nav>')]
             for section in SECTIONS:
                 self.assertIn(f'href="/{section}/"', nav, f'{page} has no {section}')
+
+    def test_account_menu_has_every_header_section_for_a_phone(self):
+        """A phone hides the header's sections; the account menu carries each (Skyler, 8 Nov)."""
+        import re
+        html = (TEMPLATES / 'moods.html').read_text()
+        header = html[html.index('<span class="sections"'):]
+        header = header[:header.index('</span></span>')]
+        menu = html[html.index('<div id="userMenu"'):]
+        menu = menu[:menu.index('<a class="gear"')]
+        for section in re.findall(r'data-section="(\w+)"', header):
+            self.assertIn(f'data-section="{section}"', menu, f'the account menu has no {section}')

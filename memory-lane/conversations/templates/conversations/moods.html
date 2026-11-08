@@ -179,6 +179,7 @@
               border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.14); padding: 6px 0;
               display: flex; flex-direction: column; font-size: 13px; }
   #userMenu[hidden] { display: none; }
+  #userMenu > a.phone { display: none; }  /* the header's ▾ has them, but a phone hides it */
   #userMenu > * { padding: 6px 14px; color: var(--ink); text-decoration: none; text-align: left; }
   #userMenu > a:hover, #userMenu > button:hover { background: var(--hover); }
   #userMenu #pasteLink { margin-top: 8px; color: var(--muted); }
@@ -1715,6 +1716,8 @@
     header .crumb:not(.moods):not(:empty) { flex-shrink: 1; min-width: 0; }
     header .preview { max-width: 70px; }
     #serverPop { right: 8px; }
+    #userMenu > a.phone { display: block; }
+    #userMenu { max-height: calc(100dvh - 56px); overflow-y: auto; }
     .layout { flex-direction: column; }
     nav, #grip { display: none; }
     body.menu-open nav { display: block; width: auto; max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -1824,6 +1827,13 @@
       <a class="settings" href="/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
       <a class="settings" href="/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
       <a class="settings" href="/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
+      <!-- The rest of the header's sections, which a phone hides (Skyler, 8 Nov: "I cant seem to find ... the options at the top"). -->
+      <a class="settings phone" href="/ramp/" data-section="ramp" title="The ramp: every open pull request and githouse branch, the last few merged">ramp</a>
+      <a class="settings phone" href="/todo/" data-section="todo">todo</a>
+      <a class="settings phone" href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a>
+      <a class="settings phone" href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a>
+      <a class="settings phone" href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a>
+      <a class="settings phone" href="/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
