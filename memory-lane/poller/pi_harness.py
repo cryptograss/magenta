@@ -20,6 +20,7 @@ pi-1.1.0-turn.jsonl). What that run showed, and the translation leans on:
 """
 
 import collections
+import hashlib
 import json
 import logging
 import os
@@ -104,6 +105,15 @@ TURN_STOP_GRACE = 10
 LOOP_GUARD_EXTENSION = Path(__file__).resolve().parent / 'pi_extensions' / 'loop_guard.ts'
 
 
+def result_digest(result):
+    """A short fingerprint of a tool's answer (text, images and all), for LoopGuard."""
+    try:
+        text = json.dumps(result, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        text = str(result)
+    return hashlib.sha256(text.encode('utf-8', 'replace')).hexdigest()[:16]
+
+
 class LoopGuard:
     """The tripwire both wakers share: watch a turn's tool calls, and by the
     third identical one (same tool, same arguments), say the turn is a runaway.
@@ -124,14 +134,19 @@ class LoopGuard:
         self.total = 0
         self.recent = deque(maxlen=window_size)
 
-    def see(self, name, args):
-        """Note one tool call; a nonempty string once the tripwire has tripped."""
+    def see(self, name, args, result=None):
+        """Note one tool call; a nonempty string once the tripwire has tripped.
+
+        With `result` (the tool's answer), a repeat is the same call *and* the same answer: a
+        screenshot after every click takes no arguments but shows a new page each time, and on
+        8 Nov (#rabbithole, 03:30Z) five of them, four different, ended a turn as a "loop". A
+        machine attractor gets the same answer back, so it still trips. Without `result`, as before."""
         self.total += 1
         try:
             arg_str = json.dumps(args or {}, sort_keys=True)
         except (TypeError, ValueError):
             arg_str = str(args or {})
-        key = (name, arg_str)
+        key = (name, arg_str) if result is None else (name, arg_str, result_digest(result))
         self.streak = self.streak + 1 if key == self.last else 1
         self.last = key
         self.recent.append(key)

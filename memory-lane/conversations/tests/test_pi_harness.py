@@ -212,6 +212,15 @@ class LoopGuardTest(PlainCase):
     text between the repeats doesn't help (the 28 Oct specimen had escape text every few seconds).
     Also checks alternating loops and max call ceiling."""
 
+    def test_with_its_answer_a_repeat_is_the_same_call_and_the_same_answer(self):
+        guard = LoopGuard(window_size=10, window_limit=5)
+        for i in range(8):  # a screenshot after each change: alike calls, new pages
+            self.assertEqual(guard.see('browser_take_screenshot', {}, result=[{'type': 'image', 'data': f'p{i}'}]), '')
+        same = LoopGuard()
+        same.see('browser_take_screenshot', {}, result='p')
+        same.see('browser_take_screenshot', {}, result='p')
+        self.assertIn('called 3× with identical arguments', same.see('browser_take_screenshot', {}, result='p'))
+
     def test_three_identical_calls_trip_it(self):
         guard = LoopGuard()
         self.assertEqual(guard.see('read', {'path': 'x'}), '')
