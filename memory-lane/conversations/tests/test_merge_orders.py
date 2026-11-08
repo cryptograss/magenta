@@ -121,3 +121,13 @@ class MergeOrdersTest(TestCase):
         for text in texts:
             merge_orders.receive(text, SIGNATURE)
         self.assertEqual(self.pending(), texts[:20])
+
+    def test_orders_githouse_has_answered_cant_hide_a_waiting_one(self):
+        for _ in range(201):  # well-formed, unsigned, each refused once by githouse, unexpired for an hour yet
+            text = order()
+            merge_orders.receive(text, SIGNATURE)
+            seen = hashlib.sha256(f'{text}\0{SIGNATURE}'.encode()).hexdigest()
+            (self.githouse / '.merges' / 'mailed' / f'{seen}.json').write_text(json.dumps({'outcome': 'refused'}))
+        real = order(by='justin')
+        merge_orders.receive(real, SIGNATURE)
+        self.assertEqual(self.pending(), [real])
