@@ -40,6 +40,9 @@
   table.code tr.hunk td { background: var(--code, rgba(127,127,127,.08)); color: var(--muted); }
   table.code tr.here td { background: rgba(232,163,58,.3) !important; }
   {{ highlight_css|safe }}
+  section.work .asks { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    border: 1px solid #2e9e5b; color: #2e9e5b; }
+  section.work .askdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--who); }
   section.work .copied { font-size: 12px; color: #2e9e5b; margin-left: 6px; }
 </style>
 <section class="work" id="work" data-repo="{{ work.repo }}" data-branch="{{ work.branch }}" data-head="{{ work.head|default:'' }}"
@@ -49,7 +52,7 @@
     {% if work.item.url %}<a class="ref" href="{{ work.item.url }}" target="_blank" rel="noopener">{{ work.ref }}</a>{% else %}<span class="ref">{{ work.ref }}</span>{% endif %}
     <h2 class="wtitle">{{ work.item.title|default:tiding.title }}</h2>
     {% if work.tests %}<a class="tests {{ work.tests.state|slugify }}" href="{{ work.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ work.tests.number }} on Jenkins, for this head">{% if work.tests.state == 'passed' %}✓ tests{% elif work.tests.state == 'failed' %}✗ tests{% elif work.tests.state == 'testing' %}… testing{% else %}{{ work.tests.state }}{% endif %}</a>{% endif %}
-    {% if work.item %}{% include "conversations/_thumb.html" with w=work.item %}{% endif %}
+    {% if work.item %}{% include "conversations/_asks.html" with w=work.item %}{% include "conversations/_thumb.html" with w=work.item %}{% endif %}
     {% if can_merge and work.item and work.state != 'merged' %}<button type="button" class="merge" id="workMerge" title="Look at what it brings, then merge it, as you">Merge…</button>{% endif %}
   </div>
   <div class="wmeta">

@@ -180,11 +180,11 @@ class MergeButtonTest(TestCase):
             self.as_('justin')
             ramp = self.client.get('/moods/pulls/', {'embed': '1'}).content.decode()
             self.assertIn('data-repo="magenta" data-branch="re/foo" data-number="7"', ramp)
-            self.assertIn('id="mergeSheet"', ramp)
-            self.assertIn('id="mergeSheet"', self.client.get('/moods/').content.decode())
+            self.assertIn('id="mergeSheetTpl"', ramp)
+            self.assertIn('id="mergeSheetTpl"', self.client.get('/moods/').content.decode())
             self.as_('rj')
             self.assertNotIn('class="merge"', self.client.get('/moods/pulls/', {'embed': '1'}).content.decode())
-            self.assertNotIn('id="mergeSheet"', self.client.get('/moods/').content.decode())
+            self.assertNotIn('id="mergeSheetTpl"', self.client.get('/moods/').content.decode())
 
 
     def test_what_merged_is_said_in_the_mood_it_was_pressed_in_once(self):

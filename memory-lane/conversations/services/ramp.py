@@ -311,7 +311,10 @@ def mentions(items, now):
 
 
 def asks(items):
-    """Each item an open merge ask (🪢) names: item['asked'] = {'by', 'mood', 'id', 'at'}."""
+    """The open merge asks (🪢) naming each item: item['asks'] = [{'by', 'mood', 'id', 'at', 'colour'}], one per
+    emergent asking (its newest), oldest first, each drawn as a dot of its colour (Justin, 9 Nov); and
+    item['asked'], the newest of them."""
+    from .front import agent_colour
     from .tools_ask import named_branches, named_pulls, open_requests
     for slug, open_ in open_requests().items():
         for ask in open_:
@@ -321,7 +324,17 @@ def asks(items):
             branches = set(named_branches(ask['for']) or [])
             for item in items:
                 if (item['repo'], item.get('number')) in pulls or (item['repo'], item.get('branch')) in branches:
-                    item['asked'] = {'by': ask['emergent'], 'mood': slug, 'id': ask['id'], 'at': ask['at']}
+                    mine = {'by': ask['emergent'], 'mood': slug, 'id': ask['id'], 'at': ask['at'],
+                            'colour': agent_colour(ask['emergent'])}
+                    had = next((a for a in item.setdefault('asks', []) if a['by'] == mine['by']), None)
+                    if had is None:
+                        item['asks'].append(mine)
+                    elif str(had['at']) < str(mine['at']):
+                        had.update(mine)
+    for item in items:
+        if item.get('asks'):
+            item['asks'].sort(key=lambda a: str(a['at']))
+            item['asked'] = item['asks'][-1]
     return items
 
 

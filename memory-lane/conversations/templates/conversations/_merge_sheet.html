@@ -1,109 +1,176 @@
 <!-- The merge button's sheet (services/merge_orders.py; Cryptograss:Moods/ramp/Plan, section 10): what merging
-     a piece of work brings, from githouse's copy, then "Merge now". The press is signed by memory-lane's own key,
-     for whoever pressed, and githouse checks everything again. Opened by magentaMerge.open({repo, branch} or
-     {repo, number}, mood): the ramp's Merge buttons, a 🪢 ask's, and /merge in the composer. -->
+     a piece of work brings, from githouse's copy, who asked for it and who 👍'd it, then "Merge now". The press is
+     signed by memory-lane's own key, for whoever pressed, and githouse checks everything again. Opened by
+     magentaMerge.open({repo, branch} or {repo, number}, mood): the ramp's Merge buttons, a 🪢 ask's, /merge in
+     the composer.
+
+     One sheet a Mood. On the one page it covers only that Mood's pane, and goes and comes with it: press Merge,
+     go to another Mood, come back to see how it went (Justin, 9 Nov). magentaMerge.within(() => element) says
+     what pane it covers; magentaMerge.show(slug) which Mood is on screen (null: none). Without them, the sheet
+     covers the page, as on the ramp and a work's page. -->
 <style>
-  #mergeSheet { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
-                background: rgba(0,0,0,.45); padding: 12px; }
-  #mergeSheet[hidden] { display: none; }
-  #mergeSheet .box { background: var(--panel, #fff); color: var(--ink, #1f1d1a); border: 1px solid var(--line, #e6e1d8);
-                     border-radius: 10px; width: min(720px, 100%); max-height: 92vh; display: flex; flex-direction: column;
+  .mergeSheet { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+                background: rgba(0,0,0,.45); padding: 12px; box-sizing: border-box; }
+  .mergeSheet[hidden] { display: none; }
+  .mergeSheet .box { background: var(--panel, #fff); color: var(--ink, #1f1d1a); border: 1px solid var(--line, #e6e1d8);
+                     border-radius: 10px; width: min(720px, 100%); max-height: 92%; display: flex; flex-direction: column;
                      box-shadow: 0 10px 40px rgba(0,0,0,.3); }
-  #mergeSheet .head { padding: 12px 14px 6px; font-weight: 600; }
-  #mergeSheet .head .sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted, #6b6560);
+  .mergeSheet .head { padding: 12px 14px 6px; font-weight: 600; }
+  .mergeSheet .head .sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted, #6b6560);
                            font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 2px; }
-  #mergeSheet pre { margin: 0 14px 8px; padding: 8px 10px; background: var(--code, #f3efe8); border-radius: 6px;
+  .mergeSheet .who { padding: 0 14px 8px; font-size: 12.5px; color: var(--muted, #6b6560); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .mergeSheet .who:empty { display: none; }
+  .mergeSheet .who .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--who);
+                          margin-right: 3px; vertical-align: 0; }
+  .mergeSheet .who a { color: inherit; text-decoration: none; }
+  .mergeSheet .who a:hover { color: var(--ink, #1f1d1a); }
+  .mergeSheet .who .stale { opacity: .6; }
+  .mergeSheet pre { margin: 0 14px 8px; padding: 8px 10px; background: var(--code, #f3efe8); border-radius: 6px;
                     font-size: 12px; overflow: auto; white-space: pre; max-height: 30vh; }
-  #mergeSheet .say { padding: 0 14px 8px; font-size: 13px; }
-  #mergeSheet .say.err { color: var(--err, #c0392b); }
-  #mergeSheet .say.ok { color: var(--ok, #2e9e5b); }
-  #mergeSheet .row { display: flex; gap: 8px; justify-content: flex-end; padding: 8px 14px 12px; }
-  #mergeSheet button { font: inherit; border-radius: 6px; padding: 6px 14px; cursor: pointer;
+  .mergeSheet .say { padding: 0 14px 8px; font-size: 13px; }
+  .mergeSheet .say.err { color: var(--err, #c0392b); }
+  .mergeSheet .say.ok { color: var(--ok, #2e9e5b); }
+  .mergeSheet .row { display: flex; gap: 8px; justify-content: flex-end; padding: 8px 14px 12px; }
+  .mergeSheet button { font: inherit; border-radius: 6px; padding: 6px 14px; cursor: pointer;
                        border: 1px solid var(--line, #e6e1d8); background: none; color: inherit; }
-  #mergeSheet button.go { background: var(--accent, #b8106b); border-color: var(--accent, #b8106b); color: #fff; font-weight: 600; }
-  #mergeSheet button:disabled { opacity: .5; cursor: default; }
+  .mergeSheet button.go { background: var(--accent, #b8106b); border-color: var(--accent, #b8106b); color: #fff; font-weight: 600; }
+  .mergeSheet button:disabled { opacity: .5; cursor: default; }
 </style>
-<div id="mergeSheet" hidden role="dialog" aria-modal="true" aria-labelledby="mergeSheetTitle">
-  <div class="box">
-    <div class="head" id="mergeSheetTitle"><span class="what"></span><span class="sub"></span></div>
-    <pre class="log" hidden></pre>
-    <pre class="stat" hidden></pre>
-    <div class="say"></div>
-    <div class="row"><button type="button" class="no">Close</button><button type="button" class="go" hidden>Merge now</button></div>
+<template id="mergeSheetTpl">
+  <div class="mergeSheet" hidden role="dialog">
+    <div class="box">
+      <div class="head"><span class="what"></span><span class="sub"></span></div>
+      <div class="who"></div>
+      <pre class="log" hidden></pre>
+      <pre class="stat" hidden></pre>
+      <div class="say"></div>
+      <div class="row"><button type="button" class="no">Close</button><button type="button" class="go" hidden>Merge now</button></div>
+    </div>
   </div>
-</div>
+</template>
 <script>
 window.magentaMerge = (() => {
-  const sheet = document.getElementById('mergeSheet');
-  const $ = s => sheet.querySelector(s);
-  // gen: which open() is current. A preview that answers after another sheet was opened is dropped, so the
-  // sheet never names one piece of work while holding another's commit for the press (re, 8 Nov).
-  let seen = null, mood = '', busy = false, gen = 0;
+  const tpl = document.getElementById('mergeSheetTpl');
   const csrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
-  const say = (text, kind) => { const el = $('.say'); el.textContent = text; el.className = 'say' + (kind ? ' ' + kind : ''); };
-  const shut = () => { if (!busy) { sheet.hidden = true; gen++; seen = null; } };
-  $('.no').addEventListener('click', shut);
-  sheet.addEventListener('click', e => { if (e.target === sheet) shut(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !sheet.hidden) shut(); });
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const sheets = new Map();   // mood ('' off the one page) -> its sheet
+  let pane = null;            // () => the element a sheet covers; null: the whole page
+  let onScreen = undefined;   // the Mood shown now; undefined: not told (every sheet shows as opened)
+
+  // Over the pane, not the page: the Moods list, the header and the other Moods stay to hand.
+  function place(s) {
+    const el = pane && pane();
+    s.el.setAttribute('aria-modal', el ? 'false' : 'true');
+    if (!el) { s.el.style.inset = '0'; return; }
+    const r = el.getBoundingClientRect();
+    Object.assign(s.el.style, { inset: 'auto', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  }
+  const placeAll = () => sheets.forEach(s => { if (!s.el.hidden) place(s); });
+  window.addEventListener('resize', placeAll);
+
+  function sheetFor(mood) {
+    if (sheets.has(mood)) return sheets.get(mood);
+    const el = tpl.content.firstElementChild.cloneNode(true);
+    document.body.appendChild(el);
+    // gen: which open() is current. A preview that answers after another was opened is dropped, so the sheet
+    // never names one piece of work while holding another's commit for the press (re, 8 Nov).
+    const s = { el, mood, seen: null, busy: false, gen: 0, alive: false, $: q => el.querySelector(q) };
+    s.say = (text, kind) => { const t = s.$('.say'); t.textContent = text; t.className = 'say' + (kind ? ' ' + kind : ''); };
+    s.shut = () => { if (s.busy) return; el.hidden = true; s.alive = false; s.gen++; s.seen = null; };
+    s.$('.no').addEventListener('click', s.shut);
+    el.addEventListener('click', e => { if (e.target === el) s.shut(); });
+    s.$('.go').addEventListener('click', () => press(s));
+    sheets.set(mood, s);
+    return s;
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    sheets.forEach(s => { if (!s.el.hidden) s.shut(); });
+  });
+
+  // Who wants it (Justin, 9 Nov): a dot for each emergent asking for this merge, and each person's 👍.
+  function drawWho(s, body) {
+    const asks = (body.asks || []).map(a => `<a href="/moods/${encodeURIComponent(a.mood)}/#m-${esc(a.id)}"`
+      + ` title="${esc(a.by)} asked for this merge in #${esc(a.mood)}"><span class="dot" style="--who: ${esc(a.colour)}"></span>${esc(a.by)}</a>`);
+    const thumbs = (body.thumbs || []).map(t => t.current ? `<span title="on this commit">${esc(t.by)}</span>`
+      : `<span class="stale" title="on an older commit: the branch has moved since">${esc(t.by)} (older commit)</span>`);
+    s.$('.who').innerHTML = (asks.length ? `<span>🪢 asked: ${asks.join(', ')}</span>` : '')
+      + (thumbs.length ? `<span>👍 ${thumbs.join(', ')}</span>` : '');
+  }
 
   async function open(work, inMood) {
-    if (busy) return;  // a press on its way: its answer belongs to the sheet it was pressed in
-    const mine = ++gen;
-    seen = null; mood = inMood || ''; busy = false;
+    const s = sheetFor(inMood || '');
+    if (s.busy) { reveal(s); return; }  // a press on its way here: its sheet, as it stands
+    const mine = ++s.gen;
+    s.seen = null; s.alive = true;
     const name = work.number ? `${work.repo}#${work.number}` : `${work.repo}:${work.branch}`;
-    $('.what').textContent = `Merge ${name}?`;
-    $('.sub').textContent = '';
-    $('.log').hidden = $('.stat').hidden = true;
-    $('.go').hidden = true; $('.go').disabled = false;
-    say('Looking at it in githouse’s copy…');
-    sheet.hidden = false;
+    s.$('.what').textContent = `Merge ${name}?`;
+    s.$('.sub').textContent = '';
+    s.$('.who').innerHTML = '';
+    s.$('.log').hidden = s.$('.stat').hidden = true;
+    s.$('.go').hidden = true; s.$('.go').disabled = false;
+    s.say('Looking at it in githouse’s copy…');
+    reveal(s);
     const q = new URLSearchParams({ repo: work.repo, branch: work.branch || '' });
     if (work.number) q.set('number', work.number);
     let r, body;
     try {
       r = await fetch('/api/merge-orders/preview/?' + q, { credentials: 'same-origin' });
       body = await r.json();
-    } catch (e) { if (mine === gen) say('Couldn’t reach memory-lane: ' + e.message, 'err'); return; }
-    if (mine !== gen || sheet.hidden) return;
-    if (!r.ok) { say(body.error || ('memory-lane said ' + r.status), 'err'); return; }
-    seen = body;
-    $('.sub').textContent = `${body.repo}:${body.branch} at ${body.commit.slice(0, 12)} → ${body.into} at ${body.tip.slice(0, 12)}`;
-    $('.log').textContent = body.log.trim(); $('.log').hidden = false;
-    $('.stat').textContent = body.stat.trim(); $('.stat').hidden = false;
+    } catch (e) { if (mine === s.gen) s.say('Couldn’t reach memory-lane: ' + e.message, 'err'); return; }
+    if (mine !== s.gen || !s.alive) return;
+    if (!r.ok) { s.say(body.error || ('memory-lane said ' + r.status), 'err'); return; }
+    s.seen = body;
+    s.$('.sub').textContent = `${body.repo}:${body.branch} at ${body.commit.slice(0, 12)} → ${body.into} at ${body.tip.slice(0, 12)}`;
+    drawWho(s, body);
+    s.$('.log').textContent = body.log.trim(); s.$('.log').hidden = false;
+    s.$('.stat').textContent = body.stat.trim(); s.$('.stat').hidden = false;
     if (body.can) {
-      $('.go').hidden = false;
-      say(`Signed by memory-lane on your press; githouse checks it again and merges --no-ff, exactly this commit.`);
+      s.$('.go').hidden = false;
+      s.say(`Signed by memory-lane on your press; githouse checks it again and merges --no-ff, exactly this commit.`);
     } else {
-      say(`Only ${(body.mergers || []).join(' and ') || 'the mergers'} can merge from here, signed in with their SSH key.`);
+      s.say(`Only ${(body.mergers || []).join(' and ') || 'the mergers'} can merge from here, signed in with their SSH key.`);
     }
   }
 
-  $('.go').addEventListener('click', async () => {
-    if (!seen || busy) return;
-    busy = true; $('.go').disabled = true; $('.no').disabled = true;
-    say('Sending to githouse…');
+  // Shown if its Mood is on screen (or nobody said which is); kept, out of sight, while another is.
+  function reveal(s) {
+    if (!s.alive) return;
+    s.el.hidden = onScreen !== undefined && onScreen !== s.mood;
+    if (!s.el.hidden) place(s);
+  }
+
+  async function press(s) {
+    const seen = s.seen;
+    if (!seen || s.busy) return;
+    s.busy = true; s.$('.go').disabled = true; s.$('.no').disabled = true;
+    s.say('Sending to githouse…');
     try {
       const r = await fetch('/api/merge-orders/press/', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
         body: JSON.stringify({ repo: seen.repo, branch: seen.branch, number: seen.number, commit: seen.commit,
-                               into: seen.into, mood }) });
+                               into: seen.into, mood: s.mood }) });
       let status = await r.json();
-      if (!r.ok) { say(status.error || ('memory-lane said ' + r.status), 'err'); return; }
+      if (!r.ok) { s.say(status.error || ('memory-lane said ' + r.status), 'err'); return; }
       for (let waited = 0; status.status === 'waiting' && waited < 120; waited += 3) {
-        say(`Waiting for githouse… ${waited ? waited + ' s' : ''}`);
+        s.say(`Waiting for githouse… ${waited ? waited + ' s' : ''}`);
         await new Promise(go => setTimeout(go, 3000));
         status = await (await fetch(`/api/merge-orders/${status.id}/`, { credentials: 'same-origin' })).json();
       }
-      if (status.status === 'merged') say(`Merged into ${seen.into} as ${String(status.merge || '').slice(0, 12)}.`, 'ok');
-      else if (status.status === 'waiting') say('githouse hasn’t answered in two minutes; the order is good for an hour.', 'err');
-      else say(`${status.status === 'expired' ? 'Expired' : 'Refused'}: ${status.why || ''}`, 'err');
+      if (status.status === 'merged') s.say(`Merged into ${seen.into} as ${String(status.merge || '').slice(0, 12)}.`, 'ok');
+      else if (status.status === 'waiting') s.say('githouse hasn’t answered in two minutes; the order is good for an hour.', 'err');
+      else s.say(`${status.status === 'expired' ? 'Expired' : 'Refused'}: ${status.why || ''}`, 'err');
     } catch (e) {
-      say('Lost touch with memory-lane: ' + e.message, 'err');
+      s.say('Lost touch with memory-lane: ' + e.message, 'err');
     } finally {
-      busy = false; $('.no').disabled = false;
+      s.busy = false; s.$('.no').disabled = false;
     }
-  });
+  }
+
+  // The one page: the pane a sheet covers, and which Mood is on screen now (null: none, as in a section).
+  function within(fn) { pane = fn; placeAll(); if (window.ResizeObserver && fn && fn()) new ResizeObserver(placeAll).observe(fn()); }
+  function show(slug) { onScreen = slug; sheets.forEach(reveal); }
 
   // The pieces of work a 🪢 ask names: repo#N (a bare #N takes the repo before it) and repo:branch.
   function named(text) {
@@ -117,6 +184,6 @@ window.magentaMerge = (() => {
     }
     return found;
   }
-  return { open, named };
+  return { open, named, within, show };
 })();
 </script>

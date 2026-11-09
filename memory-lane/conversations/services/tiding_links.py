@@ -362,7 +362,7 @@ def tree_of(tiding, message_id, index=None, viewer=None):
     """A link's whole discussion, both kinds of comment together, oldest first at each level:
     the Mood's replies under its message ({'kind': 'mood', ...}, from the links index) and the comments
     said on Tidings itself ({'kind': 'comment', ...}, TidingComment) -- neither a record apart."""
-    from conversations.models import TidingComment
+    from conversations.models import Message, TidingComment
     from .links import current
     index = index if index is not None else current()
     seen = {str(message_id)}
@@ -383,6 +383,20 @@ def tree_of(tiding, message_id, index=None, viewer=None):
                 'text': '' if row.changed == 'deleted' else row.text, 'changed': row.changed}
         key = 'c:' + str(row.parent_id) if row.parent_id else 'm:' + str(row.parent_message_id or message_id)
         extras.setdefault(key, []).append(node)
+
+    # A reply in the Mood to a comment's line there ('💬 … commented'), and the replies under it: shown under
+    # that comment here (Justin, 9 Nov). An emergent's answer to an @ask is already here as a comment
+    # (answer_asked): its Mood reply isn't shown twice.
+    answered = {(str(p), by) for p, by in TidingComment.objects.filter(tiding=tiding, parent__isnull=False)
+                .values_list('parent_id', 'by_id')}
+    for notice_id, said in (Message.objects.filter(source_file=COMMENT_SOURCE, mood_id=tiding.message.mood_id,
+                                                   content__tiding=str(tiding.id))
+                            .values_list('id', 'content__comment_id')):
+        if not said:
+            continue
+        under = [n for n in mood_under(str(notice_id)) if (str(said), n['sender']) not in answered]
+        if under:
+            extras.setdefault('c:' + str(said), []).extend(under)
 
     def splice(nodes, key):
         nodes = nodes + extras.pop(key, [])
@@ -421,6 +435,17 @@ def _tree(message_id, index=None):
                 out.append({**entry, 'replies': under(entry['id'])})
         return out
     return under(str(message_id))
+
+
+def _notice_replies(tiding, index=None):
+    """The ids of the Mood's replies to this Tiding's comment lines there, and theirs (tree_of shows them under
+    their comments): what a comment on the page, or an emergent's answer, may answer besides _tree's."""
+    from conversations.models import Message
+    found = set()
+    for notice_id in (Message.objects.filter(source_file=COMMENT_SOURCE, mood_id=tiding.message.mood_id,
+                                             content__tiding=str(tiding.id)).values_list('id', flat=True)):
+        found |= {node['id'] for node in _walk(_tree(notice_id, index))}
+    return found
 
 
 def thread(message_id, index=None, viewer=None):
@@ -513,11 +538,20 @@ def vote_on_comment(tiding, by, comment_id):
 COMMENT_SOURCE = 'tiding-comment'
 
 
+def is_work(tiding):
+    """Whether this Tiding is a piece of work's page (services/work_pages.py)."""
+    from conversations.models import WorkTiding
+    try:
+        return tiding.work is not None
+    except WorkTiding.DoesNotExist:
+        return False
+
+
 def _notice(tiding, by, said=None, asks=()):
     """A line in the link's Mood: '💬 new comment by …', referring to the message it was posted from.
     The comment's words stay on Tidings (Justin, 21 Oct); the notice is all the Mood gets, and only
     if the link isn't muted there -- with the link's title and the comment's first words, which open it
-    (Justin, 23 Oct)."""
+    (Justin, 23 Oct). A work's page is the exception: its comment is said whole in the Mood (Justin, 9 Nov)."""
     from .mood_view import snippet_of
     import time as _time
     from conversations.models import ConversationParticipant, Message
@@ -528,9 +562,28 @@ def _notice(tiding, by, said=None, asks=()):
                            content={'type': COMMENT_SOURCE, 'by': by.name, 'message': str(tiding.message_id),
                                     'tiding': str(tiding.id), 'title': (tiding.title or tiding.url)[:200],
                                     **({'comment': snippet_of(said.text)[:120], 'comment_id': str(said.id)} if said else {}),
+                                    # On a work's page, the whole comment: the Mood shows it as said (Justin, 9 Nov),
+                                    # and a reply to it there shows under it on the page (tree_of).
+                                    **({'text': said.text} if said and is_work(tiding) else {}),
                                     # The agents it asks by name: each woken in this Mood (mention_of), its
                                     # answer coming back under the comment (answer_asked).
                                     **({'asks': list(asks)} if asks else {})})
+
+
+def _renotice(comment_id, text):
+    """A comment edited (text) or deleted (None): its line in the Mood says it as it stands now, so what was
+    sealed away isn't still shown there."""
+    from conversations.models import Message
+    from .mood_view import snippet_of
+    for notice in Message.objects.filter(source_file=COMMENT_SOURCE, content__comment_id=str(comment_id)):
+        c = dict(notice.content)
+        c['comment'] = snippet_of(text)[:120] if text is not None else ''
+        if text is None:
+            c.pop('text', None)
+        elif 'text' in c:  # a work's page: said whole in the Mood
+            c['text'] = text
+        c['changed'] = 'edited' if text is not None else 'deleted'
+        Message.objects.filter(id=notice.id).update(content=c)
 
 
 def mute(tiding, device, muted):
@@ -572,7 +625,8 @@ def comment(tiding, by, text, parent=None, client_version=''):
     if kind is None:
         parent_message_id = message.id
     elif kind == 'message':
-        if str(parent_id) != str(message.id) and not any(node['id'] == str(parent_id) for node in _walk(_tree(message.id))):
+        if (str(parent_id) != str(message.id) and not any(node['id'] == str(parent_id) for node in _walk(_tree(message.id)))
+                and str(parent_id) not in _notice_replies(tiding)):
             raise Refused('no such comment under this link', status=404)
         parent_message_id = parent_id
     elif kind == 'comment':
@@ -685,7 +739,8 @@ def answer_asked(mood, session_id, agent, asked_ids):
     plain = {str(m.id) for m in asked if m.source_file != COMMENT_SOURCE}
     if plain:
         for tiding in Tiding.objects.filter(message__mood=mood).order_by('at'):
-            here = {str(tiding.message_id)} | {node['id'] for node in _walk(_tree(tiding.message_id))}
+            here = ({str(tiding.message_id)} | {node['id'] for node in _walk(_tree(tiding.message_id))}
+                    | _notice_replies(tiding))
             for mid in sorted(plain & here):
                 if not TidingComment.objects.filter(tiding=tiding, parent_message_id=mid, by=entity).exists():
                     made.append(TidingComment.objects.create(tiding=tiding, by=entity, parent_message_id=mid, text=text))
@@ -790,6 +845,7 @@ def change_said(tiding, device, kind, node_id, text=None, delete=False):
         text, _ = redact(text)
     TidingComment.objects.filter(pk=row.pk).update(text=retract.DELETED if delete else text, changed=kind,
                                                    changed_at=timezone.now())
+    _renotice(row.id, None if delete else text)
     retract._say_so(said, device.entity_id, f'a comment on Tidings {kind}')
     return {'id': str(row.id), 'changed': kind}
 

@@ -96,6 +96,19 @@ def with_pages(items):
     return items
 
 
+def with_merged_pages(items):
+    """The ramp's merged items (repo and number, no branch), each with 'page': {'id'} if its work had one."""
+    from conversations.models import WorkTiding
+    numbers = {(i.get('repo'), i.get('number')) for i in items if i.get('number')}
+    found = {}
+    if numbers:
+        for w in WorkTiding.objects.filter(repo__in={r for r, _ in numbers}, number__in={n for _, n in numbers}):
+            found[(w.repo, w.number)] = {'id': str(w.tiding_id)}
+    for item in items:
+        item['page'] = found.get((item.get('repo'), item.get('number')))
+    return items
+
+
 def open_page(by, repo, branch):
     """The Tiding for this work, made now if it has none: a 'work' line in its Mood, and the Tiding on it.
     `by` is the person (ThinkingEntity) opening it. Invalid if the ramp doesn't have this work open."""
