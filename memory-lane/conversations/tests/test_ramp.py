@@ -233,9 +233,12 @@ class AskDotsTest(RampTest):
     def test_an_ask_carries_what_it_names_not_merged_yet(self):
         # Justin, 9 Nov: an ask naming #451 and #449 kept a Merge for #449 after #449 merged.
         from conversations.services import tools_ask
+        ramp.board(now=self.now)  # the ramp has been drawn: it says #7's branch
+        cache.delete_many([tools_ask.KEY, tools_ask.SCAN_KEY])  # drawing it asked for the asks: none, then
         self.say('re', '<merge to="magenta#7 and magenta:magent/bar"/>')
         [ask] = tools_ask.open_requests()['jams']
-        self.assertEqual(ask['works'], [{'repo': 'magenta', 'number': 7}, {'repo': 'magenta', 'branch': 'magent/bar'}])
+        self.assertEqual(ask['works'], [{'repo': 'magenta', 'number': 7, 'branch': 're/foo'},
+                                        {'repo': 'magenta', 'branch': 'magent/bar'}])
         git(self.repo.work, 'merge', '-q', '--no-ff', '-m', 'Merge pull request #7', 're/foo')
         self.repo.push()
         cache.clear()
