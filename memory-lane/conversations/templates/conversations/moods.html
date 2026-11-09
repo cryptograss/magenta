@@ -756,7 +756,10 @@
   .turn .body ul, .turn .body ol { margin: 0 0 .7em; padding-left: 1.4em; }
   .turn .body li > ul { margin: 0; }
   .turn .body h4 { margin: .8em 0 .3em; font-size: 1em; }
-  .turn .body code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .87em; }
+  /* A long address in code or a bare link breaks where it must: unbroken, it made the Mood wider than a phone and
+     slid the page sideways (Skyler, 8 Nov). A code block keeps its own scroll. */
+  .turn .body code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .87em; overflow-wrap: anywhere; }
+  .turn .body a { overflow-wrap: anywhere; }
   .turn .body pre { background: var(--code); padding: 10px 12px; border-radius: 6px; overflow-x: auto; font-size: .87em; }
   .turn .body pre code { background: none; padding: 0; }
   .turn .body table { border-collapse: collapse; margin: .4em 0 .8em; font-size: .93em; }
