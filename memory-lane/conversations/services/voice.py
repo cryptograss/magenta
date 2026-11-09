@@ -157,25 +157,38 @@ _LONG_TOKEN = re.compile(r'(?<!\S)[^\s]{33,}(?!\S)')  # keys, base64, anything n
 _PATH = re.compile(r'(?<![\w/.:])(?:~|\.{1,2})?(?:/?[\w.-]+/){1,}([\w.-]+)')  # a path: its last part
 
 
-def _spoken_link(match):
-    from urllib.parse import urlparse
-    host = urlparse(match.group(0)).netloc.lower().removeprefix('www.')
-    return f' a link to {host} ' if host else ' a link '
+# What's named rather than read ("a hash", "a link to github.com"): an aside, said by the narrator, not by whoever
+# wrote it (Justin, 9 Nov). plain(..., asides=True) marks each; pieces() gives each a piece of its own.
+ASIDE_OPEN, ASIDE_CLOSE = '\ue000', '\ue001'
+_ASIDE = re.compile(f'{ASIDE_OPEN}([^{ASIDE_CLOSE}]*){ASIDE_CLOSE}')
 
 
-def plain(text):
+def unmarked(text):
+    """`text` with its asides as plain words."""
+    return _ASIDE.sub(r'\1', text or '')
+
+
+def plain(text, asides=False):
     """A message as it would be read out: markdown taken away; code, links, ids,
-    hashes and paths named rather than spelled; the page's symbols said in words."""
-    text = re.sub(r'```.*?```', ' (some code) ', text or '', flags=re.S)
+    hashes and paths named rather than spelled; the page's symbols said in words.
+    With `asides`, what's named is marked as the narrator's (ASIDE_OPEN ... ASIDE_CLOSE)."""
+    def named(words):
+        return f' {ASIDE_OPEN}{words}{ASIDE_CLOSE} ' if asides else f' {words} '
+
+    def _spoken_link(match):
+        from urllib.parse import urlparse
+        host = urlparse(match.group(0)).netloc.lower().removeprefix('www.')
+        return named(f'a link to {host}' if host else 'a link')
+    text = re.sub(r'```.*?```', named('(some code)'), text or '', flags=re.S)
     text = re.sub(r'!\[[^\]]*\]\([^)]*\)', ' ', text)               # images
     text = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', text)             # links: their words
-    text = _MOOD_LINK.sub(r' a message in \1 ', text)
+    text = _MOOD_LINK.sub(lambda m: named(f'a message in {m.group(1)}'), text)
     text = re.sub(r'https?://[^\s)>\]]+', _spoken_link, text)
-    text = _UUID.sub(lambda m: ' a message link ' if m.group(0).startswith('#m-') else ' an ID ', text)
+    text = _UUID.sub(lambda m: named('a message link' if m.group(0).startswith('#m-') else 'an ID'), text)
     text = re.sub(r'`([^`]*)`', lambda m: re.sub(r'(?<!\[)\[([^\[\]\n]+)\](?!\])', r'\1', m.group(1)), text)
-    text = _HASH.sub(' a hash ', text)
+    text = _HASH.sub(named('a hash'), text)
     text = _PATH.sub(lambda m: m.group(1), text)
-    text = _LONG_TOKEN.sub(' a long string ', text)
+    text = _LONG_TOKEN.sub(named('a long string'), text)
     text = re.sub(r'(?<![\w&])#(\d+)\b', r'number \1', text)             # #69: "number 69", not "hashtag"
     text = re.sub(r'(?<![\w&/#])#([A-Za-z][\w-]*)', lambda m: f' {said_mood(m.group(1))} ', text)  # a Mood: "pound general"
     for symbol, words in SPOKEN_SYMBOLS.items():
@@ -475,7 +488,7 @@ def script_for(text, part=0):
         direction = directions[min(max(part, 0), len(directions) - 1)]
         if direction['script']:
             return direction['script'][:MAX_SCRIPT_CHARS], direction['voice'], direction['settings']
-    return plain(rest)[:MAX_SCRIPT_CHARS], '', {}
+    return plain(rest, asides=True)[:MAX_SCRIPT_CHARS], '', {}
 
 
 def _cut(text, limit):
@@ -524,7 +537,27 @@ def pieces(script):
             paragraphs.insert(0, rest)
     if current:
         out.append(current)
+    return [p for piece in out for p in _with_asides(piece)]
+
+
+def _with_asides(piece):
+    """A piece, its asides each a piece of their own (the narrator's: aside()); what's between them that has no
+    words to say -- a comma, a full stop -- goes. Asides side by side are one."""
+    out = []
+    for i, chunk in enumerate(_ASIDE.split(piece)):
+        if i % 2:
+            if out and aside(out[-1]):
+                out[-1] = out[-1][:-1] + ', ' + chunk + ASIDE_CLOSE
+            else:
+                out.append(ASIDE_OPEN + chunk + ASIDE_CLOSE)
+        elif re.search(r'\w', chunk):  # an aside a cut split in two (_cut) is read as their words, unmarked
+            out.append(re.sub(r'^[\s,;:.]+', '', chunk.replace(ASIDE_OPEN, '').replace(ASIDE_CLOSE, '')).strip())
     return out
+
+
+def aside(piece):
+    """True if `piece` is an aside, said by the narrator."""
+    return piece.startswith(ASIDE_OPEN) and piece.endswith(ASIDE_CLOSE)
 
 
 def speak(message, by, http=requests, part=0, piece=0):
@@ -558,7 +591,13 @@ def speak_piece(message, by, http=requests, part=0, piece=0):
             names = {'similarity': 'similarity_boost'}
             body['voice_settings'] = {names.get(k, k): v for k, v in voice_settings.items()}
         return body
-    before = [_request_id(_key(voice_id, _said(body_for(text)))) for text in parts[max(0, piece - 3):piece]]
+    if aside(parts[piece]):  # "a hash", "a link to github.com": the narrator's, as an intro is (Justin, 9 Nov)
+        words = unmarked(parts[piece])
+        url = _spoken(message.mood, by, voice_of(NARRATOR, http), {'text': words, 'model_id': TTS_MODEL}, words,
+                      http, message=str(message.id), piece=piece, narrated='aside')
+        return {'url': url, 'pieces': len(parts)}
+    theirs = [text for text in parts[:piece] if not aside(text)][-3:]  # stitched onto their own voice's pieces
+    before = [_request_id(_key(voice_id, _said(body_for(text)))) for text in theirs]
     stitch = {'previous_request_ids': [r for r in before if r]} if any(before) else {}
     url = _spoken(message.mood, by, voice_id, body_for(parts[piece]), parts[piece], http, extra=stitch,
                   who=_whose(message.sender_id), message=str(message.id), **({'piece': piece} if piece else {}))

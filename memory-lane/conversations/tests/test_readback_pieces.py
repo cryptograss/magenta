@@ -29,7 +29,7 @@ class FakeEleven:
         return answer
 
     def post(self, url, **kw):
-        self.made.append(kw['json'])
+        self.made.append({**kw['json'], 'voice': url.rsplit('/', 1)[-1]})
         return Made(len(self.made))
 
 
@@ -109,3 +109,44 @@ class StitchedTest(TestCase):
             later = [client.post(f'{url}?piece={i}').json()['url'] for i in (1, 2)] * 4  # eight more asks
         self.assertEqual(len(fake.made), 3)
         self.assertEqual(len(set(later)), 2)
+
+
+@override_settings(ELEVENLABS_API_KEY='test-eleven-key')
+class AsideTest(TestCase):
+    """What's named rather than read -- "a hash", "a link to github.com" -- is the narrator's (Justin, 9 Nov)."""
+
+    def setUp(self):
+        cache.clear()
+        self.magent, _ = ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False})
+        ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        self.mood = Mood.objects.create(slug='general', title='general')
+        self.message = Message.objects.create(
+            id=uuid.uuid4(), sender=self.magent, mood=self.mood, timestamp=1,
+            content=[{'type': 'text', 'text': 'Merged 85d0964ab, see https://github.com/x/y and '
+                                              'https://example.com/z. Done.'}])
+
+    def test_each_aside_is_a_piece_of_its_own(self):
+        script, _, _ = voice.script_for('Merged 85d0964ab, see https://github.com/x/y and https://example.com/z. Done.')
+        parts = voice.pieces(script)
+        self.assertEqual([voice.unmarked(p) for p in parts],
+                         ['Merged', 'a hash', 'see', 'a link to github.com', 'and', 'a link to example.com', 'Done.'])
+        self.assertEqual([voice.aside(p) for p in parts], [False, True, False, True, False, True, False])
+
+    def test_asides_side_by_side_are_one(self):
+        parts = voice.pieces(voice.script_for('commits 85d0964ab 77de52fcc landed')[0])
+        self.assertEqual([voice.unmarked(p) for p in parts], ['commits', 'a hash, a hash', 'landed'])
+
+    def test_plain_reading_is_unmarked(self):
+        self.assertEqual(voice.plain('commit 85d0964ab'), 'commit a hash')
+
+    def test_an_aside_is_said_in_the_narrators_voice(self):
+        fake = FakeEleven()
+        first = voice.speak_piece(self.message, 'justin', http=fake)
+        self.assertEqual(first['pieces'], 7)
+        voice.speak_piece(self.message, 'justin', http=fake, piece=1)
+        voice.speak_piece(self.message, 'justin', http=fake, piece=2)
+        theirs, narrator = voice.voice_of('magent', fake), voice.voice_of(voice.NARRATOR, fake)
+        self.assertNotEqual(theirs, narrator)
+        self.assertEqual([(m['text'], m['voice']) for m in fake.made],
+                         [('Merged', theirs), ('a hash', narrator), ('see', theirs)])
+        self.assertEqual(fake.made[2]['previous_request_ids'], ['req-1'])  # stitched onto their own piece, not the aside
