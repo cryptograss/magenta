@@ -9,6 +9,10 @@ Yarn fetch's thread writing into whichever test was running when Yarn answered).
   tests call yarn_kept.keep with a fake Yarn.
 - githouse's mount (settings.GITHOUSE_DIR) is an empty directory: in a Mood container /srv/git is hunter's
   real mirror, and a test reading it would find #313 merged. A test that wants one makes its own.
+- The cache is the run's own: a file cache in a fresh directory, gone at the end. settings.CACHES is a file
+  cache at /tmp/memory-lane-cache, shared by every memory-lane process on the machine, and dozens of tests
+  cache.clear() it: another run, a runserver or a shell emptied this run's entries mid-test (test_moods'
+  cache tests failed now and then on 9 Nov; re reproduced it by emptying the directory beside a run).
 """
 
 import os
@@ -67,6 +71,11 @@ class Runner(DiscoverRunner):
         super().setup_test_environment(**kwargs)
         self._reopen = shut_network() if os.environ.get('MEMORY_LANE_TEST_NETWORK') != '1' else None
         settings.GITHOUSE_DIR = tempfile.mkdtemp(prefix='githouse-none-')
+        from django.test.utils import override_settings
+        self._cache_dir = tempfile.mkdtemp(prefix='memory-lane-test-cache-')
+        own = {**settings.CACHES['default'], 'LOCATION': self._cache_dir}
+        self._own_cache = override_settings(CACHES={**settings.CACHES, 'default': own})
+        self._own_cache.enable()  # Django's setting_changed resets the cache handlers, so caches['default'] is this
         from conversations.services import yarn_kept
         self._keep_later = yarn_kept.keep_later
         yarn_kept.keep_later = lambda text: None
@@ -76,4 +85,8 @@ class Runner(DiscoverRunner):
         yarn_kept.keep_later = self._keep_later
         if self._reopen:
             self._reopen()
+        self._own_cache.disable()
+        import shutil
+        shutil.rmtree(self._cache_dir, ignore_errors=True)
+        shutil.rmtree(settings.GITHOUSE_DIR, ignore_errors=True)
         super().teardown_test_environment(**kwargs)
