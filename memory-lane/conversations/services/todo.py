@@ -349,8 +349,12 @@ def announce_merge(owner, repo, number, title='', by='', commit='', branch=''):
     from conversations.models import ConversationParticipant, MergeOrder, Message, Mood
     system = None
     repository = same(f'{owner}/{repo}')
-    pressed_in = set(MergeOrder.objects.filter(repo=repo, branch=branch, received_at__gte=timezone.now() - timedelta(days=2))
-                     .exclude(mood='').values_list('mood', flat=True)) if branch else set()
+    # Only a press githouse merged, or may yet (its record not written when GitHub's webhook lands): a refused or
+    # expired press said nothing in its Mood, so GitHub's line is that Mood's only word of the merge (re, 9 Nov).
+    from . import merge_orders
+    pressed_in = {o.mood for o in MergeOrder.objects.filter(repo=repo, branch=branch,
+                                                            received_at__gte=timezone.now() - timedelta(days=2))
+                  .exclude(mood='') if merge_orders.status(o).get('status') in ('merged', 'waiting')} if branch else set()
     for mood in Mood.objects.exclude(slug__in=pressed_in):
         items = for_mood(mood).get('items', [])
         for item in items:
