@@ -133,10 +133,10 @@ class HelpMenuTest(TestCase):
         start = self.PAGE.index(f'id="{element_id}"')
         return self.PAGE[start:self.PAGE.index('</div>', start)]
 
-    def test_the_six_lines_in_order(self):
+    def test_the_seven_lines_in_order(self):
         menu = self.menu('helpMenu')
         hrefs = re.findall(r'<a href="([^"]+)"', menu)
-        self.assertEqual(hrefs, ['https://pickipedia.xyz/wiki/Magenta:Help', '#', 'https://pickipedia.xyz/wiki/Magenta',
+        self.assertEqual(hrefs, ['https://pickipedia.xyz/wiki/Magenta:Help', 'https://pickipedia.xyz/wiki/Cryptograss:Magenta_app', '#', 'https://pickipedia.xyz/wiki/Magenta',
                                  'https://pickipedia.xyz/wiki/Magenta:Humans', 'https://pickipedia.xyz/wiki/Magenta:Emergents', '/faq/'])
         self.assertIn('id="tourLink"', menu)
         self.assertIn('data-tour-open="helpBtn"', self.PAGE)  # the tour opens it for the help and faq steps
