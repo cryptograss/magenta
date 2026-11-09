@@ -143,24 +143,32 @@ class RampLinksAndSheetTest(WorkRepo):
 
     def test_the_works_name_opens_its_page(self):
         self.as_('justin')
-        self.assertIn('class="ref openpage" href="https://github.com/cryptograss/magenta/pull/7" data-repo="magenta" '
-                      'data-branch="re/foo"', self.ramp_page())
+        page = self.ramp_page()
+        self.assertIn('class="title openpage" href="https://github.com/cryptograss/magenta/pull/7" data-repo="magenta" '
+                      'data-branch="re/foo"', page)
+        # ± See the diff: the same page, made now if need be, at #diff (Justin, 9 Nov: where do I click for the diff?)
+        self.assertIn('class="see openpage" href="#" data-repo="magenta" data-branch="re/foo" data-hash="#diff"', page)
         tid = self.open_().json()['id']
         page = self.ramp_page()
-        self.assertIn(f'<a class="ref" href="/moods/tidings/{tid}/"', page)
-        self.assertIn('<a class="gh" href="https://github.com/cryptograss/magenta/pull/7"', page)
+        self.assertIn(f'<a class="title" href="/moods/tidings/{tid}/"', page)
+        self.assertIn(f'<a class="see" href="/moods/tidings/{tid}/#diff"', page)
+        self.assertIn('<a class="gh" href="https://github.com/cryptograss/magenta/pull/7" target="_blank" rel="noopener" '
+                      'title="GitHub\'s pull request page for it">PR #7 ↗</a>', page)
 
     def test_signed_out_it_is_still_githubs(self):
         page = self.ramp_page()
-        self.assertIn('<a class="ref" href="https://github.com/cryptograss/magenta/pull/7" target="_blank"', page)
-        self.assertNotIn('class="ref openpage"', page)
+        self.assertIn('<a class="title" href="https://github.com/cryptograss/magenta/pull/7" target="_blank"', page)
+        self.assertIn('<a class="see" href="https://github.com/cryptograss/magenta/pull/7/files" target="_blank"', page)
+        self.assertNotIn('openpage', page.split('<table id="open">')[1].split('</table>')[0])
 
     def test_merged_work_links_its_page(self):
         self.as_('justin')
         tid = self.open_().json()['id']
         self.cards['merged'] = [dict(self.cards['open'][0])]
-        self.assertIn(f'<a class="ref" href="/moods/tidings/{tid}/" title="Its page: the work, its diff, and what was said">'
-                      'magenta#7</a>', self.ramp_page())
+        page = self.ramp_page()
+        self.assertIn(f'<a class="title" href="/moods/tidings/{tid}/" title="Its page: what it changed, its commits, what was said">'
+                      'the re/foo work</a>', page)
+        self.assertIn('<span class="ref">magenta:re/foo</span>', page)
 
     def test_the_sheet_says_who_asked_and_who_liked_it(self):
         from conversations.views_merge import _who_wants
