@@ -181,7 +181,7 @@ def panel(work):
     if head is None:
         return out
     refs = ramp._refs(held)
-    base = ramp._base(refs, (item or {}).get('base', ''))
+    base = ramp._base(refs, (item or {}).get('base', ''), repo)
     out.update(head=head, base=base, description=(item or {}).get('description', ''))
     if not base:
         return out

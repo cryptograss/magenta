@@ -115,6 +115,17 @@ class WorkPageTest(WorkRepo):
         self.assertIn('class="thumb"', html)                  # the 👍, for a signed-in person
         self.assertNotIn('class="vote', html)                 # not Tidings' upvote: the 👍 is this page's
 
+    def test_the_diff_comes_first_with_every_diff_a_click_away(self):
+        # Justin, 9 Nov: "still not obvious to me where I'm supposed to click to see the diff". The diff is
+        # the page's first heading, above the commits, with one button for every file's; the ramp's
+        # "± See the diff" arrives at #diff, which opens them all.
+        self.as_('justin')
+        html = self.page(self.open_().json()['id']).content.decode()
+        self.assertIn('<h3 id="diff">The diff: 2 files <button type="button" class="every" aria-pressed="false">'
+                      'open every diff</button></h3>', html)
+        self.assertLess(html.index('id="diff"'), html.index('Commits ('))
+        self.assertIn("location.hash === '#diff'", html)
+
     def test_one_file_s_diff_every_line_an_address(self):
         html = self.client.get('/api/ramp/diff/', {'repo': 'magenta', 'base': self.base, 'head': self.head,
                                                    'path': 'app.py'}).content.decode()

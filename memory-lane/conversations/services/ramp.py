@@ -113,9 +113,14 @@ def _refs(repo):
     return found
 
 
-def _base(refs, wanted=''):
-    """The branch a piece of work goes into: the one its pull request names, else production, main, master."""
-    for name in ([wanted] if wanted else []) + ['production', 'main', 'master']:
+def _base(refs, wanted='', repo=''):
+    """The branch a piece of work goes into: the one its pull request names, else the one its repository deploys
+    from (merge_orders.DEPLOYS_FROM, as the Merge button merges into), else production, main, master. Not
+    production first for every repository: magenta's is long dead, and a branch measured against it showed a
+    year of commits (9 Nov)."""
+    from .merge_orders import DEPLOYS_FROM
+    deploys = [DEPLOYS_FROM[repo]] if repo in DEPLOYS_FROM else []
+    for name in ([wanted] if wanted else []) + deploys + ['production', 'main', 'master']:
         if f'refs/heads/{name}' in refs:
             return name
     return ''
@@ -465,7 +470,7 @@ def board(now=None, stale_ok=False):
         if head:
             item['head'] = head[0]
             item['pushed'] = _when(head[1]) or item['pushed']
-            item['size'] = _size(held[repo_name], _base(refs[repo_name], item['base']), head[0])
+            item['size'] = _size(held[repo_name], _base(refs[repo_name], item['base'], repo_name), head[0])
             if githouse.commit_merged(repo_name, head[0]):
                 item['state'] = 'merged'  # githouse knows before the card is looked at again
         carded.add((repo_name, item['branch']))
@@ -477,7 +482,7 @@ def board(now=None, stale_ok=False):
             branch = ref[len('refs/heads/'):]
             if githouse_owned(branch) or (name, branch) in carded:
                 continue
-            base = _base(found)
+            base = _base(found, '', name)
             items.append({'repo': name, 'number': None, 'title': subject, 'url': '', 'author': branch.split('/')[0],
                           'branch': branch, 'base': base, 'state': 'pushed', 'worked_on_by': '', 'moods': [],
                           'deploy': '', 'opened': None, 'pushed': _when(unix), 'head': sha,
@@ -495,6 +500,7 @@ def board(now=None, stale_ok=False):
         repo_name, number = c.get('repo', ''), int(c.get('number') or 0)
         head = refs.get(repo_name, {}).get(f'refs/pull/{number}/head')
         merged.append({'repo': repo_name, 'number': number, 'title': c.get('title', ''), 'url': c.get('url', ''),
+                       'branch': c.get('branch', ''),
                        'author': c.get('author', ''), 'worked_on_by': c.get('worked_on_by', ''),
                        'moods': [m.strip() for m in c.get('moods', '').split(',') if m.strip()],
                        'deploy': c.get('deploy', ''), 'merged': _card_time(c.get('merged')), 'base': c.get('base', ''),

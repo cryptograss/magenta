@@ -181,8 +181,18 @@ class RampTest(TestCase):
         page = self.client.get('/moods/pulls/?embed=1')
         self.assertEqual(page.status_code, 200)
         text = page.content.decode()
-        for seen in ('magenta#7', 'the re/foo work', 'magenta:magent/bar', 'no pull request', '#jams', 'magent/old', 'second'):
+        # Every candidate by its name, repo:branch; a pull request only as a small link to GitHub's page for it.
+        for seen in ('magenta:re/foo', 'PR #7 ↗', 'the re/foo work', 'magenta:magent/bar', '#jams', 'magent/old', 'second'):
             self.assertIn(seen, text)
+
+    def test_a_branch_is_measured_against_where_its_repository_deploys_from(self):
+        # magenta's production is long dead (merge_orders.DEPLOYS_FROM): a branch with no pull request measured
+        # against it showed a year of commits, and its page's diff with them (9 Nov).
+        refs = {'refs/heads/production': None, 'refs/heads/main': None}
+        self.assertEqual(ramp._base(refs, '', 'magenta'), 'main')
+        self.assertEqual(ramp._base(refs, '', 'maybelle-config'), 'production')
+        self.assertEqual(ramp._base(refs, 'production', 'magenta'), 'production')  # a pull request's own target
+        self.assertEqual(ramp._base(refs, '', 'elsewhere'), 'production')
 
     def test_with_no_githouse_and_no_wiki(self):
         self.cards = {'open': [], 'merged': [], 'error': "PickiPedia didn't answer: the cards are missing"}
