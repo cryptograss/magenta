@@ -32,3 +32,10 @@ class OnePageTest(TestCase):
         self.assertNotIn('<span class="logo" aria-hidden="true"></span>magenta</a>', html)
         self.assertIn('class="gear" href="/moods/settings/" data-section="settings"', html)
         self.assertIn('const initialSection = "" ||', html)
+
+    def test_who_is_at_work_shows_on_tidings_and_the_ramp(self):
+        # Justin, 9 Nov (#ramp): the emergents' activity bar on Tidings and the ramp, from every Mood's live data.
+        html = self.client.get('/moods/pulls/').content.decode()
+        self.assertIn('<div id="sectionActivity" role="status" aria-label="Emergents at work" hidden></div>', html)
+        self.assertIn("const ACTIVITY_SECTIONS = new Set(['tidings', 'pulls']);", html)
+        self.assertLess(html.index('id="sectionActivity"'), html.index('id="sectionFrames"'))  # above the section
