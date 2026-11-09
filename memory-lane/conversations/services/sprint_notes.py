@@ -15,8 +15,8 @@ Settled with re (25 Oct), who keeps the wiki side and its documentation:
 People only, each to their own notes. The server's wiki bot writes them (todo_ticks.Bot), naming in the
 edit summary whose notes and from which message -- nobody's wiki password is held here. The Cryptograss:
 namespace isn't gated for bot edits (PickiPediaVerification enforces markers in the main and Instructions
-namespaces), so a note is plain, as the person chose it. Notes moved here from Cryptograss:Sprints on 9 Nov
-(Justin: "let's move Cryptograss:Sprints to Cryptograss:Sprints"); the old titles redirect.
+namespaces), so a note is plain, as the person chose it. Notes moved here from Magenta:Sprints on 9 Nov
+(Justin: "let's move Magenta:Sprints to Cryptograss:Sprints"); the old titles redirect.
 """
 
 import re
