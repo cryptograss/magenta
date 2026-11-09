@@ -576,7 +576,7 @@
       <div class="post"><div class="words">{{ tiding.post|safe }}</div></div>
       {% endif %}
       {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
-      {% if tiding.embed %}<div class="embed" id="theEmbed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen allow="autoplay; fullscreen"></iframe>{% elif tiding.embed.kind == 'release' %}<video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
+      {% if tiding.embed %}<div class="embed" id="theEmbed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>{% elif tiding.embed.kind == 'release' %}<video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
         <!-- Each comment that names a moment ("2:14 that slide!") is a mark on this line, and a link that plays from it. -->
         <div class="moments" aria-label="Moments people talked about" hidden></div>
         <div class="speed" aria-label="Speed"></div>{% else %}<video src="{{ tiding.embed.src }}" controls preload="metadata"></video>
