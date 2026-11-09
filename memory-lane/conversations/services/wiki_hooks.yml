@@ -66,6 +66,11 @@
   about: A Mood's to-do list, forgotten so open pages ask for it now
   run: todo
 
+- name: journals
+  pages: ["Emergent:*/Journal/*"]
+  about: The journals section, forgotten so a new entry shows when next opened
+  run: journals
+
 - name: tasks
   pages: ["Cryptograss:Emergents/*/Tasks/*", "Cryptograss:Emergents/Tasks/*"]
   about: The tasks section, forgotten so it reads the task pages again

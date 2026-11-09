@@ -141,6 +141,12 @@ def _todo(title, _user):
     return f'#{mood.slug}: to-do list forgotten; open pages ask for it now'
 
 
+def _journals(_title, _user):
+    from . import journals
+    journals.forget()
+    return 'journals section forgotten; read again when next opened'
+
+
 def _tasks(_title, _user):
     from . import tasks
     tasks.forget_board()
