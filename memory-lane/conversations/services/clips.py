@@ -47,7 +47,7 @@ RESERVED = {'save', 'forget', 'list'}
 SAVED = re.compile(r'^/(?:clips|yarn) save (\S+) (\S+)$')
 FORGOTTEN = re.compile(r'^/(?:clips|yarn) forget (\S+)$')
 CACHE_KEY = 'clips-library'
-COMMANDS = ('/clips', '/yarn')  # /yarn: what it was first called
+COMMANDS = ('/clips', '/clip', '/yarn')  # /yarn: what it was first called; /clip, as the emergents may (Justin, 8 Nov)
 USAGE = '/clips <name> posts a saved clip; /clips save <name> <yarn link>; /clips forget <name>; /clips lists them'
 
 

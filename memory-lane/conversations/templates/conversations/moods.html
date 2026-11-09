@@ -7987,7 +7987,7 @@
     if (slash) return { kind: 'command', start: 1, prefix: slash[1].toLowerCase() };
     const forAgent = upto.match(AGENT_COMMAND);
     if (forAgent) return { kind: 'command-agent', start: upto.length - forAgent[2].length, prefix: forAgent[2].toLowerCase() };
-    const y = upto.match(/^\/(?:clips|yarn)(?:\s+forget)?\s+([a-z0-9_-]*)$/i);
+    const y = upto.match(/^\/(?:clips?|yarn)(?:\s+forget)?\s+([a-z0-9_-]*)$/i);
     if (y) return { kind: 'clips', start: upto.length - y[1].length, prefix: y[1].toLowerCase() };
     const w = upto.match(/\[\[([^\[\]|\n]{1,100})$/);
     if (w) return { kind: 'wiki', start: upto.length - w[1].length, prefix: w[1] };
@@ -8178,6 +8178,10 @@
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault(); chosen = (chosen + (e.key === 'ArrowDown' ? 1 : choices.length - 1)) % choices.length; showSuggest();
     } else if ((e.key === 'Enter' && !e.ctrlKey && !e.metaKey) || e.key === 'Tab') {
+      // Typed in full already (a clip's whole name): Enter sends, rather than choosing what's there over and
+      // over (Justin, 8 Nov: "I can't press enter to send a message that's just /clip <name>").
+      const at = wordAtCaret(), c = choices[chosen];
+      if (e.key === 'Enter' && at && c && sayBox.value.slice(at.start, sayBox.selectionStart) === c.insert) { closeSuggest(); return; }
       e.preventDefault(); e.stopImmediatePropagation(); acceptSuggest(chosen);
       return;
     } else if (e.key === 'Escape') { e.preventDefault(); closeSuggest(); }
@@ -10165,7 +10169,7 @@
       recordPosted(current);
       composer.querySelectorAll('.note').forEach(el => el.remove());
       if (done.pending) memoOnItsWay(done.pending);
-      if (/^\/(?:clips|yarn)\s+(save|forget)\b/i.test(text)) clipsCache = null;  // the library changed
+      if (/^\/(?:clips?|yarn)\s+(save|forget)\b/i.test(text)) clipsCache = null;  // the library changed
       if (done.note) {  // what a /clips command did, for whoever sent it
         composer.insertAdjacentHTML('beforeend', `<span class="note">${esc(done.note)}</span>`);
         const note = composer.querySelector('.note:last-of-type');
