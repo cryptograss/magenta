@@ -347,6 +347,50 @@ def running():
     return found
 
 
+# --- branch tests (Plan, section 11): what Jenkins' branch-tests job said of each commit -----------------
+TESTS_KEY = 'ramp:tests'
+TESTS_FOR = 30   # seconds: a run takes a few minutes, and the page is looked at while one runs
+_TESTED = {'SUCCESS': 'passed', 'FAILURE': 'failed', 'UNSTABLE': 'failed', 'ABORTED': 'stopped',
+           'NOT_BUILT': 'no ci/test'}
+
+
+def test_runs():
+    """{(repo, commit): {'state', 'url', 'number'}}: the newest branch-tests run of each commit, from Jenkins'
+    public API (anonymous may read). 'state' is passed, failed, testing, stopped or "no ci/test". {} if
+    Jenkins doesn't answer: the page goes on without."""
+    from django.conf import settings
+    import requests
+    found = cache.get(TESTS_KEY)
+    if found is not None:
+        return found
+    base = (getattr(settings, 'JENKINS_URL', '') or '').rstrip('/')
+    found = {}
+    if base:
+        tree = 'builds[number,result,building,url,actions[parameters[name,value]]]{0,300}'
+        try:
+            answer = requests.get(f'{base}/job/branch-tests/api/json', params={'tree': tree}, timeout=5)
+            answer.raise_for_status()
+            for run in answer.json().get('builds') or []:  # newest first
+                said = {p.get('name'): p.get('value') for a in run.get('actions') or [] if isinstance(a, dict)
+                        for p in a.get('parameters') or []}
+                key = (said.get('REPO'), said.get('COMMIT'))
+                if all(key) and key not in found:
+                    state = 'testing' if run.get('building') else _TESTED.get(run.get('result'), 'failed')
+                    found[key] = {'state': state, 'url': run.get('url', ''), 'number': run.get('number')}
+        except (requests.RequestException, ValueError) as e:
+            log.warning('ramp: branch tests: %s', e)
+    cache.set(TESTS_KEY, found, TESTS_FOR)
+    return found
+
+
+def with_tests(items):
+    """The items, each with 'tests': its head commit's newest branch-tests run, or None."""
+    runs = test_runs()
+    for item in items:
+        item['tests'] = runs.get((item.get('repo'), item.get('head')))
+    return items
+
+
 def live_on(repo_name, head, runs):
     """The servers running a commit that contains head; None if this repository's deploys don't say."""
     from . import githouse

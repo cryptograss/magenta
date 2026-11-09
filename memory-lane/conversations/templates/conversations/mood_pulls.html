@@ -66,6 +66,11 @@
   pre.log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
             font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; }
   .err { color: var(--err); }
+  .tests { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line);
+           color: var(--muted); text-decoration: none; }
+  .tests.passed { color: var(--ok); border-color: var(--ok); }
+  .tests.failed { color: var(--err); border-color: var(--err); }
+  .tests.testing { color: var(--warn); border-color: var(--warn); }
   button.merge { font: inherit; font-size: 12px; margin-top: 3px; padding: 1px 9px; border-radius: 4px; cursor: pointer;
                  border: 1px solid var(--accent); background: none; color: var(--accent); }
   button.merge:hover { background: var(--accent-soft); }
@@ -128,6 +133,7 @@
         {% if i.number %}<a class="ref" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.repo }}#{{ i.number }}</a>{% else %}<span class="ref">{{ i.repo }}</span>{% endif %}
         <span class="title">{{ i.title }}</span>
         {% if i.state != 'open' %}<span class="state {{ i.state }}"{% if i.state == 'pushed' %} title="on githouse, no pull request yet"{% elif i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{% if i.state == 'pushed' %}no PR yet{% else %}{{ i.state }}{% endif %}</span>{% endif %}
+        {% if i.tests %}<a class="tests {{ i.tests.state|slugify }}" href="{{ i.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ i.tests.number }} on Jenkins, for this head">{% if i.tests.state == 'passed' %}✓ tests{% elif i.tests.state == 'failed' %}✗ tests{% elif i.tests.state == 'testing' %}… testing{% else %}{{ i.tests.state }}{% endif %}</a>{% endif %}
         {% if i.asked %}<a class="state ask" href="/moods/{{ i.asked.mood }}/#m-{{ i.asked.id }}" title="{{ i.asked.by }} asked for this merge in #{{ i.asked.mood }}">🪢 asked</a>{% endif %}
         {% if i.branch %}<br><span class="branch">{{ i.repo }}:{{ i.branch }}{% if i.base %} → {{ i.base }}{% endif %}</span>{% endif %}
         {% if can_merge and i.state != 'merged' and i.branch %}<button type="button" class="merge" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}"{% if i.number %} data-number="{{ i.number }}"{% endif %} title="Look at what it brings, then merge it, as you">Merge…</button>{% endif %}

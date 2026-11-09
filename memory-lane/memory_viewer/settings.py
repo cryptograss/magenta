@@ -286,6 +286,8 @@ MOOD_RECOVERY_PUBLIC_KEY = os.getenv('MOOD_RECOVERY_PUBLIC_KEY', '')
 # read-only (maybelle-config#250; in a Mood container, hunter's mirror of them): merged is read from git here,
 # and branches.json is served from it at /api/branches/. Missing: GitHub is asked instead.
 GITHOUSE_DIR = os.getenv('GITHOUSE_DIR', '/srv/git')
+# Jenkins, read anonymously for the ramp's red and green (branch-tests; services/ramp.test_runs).
+JENKINS_URL = os.getenv('JENKINS_URL', 'https://maybelle.cryptograss.live')
 # The merge button (services/merge_orders.py; Plan, section 10): who may press it (githouse_mergers, as
 # deployed), and memory-lane's key to sign with. githouse checks both again; no key, no button.
 GITHOUSE_MERGERS = tuple(n.strip().lower() for n in os.getenv('GITHOUSE_MERGERS', '').split(',') if n.strip())

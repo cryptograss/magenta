@@ -185,7 +185,8 @@ def pulls_page(request):
     # The Merge buttons, for a merger signed in with their SSH key (Plan, section 10); githouse checks again.
     can_merge = bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id)
     return render(request, 'conversations/mood_pulls.html',
-                  {'board': board, 'open': ramp.ordered(board['open'], ''), 'embed': True, 'can_merge': can_merge})
+                  {'board': board, 'open': ramp.with_tests(ramp.ordered(board['open'], '')), 'embed': True,
+                   'can_merge': can_merge})
 
 
 @section('hooks')
