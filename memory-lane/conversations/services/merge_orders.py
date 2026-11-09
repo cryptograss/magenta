@@ -292,4 +292,7 @@ def announce_merged(now=None):
                                         'commit_url': f'https://github.com/cryptograss/{order.repo}/commit/{merge}'
                                         if merge else ''})
         said += 1
+    if said:
+        from . import ramp
+        ramp.changed()  # the ramp drops what merged
     return said

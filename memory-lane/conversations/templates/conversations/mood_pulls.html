@@ -251,6 +251,21 @@
                         || sign * ((key === 'mood' ? byMood(x, y) : 0) || (Number(y.dataset[when]) - Number(x.dataset[when]))));
     rows.forEach(r => body.append(r));
   }));
+  // Merged from here (the merge sheet's bar says so): its row says merged at once, its Merge button gone, without
+  // waiting for the board to be built again (Justin, 9 Nov: "still shows that CB in the list as unmerged").
+  window.addEventListener('magentaMerged', e => {
+    const { repo, branch } = e.detail || {};
+    body.querySelectorAll('tr[data-active]').forEach(r => {
+      const it = r.querySelector('[data-repo][data-branch]');
+      if (!it || it.dataset.repo !== repo || it.dataset.branch !== branch) return;
+      r.classList.add('merged');
+      r.querySelectorAll('button.merge').forEach(b => b.remove());
+      if (!r.querySelector('.state.merged')) {
+        const t = r.querySelector('.work .title');
+        if (t) t.insertAdjacentHTML('afterend', ' <span class="state merged" title="merged just now, from here">merged ✓</span>');
+      }
+    });
+  });
   // Who's on it (Justin, 9 Nov, #ramp: "buttons to include/exclude each of the participants"). A button each:
   // once, only candidates with them (any of those so marked); twice, candidates with them hidden; again,
   // as before. Kept in this browser.

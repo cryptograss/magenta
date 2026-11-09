@@ -520,6 +520,20 @@ def board(now=None, stale_ok=False):
     return result
 
 
+def changed():
+    """Something the board shows has changed (a merge, Justin, 9 Nov: "it still shows that CB as unmerged"): the
+    kept board is marked old, so the ramp page builds a fresh one, and one is built now, behind the request."""
+    found = cache.get(KEY)
+    if found is not None:
+        cache.set(KEY, {**found, 'built': 0}, None)
+    if cache.add(KEY + ':building', 1, 120):
+        if BUILD_IN_BACKGROUND:
+            from .todo import _in_background
+            _in_background(_rebuild)
+        else:
+            _rebuild()
+
+
 def _rebuild():
     try:
         board(now=datetime.now(timezone.utc))

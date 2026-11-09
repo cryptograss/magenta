@@ -56,8 +56,13 @@ def api_merge_orders_pending(request):
 def api_merge_order(request, order_id):
     """One order's status, as githouse's records say: waiting, merged, refused (and why) or expired."""
     order = get_object_or_404(MergeOrder, id=order_id)
-    return JsonResponse({'id': str(order.id), 'repo': order.repo, 'branch': order.branch, 'by': order.by,
-                         **merge_orders.status(order)})
+    now = merge_orders.status(order)
+    if now.get('status') == 'merged' and order.mood == '':  # a Mood's order: announce_merged has told the ramp
+        from django.core.cache import cache
+        from .services import ramp
+        if cache.add(f'ramp-told:{order.id}', 1, 3 * 3600):  # once, however often it's asked after
+            ramp.changed()
+    return JsonResponse({'id': str(order.id), 'repo': order.repo, 'branch': order.branch, 'by': order.by, **now})
 
 
 @require_GET

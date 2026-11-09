@@ -390,3 +390,41 @@ class RampBlocksAndHeadsTest(WorkRepo):
         self.assertNotIn('class="sorts"', page)
         for key, words in (('active', '●'), ('mood', 'where'), ('pushed', 'pushed'), ('mentioned', 'last said')):
             self.assertRegex(page, rf'<button type="button" class="sort" data-sort="{key}" aria-pressed="(true|false)" title="[^"]+">{words}</button>')
+
+
+class MergeBarAndFreshRampTest(WorkRepo):
+    """Justin, 9 Nov, #ramp: merged from the ramp, it "still shows that CB in the list as unmerged"; and Merge now
+    sends the sheet away, to a bar below the nav that ends in a green check or a red x."""
+
+    def test_a_merge_marks_the_board_old_and_builds_another(self):
+        board = ramp.board()
+        self.assertGreater(board['built'], 0)
+        built = []
+        with mock.patch.object(ramp, '_rebuild', lambda: built.append(1)):
+            ramp.changed()
+        self.assertEqual(cache.get(ramp.KEY)['built'], 0)   # the ramp page won't take it as fresh
+        self.assertEqual(built, [1])
+        self.assertEqual(ramp.board(stale_ok=True)['open'], board['open'])   # a stale_ok caller still gets it at once
+
+    def test_announced_merges_tell_the_ramp(self):
+        from conversations.services import merge_orders
+        order = MergeOrder.objects.create(repo='magenta', branch='re/foo', by='justin', mood='ramp', order='o',
+                                          signature='s', nonce='n1', expires=int(time.time()) + 600)
+        told = []
+        with mock.patch.object(merge_orders, 'outcome', lambda o: {'status': 'merged', 'merge': 'a' * 40}), \
+             mock.patch.object(merge_orders, 'parse', lambda text: {'into': 'main'}), \
+             mock.patch.object(ramp, 'changed', lambda: told.append(1)):
+            self.assertEqual(merge_orders.announce_merged(), 1)
+            self.assertEqual(merge_orders.announce_merged(), 0)   # said once; nothing new to tell
+        self.assertEqual(told, [1])
+        self.assertIsNotNone(MergeOrder.objects.get(id=order.id).announced_at)
+
+    def test_the_sheet_goes_to_the_bar_and_says_merged(self):
+        from django.template.loader import render_to_string
+        sheet = render_to_string('conversations/_merge_sheet.html')
+        self.assertIn(".mergeBar .item.ok .mark::before { content: '✓'; }", sheet)
+        self.assertIn(".mergeBar .item.err .mark::before { content: '✗'; }", sheet)
+        self.assertIn('s.away = true; s.el.hidden = true;', sheet)   # Merge now: the sheet goes at once
+        self.assertIn("window.dispatchEvent(new CustomEvent('magentaMerged', { detail: merged }));", sheet)
+        page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        self.assertIn("window.addEventListener('magentaMerged', e => {", page)
