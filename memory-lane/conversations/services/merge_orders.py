@@ -258,3 +258,38 @@ def pending(now=None):
         if len(waiting) == AT_ONCE:
             break
     return waiting
+
+
+def announce_merged(now=None):
+    """A line in the Mood each merge was pressed or ordered from, once githouse says it merged: "✓
+    magenta:re/foo · 1a2b3c4d merged by justin" (todo.MERGED_SOURCE, the line GitHub's webhook writes for a
+    pull request on a Mood's list). Asked every time githouse looks at the mailbox, so it lands within seconds,
+    whether or not anyone kept the sheet open. Each order said once. The number of lines written."""
+    import uuid
+    from django.utils import timezone
+    from conversations.models import ConversationParticipant, Message, MergeOrder, Mood
+    from .todo import MERGED_SOURCE
+    now = int(time.time() if now is None else now)
+    said = 0
+    for order in MergeOrder.objects.filter(expires__gte=now - LIFE_MAX, announced_at__isnull=True) \
+            .exclude(mood='').iterator():
+        found = outcome(order)
+        if not found or found.get('status') != 'merged':
+            continue
+        mood = Mood.objects.filter(slug=order.mood).first()
+        # Claimed in the database, so of memory-lane's workers asked at once, one says it.
+        if mood is None or not MergeOrder.objects.filter(id=order.id, announced_at__isnull=True) \
+                .update(announced_at=timezone.now()):
+            continue
+        system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        fields = parse(order.order)
+        merge = str(found.get('merge') or '')
+        Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=MERGED_SOURCE,
+                               timestamp=int(time.time() * 1000),
+                               content={'type': 'merged', 'pull': f'{order.repo}:{order.branch}',
+                                        'title': f"{order.repo}:{order.branch} into {fields['into']}",
+                                        'commit': merge[:40], 'by': order.pressed or order.by,
+                                        'commit_url': f'https://github.com/cryptograss/{order.repo}/commit/{merge}'
+                                        if merge else ''})
+        said += 1
+    return said

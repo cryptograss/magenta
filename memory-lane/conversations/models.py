@@ -1852,6 +1852,7 @@ class MergeOrder(models.Model):
     expires = models.BigIntegerField()                       # unix time, as the order says
     mood = models.CharField(max_length=100, blank=True, default='')
     received_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    announced_at = models.DateTimeField(null=True, blank=True)   # when its merge was said in its Mood: once
 
     class Meta:
         db_table = 'merge_orders'
