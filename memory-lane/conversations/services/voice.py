@@ -572,6 +572,22 @@ def _whose(name):
     return 'agent' if ThinkingEntity.objects.filter(name=name, is_biological_human=False).exists() else 'person'
 
 
+# A tag the voice performs rather than says ([sighs], [whispers]): a script of nothing else says nothing.
+AUDIO_TAG = re.compile(r'\[[^\]\n]*\]')
+
+
+NOTHING_TO_SAY = 'nothing in that message to read aloud'
+
+
+def has_words(message, part=0):
+    """Whether `message` (its `part`th voice block) has anything to say aloud. A picture alone, or words
+    only inside [brackets], has none: asked for, the narrator said "Magent, with tools, says:" and then
+    nothing, again on every retry (Justin, 8 Nov)."""
+    from conversations.services.mood_view import prose
+    script, _, _ = script_for(prose(message.content), part)
+    return any(AUDIO_TAG.sub('', p).strip() for p in pieces(script))
+
+
 def speak_piece(message, by, http=requests, part=0, piece=0):
     """{'url', 'pieces'}: the `piece`th piece of `message` read aloud, and how many
     there are. Made once and kept; made knowing the pieces before it, if they
@@ -579,8 +595,8 @@ def speak_piece(message, by, http=requests, part=0, piece=0):
     from conversations.services.mood_view import prose
     script, voice_name, voice_settings = script_for(prose(message.content), part)
     parts = pieces(script)
-    if not parts:
-        raise VoiceError('nothing in that message to read aloud', status=400)
+    if not any(AUDIO_TAG.sub('', p).strip() for p in parts):
+        raise VoiceError(NOTHING_TO_SAY, status=400)
     piece = min(max(piece, 0), len(parts) - 1)
     # A voice its writer named; else the writer's own.
     voice_id = voice_id_for(voice_name, http) if voice_name else voice_of(message.sender_id, http)

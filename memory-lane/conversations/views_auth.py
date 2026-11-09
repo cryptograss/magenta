@@ -1626,13 +1626,17 @@ def api_speak(request, slug, message_id):
     intro = request.GET.get('intro', '')
     try:
         out = {}
+        # ?check=1: only if it has words to say. Asked with the narrator's line, so a message with none (a
+        # picture alone) is passed over before "Magent says:" is heard with nothing after it (Justin, 8 Nov).
+        if request.GET.get('check') and not voice.has_words(message, part):
+            return JsonResponse({'error': voice.NOTHING_TO_SAY, 'nothing': True}, status=400)
         if intro or request.GET.get('only') == 'intro':
             out['intro'] = voice.intro(message, device.entity_id, where=intro == 'where')
         if request.GET.get('only') != 'intro':
             out.update(voice.speak_piece(message, device.entity_id, part=part, piece=piece))
         return JsonResponse(out)
     except voice.VoiceError as e:
-        return JsonResponse({'error': str(e)}, status=e.status)
+        return JsonResponse({'error': str(e), **({'nothing': True} if str(e) == voice.NOTHING_TO_SAY else {})}, status=e.status)
 
 
 @require_GET

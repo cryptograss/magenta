@@ -312,6 +312,10 @@
   body.voice-mode.menu-open .layout > nav { display: block !important; position: fixed; top: 41px; left: 0; right: 0; z-index: 31;
                                             max-height: 70vh; overflow-y: auto; border-bottom: 1px solid var(--line);
                                             box-shadow: 0 8px 24px rgba(0,0,0,.35); font-size: 17px; }
+  /* Leaving voice mode: first in ☰, big (Justin, 8 Nov: the line under the buttons was "a waste of space"). */
+  #leaveVoice { display: none; }
+  body.voice-mode #leaveVoice { display: block; width: 100%; font: inherit; font-size: 18px; text-align: left; padding: 14px 16px;
+                                border: 0; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
   #voiceMode { position: fixed; inset: 41px 0 0 0; z-index: 30; background: var(--bg); display: none; flex-direction: column;
                gap: 10px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); overflow-y: auto; }
   body.voice-mode #voiceMode { display: flex; }
@@ -332,6 +336,7 @@
   #voiceMode .bar.sending { border-style: dashed; border-color: var(--accent); animation: voiceSlideIn 0.25s ease-out; }
   #voiceMode .bar.sending .when { color: var(--accent); font-weight: 700; }
   #voiceMode .bar.work { border-style: dashed; }
+  #voiceMode .bar.still { animation: none; }
   #voiceMode .bar .drop { flex: none; font: inherit; font-size: 20px; border: 0; background: none; color: var(--muted); padding: 8px 12px; cursor: pointer; }
   #voiceMode .none { color: var(--muted); font-size: 18px; text-align: center; padding: 24px 0; }
   #voiceMode .pads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -1738,6 +1743,13 @@
     /* A turn's head, one line on a phone: who, when and what it cost; the rest on a wider screen. */
     .ahead { white-space: nowrap; overflow: hidden; }
     .ahead .how, .ahead .spent.extra, .ahead .whymark, .ahead .bundlemark, .ahead .cachemark { display: none; }
+    /* Voice mode on a phone (Justin, 8 Nov): the six buttons take the bottom fifth of the screen, tight, and the
+       list scrolls above them, never under; leaving is first in ☰ instead of a line of its own. */
+    #voiceMode { overflow: hidden; gap: 8px; padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+    #voiceMode .bars { overflow-y: auto; }
+    #voiceMode .pads { flex: none; height: 20dvh; min-height: 120px; grid-template-rows: 1fr 1fr; gap: 6px; }
+    #voiceMode .pads button { min-height: 0; font-size: 24px; border-radius: 14px; padding: 0; }
+    #voiceMode .leave { display: none; }
   }
   /* Signed in, you are who you are: no need to choose whose view to see. */
 </style>
@@ -1942,7 +1954,7 @@
 <div id="sectionActivity" role="status" aria-label="Emergents at work" hidden></div>
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
-  <nav id="nav" data-tour="moods" data-tour-open="menu"><div id="moodList"><div class="label">Moods</div></div></nav>
+  <nav id="nav" data-tour="moods" data-tour-open="menu"><button type="button" id="leaveVoice">🎧 leave voice mode</button><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"><button type="button" class="navfold" id="navFold" title="Fold the Moods away" aria-label="Fold the Moods list away" aria-expanded="true">‹</button></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
   <main id="main"><div id="topbar"><div id="moodbar" data-tour="mood-bar"></div><div id="pins" data-tour="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
@@ -9335,10 +9347,17 @@
         || (item.text || '').match(MEMO_AUDIO)) return;
     const intro = introFor(item);
     prefetched.set(item.id, { intro, words: speakFetch(item, {}, true),
-                              said: intro ? speakFetch(item, { intro, only: 'intro' }, true) : null });
+                              said: intro ? speakFetch(item, { intro, only: 'intro', check: 1 }, true) : null });
     while (prefetched.size > 4) prefetched.delete(prefetched.keys().next().value);
   }
 
+  // A message with nothing to say aloud: on to the next, quietly, as if it had been heard.
+  function passOver(item) {
+    readReport(item, 'message', 'skipped');
+    readNow = null;
+    saveReadPlace();
+    readNext();
+  }
   async function readNext() {
     if (readNow || readHeld || readRecording || readBlocked || readMode === 'off' || !readQueue.length) { renderReadBar(); return; }
     const item = readQueue.shift();
@@ -9362,8 +9381,11 @@
     if (!memo && item.kind !== 'thinking' && item.kind !== 'deploy') {
       words = early ? early.words : speakFetch(item, {});
       if (intro) try {
-        const said = await (early && early.intro === intro ? early.said : speakFetch(item, { intro, only: 'intro' }))
-          .then(r => r.ok ? r.json() : {});
+        // check: a message with nothing to say aloud (a picture alone) answers so, and is passed over before
+        // its narrator is heard saying "Magent says:" to nothing (Justin, 8 Nov).
+        const said = await (early && early.intro === intro ? early.said : speakFetch(item, { intro, only: 'intro', check: 1 }))
+          .then(r => r.json().catch(() => ({})));
+        if (said.nothing && readNow === now) { passOver(item); return; }
         if (said.intro && readNow === now && !now.skipped) {
           if (chimed) await chimed;
           await playClip(said.intro);
@@ -9391,6 +9413,7 @@
         const r = words ? await words : await fetch(`/api/moods/${encodeURIComponent(item.mood)}/speak/${encodeURIComponent(item.id)}/?${ask}`,
                                                     { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
         const body = await r.json().catch(() => ({}));
+        if (body.nothing) { if (readNow === now) passOver(item); return; }  // nothing to say: not retried, not waited on
         if (r.status === 429 && !/spent/.test(body.error || '')) {  // asked too fast: this one again in a moment
           readQueue.unshift(item); readNow = null;
           renderReadBar('🔊 a moment…');
@@ -10870,6 +10893,10 @@
       pastBar = bar('past', readLastDone.whenLabel || 'heard', readLabel(readLastDone), -1);
     }
 
+    // Its slide-in only when it's new: redrawn every second (an agent's clock), it slid in again each time and the
+    // top line flickered (Justin, 8 Nov).
+    if (pastBar && pastBar === renderVoiceMode.pastWas) pastBar = pastBar.replace('class="bar ', 'class="bar still ');
+    else renderVoiceMode.pastWas = pastBar;
     const bars = pastBar
       + (now ? bar('now', readRecording ? 'held' : readHeld ? 'paused' : 'now', readLabel(now), -1) : '')
       + workBars().map(w => bar('work', 'at work', w, -1)).join('')
@@ -10902,6 +10929,10 @@
     else if (v === 'where') { setReadMode(readMode === 'everywhere' ? 'here' : 'everywhere'); readPoll(); }
     else if (v === 'leave') setVoiceMode(false);
     setTimeout(renderVoiceMode, 50);
+  });
+  document.getElementById('leaveVoice').addEventListener('click', () => {
+    document.body.classList.remove('menu-open'); menu.setAttribute('aria-expanded', 'false');
+    setVoiceMode(false);
   });
   voiceModeBtn.addEventListener('click', () => setVoiceMode(true));
   setInterval(renderVoiceMode, 1000);  // the clock on an agent's work, the memo's state, what came
