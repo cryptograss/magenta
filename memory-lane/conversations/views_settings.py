@@ -186,6 +186,7 @@ def ramp_page(request):
     # The Merge buttons, for a merger signed in with their SSH key (Plan, section 10); githouse checks again.
     can_merge = bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id)
     open_ = ramp.with_people(work.with_pages(thumbs.with_thumbs(ramp.with_tests(ramp.ordered(board['open'], '')))))
+    ramp.with_blocks(open_)
     return render(request, 'conversations/mood_pulls.html',
                   {'board': board, 'open': open_,
                    # Who's on each, for the buttons that show or hide them (Justin, 9 Nov, #ramp).

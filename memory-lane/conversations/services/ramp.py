@@ -595,6 +595,37 @@ def with_people(items):
     return items
 
 
+def with_blocks(items, now=None):
+    """Each item's push in blocks ago (Justin, 9 Nov, #ramp: "show 'pushed' as blocks ago"): 'pushed_block', the
+    block at the push (eth_blocks' anchors), and 'pushed_ago', the head now less that. The head is tasks.head's,
+    else the one the block bar fetched; with neither, nothing is guessed: the page shows the time."""
+    from conversations.models import BlockAnchor
+    from .eth_blocks import SECONDS_PER_SLOT, BlockClock
+    from .tasks import head
+    now = now or datetime.now(timezone.utc)
+    anchors = list(BlockAnchor.objects.order_by('number').values_list('number', 'timestamp'))
+    top = head(now, anchors)
+    if top is None:  # no fresh anchor: the head the page's block bar fetched (views_moods.api_block), if it has one
+        from django.core.cache import cache
+        fetched = cache.get('eth-head') or {}
+        try:
+            at = datetime.fromisoformat(str(fetched['at']).replace('Z', '+00:00'))
+            top = int(fetched['height']) + max(0, int((now - at).total_seconds())) // SECONDS_PER_SLOT
+        except (KeyError, TypeError, ValueError):
+            return None
+    clock = BlockClock(anchors)
+    for i in items:
+        pushed = i.get('pushed')
+        if not pushed:
+            continue
+        block = clock.block_at(int(pushed.timestamp()))
+        if block is None:  # after the newest anchor: its 12-second slots, as tasks.head counts them
+            block = top - max(0, int((now - pushed).total_seconds())) // SECONDS_PER_SLOT
+        i['pushed_block'], i['pushed_ago'] = block, max(0, top - block)
+        i['pushed_ago_said'] = f"{i['pushed_ago']:,}"
+    return top
+
+
 def everyone(items):
     """[{'name', 'count', 'colour'}] for the ramp's buttons: everyone on an open candidate, most candidates first;
     an emergent with its colour, a person (or an account) without."""

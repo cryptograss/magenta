@@ -346,3 +346,47 @@ class RampWhoAndWhereTest(WorkRepo):
         self.assertIn('<button type="button" data-person="re" data-state=""><span class="dot" style="--who: #ff3c00"></span>'
                       're<small>1</small></button>', page)
         self.assertIn('data-sort="mood"', page)
+
+
+class RampBlocksAndHeadsTest(WorkRepo):
+    """'pushed' in blocks ago, and the column heads sort (Justin, 9 Nov, #ramp)."""
+
+    def page(self):
+        cache.delete(ramp.KEY)
+        return self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+
+    def test_pushed_is_blocks_ago_from_the_anchors(self):
+        from conversations.models import BlockAnchor
+        now = int(time.time())
+        BlockAnchor.objects.create(number=26_380_000, timestamp=now - 7200 * 12 - 60)   # a day and a minute ago
+        BlockAnchor.objects.create(number=26_387_205, timestamp=now - 60)                  # a minute ago: fresh
+        # re/foo's head was committed just now, after the newest anchor: counted in 12-second slots from it.
+        cache.delete(ramp.KEY)
+        items = ramp.with_people(ramp.board()['open'])
+        top = ramp.with_blocks(items)
+        [item] = items
+        self.assertEqual(top, 26_387_210)
+        self.assertLessEqual(item['pushed_ago'], 6)
+        self.assertRegex(self.page(), r'<span title="block 263872\d\d, [^"]+Z">(this block|\d blocks? ago)</span>')
+        item['pushed'] = item['pushed'] - timedelta(days=1)                                   # a day earlier
+        ramp.with_blocks(items)
+        self.assertEqual(item['pushed_ago_said'][:2], '7,')                                    # about 7,200
+
+    def test_without_anchors_the_block_bars_head_is_used(self):
+        from datetime import datetime, timezone as tz
+        cache.set('eth-head', {'height': 26_380_223, 'at': datetime.now(tz.utc).strftime('%Y-%m-%dT%H:%M:%S.000000Z'),
+                               'seconds': 12}, 60)
+        items = ramp.with_people([{'pushed': timezone.now() - timedelta(hours=1)}])
+        self.assertEqual(ramp.with_blocks(items), 26_380_223)
+        self.assertEqual(items[0]['pushed_ago'], 300)
+
+    def test_without_a_fresh_anchor_it_says_the_time(self):
+        page = self.page()
+        self.assertNotIn('blocks ago', page)
+        self.assertRegex(page, r'<td class="num">\d+ \w+ \d\d:\d\dZ</td>')
+
+    def test_the_heads_sort(self):
+        page = self.page()
+        self.assertNotIn('class="sorts"', page)
+        for key, words in (('active', '●'), ('mood', 'where'), ('pushed', 'pushed'), ('mentioned', 'last said')):
+            self.assertRegex(page, rf'<button type="button" class="sort" data-sort="{key}" aria-pressed="(true|false)" title="[^"]+">{words}</button>')
