@@ -610,7 +610,8 @@ class ClaudeCodeWakerTest(TestCase):
     def test_project_dir_name_matches_claude_codes(self):
         self.assertEqual(project_dir_name('/home/magent/workspace/memory-lane/.claude/worktrees/importer-cleanup'),
                          '-home-magent-workspace-memory-lane--claude-worktrees-importer-cleanup')
-        self.assertTrue(os.path.isdir(os.path.expanduser('~/.claude/projects/' + project_dir_name(os.path.expanduser('~')))))
+        # No check of the machine here: whether ~/.claude/projects holds this home's directory depends on where
+        # Claude Code has run (re's container has projects for its Moods, none for ~), not on the code.
 
 
 class FakeHTTP:
