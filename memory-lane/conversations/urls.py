@@ -204,4 +204,7 @@ urlpatterns = [
     path('api/heap_messages/<str:heap_id>/', views.heap_messages, name='heap_messages'),
     path('api/messages_since/<str:message_id>/', views.messages_since, name='messages_since'),
     path('api/ingest/', views.ingest, name='ingest'),
+    # Last, so it never shadows anything above: a Magenta page in [[Category:Magenta top-level documents]] at
+    # /<its name>/ (services/documents.py; Justin, 9 Nov).
+    path('<slug:name>/', views_settings.document_page, name='magenta_document'),
 ]

@@ -131,7 +131,21 @@ def api_todo(request):
 def faq_page(request):
     """The FAQ (PickiPedia's Magenta:FAQ) as slides: one question at a time (services/faq.py)."""
     from .services import faq
-    return render(request, 'conversations/mood_faq.html', {'faq': faq.state(), 'source': faq.page_url()})
+    return render(request, 'conversations/mood_document.html', {
+        'doc': {**faq.state(), 'title': 'FAQ', 'slides': True}, 'source': faq.page_url(),
+        'cover': 'frequently asked questions'})
+
+
+def document_page(request, name):
+    """A Magenta page in [[Category:Magenta top-level documents]], at /<its name>/: slides if it's also in
+    [[Category:Magenta slideshows]], else a straight document (services/documents.py). Anything else: not found."""
+    from django.http import Http404
+    from .services import documents
+    title = documents.listed().get(name)
+    if not title:
+        raise Http404(name)
+    return render(request, 'conversations/mood_document.html', {
+        'doc': documents.read(title), 'source': documents.page_url(title), 'cover': ''})
 
 
 _TOUR_FILES = {'driver.js': ('driver.js.iife.js', 'text/javascript'), 'driver.css': ('driver.css', 'text/css')}
