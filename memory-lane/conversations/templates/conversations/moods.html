@@ -7604,6 +7604,9 @@
     }
     lines.sort((a, b) => a.at < b.at ? -1 : 1);
     box.innerHTML = lines.map(l => l.html).join('<br>');
+    // Each Merge… here, looked at before it's pressed: the sheet opens on it (Justin, 9 Nov).
+    if (window.magentaMerge) box.querySelectorAll('button.askmerge').forEach(b =>
+      magentaMerge.prefetch({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }));
   }
   // The asks as the live poll has them now: one answered (merged, redeployed, woken) goes at once.
   function freshAsks(live) {
@@ -7616,6 +7619,10 @@
     }
     if (changed) { renderAsksOpen(); renderNav(); }
   }
+  ['pointerover', 'focusin', 'touchstart'].forEach(kind => document.getElementById('toolsOpen').addEventListener(kind, e => {
+    const b = e.target.closest && e.target.closest('button.askmerge');
+    if (b && window.magentaMerge) magentaMerge.prefetch({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null });
+  }, { passive: true }));
   document.getElementById('toolsOpen').addEventListener('click', e => {
     const b = e.target.closest('button.askmerge');
     if (!b) return;

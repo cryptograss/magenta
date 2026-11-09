@@ -145,7 +145,10 @@
     if (li) show(li, m[1] === 'L').then(() => light(at));
   }
   const merge = document.getElementById('workMerge');
-  if (merge && window.magentaMerge) merge.addEventListener('click', () =>
-    magentaMerge.open({ repo, branch: work.dataset.branch, number: {{ work.number|default:"null" }} }, '{{ tiding.mood }}'));
+  if (merge && window.magentaMerge) {
+    const it = { repo, branch: work.dataset.branch, number: {{ work.number|default:"null" }} };
+    magentaMerge.prefetch(it);  // the one Merge… here: looked at now, so the sheet opens on it (Justin, 9 Nov)
+    merge.addEventListener('click', () => magentaMerge.open(it, '{{ tiding.mood }}'));
+  }
 })();
 </script>

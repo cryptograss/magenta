@@ -237,6 +237,19 @@ class AskDotsTest(RampTest):
         live = self.client.get('/api/moods/live/').json()['moods']
         self.assertEqual([a['emergent'] for a in live['jams']['asked']], ['re'])
 
+    def test_a_card_is_read_from_the_last_board_at_once(self):
+        # Justin, 9 Nov: the merge sheet sat on "Looking at githouse's copy…" while the board was built (4.8 s on
+        # maybelle). A caller that only needs a card gets the last board, however old; an old one is rebuilt.
+        import time as clock
+        old = clock.time() - 3600
+        cache.set(ramp.KEY, {**ramp.board(), 'built': old}, None)   # an hour old
+        built = []
+        with mock.patch.object(ramp, '_rebuild', lambda: built.append(1)):
+            got = [ramp.board(stale_ok=True)['built'] for _ in range(3)]
+        self.assertEqual(got, [old] * 3)                     # the old one, at once, every time
+        self.assertEqual(built, [1])                         # one rebuild started, not one a call
+        self.assertGreater(ramp.board()['built'], clock.time() - 60)   # the page itself still gets a fresh one
+
     def test_any_emergents_colour(self):
         self.assertEqual(front.agent_colour('blu'), '#1976d2')
         self.assertIn(front.agent_colour('someone-new'), front.AGENT_PALETTE)

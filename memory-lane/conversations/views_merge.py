@@ -109,7 +109,7 @@ def _who_wants(seen):
     'colour'}); 'thumbs': its 👍s ({'by', 'at', 'current'}: on the commit about to merge, or an older one)}."""
     from .services import ramp, thumbs
     try:
-        item = next((i for i in ramp.board().get('open', [])
+        item = next((i for i in ramp.board(stale_ok=True).get('open', [])
                      if i.get('repo') == seen['repo'] and i.get('branch') == seen['branch']), None)
         asks = [{k: a[k] for k in ('by', 'mood', 'id', 'colour')} for a in (item or {}).get('asks', [])]
         liked = [{'by': t['by'], 'at': t['at'].isoformat(), 'current': t['current']}

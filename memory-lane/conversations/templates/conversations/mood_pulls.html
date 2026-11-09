@@ -197,8 +197,12 @@
 </main>
 {% if can_merge %}{% include "conversations/_merge_sheet.html" %}
 <script>
-  document.querySelectorAll('button.merge').forEach(b => b.addEventListener('click', () =>
-    magentaMerge.open({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }, 'ramp')));
+  document.querySelectorAll('button.merge').forEach(b => {
+    const work = () => ({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null });
+    // Looked at as the pointer or a finger comes to it: the sheet opens on it (Justin, 9 Nov).
+    ['pointerover', 'focus', 'touchstart'].forEach(kind => b.addEventListener(kind, () => magentaMerge.prefetch(work()), { passive: true }));
+    b.addEventListener('click', () => magentaMerge.open(work(), 'ramp'));
+  });
 </script>{% endif %}
 {% include "conversations/_thumbs_script.html" %}
 <script>
