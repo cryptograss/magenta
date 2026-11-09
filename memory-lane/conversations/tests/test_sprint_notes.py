@@ -56,8 +56,8 @@ class SprintNotesTest(TestCase):
         said = self.say(self.re, 'Ship the bar first.\n<script>x</script> and [[Not a link]]')
         done = sprint_notes.add(said, 'justin', bot=self.bot)
         self.assertEqual((done['sprint'], done['page'], done['already']),
-                         ('Jellyfish', 'Magenta:Sprints/Jellyfish/JMyles', False))
-        page = self.bot.pages['Magenta:Sprints/Jellyfish/JMyles']
+                         ('Jellyfish', 'Cryptograss:Sprints/Jellyfish/JMyles', False))
+        page = self.bot.pages['Cryptograss:Sprints/Jellyfish/JMyles']
         self.assertIn('Notes for the [[Cryptograss/Jellyfish|Jellyfish]] sprint, kept by [[User:JMyles|JMyles]]', page)
         self.assertIn(f'{{{{Magenta message\n|id={said.id}\n|who=re\n|mood=magenta-interface\n', page)  # a card,
         self.assertIn('|chars=all\n', page)                                                          # every word
@@ -71,7 +71,7 @@ class SprintNotesTest(TestCase):
         first = self.say(self.justin, 'What first?')
         reply = self.say(self.justin, f'↩ #m-{first.id}\nThe bar.')
         sprint_notes.add(reply, 'justin', bot=self.bot)
-        page = self.bot.pages['Magenta:Sprints/Jellyfish/JMyles']
+        page = self.bot.pages['Cryptograss:Sprints/Jellyfish/JMyles']
         self.assertIn('|text=The bar.\n}}', page)
         self.assertNotIn('↩', page)
 
@@ -85,7 +85,7 @@ class SprintNotesTest(TestCase):
                 mock.patch('conversations.services.todo_ticks.Bot', return_value=self.bot):
             done = client.post(url, '{}', content_type='application/json')
             self.assertEqual(done.status_code, 200, done.content)
-            self.assertEqual(done.json()['page'], 'Magenta:Sprints/Jellyfish/JMyles')
+            self.assertEqual(done.json()['page'], 'Cryptograss:Sprints/Jellyfish/JMyles')
             MessageChange.objects.create(message_id=said.id, mood=self.mood, kind='deleted', by=self.justin)
             self.assertEqual(client.post(url, '{}', content_type='application/json').status_code, 410)
         self.assertEqual(Client().post(url, '{}', content_type='application/json').status_code, 401)

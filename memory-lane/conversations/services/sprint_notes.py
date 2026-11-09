@@ -6,22 +6,23 @@ Settled with re (25 Oct), who keeps the wiki side and its documentation:
 * **The current sprint** is whatever one page names: Magenta:Current sprint. A link there
   ([[Cryptograss/Jellyfish]]) names the sprint by its page's last part ("Jellyfish"); plain words name
   it as they are. Moving that pointer is a sprint's whole lifecycle; nothing here keeps dates.
-* **Each person's notes for a sprint** are a page of their own: Magenta:Sprints/<sprint>/<person>, by
+* **Each person's notes for a sprint** are a page of their own: Cryptograss:Sprints/<sprint>/<person>, by
   their PickiPedia name. A sprint's page can show everyone's.
 * **A note keeps the message's words and its link**: words so it reads on its own after the message is
   edited or gone, the link to go back to it; who said it, where and when. Written as a card,
   {{Magenta message}} with every word (services/wiki_embed.py), and when it was noted.
 
 People only, each to their own notes. The server's wiki bot writes them (todo_ticks.Bot), naming in the
-edit summary whose notes and from which message -- nobody's wiki password is held here. The Magenta:
-namespace isn't gated for bot edits (PickiPediaVerification enforces markers in the main namespace), so
-a note is plain, as the person chose it.
+edit summary whose notes and from which message -- nobody's wiki password is held here. The Cryptograss:
+namespace isn't gated for bot edits (PickiPediaVerification enforces markers in the main and Instructions
+namespaces), so a note is plain, as the person chose it. Notes moved here from Cryptograss:Sprints on 9 Nov
+(Justin: "let's move Cryptograss:Sprints to Cryptograss:Sprints"); the old titles redirect.
 """
 
 import re
 
 POINTER = 'Magenta:Current sprint'
-NOTES = 'Magenta:Sprints/{sprint}/{person}'
+NOTES = 'Cryptograss:Sprints/{sprint}/{person}'
 _LINK = re.compile(r'\[\[([^\[\]|#]+)(?:#[^\[\]|]*)?(?:\|[^\[\]]*)?\]\]')
 
 
@@ -82,7 +83,7 @@ def shown():
 
 
 def notes_page(sprint, person):
-    """Magenta:Sprints/<sprint>/<their PickiPedia name>."""
+    """Cryptograss:Sprints/<sprint>/<their PickiPedia name>."""
     from .wiki_auth import names
     who = names().get(person) or person[:1].upper() + person[1:]
     return NOTES.format(sprint=sprint.replace('[', '').replace(']', '').replace('|', ''), person=who)
@@ -99,7 +100,7 @@ def header(sprint, sprint_page, person_page):
     person = person_page.rsplit('/', 1)[-1]
     return (f'Notes for the {named} sprint, kept by [[User:{person}|{person}]]: messages from magenta they chose '
             f'to note, each with its words and its link. Added from a message\'s ⋯ menu, "Add to my sprint notes"; '
-            f'see [[Magenta:Sprints]]. Edit freely.\n\n')
+            f'see [[Cryptograss:Sprints]]. Edit freely.\n\n')
 
 
 SOURCE = 'sprint-note'
