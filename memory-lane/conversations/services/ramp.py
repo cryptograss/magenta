@@ -53,9 +53,16 @@ _QUIET_SENDERS = ('mood-poller', 'system')  # wakes quote what was said; a menti
 
 # --- the cards, from PickiPedia --------------------------------------------------------------------
 
+_BODY = re.compile(r'<pre class="pr-body">(.*?)</pre>', re.S)
+
+
 def _parse(text):
-    """A card's {{PR}} values: {field: value}, entities undone."""
-    return {k: html.unescape(v).strip() for k, v in _FIELD.findall(text or '')}
+    """A card's {{PR}} values: {field: value}, entities undone; and its description, if the card keeps it."""
+    found = {k: html.unescape(v).strip() for k, v in _FIELD.findall(text or '')}
+    body = _BODY.search(text or '')
+    if body:
+        found['description'] = html.unescape(body[1]).strip()
+    return found
 
 
 def cards():
@@ -423,7 +430,8 @@ def board(now=None):
                 'state': c.get('state', 'open'), 'worked_on_by': c.get('worked_on_by', ''),
                 'moods': [m.strip() for m in c.get('moods', '').split(',') if m.strip()],
                 'deploy': c.get('deploy', ''), 'opened': _card_time(c.get('opened')),
-                'pushed': _card_time(c.get('pushed')), 'size': {}, 'held': repo_name in held}
+                'pushed': _card_time(c.get('pushed')), 'size': {}, 'held': repo_name in held,
+                'description': c.get('description', '')}
         head = refs.get(repo_name, {}).get(f'refs/pull/{number}/head')
         if head:
             item['head'] = head[0]

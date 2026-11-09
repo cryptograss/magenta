@@ -74,6 +74,9 @@
   button.merge { font: inherit; font-size: 12px; margin-top: 3px; padding: 1px 9px; border-radius: 4px; cursor: pointer;
                  border: 1px solid var(--accent); background: none; color: var(--accent); }
   button.merge:hover { background: var(--accent-soft); }
+  .talk { font: inherit; font-size: 12px; padding: 0 7px; border-radius: 4px; border: 1px solid var(--line); background: none;
+          color: var(--muted); cursor: pointer; text-decoration: none; }
+  a.talk:hover, button.talk:hover { color: var(--ink); border-color: var(--accent); text-decoration: none; }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -113,7 +116,8 @@
     the last {{ board.merged|length }} merged. Who worked on it and where come from the foot of its description, by way of its
     <a href="https://pickipedia.xyz/wiki/Category:Pull_requests" target="_blank" rel="noopener">card</a>; heads, sizes and
     merges from githouse's copy; mentions and 🪢 asks from the record. The dot is its temperature: the last push or
-    mention, within a day, three, two weeks, or longer.
+    mention, within a day, three, two weeks, or longer. A 👍 is a person saying "I like this" of the head commit: it
+    merges nothing, and once the branch moves it shows as on an older commit.
     <a href="https://pickipedia.xyz/wiki/Cryptograss:Moods/ramp/Plan" target="_blank" rel="noopener">The plan</a>.</p>
   {% if board.error %}<p class="err">{{ board.error }}</p>{% endif %}
   {% if board.mentions_missing %}<p class="why">Reading the record for where each was mentioned: "last said" fills in within a minute.</p>{% endif %}
@@ -135,6 +139,8 @@
         {% if i.state != 'open' %}<span class="state {{ i.state }}"{% if i.state == 'pushed' %} title="on githouse, no pull request yet"{% elif i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{% if i.state == 'pushed' %}no PR yet{% else %}{{ i.state }}{% endif %}</span>{% endif %}
         {% if i.tests %}<a class="tests {{ i.tests.state|slugify }}" href="{{ i.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ i.tests.number }} on Jenkins, for this head">{% if i.tests.state == 'passed' %}✓ tests{% elif i.tests.state == 'failed' %}✗ tests{% elif i.tests.state == 'testing' %}… testing{% else %}{{ i.tests.state }}{% endif %}</a>{% endif %}
         {% if i.asked %}<a class="state ask" href="/moods/{{ i.asked.mood }}/#m-{{ i.asked.id }}" title="{{ i.asked.by }} asked for this merge in #{{ i.asked.mood }}">🪢 asked</a>{% endif %}
+        {% include "conversations/_thumb.html" with w=i %}
+        {% if i.page %}<a class="talk" href="/moods/tidings/{{ i.page.id }}/" title="Its page: the work, its diff, and what's been said">💬 {{ i.page.comments }}</a>{% elif can_thumb and i.branch and i.state != 'merged' %}<button type="button" class="talk" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Open a page to talk about it: the work, its diff, comments">💬 talk</button>{% endif %}
         {% if i.branch %}<br><span class="branch">{{ i.repo }}:{{ i.branch }}{% if i.base %} → {{ i.base }}{% endif %}</span>{% endif %}
         {% if can_merge and i.state != 'merged' and i.branch %}<button type="button" class="merge" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}"{% if i.number %} data-number="{{ i.number }}"{% endif %} title="Look at what it brings, then merge it, as you">Merge…</button>{% endif %}
       </td>
@@ -189,6 +195,23 @@
   document.querySelectorAll('button.merge').forEach(b => b.addEventListener('click', () =>
     magentaMerge.open({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }, 'ramp')));
 </script>{% endif %}
+{% include "conversations/_thumbs_script.html" %}
+<script>
+  // 💬 talk: the work's page, made now (services/work_pages.py; Plan, section 9), and opened in Tidings.
+  document.querySelectorAll('button.talk').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      const r = await fetch('/api/ramp/work/', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json',
+                   'X-CSRFToken': (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '' },
+        body: JSON.stringify({ repo: b.dataset.repo, branch: b.dataset.branch }) });
+      const got = await r.json();
+      if (!r.ok) { b.title = got.error || "that didn't work"; return; }
+      const to = `/moods/tidings/${got.id}/`;
+      if (parent !== window) parent.postMessage({ magentaGo: to }, location.origin); else location.href = to;
+    } finally { b.disabled = false; }
+  }));
+</script>
 <script>
   // Sorting the open work, here and now: no reload.
   const body = document.querySelector('#open tbody');

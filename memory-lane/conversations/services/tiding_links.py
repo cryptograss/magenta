@@ -547,7 +547,9 @@ def badges(since, viewer=None):
     """What's new on Tidings since `since`: promotions and comments said on Tidings (Justin, 21 Oct) --
     others', not the viewer's own."""
     from conversations.models import Tiding, TidingComment
-    tidings, comments = Tiding.objects.filter(at__gt=since), TidingComment.objects.filter(at__gt=since)
+    # A piece of work's page (services/work_pages.py) is the ramp's, not news: off the list, and off its badges.
+    tidings = Tiding.objects.filter(at__gt=since, work__isnull=True)
+    comments = TidingComment.objects.filter(at__gt=since, tiding__work__isnull=True)
     if viewer:
         tidings, comments = tidings.exclude(by_id=viewer), comments.exclude(by_id=viewer)
     return {'tidings': tidings.count(), 'comments': comments.count()}
@@ -877,7 +879,8 @@ def listed(limit=LISTED, viewer=None, order='top'):
     index = current()
     knob = knobs.global_values([knobs.TIDINGS_PINNED, 'tidings_age_hours', 'tidings_gravity', 'tidings_comment_weight'])
     pins = list(knob[knobs.TIDINGS_PINNED] or [])
-    found = list(Tiding.objects.select_related('message', 'by').order_by('-at')[:CANDIDATES if order == 'top' else limit])
+    found = list(Tiding.objects.select_related('message', 'by').filter(work__isnull=True)  # work pages: the ramp's
+                 .order_by('-at')[:CANDIDATES if order == 'top' else limit])
     have = {str(t.id) for t in found}
     found += [t for t in Tiding.objects.select_related('message', 'by').filter(id__in=[p for p in pins if p not in have])]
     rows = []

@@ -17,6 +17,7 @@ it does the link ledger (wiki_ledger), and it looks at most every LOOK_EVERY
 seconds; GitHub's webhook nudges it too, for the pull request it heard of.
 """
 
+import html
 import re
 import threading
 from datetime import datetime, timedelta, timezone
@@ -30,6 +31,7 @@ ORG = 'cryptograss'
 # maybelle gets, and the merge asks and to-do ticks starved (#ramp, 31 Oct - 6 Nov 2026).
 LOOK_EVERY = 3600
 PUSHED_WITHIN = 30     # days: a repository pushed to longer ago than this isn't asked about its pull requests
+MAX_BODY = 20000      # characters of a description kept on its card
 CLOSED_WITHIN = 14     # days: a closed pull request keeps its card fresh this long after it closed
 _FOOT_DEPLOY = re.compile(r'^\W*deploy(?:ment)?\W*:\s*(.+?)\s*$', re.I | re.M)
 _FOOT_WORKED = re.compile(r'^\W*worked on by\W*:\s*(.+?)\s*$', re.I | re.M)
@@ -95,6 +97,11 @@ def card(pull, pushed=''):
         ('deploy', clean(deploy)),
     ]
     lines = ['{{PR'] + [f'|{k}={v}' for k, v in fields] + ['}}']
+    # The description, whole, for the work's page (Plan, section 9): in a <pre>, so nothing in it is wikitext.
+    body = (pull.get('body') or '').strip()[:MAX_BODY]
+    if body:
+        # | as an entity too: a line of it starting "|title=" mustn't read back as the card's own field.
+        lines.append(f'<pre class="pr-body">{html.escape(body, quote=False).replace("|", "&#124;")}</pre>')
     return '\n'.join(lines) + '\n'
 
 

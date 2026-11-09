@@ -76,7 +76,9 @@ class CardTest(TestCase):
 
     def test_a_card_says_what_github_does(self):
         text = pr_cards.card(pull(243, title='Pin | it {{x}}'), pushed='2026-10-30T22:07:00Z')
-        self.assertTrue(text.startswith('{{PR\n') and text.endswith('}}\n'))
+        self.assertTrue(text.startswith('{{PR\n') and '\n}}\n' in text)
+        # Then the description, whole, for the work's page (Plan, section 9).
+        self.assertTrue(text.endswith('</pre>\n') and '\n}}\n<pre class="pr-body">' in text)
         for line in ('|repo=maybelle-config', '|number=243', '|title=Pin &#124; it &#123;&#123;x&#125;&#125;', '|state=open', '|base=production',
                      '|pushed=2026-10-30 22:07:00', '|worked_on_by=magent, re, justin', '|moods=ops, ramp',
                      '|deploy=redeploy hunter', '|merged=', '|author=magent-cryptograss'):

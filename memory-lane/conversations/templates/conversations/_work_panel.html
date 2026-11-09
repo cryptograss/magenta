@@ -1,0 +1,148 @@
+{# A piece of work, above its comments on its Tidings page (services/work_pages.panel; Plan, section 9). #}
+<style>
+  section.work { margin: 6px 0 18px; }
+  section.work .whead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+  section.work .ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  section.work .wtitle { font-size: 17px; font-weight: 600; margin: 0; }
+  section.work .state, section.work .tests { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    border: 1px solid var(--line); color: var(--muted); text-decoration: none; }
+  section.work .state.open, section.work .state.pushed { color: var(--accent); border-color: var(--accent); }
+  section.work .state.merged { color: #8250df; border-color: #8250df; }
+  section.work .tests.passed { color: #2e9e5b; border-color: #2e9e5b; }
+  section.work .tests.failed { color: #c0392b; border-color: #c0392b; }
+  section.work .wmeta { font-size: 12.5px; color: var(--muted); margin: 4px 0 10px; }
+  section.work .wmeta span.add, section.work .files span.add { color: #2e9e5b; }
+  section.work .wmeta span.rm, section.work .files span.rm { color: #c0392b; }
+  section.work h3 { font-size: 13px; margin: 16px 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  section.work .desc { border: 1px solid var(--line); border-radius: 8px; padding: 2px 12px; font-size: 14px; }
+  section.work ol.commits { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+  section.work ol.commits li { padding: 3px 0; border-top: 1px solid var(--line); }
+  section.work ol.commits li:first-child { border-top: 0; }
+  section.work ol.commits code { font-size: 12px; }
+  section.work ol.commits .by { color: var(--muted); font-size: 12px; }
+  section.work ol.commits pre { white-space: pre-wrap; font-size: 12px; margin: 4px 0 4px 20px; color: var(--muted); }
+  section.work ul.files { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+  section.work ul.files > li { border-top: 1px solid var(--line); padding: 3px 0; }
+  section.work ul.files button.file { font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    background: none; border: 0; padding: 0; color: var(--ink); cursor: pointer; text-align: left; }
+  section.work ul.files button.file::before { content: '▸ '; color: var(--muted); }
+  section.work ul.files li.open button.file::before { content: '▾ '; }
+  section.work ul.files .whole { font-size: 12px; margin-left: 8px; }
+  section.work .view { overflow-x: auto; margin: 4px 0 8px; border: 1px solid var(--line); border-radius: 6px; }
+  section.work .view[hidden] { display: none; }
+  table.code { border-collapse: collapse; width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  table.code td { padding: 0 8px; vertical-align: top; white-space: pre; }
+  table.code td.n { text-align: right; color: var(--muted); user-select: none; width: 1%; }
+  table.code td.n a { color: inherit; text-decoration: none; }
+  table.code td.n a:hover { color: var(--accent); text-decoration: underline; }
+  table.code tr.add td.t { background: rgba(46,158,91,.13); }
+  table.code tr.del td.t { background: rgba(192,57,43,.12); }
+  table.code tr.hunk td { background: var(--code, rgba(127,127,127,.08)); color: var(--muted); }
+  table.code tr.here td { background: rgba(232,163,58,.3) !important; }
+  {{ highlight_css|safe }}
+  section.work .copied { font-size: 12px; color: #2e9e5b; margin-left: 6px; }
+</style>
+<section class="work" id="work" data-repo="{{ work.repo }}" data-branch="{{ work.branch }}" data-head="{{ work.head|default:'' }}"
+         data-base="{{ work.merge_base|default:'' }}" data-tiding="{{ tiding.id }}">
+  <div class="whead">
+    <span class="state {{ work.state }}">{% if work.state == 'pushed' %}no PR yet{% else %}{{ work.state }}{% endif %}</span>
+    {% if work.item.url %}<a class="ref" href="{{ work.item.url }}" target="_blank" rel="noopener">{{ work.ref }}</a>{% else %}<span class="ref">{{ work.ref }}</span>{% endif %}
+    <h2 class="wtitle">{{ work.item.title|default:tiding.title }}</h2>
+    {% if work.tests %}<a class="tests {{ work.tests.state|slugify }}" href="{{ work.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ work.tests.number }} on Jenkins, for this head">{% if work.tests.state == 'passed' %}✓ tests{% elif work.tests.state == 'failed' %}✗ tests{% elif work.tests.state == 'testing' %}… testing{% else %}{{ work.tests.state }}{% endif %}</a>{% endif %}
+    {% if work.item %}{% include "conversations/_thumb.html" with w=work.item %}{% endif %}
+    {% if can_merge and work.item and work.state != 'merged' %}<button type="button" class="merge" id="workMerge" title="Look at what it brings, then merge it, as you">Merge…</button>{% endif %}
+  </div>
+  <div class="wmeta">
+    <span class="ref">{{ work.repo }}:{{ work.branch }}{% if work.base %} → {{ work.base }}{% endif %}</span>
+    {% if work.head %} · head <code>{{ work.head|slice:":8" }}</code>{% endif %}
+    {% if work.item.worked_on_by or work.item.author %} · {{ work.item.worked_on_by|default:work.item.author }}{% endif %}
+    {% for m in work.item.moods %} · <a href="/moods/{{ m }}/">#{{ m }}</a>{% endfor %}
+    {% if work.size %} · <span class="add">+{{ work.size.added }}</span> <span class="rm">−{{ work.size.removed }}</span> in {{ work.size.files }} file{{ work.size.files|pluralize }}{% endif %}
+    {% if work.item.deploy %} · {{ work.item.deploy }}{% endif %}
+    · <a href="/moods/pulls/">the ramp</a>
+  </div>
+
+  {% if work.description_html %}<div class="desc">{{ work.description_html|safe }}</div>{% endif %}
+
+  {% if work.commits %}
+  <h3>Commits ({{ work.commits|length }})</h3>
+  <ol class="commits">
+    {% for c in work.commits %}<li><code title="{{ c.sha }}">{{ c.sha|slice:":8" }}</code> {{ c.subject }} <span class="by">· {{ c.author }}{% if c.at %} · {{ c.at|date:"j M H:i" }}Z{% endif %}</span>
+      {% if c.body %}<pre>{{ c.body }}</pre>{% endif %}</li>{% endfor %}
+  </ol>
+  {% endif %}
+
+  {% if work.files %}
+  <h3>Files ({{ work.files|length }})</h3>
+  <ul class="files">
+    {% for f in work.files %}<li data-path="{{ f.path }}"><button type="button" class="file" title="Show what changed in it">{{ f.path }}</button>
+      {% if f.binary %}<span class="muted">binary</span>{% else %}<span class="add">+{{ f.added }}</span> <span class="rm">−{{ f.removed }}</span>{% endif %}
+      {% if not f.binary %}<a href="#" class="whole" title="The whole file at this head, every line numbered">whole file</a>{% endif %}
+      <div class="view" hidden></div></li>{% endfor %}
+  </ul>
+  {% elif work.state == 'gone' %}
+  <p class="muted">githouse no longer has this work's commits.</p>
+  {% endif %}
+</section>
+{% if can_merge and work.item and work.state != 'merged' %}{% include "conversations/_merge_sheet.html" %}{% endif %}
+{% include "conversations/_thumbs_script.html" %}
+<script>
+(() => {
+  // Each file's diff, or the whole file, asked for when wanted: every line an address (#D:<path>:<n> in a diff,
+  // #L:<path>:<n> in the whole file). A line's number copies its link, for a comment or a Mood.
+  const work = document.getElementById('work');
+  if (!work) return;
+  const q = o => new URLSearchParams(o).toString();
+  const { repo, head, base, tiding } = work.dataset;
+  async function show(li, whole) {
+    const view = li.querySelector('.view');
+    const kind = whole ? 'file' : 'diff';
+    if (!view.hidden && view.dataset.kind === kind) { view.hidden = true; li.classList.remove('open'); return; }
+    const path = li.dataset.path;
+    const url = whole ? '/api/ramp/file/?' + q({ repo, commit: head, path })
+                      : '/api/ramp/diff/?' + q({ repo, base, head, path });
+    view.dataset.kind = kind;
+    view.hidden = false;
+    li.classList.add('open');
+    view.textContent = 'reading…';
+    const r = await fetch(url, { credentials: 'same-origin' });
+    view.innerHTML = r.ok ? await r.text() : '<p class="muted"></p>';
+    if (!r.ok) view.firstChild.textContent = await r.text();
+  }
+  work.querySelectorAll('ul.files > li').forEach(li => {
+    li.querySelector('button.file').addEventListener('click', () => show(li, false));
+    const whole = li.querySelector('a.whole');
+    if (whole) whole.addEventListener('click', e => { e.preventDefault(); show(li, true); });
+  });
+  // A line's number: its link, copied, and the line lit.
+  work.addEventListener('click', async e => {
+    const a = e.target.closest('table.code td.n a');
+    if (!a) return;
+    e.preventDefault();
+    const id = decodeURIComponent(a.getAttribute('href').slice(1));
+    light(id);
+    history.replaceState(history.state, '', '#' + id);
+    const link = `${location.origin}/moods/tidings/${tiding}/#${id}`;
+    try { await navigator.clipboard.writeText(link); flash(a, 'link copied'); } catch (err) { flash(a, link); }
+  });
+  function flash(a, words) {
+    const s = document.createElement('span'); s.className = 'copied'; s.textContent = words;
+    a.closest('tr').querySelector('td.t').append(s); setTimeout(() => s.remove(), 2000);
+  }
+  function light(id) {
+    work.querySelectorAll('tr.here').forEach(r => r.classList.remove('here'));
+    const row = document.getElementById(id);
+    if (row) { row.classList.add('here'); row.scrollIntoView({ block: 'center' }); }
+  }
+  // Opened at a line's address: its file shown, the line lit.
+  const at = decodeURIComponent(location.hash.slice(1));
+  const m = at.match(/^([DL]):(.+):(-?\d+)$/);
+  if (m) {
+    const li = [...work.querySelectorAll('ul.files > li')].find(l => l.dataset.path === m[2]);
+    if (li) show(li, m[1] === 'L').then(() => light(at));
+  }
+  const merge = document.getElementById('workMerge');
+  if (merge && window.magentaMerge) merge.addEventListener('click', () =>
+    magentaMerge.open({ repo, branch: work.dataset.branch, number: {{ work.number|default:"null" }} }, '{{ tiding.mood }}'));
+})();
+</script>
