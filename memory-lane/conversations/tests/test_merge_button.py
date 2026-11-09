@@ -185,3 +185,34 @@ class MergeButtonTest(TestCase):
             self.as_('rj')
             self.assertNotIn('class="merge"', self.client.get('/moods/pulls/', {'embed': '1'}).content.decode())
             self.assertNotIn('id="mergeSheet"', self.client.get('/moods/').content.decode())
+
+
+    def test_what_merged_is_said_in_the_mood_it_was_pressed_in_once(self):
+        from conversations.models import Message, Mood
+        from conversations.services.mood_view import event_line
+        Mood.objects.create(slug='ramp')
+        self.as_('justin')
+        kept = MergeOrder.objects.get(id=self.press().json()['id'])
+        pending = lambda: self.client.get('/api/merge-orders/pending/')
+        pending()  # githouse looks; nothing merged yet: nothing said
+        self.assertFalse(Message.objects.filter(mood__slug='ramp', source_file='merged').exists())
+        (self.githouse / '.merges' / f'{kept.nonce}.json').write_text(json.dumps(
+            {'outcome': 'merged', 'merge': 'c' * 40, 'order': kept.order, 'signature': kept.signature}))
+        pending()
+        pending()  # and again: said once
+        said = Message.objects.filter(mood__slug='ramp', source_file='merged')
+        self.assertEqual(said.count(), 1)
+        self.assertEqual(event_line(said.get().content), '✓ magenta:re/foo · cccccccc merged by justin: magenta:re/foo into main')
+
+    def test_a_refused_one_or_one_from_no_mood_says_nothing(self):
+        from conversations.models import Message, Mood
+        Mood.objects.create(slug='ramp')
+        self.as_('justin')
+        refused = MergeOrder.objects.get(id=self.press().json()['id'])
+        (self.githouse / '.merges' / f'{refused.nonce}.json').write_text(json.dumps(
+            {'outcome': 'refused', 'why': 'x', 'order': refused.order, 'signature': refused.signature}))
+        quiet = MergeOrder.objects.get(id=self.press(mood='').json()['id'])
+        (self.githouse / '.merges' / f'{quiet.nonce}.json').write_text(json.dumps(
+            {'outcome': 'merged', 'merge': 'd' * 40, 'order': quiet.order, 'signature': quiet.signature}))
+        self.client.get('/api/merge-orders/pending/')
+        self.assertFalse(Message.objects.filter(source_file='merged').exists())

@@ -38,7 +38,13 @@ def api_merge_orders(request):
 
 @require_GET
 def api_merge_orders_pending(request):
-    """What githouse fetches every few seconds: the orders it hasn't carried out yet."""
+    """What githouse fetches every few seconds: the orders it hasn't carried out yet. Its looking is also
+    when what it merged is said in the Moods the orders came from (merge_orders.announce_merged)."""
+    try:
+        merge_orders.announce_merged()
+    except Exception:  # a line not said must never keep githouse from its orders
+        import logging
+        logging.getLogger(__name__).exception('merge orders: announcing what merged')
     return JsonResponse({'orders': [{'order': o.order, 'signature': o.signature}
                                     for o in merge_orders.pending()]})
 
