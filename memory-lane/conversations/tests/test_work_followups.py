@@ -183,6 +183,27 @@ class RampLinksAndSheetTest(WorkRepo):
         json.dumps(got)  # as the sheet gets it
 
 
+class SheetFullDiffTest(WorkRepo):
+    """The merge sheet's "± See the full diff" (Justin, 9 Nov: "a link from the merge modal to see the full
+    diff"): the preview names the work's page, or none, and the sheet makes one on the click."""
+
+    def preview(self):
+        return self.client.get('/api/merge-orders/preview/', {'repo': 'magenta', 'branch': 're/foo'}).json()
+
+    def test_the_preview_names_its_page(self):
+        self.as_('justin')
+        self.assertIsNone(self.preview()['page'])
+        tid = self.open_().json()['id']
+        self.assertEqual(self.preview()['page'], tid)
+
+    def test_the_sheet_links_to_it_at_the_diff(self):
+        from django.template.loader import render_to_string
+        sheet = render_to_string('conversations/_merge_sheet.html')
+        self.assertIn('<a class="full" href="#" hidden', sheet)
+        self.assertIn('`/moods/tidings/${body.page}/#diff`', sheet)
+        self.assertIn("fetch('/api/ramp/work/'", sheet)
+
+
 class CandidatesTest(WorkRepo):
     """The open candidate branches, for each wake (Justin, 9 Nov): ramp.candidates and /api/ramp/candidates/."""
 

@@ -35,6 +35,11 @@
                        border: 1px solid var(--line, #e6e1d8); background: none; color: inherit; }
   .mergeSheet button.go { background: var(--accent, #b8106b); border-color: var(--accent, #b8106b); color: #fff; font-weight: 600; }
   .mergeSheet button:disabled { opacity: .5; cursor: default; }
+  .mergeSheet a.full { display: block; width: fit-content; margin: 0 14px 10px; font-size: 13px;
+    padding: 2px 10px; border-radius: 4px; border: 1px solid var(--accent, #b8106b); color: var(--accent, #b8106b);
+    text-decoration: none; }
+  .mergeSheet a.full:hover { background: var(--accent-soft, #fbe7f1); }
+  .mergeSheet a.full[hidden] { display: none; }
 </style>
 <template id="mergeSheetTpl">
   <div class="mergeSheet" hidden role="dialog">
@@ -43,6 +48,7 @@
       <div class="who"></div>
       <pre class="log" hidden></pre>
       <pre class="stat" hidden></pre>
+      <a class="full" href="#" hidden title="Its page: every file's diff open, every line an address">± See the full diff</a>
       <div class="say"></div>
       <div class="row"><button type="button" class="no">Close</button><button type="button" class="go" hidden>Merge now</button></div>
     </div>
@@ -80,6 +86,36 @@ window.magentaMerge = (() => {
     s.$('.no').addEventListener('click', s.shut);
     el.addEventListener('click', e => { if (e.target === el) s.shut(); });
     s.$('.go').addEventListener('click', () => press(s));
+    // ± See the full diff: its page at #diff, made first if it has none. The sheet shuts; Merge… opens it again
+    // at once (its preview is kept). Already on that page: its diffs opened under the sheet.
+    s.$('.full').addEventListener('click', async e => {
+      const a = e.currentTarget;
+      if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) { if (a.dataset.made) return; e.preventDefault(); return; }
+      if (!a.dataset.made) {
+        e.preventDefault(); e.stopPropagation();
+        if (a.dataset.busy) return;
+        a.dataset.busy = '1';
+        try {
+          const r = await fetch('/api/ramp/work/', { method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+            body: JSON.stringify({ repo: a.dataset.repo, branch: a.dataset.branch }) });
+          const got = await r.json();
+          if (!r.ok) { s.say(got.error || ('memory-lane said ' + r.status), 'err'); return; }
+          a.href = `/moods/tidings/${got.id}/#diff`; a.dataset.made = '1';
+          kept.clear();  // the previews kept say it had no page
+        } finally { delete a.dataset.busy; }
+        a.click();  // again, now with its address: as any link to a page here
+        return;
+      }
+      const to = new URL(a.href, location.href);
+      if (to.pathname === location.pathname) {
+        e.preventDefault(); e.stopPropagation();
+        s.shut();
+        window.dispatchEvent(new Event('magentaShowDiff'));
+        return;
+      }
+      s.shut();
+    });
     sheets.set(mood, s);
     return s;
   }
@@ -130,6 +166,13 @@ window.magentaMerge = (() => {
     drawWho(s, body);
     s.$('.log').textContent = body.log.trim(); s.$('.log').hidden = false;
     s.$('.stat').textContent = body.stat.trim(); s.$('.stat').hidden = false;
+    // The whole diff, on its page (Justin, 9 Nov: "a link from the merge modal to see the full diff"): its
+    // address if it has a page, else made on the click.
+    const full = s.$('.full');
+    full.dataset.repo = body.repo; full.dataset.branch = body.branch;
+    full.href = body.page ? `/moods/tidings/${body.page}/#diff` : '#';
+    full.dataset.made = body.page ? '1' : '';
+    full.hidden = false;
     if (body.can) {
       s.$('.go').hidden = false;
       s.say(`Signed by memory-lane on your press; githouse checks it again and merges --no-ff, exactly this commit.`);
@@ -147,7 +190,7 @@ window.magentaMerge = (() => {
     s.$('.what').textContent = `Merge ${nameOf(work)}?`;
     s.$('.sub').textContent = '';
     s.$('.who').innerHTML = '';
-    s.$('.log').hidden = s.$('.stat').hidden = true;
+    s.$('.log').hidden = s.$('.stat').hidden = s.$('.full').hidden = true;
     s.$('.go').hidden = true; s.$('.go').disabled = false;
     s.say('Looking at it in githouse’s copy…');
     reveal(s);

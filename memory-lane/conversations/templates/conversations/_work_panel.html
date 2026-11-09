@@ -145,6 +145,10 @@
     openEvery(true);
     if (location.hash === '#diff') document.getElementById('diff')?.scrollIntoView({ block: 'start' });
   }
+  // The merge sheet's "± See the full diff", pressed on this very page; or #diff reached by a link here.
+  const toDiff = () => { openEvery(true); document.getElementById('diff')?.scrollIntoView({ block: 'start' }); };
+  window.addEventListener('magentaShowDiff', toDiff);
+  window.addEventListener('hashchange', () => { if (location.hash === '#diff') toDiff(); });
   // A line's number: its link, copied, and the line lit.
   work.addEventListener('click', async e => {
     const a = e.target.closest('table.code td.n a');
