@@ -77,7 +77,7 @@
   <ul class="files">
     {% for f in work.files %}<li data-path="{{ f.path }}"><button type="button" class="file" title="Show what changed in it">{{ f.path }}</button>
       {% if f.binary %}<span class="muted">binary</span>{% else %}<span class="add">+{{ f.added }}</span> <span class="rm">−{{ f.removed }}</span>{% endif %}
-      <a href="#" class="whole" title="The whole file at this head, every line numbered">whole file</a>
+      {% if not f.binary %}<a href="#" class="whole" title="The whole file at this head, every line numbered">whole file</a>{% endif %}
       <div class="view" hidden></div></li>{% endfor %}
   </ul>
   {% elif work.state == 'gone' %}
@@ -111,7 +111,8 @@
   }
   work.querySelectorAll('ul.files > li').forEach(li => {
     li.querySelector('button.file').addEventListener('click', () => show(li, false));
-    li.querySelector('a.whole').addEventListener('click', e => { e.preventDefault(); show(li, true); });
+    const whole = li.querySelector('a.whole');
+    if (whole) whole.addEventListener('click', e => { e.preventDefault(); show(li, true); });
   });
   // A line's number: its link, copied, and the line lit.
   work.addEventListener('click', async e => {

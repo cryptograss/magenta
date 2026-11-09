@@ -209,3 +209,57 @@ class HighlightTest(WorkRepo):
     def test_a_long_file_is_plain(self):
         with mock.patch.object(work, 'MAX_HIGHLIGHT', 5):
             self.assertIsNone(work.highlighted('doc.py', 'x = 1\ny = 2\n'))
+
+
+class AwkwardFilesTest(WorkRepo):
+    """What a pusher can put in a file: bytes that aren't text, and markup (re's review of #448)."""
+
+    def setUp(self):
+        super().setUp()
+        git(self.repo.work, 'checkout', '-q', 're/foo')
+        (self.repo.work / 'icon.png').write_bytes(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\xff\xfe')
+        (self.repo.work / 'old.txt').write_bytes('caf\xe9 au lait\n'.encode('latin-1'))
+        (self.repo.work / 'evil.py').write_text('x = "</td><script>alert(1)</script>"\n# <img src=x onerror=alert(2)>\n')
+        git(self.repo.work, 'add', '.')
+        git(self.repo.work, 'commit', '-q', '-m', 'awkward \xe9'.encode('latin-1').decode('latin-1'))
+        self.head3 = git(self.repo.work, 'rev-parse', 'HEAD')
+        self.repo.ref('refs/heads/re/foo', self.head3)
+        self.repo.ref('refs/pull/7/head', self.head3)
+        git(self.repo.work, 'checkout', '-q', 'main')
+
+    def get(self, kind, path):
+        q = {'repo': 'magenta', 'path': path}
+        q.update({'commit': self.head3} if kind == 'file' else {'base': self.base, 'head': self.head3})
+        return self.client.get(f'/api/ramp/{kind}/', q)
+
+    def test_a_binary_file_says_so_and_never_500s(self):
+        whole = self.get('file', 'icon.png')
+        self.assertEqual(whole.status_code, 200)
+        self.assertIn('is binary at', whole.content.decode())
+        self.assertEqual(self.get('diff', 'icon.png').status_code, 200)
+
+    def test_a_latin_1_file_is_shown_not_failed(self):
+        for kind in ('file', 'diff'):
+            with self.subTest(kind=kind):
+                answer = self.get(kind, 'old.txt')
+                self.assertEqual(answer.status_code, 200)
+                self.assertIn('caf� au lait', answer.content.decode())
+
+    def test_markup_in_a_file_is_text_coloured_or_not(self):
+        for kind in ('file', 'diff'):
+            with self.subTest(kind=kind):
+                html = self.get(kind, 'evil.py').content.decode()
+                self.assertNotIn('<script>', html)
+                self.assertNotIn('<img', html)
+                self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt;', html)
+                self.assertIn('<span class="s2">', html)   # coloured, and still escaped
+
+    def test_the_page_offers_no_whole_file_for_a_binary(self):
+        self.as_('justin')
+        tid = self.client.post('/api/ramp/work/', json.dumps({'repo': 'magenta', 'branch': 're/foo'}),
+                               content_type='application/json').json()['id']
+        html = self.client.get(f'/moods/tidings/{tid}/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        png = html[html.index('<li data-path="icon.png">'):]
+        png = png[:png.index('</li>')]
+        self.assertIn('binary', png)
+        self.assertNotIn('class="whole"', png)

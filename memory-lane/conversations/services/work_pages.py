@@ -173,7 +173,7 @@ def panel(work):
     if not base:
         return out
     out['merge_base'] = _git(held, 'merge-base', f'refs/heads/{base}', head).strip()
-    log = _git(held, 'log', f'--max-count={MAX_COMMITS}', '--format=%H%x00%an%x00%ct%x00%s%x00%b%x1e',
+    log = _read(held, 'log', f'--max-count={MAX_COMMITS}', '--format=%H%x00%an%x00%ct%x00%s%x00%b%x1e',
                f'refs/heads/{base}..{head}')
     for entry in log.split('\x1e'):
         parts = entry.strip('\n').split('\0')
@@ -195,8 +195,7 @@ def ramp_merged(repo, head):
 
 def changed_files(held, base, head):
     """[{'path', 'added', 'removed', 'binary'}] of what head changes since base (renames as the new path)."""
-    from .githouse import _git
-    out = _git(held, 'diff', '--numstat', '-z', '--no-renames', base, head)
+    out = _read(held, 'diff', '--numstat', '-z', '--no-renames', base, head)
     files = []
     for entry in out.split('\0'):
         parts = entry.split('\t', 2)
@@ -214,10 +213,9 @@ _HUNK = re.compile(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$')
 
 def diff_of(repo, base, head, path):
     """One file's changes, as rows: [{'kind': hunk|add|del|ctx, 'old', 'new', 'text'}]; and 'cut' if too long."""
-    from .githouse import _git
     held = _repo(repo)
     base, head, path = _commit(held, base), _commit(held, head), _path(path)
-    text = _git(held, 'diff', '--no-color', '--no-ext-diff', '--no-renames', '-U5', base, head, '--', path)
+    text = _read(held, 'diff', '--no-color', '--no-ext-diff', '--no-renames', '-U5', base, head, '--', path)
     cut = len(text) > MAX_DIFF
     rows, old, new = [], 0, 0
     for line in text[:MAX_DIFF].split('\n'):
@@ -250,6 +248,19 @@ def diff_of(repo, base, head, path):
     return {'repo': repo, 'base': base, 'head': head, 'path': path, 'rows': rows, 'cut': cut}
 
 
+def _read(held, *args):
+    """git's stdout as text, never raising on what a file holds: bytes read raw, undecodable ones replaced (a
+    binary or a Latin-1 file is git's to hold, not ours to fail on; re's review of #448: a PNG's "whole file" was
+    a 500). '' if git failed."""
+    import subprocess
+    try:
+        done = subprocess.run(['git', '-c', 'safe.directory=*', '--git-dir', str(held), *args],
+                              capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    return done.stdout.decode('utf-8', errors='replace') if done.returncode == 0 else ''
+
+
 # --- syntax colours (Pygments): each line its own HTML, so every line keeps its address --------------------
 
 def _lines(text):
@@ -271,7 +282,7 @@ def _blob(held, commit, path):
     size = _git(held, 'cat-file', '-s', f'{commit}:{path}').strip()
     if not size.isdigit() or int(size) > MAX_HIGHLIGHT:
         return ''
-    return _git(held, 'cat-file', 'blob', f'{commit}:{path}')
+    return _read(held, 'cat-file', 'blob', f'{commit}:{path}')
 
 
 def _token_class(ttype):
@@ -336,7 +347,7 @@ def file_at(repo, commit, path):
     kind = _git(held, 'cat-file', '-t', f'{commit}:{path}').strip()
     if kind != 'blob':
         raise Invalid(f'{path} is not a file at {commit[:8]}', 404)
-    text = _git(held, 'cat-file', 'blob', f'{commit}:{path}')
+    text = _read(held, 'cat-file', 'blob', f'{commit}:{path}')
     binary = '\0' in text[:8000]
     cut = len(text) > MAX_FILE
     lines = [] if binary else _lines(text[:MAX_FILE])
