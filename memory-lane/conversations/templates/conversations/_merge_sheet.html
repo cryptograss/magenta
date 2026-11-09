@@ -2,7 +2,7 @@
      a piece of work brings, from githouse's copy, who asked for it and who 👍'd it, then "Merge now". The press is
      signed by memory-lane's own key, for whoever pressed, and githouse checks everything again. Opened by
      magentaMerge.open({repo, branch} or {repo, number}, mood): the ramp's Merge buttons, a 🪢 ask's, /merge in
-     the composer.
+     the composer. Each button's preview is fetched before it's pressed (prefetch), so the sheet opens with it.
 
      One sheet a Mood. On the one page it covers only that Mood's pane, and goes and comes with it: press Merge,
      go to another Mood, come back to see how it went (Justin, 9 Nov). magentaMerge.within(() => element) says
@@ -35,6 +35,11 @@
                        border: 1px solid var(--line, #e6e1d8); background: none; color: inherit; }
   .mergeSheet button.go { background: var(--accent, #b8106b); border-color: var(--accent, #b8106b); color: #fff; font-weight: 600; }
   .mergeSheet button:disabled { opacity: .5; cursor: default; }
+  .mergeSheet a.full { display: block; width: fit-content; margin: 0 14px 10px; font-size: 13px;
+    padding: 2px 10px; border-radius: 4px; border: 1px solid var(--accent, #b8106b); color: var(--accent, #b8106b);
+    text-decoration: none; }
+  .mergeSheet a.full:hover { background: var(--accent-soft, #fbe7f1); }
+  .mergeSheet a.full[hidden] { display: none; }
 </style>
 <template id="mergeSheetTpl">
   <div class="mergeSheet" hidden role="dialog">
@@ -43,6 +48,7 @@
       <div class="who"></div>
       <pre class="log" hidden></pre>
       <pre class="stat" hidden></pre>
+      <a class="full" href="#" hidden title="The candidate's page: every file's diff open, every line an address">± See the full diff</a>
       <div class="say"></div>
       <div class="row"><button type="button" class="no">Close</button><button type="button" class="go" hidden>Merge now</button></div>
     </div>
@@ -80,6 +86,21 @@ window.magentaMerge = (() => {
     s.$('.no').addEventListener('click', s.shut);
     el.addEventListener('click', e => { if (e.target === el) s.shut(); });
     s.$('.go').addEventListener('click', () => press(s));
+    // ± See the full diff: the candidate's page, in the ramp, at #diff (made there if it has none). In the one
+    // page (a Mood's sheet) its click handler opens it in the ramp, and Back comes here; in a frame (the ramp,
+    // a candidate's page), the one page is asked to. Already on that very page: its diffs open under the sheet.
+    s.$('.full').addEventListener('click', e => {
+      if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;  // a new tab: its own address
+      const to = new URL(e.currentTarget.href, location.href);
+      s.shut();
+      if (to.pathname === location.pathname) {
+        e.preventDefault();
+        window.dispatchEvent(new Event('magentaShowDiff'));
+      } else if (window.parent !== window) {
+        e.preventDefault();
+        parent.postMessage({ magentaGo: to.pathname + to.hash }, location.origin);
+      }
+    });
     sheets.set(mood, s);
     return s;
   }
@@ -98,39 +119,75 @@ window.magentaMerge = (() => {
       + (thumbs.length ? `<span>👍 ${thumbs.join(', ')}</span>` : '');
   }
 
-  async function open(work, inMood) {
-    const s = sheetFor(inMood || '');
-    if (s.busy) { reveal(s); return; }  // a press on its way here: its sheet, as it stands
-    const mine = ++s.gen;
-    s.seen = null; s.alive = true;
-    const name = work.number ? `${work.repo}#${work.number}` : `${work.repo}:${work.branch}`;
-    s.$('.what').textContent = `Merge ${name}?`;
-    s.$('.sub').textContent = '';
-    s.$('.who').innerHTML = '';
-    s.$('.log').hidden = s.$('.stat').hidden = true;
-    s.$('.go').hidden = true; s.$('.go').disabled = false;
-    s.say('Looking at it in githouse’s copy…');
-    reveal(s);
+  // Fetched before the press (Justin, 9 Nov: "Can we prefetch everything needed for this to be instant?"): a
+  // Merge button drawn, hovered or touched asks for its preview, kept KEPT_MS; the sheet opens on it at once and
+  // asks again behind it, redrawn if githouse moved meanwhile. The press is checked against githouse's copy
+  // anyway (a moved branch is refused: "moved since you looked").
+  const KEPT_MS = 45000;
+  const kept = new Map();   // 'repo#n' or 'repo:branch' -> {at, got: Promise<{ok, status, body}>}
+  const nameOf = work => work.number ? `${work.repo}#${work.number}` : `${work.repo}:${work.branch}`;
+  function ask(work) {
     const q = new URLSearchParams({ repo: work.repo, branch: work.branch || '' });
     if (work.number) q.set('number', work.number);
-    let r, body;
-    try {
-      r = await fetch('/api/merge-orders/preview/?' + q, { credentials: 'same-origin' });
-      body = await r.json();
-    } catch (e) { if (mine === s.gen) s.say('Couldn’t reach memory-lane: ' + e.message, 'err'); return; }
-    if (mine !== s.gen || !s.alive) return;
-    if (!r.ok) { s.say(body.error || ('memory-lane said ' + r.status), 'err'); return; }
+    return fetch('/api/merge-orders/preview/?' + q, { credentials: 'same-origin' })
+      .then(async r => ({ ok: r.ok, status: r.status, body: await r.json() }));
+  }
+  function prefetch(work) {
+    if (!work || !work.repo) return null;
+    const name = nameOf(work), had = kept.get(name);
+    if (had && Date.now() - had.at < KEPT_MS) return had.got;
+    const got = ask(work).catch(e => ({ ok: false, error: e }));
+    kept.set(name, { at: Date.now(), got });
+    got.then(g => { if (!g.ok) kept.delete(name); });  // a refusal or a lost line isn't kept
+    return got;
+  }
+
+  function draw(s, r) {
+    if (r.error) { s.say('Couldn’t reach memory-lane: ' + r.error.message, 'err'); return; }
+    if (!r.ok) { s.say(r.body.error || ('memory-lane said ' + r.status), 'err'); return; }
+    const body = r.body;
     s.seen = body;
     s.$('.sub').textContent = `${body.repo}:${body.branch} at ${body.commit.slice(0, 12)} → ${body.into} at ${body.tip.slice(0, 12)}`;
     drawWho(s, body);
     s.$('.log').textContent = body.log.trim(); s.$('.log').hidden = false;
     s.$('.stat').textContent = body.stat.trim(); s.$('.stat').hidden = false;
+    // The whole diff, on the candidate's page (Justin, 9 Nov: "a link from the merge modal to see the full diff").
+    const full = s.$('.full');
+    if (body.branch) full.href = `/ramp/${encodeURIComponent(body.repo)}/${body.branch.split('/').map(encodeURIComponent).join('/')}/#diff`;
+    full.hidden = !body.branch;
     if (body.can) {
       s.$('.go').hidden = false;
       s.say(`Signed by memory-lane on your press; githouse checks it again and merges --no-ff, exactly this commit.`);
     } else {
+      s.$('.go').hidden = true;
       s.say(`Only ${(body.mergers || []).join(' and ') || 'the mergers'} can merge from here, signed in with their SSH key.`);
     }
+  }
+
+  async function open(work, inMood) {
+    const s = sheetFor(inMood || '');
+    if (s.busy) { reveal(s); return; }  // a press on its way here: its sheet, as it stands
+    const mine = ++s.gen;
+    s.seen = null; s.alive = true;
+    s.$('.what').textContent = `Merge ${nameOf(work)}?`;
+    s.$('.sub').textContent = '';
+    s.$('.who').innerHTML = '';
+    s.$('.log').hidden = s.$('.stat').hidden = s.$('.full').hidden = true;
+    s.$('.go').hidden = true; s.$('.go').disabled = false;
+    s.say('Looking at it in githouse’s copy…');
+    reveal(s);
+    const had = kept.get(nameOf(work));
+    if (had) {  // drawn from what was fetched before the press, then asked again behind it
+      const first = await had.got;
+      if (mine !== s.gen || !s.alive || s.busy) return;
+      if (first.ok) draw(s, first);
+      if (first.ok && Date.now() - had.at < 3000) return;  // asked just now: asking again says the same
+      kept.delete(nameOf(work));
+    }
+    const now = await prefetch(work);
+    if (mine !== s.gen || !s.alive || s.busy) return;
+    if (!s.seen || !now.ok || now.body.commit !== s.seen.commit || now.body.tip !== s.seen.tip
+        || JSON.stringify([now.body.asks, now.body.thumbs]) !== JSON.stringify([s.seen.asks, s.seen.thumbs])) draw(s, now);
   }
 
   // Shown if its Mood is on screen (or nobody said which is); kept, out of sight, while another is.
@@ -184,6 +241,6 @@ window.magentaMerge = (() => {
     }
     return found;
   }
-  return { open, named, within, show };
+  return { open, named, within, show, prefetch };
 })();
 </script>

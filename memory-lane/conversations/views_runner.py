@@ -641,3 +641,15 @@ def api_emergent_models(request, name):
         return JsonResponse({'error': str(e) or 'expected {"harness": ..., "vendors": [...]}'}, status=400)
     HarnessModels.objects.update_or_create(emergent=agent, defaults={'harness': harness, 'vendors': vendors})
     return JsonResponse({'emergent': name, 'vendors': len(vendors), 'models': sum(len(v['models']) for v in vendors)})
+
+
+@require_GET
+def api_candidates(request):
+    """The open candidate branches, for a wake (services/ramp.candidates; Justin, 9 Nov: each emergent told of
+    them on each wake, so as not to duplicate one, and to take a conflict to #ramp). For a runner's key."""
+    from .services import ramp
+    if not getattr(settings, 'MOOD_RUNNER_KEYS', {}):
+        return JsonResponse({'error': 'no runners are configured'}, status=503)
+    if runner_emergent(request) is None:
+        return JsonResponse({'error': 'unauthorized'}, status=401)
+    return JsonResponse({'candidates': ramp.candidates()})

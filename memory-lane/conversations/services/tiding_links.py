@@ -547,6 +547,11 @@ def is_work(tiding):
         return False
 
 
+def _work_address(tiding):
+    from .work_pages import address
+    return address(tiding.work.repo, tiding.work.branch)
+
+
 def _notice(tiding, by, said=None, asks=()):
     """A line in the link's Mood: '💬 new comment by …', referring to the message it was posted from.
     The comment's words stay on Tidings (Justin, 21 Oct); the notice is all the Mood gets, and only
@@ -565,6 +570,8 @@ def _notice(tiding, by, said=None, asks=()):
                                     # On a work's page, the whole comment: the Mood shows it as said (Justin, 9 Nov),
                                     # and a reply to it there shows under it on the page (tree_of).
                                     **({'text': said.text} if said and is_work(tiding) else {}),
+                                    # ...and its line opens the candidate's page in the ramp, not Tidings.
+                                    **({'work': _work_address(tiding)} if is_work(tiding) else {}),
                                     # The agents it asks by name: each woken in this Mood (mention_of), its
                                     # answer coming back under the comment (answer_asked).
                                     **({'asks': list(asks)} if asks else {})})

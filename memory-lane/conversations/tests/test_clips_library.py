@@ -174,3 +174,9 @@ class ClipsPageTest(TestCase):
         self.assertIn('/clips thats-new https://www.yarn.co/yarn-clip/90381564', played)
         _, listed = clips.command('/clips', 'justin')
         self.assertIn('huh (Tony Clifton: almost any time)', listed)
+
+    def test_a_person_may_say_clip_too(self):
+        # As the emergents may (AGENT_PLAY): '/clip <name>' posts it as '/clips <name> <link>' (Justin, 8 Nov).
+        clips.page(get=lambda title: [(1, 'JMyles', self.PAGE)])
+        played, _ = clips.command('/clip thats-new', 'justin')
+        self.assertIn('/clips thats-new https://www.yarn.co/yarn-clip/90381564', played)

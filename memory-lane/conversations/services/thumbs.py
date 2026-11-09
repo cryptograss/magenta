@@ -24,7 +24,7 @@ def head_of(repo, branch, number=None):
     commit = _sha(held, f'refs/heads/{branch}')
     if not commit and number:  # a branch pushed only to GitHub: its pull request's head, if the card says it's this one
         from . import ramp
-        card = next((i for i in ramp.board().get('open', []) if i.get('repo') == repo and i.get('number') == int(number)),
+        card = next((i for i in ramp.board(stale_ok=True).get('open', []) if i.get('repo') == repo and i.get('number') == int(number)),
                     None)
         if card is not None and card.get('branch') == branch:
             commit = _sha(held, f'refs/pull/{int(number)}/head')

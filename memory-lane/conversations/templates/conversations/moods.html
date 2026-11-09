@@ -1255,6 +1255,9 @@
   /* Who is a person and who is an agent, wherever a name appears. */
   .ico { width: 13px; height: 13px; fill: currentColor; vertical-align: -1px; margin-right: 4px; flex: none; }
   .people .who.typing::after { content: ' typing…'; color: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
+  #toolsOpen .askdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--who); margin-right: 3px; vertical-align: 0; }
+  #toolsOpen a.asker { color: inherit; text-decoration: none; font-weight: 600; }
+  #toolsOpen a.asker:hover { text-decoration: underline; }
   #toolsOpen .askmerge { font: inherit; font-size: 12px; padding: 0 8px; border-radius: 4px; cursor: pointer;
                          border: 1px solid var(--accent); background: none; color: var(--accent); }
   #tasks { display: none; flex-wrap: wrap; gap: 6px; padding: 2px 16px 0; font-size: 12px; color: var(--muted);
@@ -1743,7 +1746,7 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/ramp/" data-section="ramp" title="The ramp: every open pull request and githouse branch, the last few merged">ramp</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/prompts/" data-section="prompts">prompts</a><a href="/status/" data-section="status">status</a><a href="/todo/" data-section="todo">todo</a><a href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a><a href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a></div></span></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/ramp/" data-section="ramp" title="The ramp: every open candidate branch, the last few merged">ramp</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/prompts/" data-section="prompts">prompts</a><a href="/status/" data-section="status">status</a><a href="/todo/" data-section="todo">todo</a><a href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a><a href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <!-- The block, the servers and the sprint, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
@@ -2508,6 +2511,7 @@
         const payload = await r.json();
         const before = liveData;
         liveData = payload.moods || {};
+        freshAsks(liveData);
         renderBanner(payload.banner || null);
         // A word somewhere newer than the list knew: re-sorted (Justin, 1 Nov), else only who's around redrawn.
         if (Object.entries(liveData).some(([slug, d]) => d.said && d.said !== (before[slug] || {}).said)) renderNav();
@@ -2936,13 +2940,16 @@
   // A message read aloud comes in pieces (voice.pieces): the first is short, so it
   // starts at once. Each next piece is asked for as the one before starts playing --
   // made while it plays, and made knowing it, so they sound like one reading.
+  // One piece further is asked for once each is made: an aside in the narrator's voice ("a hash") is a piece of
+  // its own, over in a moment, and the piece after it is ready when it ends (Justin, 9 Nov).
   function laterPieces(mood, id, part, count) {
     const asked = new Map();
-    return i => {
+    return function get(i, chained) {
       if (i >= count) return null;
       if (!asked.has(i)) asked.set(i, fetch(`/api/moods/${encodeURIComponent(mood)}/speak/${encodeURIComponent(id)}/?part=${encodeURIComponent(part || 0)}&piece=${i}`,
         { method: 'POST', headers: { 'X-CSRFToken': csrf() } })
         .then(async r => { const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(body.error || r.status); return body.url; }));
+      if (!chained) asked.get(i).then(() => get(i + 1, true), () => {});
       return asked.get(i);
     };
   }
@@ -4533,7 +4540,7 @@
       // Its link's title, and the comment's first words, which open it there (Justin, 23 Oct). A line from
       // before they were kept says what it can.
       const msg = esc(e.message || ''), mood = encodeURIComponent(e.mood || current);
-      const at = e.tiding ? `/tidings/${encodeURIComponent(e.tiding)}/` : '/tidings/';
+      const at = e.work || (e.tiding ? `/tidings/${encodeURIComponent(e.tiding)}/` : '/tidings/');  // a candidate's: in the ramp
       const words = e.comment ? (e.comment.length > 40 ? e.comment.slice(0, 40).trimEnd() + '…' : e.comment) : '';
       const there = `${at}${e.comment_id ? '#c-' + encodeURIComponent(e.comment_id) : ''}`;
       if (e.html) {  // on a work's page: said whole, here as there (Justin, 9 Nov); ↩ answers it on the page too
@@ -4711,7 +4718,8 @@
     }
     if (e.type === 'work') {  // a piece of work's page opened, to talk about it (services/work_pages.py; Plan, section 9)
       el.className = 'event';
-      const page = e.tiding ? `/tidings/${encodeURIComponent(e.tiding)}/` : '/ramp/';
+      const page = e.repo && e.branch  // its page, in the ramp
+        ? `/ramp/${encodeURIComponent(e.repo)}/${String(e.branch).split('/').map(encodeURIComponent).join('/')}/` : '/ramp/';
       el.innerHTML = `💬 <b>${esc(shown(e.by || 'someone'))}</b> opened a page to talk about `
         + `<a href="${esc(page)}">${esc(e.ref || 'a piece of work')}</a>${e.title ? `: ${esc(e.title)}` : ''}`
         + ` · ${esc(stamp(e.created_at))}`;
@@ -7593,22 +7601,66 @@
   }
 
   const typingEl = document.getElementById('typing');
-  // Open asks here (/api/moods/ asked): each a link to its own message in the thread (Justin, 29 Oct:
-  // "the notice at the bottom needs to be a link to that message"). Until the event lands -- a full-tools
-  // wake, a merged event, a deploy event -- they stay, with 🔨/🪢/🖥️ by the Mood's name.
+  // Open asks here (/api/moods/ asked, kept fresh by /api/moods/live/): each a link to its own message in the thread
+  // (Justin, 29 Oct: "the notice at the bottom needs to be a link to that message"). Until the event lands -- a
+  // full-tools wake, a merged event, a deploy event -- they stay, with 🔨/🪢/🖥️ by the Mood's name.
+  // A merge ask is drawn by what it names: one line for each candidate branch not merged yet, with a dot and the
+  // name of every emergent asking for it, and one Merge… (Justin, 9 Nov: two lines and two buttons for #449).
+  const askTime = at => new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  function askOne(t) {
+    return `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
+      + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.emergent, true)}<b>${esc(shown(t.emergent))}</b>`
+      + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
+      + `${esc(askTime(t.at))}</a>`;
+  }
+  function askWorks(t) {  // what a merge ask names, not merged yet: the server's word, else read from its words
+    if (Array.isArray(t.works)) return t.works;
+    return window.magentaMerge ? magentaMerge.named(t.for) : [];
+  }
   function renderAsksOpen() {
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
-    box.innerHTML = ((m && m.asked) || []).map(t =>
-      `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
-        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.emergent, true)}<b>${esc(shown(t.emergent))}</b>`
-        + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
-        + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`
-        // A 🪢 ask's work, each a Merge… for a merger: what it names, looked at, then merged (Plan, section 10).
-        + (t.kind === 'merge' && CAN_MERGE && window.magentaMerge ? magentaMerge.named(t.for).map(w =>
-          ` <button type="button" class="askmerge" data-repo="${esc(w.repo)}" data-branch="${esc(w.branch || '')}"`
-          + ` data-number="${esc(w.number || '')}">Merge ${esc(w.number ? w.repo + '#' + w.number : w.repo + ':' + w.branch)}…</button>`).join('') : '')
-      ).join('<br>');
+    const asks = (m && m.asked) || [], lines = [], byWork = new Map();
+    for (const t of asks) {
+      const works = t.kind === 'merge' ? askWorks(t) : [];
+      if (!works.length) { lines.push({ at: t.at, html: askOne(t) }); continue; }
+      for (const w of works) {
+        const name = w.number ? `${w.repo}#${w.number}` : `${w.repo}:${w.branch}`;
+        if (!byWork.has(name)) byWork.set(name, { w, name, asks: [] });
+        const got = byWork.get(name);
+        if (!got.asks.some(a => a.emergent === t.emergent)) got.asks.push(t);
+      }
+    }
+    for (const { w, name, asks: by } of byWork.values()) {
+      by.sort((a, b) => a.at < b.at ? -1 : 1);
+      const who = by.map(t => `<a class="msglink asker" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
+        + ` title="${esc(t.emergent)} asked at ${esc(askTime(t.at))}: ${esc(t.for)}"><span class="askdot" style="--who: ${agentColor(t.emergent)}"></span>`
+        + `${esc(shown(t.emergent))}</a>`).join(', ');
+      const last = by[by.length - 1].at;
+      lines.push({ at: last, html: `<span class="askwork">🪢 ${who} asked to merge <b>${esc(name)}</b> · ${esc(askTime(last))}</span>`
+        + (CAN_MERGE && window.magentaMerge ? ` <button type="button" class="askmerge" data-repo="${esc(w.repo)}" data-branch="${esc(w.branch || '')}"`
+          + ` data-number="${esc(w.number || '')}">Merge ${esc(name)}…</button>` : '') });
+    }
+    lines.sort((a, b) => a.at < b.at ? -1 : 1);
+    box.innerHTML = lines.map(l => l.html).join('<br>');
+    // Each Merge… here, looked at before it's pressed: the sheet opens on it (Justin, 9 Nov).
+    if (window.magentaMerge) box.querySelectorAll('button.askmerge').forEach(b =>
+      magentaMerge.prefetch({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }));
   }
+  // The asks as the live poll has them now: one answered (merged, redeployed, woken) goes at once.
+  function freshAsks(live) {
+    let changed = false;
+    for (const m of moods) {
+      const d = live[m.slug];
+      if (!d || !('asked' in d)) continue;
+      const now = d.asked && d.asked.length ? d.asked : undefined;
+      if (JSON.stringify(now || null) !== JSON.stringify(m.asked || null)) { m.asked = now; changed = true; }
+    }
+    if (changed) { renderAsksOpen(); renderNav(); }
+  }
+  ['pointerover', 'focusin', 'touchstart'].forEach(kind => document.getElementById('toolsOpen').addEventListener(kind, e => {
+    const b = e.target.closest && e.target.closest('button.askmerge');
+    if (b && window.magentaMerge) magentaMerge.prefetch({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null });
+  }, { passive: true }));
   document.getElementById('toolsOpen').addEventListener('click', e => {
     const b = e.target.closest('button.askmerge');
     if (!b) return;
@@ -7938,7 +7990,7 @@
     if (slash) return { kind: 'command', start: 1, prefix: slash[1].toLowerCase() };
     const forAgent = upto.match(AGENT_COMMAND);
     if (forAgent) return { kind: 'command-agent', start: upto.length - forAgent[2].length, prefix: forAgent[2].toLowerCase() };
-    const y = upto.match(/^\/(?:clips|yarn)(?:\s+forget)?\s+([a-z0-9_-]*)$/i);
+    const y = upto.match(/^\/(?:clips?|yarn)(?:\s+forget)?\s+([a-z0-9_-]*)$/i);
     if (y) return { kind: 'clips', start: upto.length - y[1].length, prefix: y[1].toLowerCase() };
     const w = upto.match(/\[\[([^\[\]|\n]{1,100})$/);
     if (w) return { kind: 'wiki', start: upto.length - w[1].length, prefix: w[1] };
@@ -8129,6 +8181,10 @@
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault(); chosen = (chosen + (e.key === 'ArrowDown' ? 1 : choices.length - 1)) % choices.length; showSuggest();
     } else if ((e.key === 'Enter' && !e.ctrlKey && !e.metaKey) || e.key === 'Tab') {
+      // Typed in full already (a clip's whole name): Enter sends, rather than choosing what's there over and
+      // over (Justin, 8 Nov: "I can't press enter to send a message that's just /clip <name>").
+      const at = wordAtCaret(), c = choices[chosen];
+      if (e.key === 'Enter' && at && c && sayBox.value.slice(at.start, sayBox.selectionStart) === c.insert) { closeSuggest(); return; }
       e.preventDefault(); e.stopImmediatePropagation(); acceptSuggest(chosen);
       return;
     } else if (e.key === 'Escape') { e.preventDefault(); closeSuggest(); }
@@ -10116,7 +10172,7 @@
       recordPosted(current);
       composer.querySelectorAll('.note').forEach(el => el.remove());
       if (done.pending) memoOnItsWay(done.pending);
-      if (/^\/(?:clips|yarn)\s+(save|forget)\b/i.test(text)) clipsCache = null;  // the library changed
+      if (/^\/(?:clips?|yarn)\s+(save|forget)\b/i.test(text)) clipsCache = null;  // the library changed
       if (done.note) {  // what a /clips command did, for whoever sent it
         composer.insertAdjacentHTML('beforeend', `<span class="note">${esc(done.note)}</span>`);
         const note = composer.querySelector('.note:last-of-type');
@@ -10277,7 +10333,9 @@
   const sectionOf = path => {
     const old = /^\/moods\/[^/]+\/*$/.test(path), name = path.replace(/\/+$/, '').split('/').pop();
     if (!old && path.split('/').filter(Boolean).length !== 1) return null;
-    return SECTIONS.includes(name) ? name : (old && OLD_SECTIONS[name]) || null;
+    if (!old) return SECTIONS.includes(name) ? name : null;
+    // An old address: /moods/pulls/ was the ramp; /moods/ramp/ never was a section -- it's the Mood #ramp.
+    return OLD_SECTIONS[name] || (name !== 'ramp' && SECTIONS.includes(name) ? name : null);
   };
   // A frame, made once: tidings is asked for in the background at the start, so it's ready when wanted
   // (Justin, 21 Oct); the others load the first time they're shown. A plain spinner while one loads.
@@ -10306,7 +10364,22 @@
     sectionFrames.append(frame, loading);
     return frame;
   }
-  function showSection(name, push) {
+  // A candidate branch's page, in the ramp (Justin, 9 Nov: "why does it take me to tidings?"): /ramp/<repo>/<branch>/.
+  const candidateAt = path => /^\/ramp\/[^/]+\/.+\/$/.test(path);
+  // The ramp's frame shows what the address says: the list, or a candidate's page. It's moved with
+  // location.replace, so it adds no step of its own to Back: Back is the one page's alone, and returns to
+  // where the link was -- the ramp's list, or the Mood whose merge sheet it was (Justin, 9 Nov).
+  function rampFrameTo(path, hash) {
+    const want = `${path}?embed=1${hash || ''}`;
+    const frame = sectionFrames.querySelector('iframe[data-section="ramp"]:not([data-fresh])');
+    if (!frame) { frameFor('ramp', false, want); return; }
+    let there = null;
+    try { there = frame.contentWindow.location.pathname; } catch (e) {}
+    if (there === path && !hash) return;  // there already
+    try { frame.contentWindow.location.replace(want); } catch (e) { frame.src = want; }
+  }
+  function showSection(name, push, at, hash) {
+    if (name === 'ramp') rampFrameTo(at || '/ramp/', hash);
     const left = sectionNow;
     // Leaving Tidings with a video playing there: it follows (the small player, above).
     if (left === 'tidings' && name !== 'tidings') {
@@ -10338,8 +10411,9 @@
     });
     // Back to Tidings: the address is where its frame is, a tiding's own page if it was left there.
     const url = name === 'moods' ? (current ? '/moods/' + encodeURIComponent(current) + '/' : '/moods/')
+      : name === 'ramp' ? (at || '/ramp/') + (hash || '')
       : (name === 'tidings' && tidingsAddress(frameFor('tidings'))) || `/${name}/`;
-    const here = name === 'tidings' ? location.pathname + location.search + location.hash : location.pathname;
+    const here = name === 'tidings' || name === 'ramp' ? location.pathname + location.search + location.hash : location.pathname;
     if (push && here !== url) history.pushState({ section: name, slug: current }, '', url);
     const moreBtn = document.getElementById('sectionsMoreBtn');
     if (moreBtn) moreBtn.classList.toggle('active', ['prompts', 'status', 'todo', 'verify'].includes(name));
@@ -10421,10 +10495,21 @@
     const frame = sectionFrames.querySelector('iframe[data-section="tidings"]:not([data-fresh])');
     if (frame) frame.src = `/tidings/${id}/?embed=1${to.hash}`;
   });
+  // A link to a candidate branch's page, from a Mood (a merge sheet's "± See the full diff", a work line):
+  // opened in the ramp, at it.
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href^="/ramp/"]');
+    if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+    const to = new URL(a.href, location.href);
+    if (!candidateAt(to.pathname)) return;
+    e.preventDefault();
+    showSection('ramp', true, to.pathname, to.hash);
+  });
   // A link inside a section into magenta: opened here, without loading anything again.
   window.addEventListener('message', async e => {
     if (e.origin !== location.origin || !e.data || typeof e.data.magentaGo !== 'string') return;
     const to = new URL(e.data.magentaGo, location.origin);
+    if (candidateAt(to.pathname)) { showSection('ramp', true, to.pathname, to.hash); return; }
     const sectionTo = sectionOf(to.pathname);
     if (sectionTo) { showSection(sectionTo, true); return; }
     // One tiding's page (a piece of work's, from the ramp): in the Tidings section, at it.
@@ -10467,6 +10552,10 @@
       }
       return;
     }
+    if (sectionTo === 'ramp' || candidateAt(location.pathname)) {  // the list, or a candidate's page: the frame follows
+      showSection('ramp', false, location.pathname, location.hash);
+      return;
+    }
     if (sectionTo) { showSection(sectionTo, false); return; }
     if (sectionNow !== 'moods') showSection('moods', false);
     const slug = (e.state && e.state.slug) || location.pathname.split('/')[2];
@@ -10486,7 +10575,8 @@
     frameFor('tidings', true, tidingsAt ? `${tidingsAt}?${asked}${location.hash}` : undefined);
     // Asked for a section: shown at once, before the Moods load behind it -- not a Mood first, then the
     // section (Justin, 23 Oct: from the front page, a link took "quite a while").
-    if (initialSection !== 'moods') showSection(initialSection, false);
+    if (initialSection === 'ramp') showSection('ramp', false, location.pathname, location.hash);  // the list, or a candidate's page
+    else if (initialSection !== 'moods') showSection(initialSection, false);
     // The list of Moods and the Mood in the address are asked for together: the Mood isn't kept waiting on
     // the list (Justin, 31 Oct: over a minute to load, the list rebuilding behind a deploy). Without a Mood
     // in the address, the list says which to open, so it's waited for.

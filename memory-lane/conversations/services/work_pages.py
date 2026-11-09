@@ -57,11 +57,25 @@ def _path(path):
 
 # --- which work, and what the ramp knows of it -----------------------------------------------------------
 
-def find(repo, branch):
-    """The ramp's item for this work (open, or merged lately), or None."""
+def find(repo, branch, fresh_if_missing=False):
+    """The ramp's item for this work while it's open, or None. From the last board, however old, so a work's page
+    never waits on a rebuild (Justin, 9 Nov: "± See the full diff" sat ~8 s on Tidings, the board rebuilding).
+    fresh_if_missing: not on an old board, ask a fresh one (a branch pushed since it was built)."""
+    import time
     from . import ramp
-    board = ramp.board()
-    return next((i for i in board.get('open', []) if i.get('repo') == repo and i.get('branch') == branch), None)
+    board = ramp.board(stale_ok=True)
+    item = next((i for i in board.get('open', []) if i.get('repo') == repo and i.get('branch') == branch), None)
+    if item is None and fresh_if_missing and time.time() - board.get('built', 0) >= ramp.BOARD_FOR:
+        board = ramp.board()
+        item = next((i for i in board.get('open', []) if i.get('repo') == repo and i.get('branch') == branch), None)
+    return item
+
+
+def address(repo, branch):
+    """A candidate branch's page, in the ramp (Justin, 9 Nov: "why does it take me to tidings?"):
+    /ramp/<repo>/<branch>/, the branch's slashes kept."""
+    from urllib.parse import quote
+    return f'/ramp/{quote(repo, safe="")}/{quote(branch, safe="/")}/'
 
 
 def page_of(repo, branch):
@@ -118,7 +132,7 @@ def open_page(by, repo, branch):
     have = page_of(repo, branch)
     if have is not None:
         return have.tiding
-    item = find(repo, branch)
+    item = find(repo, branch, fresh_if_missing=True)
     if item is None:
         raise Invalid(f'{repo}:{branch} is not open on the ramp', 404)
     mood = None
@@ -165,7 +179,8 @@ def panel(work):
         out['state'] = 'gone'
         return out
     if item is not None:
-        state, head = item.get('state', 'open'), item.get('head') or _sha(held, f'refs/heads/{branch}')
+        # The head from githouse's copy, now: the board may be a minute or more old.
+        state, head = item.get('state', 'open'), _sha(held, f'refs/heads/{branch}') or item.get('head')
     else:  # off the ramp: merged or closed since, its name retired (Plan, section 1)
         state, head = 'gone', None
         for kind in ('merged', 'closed'):
@@ -181,7 +196,7 @@ def panel(work):
     if head is None:
         return out
     refs = ramp._refs(held)
-    base = ramp._base(refs, (item or {}).get('base', ''))
+    base = ramp._base(refs, (item or {}).get('base', ''), repo)
     out.update(head=head, base=base, description=(item or {}).get('description', ''))
     if not base:
         return out

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ tiding.title }} · tidings · magenta</title>
+<title>{% if work %}{{ work.ref }} · ramp{% else %}{{ tiding.title }} · tidings{% endif %} · magenta</title>
 <style>
   :root {
     --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
@@ -200,6 +200,7 @@
     // Its title: this page's own address, to share or open in a tab. Pressed here, it's here already.
     if (a.matches('h1 a.title') && to.pathname === location.pathname) { e.preventDefault(); scrollTo({ top: 0 }); return; }
     if (to.pathname.startsWith('/tidings/')) return;  // the listing or another discussion: in this frame
+    if (to.pathname === location.pathname && to.hash) return;  // within this page: a line, a file
     if (a.matches('.words a.img')) return;  // a picture: the one page's lightbox (mood_tiding_tools.html)
     e.preventDefault();
     parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);

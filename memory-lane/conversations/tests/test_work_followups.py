@@ -12,7 +12,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from conversations.models import MergeOrder, Message, Mood, ThinkingEntity, Thumb, Tiding, TidingComment
+from conversations.models import WorkTiding, MergeOrder, Message, Mood, ThinkingEntity, Thumb, Tiding, TidingComment
 from conversations.services import links, ramp, tiding_links, todo
 from conversations.services.mood_view import event_line
 from conversations.tests.test_work_pages import WorkRepo
@@ -142,25 +142,32 @@ class RampLinksAndSheetTest(WorkRepo):
         return self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
 
     def test_the_works_name_opens_its_page(self):
+        # Its page is in the ramp, at /ramp/<repo>/<branch>/ (Justin, 9 Nov: "why does it take me to tidings?"),
+        # made the first time it's asked for; ± See the diff is the same page at #diff.
         self.as_('justin')
-        self.assertIn('class="ref openpage" href="https://github.com/cryptograss/magenta/pull/7" data-repo="magenta" '
-                      'data-branch="re/foo"', self.ramp_page())
-        tid = self.open_().json()['id']
-        page = self.ramp_page()
-        self.assertIn(f'<a class="ref" href="/tidings/{tid}/"', page)
-        self.assertIn('<a class="gh" href="https://github.com/cryptograss/magenta/pull/7"', page)
+        for _ in range(2):  # without a page yet, then with one
+            page = self.ramp_page()
+            self.assertIn('<a class="title" href="/ramp/magenta/re/foo/"', page)
+            self.assertIn('<a class="see" href="/ramp/magenta/re/foo/#diff"', page)
+            self.assertIn('<a class="gh" href="https://github.com/cryptograss/magenta/pull/7" target="_blank" rel="noopener" '
+                          'title="GitHub\'s pull request page for it">PR #7 ↗</a>', page)
+            self.open_()
+        self.assertNotIn('/tidings/', page.split('<table id="open">')[1].split('</table>')[0])
 
     def test_signed_out_it_is_still_githubs(self):
         page = self.ramp_page()
-        self.assertIn('<a class="ref" href="https://github.com/cryptograss/magenta/pull/7" target="_blank"', page)
-        self.assertNotIn('class="ref openpage"', page)
+        self.assertIn('<a class="title" href="https://github.com/cryptograss/magenta/pull/7" target="_blank"', page)
+        self.assertIn('<a class="see" href="https://github.com/cryptograss/magenta/pull/7/files" target="_blank"', page)
+        self.assertNotIn('/ramp/magenta/', page.split('<table id="open">')[1].split('</table>')[0])
 
     def test_merged_work_links_its_page(self):
         self.as_('justin')
-        tid = self.open_().json()['id']
+        self.open_()
         self.cards['merged'] = [dict(self.cards['open'][0])]
-        self.assertIn(f'<a class="ref" href="/tidings/{tid}/" title="Its page: the work, its diff, and what was said">'
-                      'magenta#7</a>', self.ramp_page())
+        page = self.ramp_page()
+        self.assertIn('<a class="title" href="/ramp/magenta/re/foo/" title="Its page: what it changed, its commits, what was said">'
+                      'the re/foo work</a>', page)
+        self.assertIn('<span class="ref">magenta:re/foo</span>', page)
 
     def test_the_sheet_says_who_asked_and_who_liked_it(self):
         from conversations.views_merge import _who_wants
@@ -173,3 +180,138 @@ class RampLinksAndSheetTest(WorkRepo):
         self.assertEqual(got['asks'], [{'by': 're', 'mood': 'ramp', 'id': 'x', 'colour': '#ff3c00'}])
         self.assertEqual(sorted((t['by'], t['current']) for t in got['thumbs']), [('justin', True), ('skyler', False)])
         json.dumps(got)  # as the sheet gets it
+
+
+class SheetFullDiffTest(WorkRepo):
+    """The merge sheet's "± See the full diff" (Justin, 9 Nov: "a link from the merge modal to see the full
+    diff"): the candidate's page, in the ramp, at #diff."""
+
+    def test_the_sheet_links_to_it_at_the_diff(self):
+        from django.template.loader import render_to_string
+        sheet = render_to_string('conversations/_merge_sheet.html')
+        self.assertIn('<a class="full" href="#" hidden', sheet)
+        self.assertIn("`/ramp/${encodeURIComponent(body.repo)}/${body.branch.split('/').map(encodeURIComponent).join('/')}/#diff`", sheet)
+        self.assertIn("parent.postMessage({ magentaGo: to.pathname + to.hash }", sheet)  # from a frame: the one page opens it
+        self.assertNotIn('/tidings/', sheet)
+
+
+class CandidatePageTest(WorkRepo):
+    """A candidate branch's page has its own address in the ramp (Justin, 9 Nov, #ramp: "why does it take me to
+    the tidings page?"; Back to where it was opened from)."""
+
+    def framed(self, path):
+        return self.client.get(path, {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe')
+
+    def test_signed_in_it_is_made_when_first_asked_for(self):
+        from conversations.models import WorkTiding
+        self.as_('justin')
+        got = self.framed('/ramp/magenta/re/foo/')
+        self.assertEqual(got.status_code, 200)
+        page = got.content.decode()
+        self.assertIn('<title>magenta#7 · ramp · magenta</title>', page)
+        self.assertIn('<a class="back" href="/ramp/">‹ the ramp</a>', page)
+        self.assertEqual(WorkTiding.objects.filter(repo='magenta', branch='re/foo').count(), 1)
+        self.assertEqual(self.framed('/ramp/magenta/re/foo/').status_code, 200)   # the same page, not a second
+        self.assertEqual(WorkTiding.objects.filter(repo='magenta', branch='re/foo').count(), 1)
+
+    def test_signed_out_without_a_page_nothing_is_made(self):
+        from conversations.models import WorkTiding
+        self.assertEqual(self.framed('/ramp/magenta/re/foo/').status_code, 404)
+        self.assertFalse(WorkTiding.objects.exists())
+        self.as_('justin')
+        self.assertEqual(self.framed('/ramp/magenta/re/nothing/').status_code, 404)   # not open on the ramp
+
+    def test_opened_on_its_own_it_is_the_one_page_on_the_ramp(self):
+        got = self.client.get('/ramp/magenta/re/foo/', HTTP_SEC_FETCH_DEST='document')
+        self.assertEqual(got.status_code, 200)
+        self.assertIn('const initialSection = "ramp"', got.content.decode())
+
+    def test_its_old_tidings_address_is_sent_here(self):
+        self.as_('justin')
+        tid = self.open_().json()['id']
+        got = self.client.get(f'/tidings/{tid}/', HTTP_SEC_FETCH_DEST='document')
+        self.assertEqual((got.status_code, got['Location']), (302, '/ramp/magenta/re/foo/'))
+
+    def test_a_comment_line_opens_it_in_the_ramp(self):
+        self.as_('justin')
+        tiding = Tiding.objects.get(id=self.open_().json()['id'])
+        tiding_links.comment(tiding, ThinkingEntity.objects.get(name='justin'), 'Looks right.')
+        notice = Message.objects.get(source_file=tiding_links.COMMENT_SOURCE)
+        self.assertEqual(notice.content['work'], '/ramp/magenta/re/foo/')
+
+    def test_line_links_are_its_address(self):
+        self.as_('justin')
+        self.assertIn('`${location.origin}/ramp/magenta/re/foo/#${id}`', self.framed('/ramp/magenta/re/foo/').content.decode())
+
+    def test_the_one_page_keeps_back_its_own(self):
+        # The ramp's frame is moved with location.replace, never by a link inside it, so Back returns to where
+        # the candidate was opened from: the ramp's list, or the Mood whose merge sheet it was.
+        html = self.client.get('/moods/', HTTP_SEC_FETCH_DEST='document').content.decode()
+        self.assertIn("try { frame.contentWindow.location.replace(want); } catch (e) { frame.src = want; }", html)
+        self.assertIn("if (candidateAt(to.pathname)) { showSection('ramp', true, to.pathname, to.hash); return; }", html)
+        self.assertIn("showSection('ramp', false, location.pathname, location.hash);", html)
+
+
+class WorkPageNeverWaitsTest(WorkRepo):
+    """Justin, 9 Nov: "± See the full diff" sat ~8 s on Tidings before the page came. A work's page asked for a
+    fresh board, and rebuilding it takes seconds once it's a minute old. Now it reads the last one at once."""
+
+    def setUp(self):
+        super().setUp()
+        self.as_('justin')
+        self.tid = self.open_().json()['id']
+        self.rebuilt = []
+        p = mock.patch.object(ramp, '_rebuild', lambda: self.rebuilt.append(1))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def age(self, **item):
+        board = ramp.board()
+        if item:
+            board['open'] = [{**i, **item} for i in board['open']]
+        cache.set(ramp.KEY, {**board, 'built': time.time() - 3600}, None)   # an hour old
+
+    def test_an_old_board_is_read_and_rebuilt_behind(self):
+        self.age()
+        asked = []
+        with mock.patch.object(ramp, 'cards', lambda: asked.append(1) or self.cards):
+            self.assertEqual(self.page(self.tid).status_code, 200)
+        self.assertEqual(asked, [])          # no board was built while the page waited
+        self.assertEqual(self.rebuilt, [1])  # one is, behind it
+
+    def test_its_head_is_githouses_now_not_the_old_boards(self):
+        self.age(head='0' * 40)              # the board's head, from before a push
+        self.assertIn(self.head[:7], self.page(self.tid).content.decode())
+
+    def test_a_branch_the_old_board_hasnt_seen_still_gets_its_page(self):
+        self.age()
+        old = cache.get(ramp.KEY)
+        cache.set(ramp.KEY, {**old, 'open': []}, None)     # built before re/foo was pushed
+        WorkTiding.objects.all().delete()
+        self.assertEqual(self.open_().status_code, 200)    # asked a fresh board for it
+
+
+class CandidatesTest(WorkRepo):
+    """The open candidate branches, for each wake (Justin, 9 Nov): ramp.candidates and /api/ramp/candidates/."""
+
+    def test_each_open_candidate_with_its_short_description(self):
+        self.cards['open'][0]['description'] = ('The **foo** work: it makes [foo](https://example.org) faster.\n\n'
+                                                 'More detail.\n\nDeploy: none\nWorked on by: re, in #ramp')
+        [c] = ramp.candidates()
+        self.assertEqual({k: c[k] for k in ('ref', 'branch', 'number', 'title', 'about', 'state')},
+                         {'ref': 'magenta#7', 'branch': 're/foo', 'number': 7, 'title': 'the re/foo work',
+                          'about': 'The foo work: it makes foo faster.', 'state': 'open'})
+
+    def test_a_short_description(self):
+        self.assertEqual(ramp.short_description('Deploy: none\nWorked on by: x'), '')
+        self.assertEqual(ramp.short_description('Worked on by: x\n\nThe point.'), 'The point.')
+        long = ramp.short_description('word ' * 100)
+        self.assertEqual((len(long), long[-1]), (ramp.CANDIDATE_SAID, '…'))
+
+    def test_only_for_a_runners_key(self):
+        from django.test import override_settings
+        with override_settings(MOOD_RUNNER_KEYS={'re': 'k' * 40}):
+            self.assertEqual(self.client.get('/api/ramp/candidates/').status_code, 401)
+            got = self.client.get('/api/ramp/candidates/', HTTP_AUTHORIZATION='Bearer ' + 'k' * 40)
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual([c['ref'] for c in got.json()['candidates']], ['magenta#7'])

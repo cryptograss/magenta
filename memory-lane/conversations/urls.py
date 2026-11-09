@@ -30,6 +30,8 @@ urlpatterns = [
     path('tasks/', views_settings.tasks_page, name='mood_tasks'),
     path('journals/', views_settings.journals_page, name='mood_journals'),
     path('ramp/', views_settings.ramp_page, name='mood_ramp'),
+    # A candidate branch's page, in the ramp (Justin, 9 Nov): its work, its diff, what's been said.
+    path('ramp/<str:repo>/<path:branch>/', views_settings.candidate_page, name='mood_candidate'),
     path('moods/pulls/', RedirectView.as_view(url='/ramp/', permanent=True, query_string=True)),
     *[path(f'moods/{name}/', RedirectView.as_view(url=f'/{name}/', permanent=True, query_string=True))
       for name in ('settings', 'status', 'tidings', 'prompts', 'polls', 'todo', 'verify', 'hooks', 'tasks', 'journals')],
@@ -102,6 +104,7 @@ urlpatterns = [
     path('api/verify/', views_settings.api_verify, name='api_verify'),
     path('api/usage/', views_settings.api_usage, name='api_usage'),
     path('api/usage/plan/', views_runner.api_plan, name='api_usage_plan'),
+    path('api/ramp/candidates/', views_runner.api_candidates, name='api_ramp_candidates'),
     path('api/usage/kinds/', views_settings.api_usage_kinds, name='api_usage_kinds'),
     path('api/auth/admin/', views_admin.api_admin, name='api_auth_admin'),
     path('api/brakes/', views_admin.api_brakes, name='api_brakes'),  # githouse asks, before every merge

@@ -115,6 +115,17 @@ class WorkPageTest(WorkRepo):
         self.assertIn('class="thumb"', html)                  # the 👍, for a signed-in person
         self.assertNotIn('class="vote', html)                 # not Tidings' upvote: the 👍 is this page's
 
+    def test_the_diff_comes_first_with_every_diff_a_click_away(self):
+        # Justin, 9 Nov: "still not obvious to me where I'm supposed to click to see the diff". The diff is
+        # the page's first heading, above the commits, with one button for every file's; the ramp's
+        # "± See the diff" arrives at #diff, which opens them all.
+        self.as_('justin')
+        html = self.page(self.open_().json()['id']).content.decode()
+        self.assertIn('<h3 id="diff">The diff: 2 files <button type="button" class="every" aria-pressed="false">'
+                      'open every diff</button></h3>', html)
+        self.assertLess(html.index('id="diff"'), html.index('Commits ('))
+        self.assertIn("location.hash === '#diff'", html)
+
     def test_one_file_s_diff_every_line_an_address(self):
         html = self.client.get('/api/ramp/diff/', {'repo': 'magenta', 'base': self.base, 'head': self.head,
                                                    'path': 'app.py'}).content.decode()
@@ -139,13 +150,16 @@ class WorkPageTest(WorkRepo):
         self.assertEqual(self.client.get('/api/ramp/diff/', {**d, 'base': 'main'}).status_code, 404)
 
     def test_the_ramp_offers_a_page_then_links_it(self):
+        # Signed in, a 💬 links to the candidate's page in the ramp whether it has one yet or not: asked for, it's made.
         self.as_('justin')
         html = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
-        self.assertIn('<button type="button" class="talk" data-repo="magenta" data-branch="re/foo"', html)
-        tid = self.open_().json()['id']
+        self.assertIn('<a class="talk" href="/ramp/magenta/re/foo/" title="Its page: what it changes, its commits, '
+                      "what's been said\">💬 talk</a>", html)
+        self.open_()
         cache.clear()
         html = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
-        self.assertIn(f'<a class="talk" href="/tidings/{tid}/"', html)
+        self.assertIn('<a class="talk" href="/ramp/magenta/re/foo/" title="Its page: what it changes, its commits, '
+                      "what's been said\">💬 0</a>", html)
 
 
 class CardDescriptionTest(TestCase):

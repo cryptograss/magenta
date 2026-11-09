@@ -28,6 +28,9 @@
   section.work ul.files button.file::before { content: '▸ '; color: var(--muted); }
   section.work ul.files li.open button.file::before { content: '▾ '; }
   section.work ul.files .whole { font-size: 12px; margin-left: 8px; }
+  section.work h3 button.every { font: inherit; font-size: 11.5px; text-transform: none; letter-spacing: 0; margin-left: 8px;
+    padding: 0 8px; border-radius: 4px; border: 1px solid var(--line); background: none; color: var(--ink); cursor: pointer; }
+  section.work h3 button.every:hover { border-color: var(--accent); }
   section.work .view { overflow-x: auto; margin: 4px 0 8px; border: 1px solid var(--line); border-radius: 6px; }
   section.work .view[hidden] { display: none; }
   table.code { border-collapse: collapse; width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
@@ -48,7 +51,7 @@
 <section class="work" id="work" data-repo="{{ work.repo }}" data-branch="{{ work.branch }}" data-head="{{ work.head|default:'' }}"
          data-base="{{ work.merge_base|default:'' }}" data-tiding="{{ tiding.id }}">
   <div class="whead">
-    <span class="state {{ work.state }}">{% if work.state == 'pushed' %}no PR yet{% else %}{{ work.state }}{% endif %}</span>
+    <span class="state {{ work.state }}">{% if work.state == 'pushed' %}no pull request{% else %}{{ work.state }}{% endif %}</span>
     {% if work.item.url %}<a class="ref" href="{{ work.item.url }}" target="_blank" rel="noopener">{{ work.ref }}</a>{% else %}<span class="ref">{{ work.ref }}</span>{% endif %}
     <h2 class="wtitle">{{ work.item.title|default:tiding.title }}</h2>
     {% if work.tests %}<a class="tests {{ work.tests.state|slugify }}" href="{{ work.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ work.tests.number }} on Jenkins, for this head">{% if work.tests.state == 'passed' %}✓ tests{% elif work.tests.state == 'failed' %}✗ tests{% elif work.tests.state == 'testing' %}… testing{% else %}{{ work.tests.state }}{% endif %}</a>{% endif %}
@@ -67,16 +70,8 @@
 
   {% if work.description_html %}<div class="desc">{{ work.description_html|safe }}</div>{% endif %}
 
-  {% if work.commits %}
-  <h3>Commits ({{ work.commits|length }})</h3>
-  <ol class="commits">
-    {% for c in work.commits %}<li><code title="{{ c.sha }}">{{ c.sha|slice:":8" }}</code> {{ c.subject }} <span class="by">· {{ c.author }}{% if c.at %} · {{ c.at|date:"j M H:i" }}Z{% endif %}</span>
-      {% if c.body %}<pre>{{ c.body }}</pre>{% endif %}</li>{% endfor %}
-  </ol>
-  {% endif %}
-
   {% if work.files %}
-  <h3>Files ({{ work.files|length }})</h3>
+  <h3 id="diff">The diff: {{ work.files|length }} file{{ work.files|length|pluralize }} <button type="button" class="every" aria-pressed="false">open every diff</button></h3>
   <ul class="files">
     {% for f in work.files %}<li data-path="{{ f.path }}"><button type="button" class="file" title="Show what changed in it">{{ f.path }}</button>
       {% if f.binary %}<span class="muted">binary</span>{% else %}<span class="add">+{{ f.added }}</span> <span class="rm">−{{ f.removed }}</span>{% endif %}
@@ -86,6 +81,15 @@
   {% elif work.state == 'gone' %}
   <p class="muted">githouse no longer has this work's commits.</p>
   {% endif %}
+
+  {% if work.commits %}
+  <h3>Commits ({{ work.commits|length }})</h3>
+  <ol class="commits">
+    {% for c in work.commits %}<li><code title="{{ c.sha }}">{{ c.sha|slice:":8" }}</code> {{ c.subject }} <span class="by">· {{ c.author }}{% if c.at %} · {{ c.at|date:"j M H:i" }}Z{% endif %}</span>
+      {% if c.body %}<pre>{{ c.body }}</pre>{% endif %}</li>{% endfor %}
+  </ol>
+  {% endif %}
+
 </section>
 {% if can_merge and work.item and work.state != 'merged' %}{% include "conversations/_merge_sheet.html" %}{% endif %}
 {% include "conversations/_thumbs_script.html" %}
@@ -97,10 +101,14 @@
   if (!work) return;
   const q = o => new URLSearchParams(o).toString();
   const { repo, head, base, tiding } = work.dataset;
-  async function show(li, whole) {
+  const SMALL_FILES = 15, SMALL_LINES = 800;  // a change this size has every diff open from the start
+  async function show(li, whole, keep) {  // keep: leave it open if it's open already
     const view = li.querySelector('.view');
     const kind = whole ? 'file' : 'diff';
-    if (!view.hidden && view.dataset.kind === kind) { view.hidden = true; li.classList.remove('open'); return; }
+    if (!view.hidden && view.dataset.kind === kind) {
+      if (keep) return li.loading;
+      view.hidden = true; li.classList.remove('open'); return;
+    }
     const path = li.dataset.path;
     const url = whole ? '/api/ramp/file/?' + q({ repo, commit: head, path })
                       : '/api/ramp/diff/?' + q({ repo, base, head, path });
@@ -108,15 +116,39 @@
     view.hidden = false;
     li.classList.add('open');
     view.textContent = 'reading…';
-    const r = await fetch(url, { credentials: 'same-origin' });
-    view.innerHTML = r.ok ? await r.text() : '<p class="muted"></p>';
-    if (!r.ok) view.firstChild.textContent = await r.text();
+    li.loading = (async () => {
+      const r = await fetch(url, { credentials: 'same-origin' });
+      view.innerHTML = r.ok ? await r.text() : '<p class="muted"></p>';
+      if (!r.ok) view.firstChild.textContent = await r.text();
+    })();
+    return li.loading;
   }
   work.querySelectorAll('ul.files > li').forEach(li => {
     li.querySelector('button.file').addEventListener('click', () => show(li, false));
     const whole = li.querySelector('a.whole');
     if (whole) whole.addEventListener('click', e => { e.preventDefault(); show(li, true); });
   });
+  // Every diff at once (Justin, 9 Nov: "not obvious where I'm supposed to click to see the diff"): the button by
+  // the heading; open on arrival from the ramp's "± See the diff" (#diff), or when the change is small enough to read.
+  const files = [...work.querySelectorAll('ul.files > li')];
+  const every = work.querySelector('button.every');
+  function openEvery(on) {
+    files.forEach(li => {
+      const view = li.querySelector('.view');
+      const shown = !view.hidden && view.dataset.kind === 'diff';
+      if (on !== shown) show(li, false);
+    });
+    if (every) { every.setAttribute('aria-pressed', on ? 'true' : 'false'); every.textContent = on ? 'close every diff' : 'open every diff'; }
+  }
+  if (every) every.addEventListener('click', () => openEvery(every.getAttribute('aria-pressed') !== 'true'));
+  if (location.hash === '#diff' || (files.length <= SMALL_FILES && {{ work.size.added|default:0 }} + {{ work.size.removed|default:0 }} <= SMALL_LINES)) {
+    openEvery(true);
+    if (location.hash === '#diff') document.getElementById('diff')?.scrollIntoView({ block: 'start' });
+  }
+  // The merge sheet's "± See the full diff", pressed on this very page; or #diff reached by a link here.
+  const toDiff = () => { openEvery(true); document.getElementById('diff')?.scrollIntoView({ block: 'start' }); };
+  window.addEventListener('magentaShowDiff', toDiff);
+  window.addEventListener('hashchange', () => { if (location.hash === '#diff') toDiff(); });
   // A line's number: its link, copied, and the line lit.
   work.addEventListener('click', async e => {
     const a = e.target.closest('table.code td.n a');
@@ -125,7 +157,7 @@
     const id = decodeURIComponent(a.getAttribute('href').slice(1));
     light(id);
     history.replaceState(history.state, '', '#' + id);
-    const link = `${location.origin}/tidings/${tiding}/#${id}`;
+    const link = `${location.origin}{{ work.address|escapejs }}#${id}`;  // its address in the ramp
     try { await navigator.clipboard.writeText(link); flash(a, 'link copied'); } catch (err) { flash(a, link); }
   });
   function flash(a, words) {
@@ -142,10 +174,13 @@
   const m = at.match(/^([DL]):(.+):(-?\d+)$/);
   if (m) {
     const li = [...work.querySelectorAll('ul.files > li')].find(l => l.dataset.path === m[2]);
-    if (li) show(li, m[1] === 'L').then(() => light(at));
+    if (li) show(li, m[1] === 'L', true).then(() => light(at));
   }
   const merge = document.getElementById('workMerge');
-  if (merge && window.magentaMerge) merge.addEventListener('click', () =>
-    magentaMerge.open({ repo, branch: work.dataset.branch, number: {{ work.number|default:"null" }} }, '{{ tiding.mood }}'));
+  if (merge && window.magentaMerge) {
+    const it = { repo, branch: work.dataset.branch, number: {{ work.number|default:"null" }} };
+    magentaMerge.prefetch(it);  // the one Merge… here: looked at now, so the sheet opens on it (Justin, 9 Nov)
+    merge.addEventListener('click', () => magentaMerge.open(it, '{{ tiding.mood }}'));
+  }
 })();
 </script>
