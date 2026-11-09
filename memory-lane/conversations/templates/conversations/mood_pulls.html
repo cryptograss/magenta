@@ -66,6 +66,9 @@
   pre.log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
             font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; }
   .err { color: var(--err); }
+  button.merge { font: inherit; font-size: 12px; margin-top: 3px; padding: 1px 9px; border-radius: 4px; cursor: pointer;
+                 border: 1px solid var(--accent); background: none; color: var(--accent); }
+  button.merge:hover { background: var(--accent-soft); }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -126,6 +129,7 @@
         {% if i.state != 'open' %}<span class="state {{ i.state }}"{% if i.state == 'pushed' %} title="on githouse, no pull request yet"{% elif i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{% if i.state == 'pushed' %}no PR yet{% else %}{{ i.state }}{% endif %}</span>{% endif %}
         {% if i.asked %}<a class="state ask" href="/moods/{{ i.asked.mood }}/#m-{{ i.asked.id }}" title="{{ i.asked.by }} asked for this merge in #{{ i.asked.mood }}">🪢 asked</a>{% endif %}
         {% if i.branch %}<br><span class="branch">{{ i.repo }}:{{ i.branch }}{% if i.base %} → {{ i.base }}{% endif %}</span>{% endif %}
+        {% if can_merge and i.state != 'merged' and i.branch %}<button type="button" class="merge" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}"{% if i.number %} data-number="{{ i.number }}"{% endif %} title="Look at what it brings, then merge it, as you">Merge…</button>{% endif %}
       </td>
       <td>{{ i.worked_on_by|default:i.author }}</td>
       <td>{% for m in i.moods %}<a href="/moods/{{ m }}/">#{{ m }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
@@ -173,6 +177,11 @@
   {% if board.log %}<pre class="log">{% for line in board.log %}{{ line }}
 {% endfor %}</pre>{% else %}<p class="why">Nothing logged here.</p>{% endif %}
 </main>
+{% if can_merge %}{% include "conversations/_merge_sheet.html" %}
+<script>
+  document.querySelectorAll('button.merge').forEach(b => b.addEventListener('click', () =>
+    magentaMerge.open({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }, 'ramp')));
+</script>{% endif %}
 <script>
   // Sorting the open work, here and now: no reload.
   const body = document.querySelector('#open tbody');

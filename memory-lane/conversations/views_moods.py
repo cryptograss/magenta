@@ -22,7 +22,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_changes, wiki_feed, wiki_hooks, wiki_ledger, wiki_upload
-from .services import emergent_commands, mood_auth
+from .services import emergent_commands, merge_orders, mood_auth
 from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.mood_view import (
     from_wiki_tier,
@@ -66,6 +66,8 @@ def moods_page(request, slug=None, section=''):
         'faces_on': faces.enabled(),
         # An admin signed in with their SSH key may delete anyone's message (services/retract.py).
         'viewer_admin': bool(device) and device.tier == 'key' and device.entity_id in getattr(settings, 'MOOD_ADMINS', ()),
+        # The merge button, /merge and a 🪢 ask's Merge…, for a merger signed in with their key (services/merge_orders).
+        'can_merge': bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id),
         # PickiPedia names, shown for the names here (from hunter's inventory).
         'wiki_names': wiki_auth.names(),
         # Notifications with magenta closed (services/push.py): what browsers subscribe with. '' if off.
