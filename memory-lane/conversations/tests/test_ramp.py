@@ -190,3 +190,50 @@ class RampTest(TestCase):
             board = ramp.board(now=self.now)
         self.assertEqual((board['open'], board['repos'], board['log']), ([], [], []))
         self.assertIn('cards are missing', board['error'])
+
+
+class BranchTestsTest(TestCase):
+    """The ramp's red and green: the newest branch-tests run of each head, from Jenkins (Plan, section 11)."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.delete(ramp.TESTS_KEY)
+
+    def runs(self, builds, status=200):
+        import requests
+        answer = mock.Mock(status_code=status)
+        answer.json.return_value = {'builds': builds}
+        answer.raise_for_status = mock.Mock(side_effect=None if status == 200 else requests.HTTPError(str(status)))
+        with mock.patch('requests.get', return_value=answer) as got:
+            found = ramp.test_runs()
+        return found, got
+
+    @staticmethod
+    def build(number, repo, commit, result=None, building=False):
+        return {'number': number, 'result': result, 'building': building,
+                'url': f'https://maybelle.cryptograss.live/job/branch-tests/{number}/',
+                'actions': [{}, {'parameters': [{'name': 'REPO', 'value': repo}, {'name': 'BRANCH', 'value': 're/x'},
+                                                {'name': 'COMMIT', 'value': commit}]}]}
+
+    def test_the_newest_run_of_each_commit(self):
+        found, _ = self.runs([self.build(3, 'magenta', 'a' * 40, building=True),
+                              self.build(2, 'magenta', 'a' * 40, 'FAILURE'),
+                              self.build(1, 'maybelle-config', 'b' * 40, 'SUCCESS'),
+                              self.build(0, 'arthel', 'c' * 40, 'NOT_BUILT')])
+        self.assertEqual(found[('magenta', 'a' * 40)]['state'], 'testing')
+        self.assertEqual(found[('maybelle-config', 'b' * 40)],
+                         {'state': 'passed', 'number': 1, 'url': 'https://maybelle.cryptograss.live/job/branch-tests/1/'})
+        self.assertEqual(found[('arthel', 'c' * 40)]['state'], 'no ci/test')
+
+    def test_kept_a_while_and_jenkins_down_is_no_runs(self):
+        found, got = self.runs([self.build(1, 'magenta', 'a' * 40, 'SUCCESS')])
+        self.assertEqual(ramp.test_runs(), found)  # from the cache, not asked again
+        self.assertEqual(got.call_count, 1)
+        from django.core.cache import cache
+        cache.delete(ramp.TESTS_KEY)
+        self.assertEqual(self.runs([], status=503)[0], {})
+
+    def test_items_get_their_head_s_run(self):
+        self.runs([self.build(1, 'magenta', 'a' * 40, 'FAILURE')])
+        items = ramp.with_tests([{'repo': 'magenta', 'head': 'a' * 40}, {'repo': 'magenta', 'head': 'd' * 40}])
+        self.assertEqual([i['tests'] and i['tests']['state'] for i in items], ['failed', None])
