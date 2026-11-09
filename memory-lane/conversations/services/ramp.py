@@ -553,6 +553,61 @@ def ordered(items, by):
     return sorted(items, key=lambda i: (i['state'] == 'merged', -key(i).timestamp()))
 
 
+# --- who and where, for the ramp's filters (Justin, 9 Nov, #ramp: "sortable by mood", "buttons to include/
+# exclude each of the participants") ---------------------------------------------------------------------
+
+_SAID_IN = re.compile(r'^\s*(in\s+)?#')
+
+
+def people_of(item):
+    """The people on a candidate, by the names they go by here: its "worked on by" (free words, read loosely:
+    "magent, with skyler (testing on an iphone 17), justin"), then its author, a GitHub login mapped by
+    work.FORGE_PEOPLE ("jMyles" is justin)."""
+    from .work import FORGE_PEOPLE
+    names = []
+    said = re.sub(r'\([^)]*\)?', '', item.get('worked_on_by') or '')  # asides first: they hold commas too
+    for part in re.split(r',|;|\band\b', said):
+        part = part.strip()
+        if not part or _SAID_IN.match(part):
+            continue
+        part = re.sub(r'^(with|by)\s+', '', part, flags=re.I)
+        found = re.match(r'@?([A-Za-z][\w.-]*(\[bot\])?)', part)
+        if found:
+            names.append(found.group(1))
+    names.append(item.get('author') or '')
+    out = []
+    for name in names:
+        name = FORGE_PEOPLE.get(name.lower(), name.lower())
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+def with_people(items):
+    """Each item gets 'people' (people_of) and 'where': its Moods, else the Moods it was last said in."""
+    for i in items:
+        i['people'] = people_of(i)
+        where = list(i.get('moods') or [])
+        for m in i.get('mentions') or []:
+            if not i.get('moods') and m.get('mood') and m['mood'] not in where:
+                where.append(m['mood'])
+        i['where'] = where
+    return items
+
+
+def everyone(items):
+    """[{'name', 'count', 'colour'}] for the ramp's buttons: everyone on an open candidate, most candidates first;
+    an emergent with its colour, a person (or an account) without."""
+    from collections import Counter
+    from conversations.models import ThinkingEntity
+    from .front import agent_colour
+    counts = Counter(p for i in items for p in i.get('people', []))
+    humans = set(ThinkingEntity.objects.filter(name__in=counts, is_biological_human=True).values_list('name', flat=True))
+    agents = set(ThinkingEntity.objects.filter(name__in=counts, is_biological_human=False).values_list('name', flat=True))
+    return [{'name': n, 'count': c, 'colour': agent_colour(n) if n in agents and n not in humans else ''}
+            for n, c in sorted(counts.items(), key=lambda nc: (-nc[1], nc[0]))]
+
+
 # --- the candidate branches, told to each emergent on each wake (Justin, 9 Nov, #ramp) ----------------------
 # "Candidate branches", not "pull requests": a pull request is GitHub's page for one (Justin, 9 Nov).
 

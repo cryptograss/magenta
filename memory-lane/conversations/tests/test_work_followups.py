@@ -315,3 +315,34 @@ class CandidatesTest(WorkRepo):
             got = self.client.get('/api/ramp/candidates/', HTTP_AUTHORIZATION='Bearer ' + 'k' * 40)
         self.assertEqual(got.status_code, 200)
         self.assertEqual([c['ref'] for c in got.json()['candidates']], ['magenta#7'])
+
+
+class RampWhoAndWhereTest(WorkRepo):
+    """The ramp sorted by Mood, and a button for each person on it (Justin, 9 Nov, #ramp: "sortable by mood",
+    "buttons to include/exclude each of the participants")."""
+
+    def test_who_is_read_from_the_card_loosely_and_logins_are_people(self):
+        got = ramp.people_of({'worked_on_by': 'magent, with skyler (testing on an iphone 17), justin; #uploads-and-embeds',
+                              'author': 'magent-cryptograss'})
+        self.assertEqual(got, ['magent', 'skyler', 'justin'])
+        got = ramp.people_of({'worked_on_by': 'blu (author), magent (carried the patch, opened the pr), justin (the ask)',
+                              'author': 'jMyles'})
+        self.assertEqual(got, ['blu', 'magent', 'justin'])
+        self.assertEqual(ramp.people_of({'worked_on_by': '', 'author': 'dependabot[bot]'}), ['dependabot[bot]'])
+        self.assertEqual(ramp.people_of({'worked_on_by': 're and magent, in #ramp', 'author': 're'}), ['re', 'magent'])
+
+    def test_where_is_its_moods_else_where_it_was_said(self):
+        [carded, bare] = ramp.with_people([{'moods': ['ramp'], 'mentions': [{'mood': 'ops'}]},
+                                           {'moods': [], 'mentions': [{'mood': 'ops'}, {'mood': 'ramp'}, {'mood': 'ops'}]}])
+        self.assertEqual((carded['where'], bare['where']), (['ramp'], ['ops', 'ramp']))
+
+    def test_the_page_has_a_button_each_and_each_row_says_who_and_where(self):
+        ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False})
+        cache.delete(ramp.KEY)
+        page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        self.assertIn('data-mood="ramp" data-people="magent re"', page)
+        self.assertIn('<button type="button" data-person="magent" data-state=""><span class="dot" style="--who: #ff67fd">'
+                      '</span>magent<small>1</small></button>', page)
+        self.assertIn('<button type="button" data-person="re" data-state=""><span class="dot" style="--who: #ff3c00"></span>'
+                      're<small>1</small></button>', page)
+        self.assertIn('data-sort="mood"', page)

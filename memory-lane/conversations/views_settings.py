@@ -185,8 +185,11 @@ def ramp_page(request):
     device = mood_auth.device_for(request)
     # The Merge buttons, for a merger signed in with their SSH key (Plan, section 10); githouse checks again.
     can_merge = bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id)
+    open_ = ramp.with_people(work.with_pages(thumbs.with_thumbs(ramp.with_tests(ramp.ordered(board['open'], '')))))
     return render(request, 'conversations/mood_pulls.html',
-                  {'board': board, 'open': work.with_pages(thumbs.with_thumbs(ramp.with_tests(ramp.ordered(board['open'], '')))),
+                  {'board': board, 'open': open_,
+                   # Who's on each, for the buttons that show or hide them (Justin, 9 Nov, #ramp).
+                   'everyone': ramp.everyone(open_),
                    'embed': True, 'can_merge': can_merge,
                    # The 👍 (Plan, section 8): any signed-in person, at either tier.
                    'can_thumb': bool(device) and device.entity.is_biological_human,
