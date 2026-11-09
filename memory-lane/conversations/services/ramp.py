@@ -18,6 +18,7 @@ same day). Records on PickiPedia, the view on magenta: this page writes nothing;
 import html
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 from django.core.cache import cache
@@ -423,12 +424,27 @@ def live_on(repo_name, head, runs):
 
 # --- the board -------------------------------------------------------------------------------------
 
-def board(now=None):
-    """Everything /moods/pulls/ shows: {'open', 'merged', 'names', 'log', 'repos', 'error'}."""
+def board(now=None, stale_ok=False):
+    """Everything /moods/pulls/ shows: {'open', 'merged', 'names', 'log', 'repos', 'error'}.
+
+    Kept BOARD_FOR seconds for the page. Building it takes seconds (4.8 s on maybelle, 9 Nov), so a caller that
+    only needs a card's branch and base -- the merge sheet's preview, a 👍, a work's page, a wake's candidates --
+    passes stale_ok: it gets the last board at once, however old, and an old one is rebuilt off the request
+    (Justin, 9 Nov: "Looking at githouse's copy…" sat there while it built)."""
     if now is None:
         found = cache.get(KEY)
         if found is not None:
-            return found
+            age = time.time() - found.get('built', 0)
+            if age < BOARD_FOR:
+                return found
+            if stale_ok:
+                if cache.add(KEY + ':building', 1, 120):
+                    if BUILD_IN_BACKGROUND:
+                        from .todo import _in_background
+                        _in_background(_rebuild)
+                    else:
+                        _rebuild()
+                return found
     now = now or datetime.now(timezone.utc)
     from . import githouse
     held = {name: githouse.repository(name) for name in githouse.repositories()}
@@ -493,9 +509,18 @@ def board(now=None):
     names.sort(key=lambda n: n['at'] or now, reverse=True)
     result = {'open': items, 'merged': merged, 'names': names[:NAMES_SHOWN], 'log': log_tail(),
               'repos': sorted(held), 'error': got.get('error', ''), 'at': now,
-              'mentions_missing': not said}
-    cache.set(KEY, result, BOARD_FOR)
+              'mentions_missing': not said, 'built': time.time()}
+    cache.set(KEY, result, None)  # kept: an old board is what a stale_ok caller gets while the next is built
     return result
+
+
+def _rebuild():
+    try:
+        board(now=datetime.now(timezone.utc))
+    except Exception as e:  # noqa: BLE001 -- the old board serves until the next try
+        log.warning('ramp: board rebuild: %s', e)
+    finally:
+        cache.delete(KEY + ':building')
 
 
 def githouse_owned(branch):
@@ -520,3 +545,35 @@ def ordered(items, by):
     key = {'pushed': lambda i: i.get('pushed') or floor,
            'mentioned': lambda i: (i.get('mentions') or [{'at': floor}])[0]['at']}.get(by, lambda i: i.get('active') or floor)
     return sorted(items, key=lambda i: (i['state'] == 'merged', -key(i).timestamp()))
+
+
+# --- the candidate branches, told to each emergent on each wake (Justin, 9 Nov, #ramp) ----------------------
+# "Candidate branches", not "pull requests": a pull request is GitHub's page for one (Justin, 9 Nov).
+
+CANDIDATE_SAID = 160      # characters of a candidate's description told in a wake
+_FOOTER = re.compile(r'^\s*(deploy(ment)?|worked on by)\s*:', re.I)
+
+
+def short_description(text):
+    """A candidate's description, short: its first paragraph that isn't its Deploy / Worked on by footer, as
+    plain words, cut at CANDIDATE_SAID."""
+    from .mood_view import snippet_of
+    for para in re.split(r'\n\s*\n', text or ''):
+        lines = [line for line in para.splitlines() if line.strip() and not _FOOTER.match(line)]
+        said = snippet_of('\n'.join(lines))
+        if said:
+            return said if len(said) <= CANDIDATE_SAID else said[:CANDIDATE_SAID - 1].rstrip() + '…'
+    return ''
+
+
+def candidates():
+    """Every open candidate branch, most active first: [{'ref', 'repo', 'branch', 'number', 'title', 'about',
+    'who', 'moods', 'state'}]. 'ref' is repo#N for one with a pull request, else repo:branch."""
+    out = []
+    for i in ordered([i for i in board(stale_ok=True).get('open', []) if i.get('state') != 'merged'], ''):
+        out.append({'ref': f"{i['repo']}#{i['number']}" if i.get('number') else f"{i['repo']}:{i.get('branch', '')}",
+                    'repo': i['repo'], 'branch': i.get('branch', ''), 'number': i.get('number'),
+                    'title': i.get('title', ''), 'about': short_description(i.get('description', '')),
+                    'who': i.get('worked_on_by') or i.get('author', ''), 'moods': i.get('moods', []),
+                    'state': i.get('state', 'open')})
+    return out

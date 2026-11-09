@@ -1896,8 +1896,17 @@ def api_moods_live(request):
             live.setdefault(row['mood__slug'], {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(row['sender_id'])
     for name, slug in sorted(where.items()):
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['speakers'].append(name)
+    # The emergents' open asks (🔨 🪢 🖥️), so a page drops one the moment it's answered, not at its next reload of
+    # the Moods list (Justin, 9 Nov: a merged #449's asks stayed). Kept 15 s by tools_ask.
+    from .services.tools_ask import open_requests
+    try:
+        asked = open_requests()
+    except Exception:  # noqa: BLE001 -- the asks as the page has them, not a live poll lost
+        asked = None
     for mood in Mood.objects.all():
         entry = live.setdefault(mood.slug, {'speakers': [], 'typing': [], 'busy': None})
+        if asked is not None:
+            entry['asked'] = asked.get(mood.slug, [])
         entry['typing'] = typing_in(mood.slug)
         entry['recording'] = recording_in(mood.slug)  # of those typing, who's speaking a memo: pulsing, not typing
         last = mood.messages.order_by('-created_at').values_list('created_at', flat=True).first()  # (mood, created_at) index

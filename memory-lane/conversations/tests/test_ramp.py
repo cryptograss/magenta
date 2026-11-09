@@ -181,7 +181,7 @@ class RampTest(TestCase):
         page = self.client.get('/moods/pulls/?embed=1')
         self.assertEqual(page.status_code, 200)
         text = page.content.decode()
-        for seen in ('magenta#7', 'the re/foo work', 'magenta:magent/bar', 'no PR yet', '#jams', 'magent/old', 'second'):
+        for seen in ('magenta#7', 'the re/foo work', 'magenta:magent/bar', 'no pull request', '#jams', 'magent/old', 'second'):
             self.assertIn(seen, text)
 
     def test_with_no_githouse_and_no_wiki(self):
@@ -219,6 +219,36 @@ class AskDotsTest(RampTest):
         self.assertIn('class="askdot" href="/moods/jams/#m-', page)
         self.assertIn('style="--who: #ff3c00"', page)
         self.assertNotIn('🪢 asked', page)
+
+    def test_an_ask_carries_what_it_names_not_merged_yet(self):
+        # Justin, 9 Nov: an ask naming #451 and #449 kept a Merge for #449 after #449 merged.
+        from conversations.services import tools_ask
+        self.say('re', '<merge to="magenta#7 and magenta:magent/bar"/>')
+        [ask] = tools_ask.open_requests()['jams']
+        self.assertEqual(ask['works'], [{'repo': 'magenta', 'number': 7}, {'repo': 'magenta', 'branch': 'magent/bar'}])
+        git(self.repo.work, 'merge', '-q', '--no-ff', '-m', 'Merge pull request #7', 're/foo')
+        self.repo.push()
+        cache.clear()
+        [ask] = tools_ask.open_requests()['jams']
+        self.assertEqual(ask['works'], [{'repo': 'magenta', 'branch': 'magent/bar'}])
+
+    def test_the_live_poll_carries_the_asks(self):
+        self.say('re', '<merge to="magenta#7"/>')
+        live = self.client.get('/api/moods/live/').json()['moods']
+        self.assertEqual([a['emergent'] for a in live['jams']['asked']], ['re'])
+
+    def test_a_card_is_read_from_the_last_board_at_once(self):
+        # Justin, 9 Nov: the merge sheet sat on "Looking at githouse's copy…" while the board was built (4.8 s on
+        # maybelle). A caller that only needs a card gets the last board, however old; an old one is rebuilt.
+        import time as clock
+        old = clock.time() - 3600
+        cache.set(ramp.KEY, {**ramp.board(), 'built': old}, None)   # an hour old
+        built = []
+        with mock.patch.object(ramp, '_rebuild', lambda: built.append(1)):
+            got = [ramp.board(stale_ok=True)['built'] for _ in range(3)]
+        self.assertEqual(got, [old] * 3)                     # the old one, at once, every time
+        self.assertEqual(built, [1])                         # one rebuild started, not one a call
+        self.assertGreater(ramp.board()['built'], clock.time() - 60)   # the page itself still gets a fresh one
 
     def test_any_emergents_colour(self):
         self.assertEqual(front.agent_colour('blu'), '#1976d2')

@@ -199,6 +199,18 @@ class MoodAPI:
         except Exception:  # noqa: BLE001 -- instructions without a roster, not a turn without instructions
             return None
 
+    def candidates(self):
+        """The open candidate branches (memory-lane's ramp.candidates), or None if they can't be asked."""
+        if not self.key:
+            return None
+        try:
+            response = self.http.get(f'{self.base}/api/ramp/candidates/',
+                                     headers={'Authorization': f'Bearer {self.key}'}, timeout=15)
+            response.raise_for_status()
+            return response.json().get('candidates')
+        except Exception:  # noqa: BLE001 -- a wake without the list, not a wake missed
+            return None
+
     def bundle(self, record):
         """Record the instructions a turn was given (poller/instructions.py Bundle.record)."""
         if not self.key:
@@ -1401,6 +1413,30 @@ def pronouns_shown(said, known):
 TYPING_NOTE = recovered('line', 'typing')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
 ANNOUNCED_NOTE = recovered('line', 'announced')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
 REACTED_NOTE = recovered('line', 'reacted')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+CANDIDATES_NOTE = recovered('line', 'candidates')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+CANDIDATES_TOLD = 80   # candidates listed at most; the rest counted
+
+
+def candidate_line(c):
+    """One open candidate branch, as a wake lists it: "magenta#449 (magent/work-followups; magent, justin; #ramp):
+    its title. Its description, short." """
+    where = [c.get('branch') if c.get('number') else 'no pull request', c.get('who') or '',
+             ', '.join(f'#{m}' for m in c.get('moods') or [])]
+    draft = ' [draft]' if c.get('state') == 'draft' else ''
+    about = f" {c['about']}" if c.get('about') and c['about'] != c.get('title') else ''
+    return f"- {c.get('ref')} ({'; '.join(w for w in where if w)}){draft}: {c.get('title') or ''}{about}".rstrip(': ')
+
+
+def candidate_lines(texts, found):
+    """The open candidate branches, told on every wake (Justin, 9 Nov, #ramp): what's being worked on across our
+    repositories, so a turn doesn't start what's already a branch, and takes a conflict to #ramp."""
+    if not found:
+        return []
+    shown = found[:CANDIDATES_TOLD]
+    more = len(found) - len(shown)
+    return (['', wake_line(texts, 'candidates', CANDIDATES_NOTE, count=len(found))]
+            + [candidate_line(c) for c in shown]
+            + ([f'- and {more} more, on the ramp (/moods/pulls/)'] if more > 0 else []))
 
 
 def reactions_to(agent, page, seen):
@@ -2982,6 +3018,7 @@ class MoodPoller:
             page = None
         return (self.typing_lines(page, slug) + self.pronoun_lines(page) + self.local_time_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
                 + self.nearmiss_lines(slug, page)
+                + candidate_lines(self.texts, self.api.candidates() if hasattr(self.api, "candidates") else None)
                 # Open polls, on every kind of wake: a quiet look too (re's review of #157).
                 + (open_polls(self.agent, page) if page else [])
                 + (wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts) if length else []))

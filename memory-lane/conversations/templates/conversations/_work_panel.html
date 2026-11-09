@@ -48,7 +48,7 @@
 <section class="work" id="work" data-repo="{{ work.repo }}" data-branch="{{ work.branch }}" data-head="{{ work.head|default:'' }}"
          data-base="{{ work.merge_base|default:'' }}" data-tiding="{{ tiding.id }}">
   <div class="whead">
-    <span class="state {{ work.state }}">{% if work.state == 'pushed' %}no PR yet{% else %}{{ work.state }}{% endif %}</span>
+    <span class="state {{ work.state }}">{% if work.state == 'pushed' %}no pull request{% else %}{{ work.state }}{% endif %}</span>
     {% if work.item.url %}<a class="ref" href="{{ work.item.url }}" target="_blank" rel="noopener">{{ work.ref }}</a>{% else %}<span class="ref">{{ work.ref }}</span>{% endif %}
     <h2 class="wtitle">{{ work.item.title|default:tiding.title }}</h2>
     {% if work.tests %}<a class="tests {{ work.tests.state|slugify }}" href="{{ work.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ work.tests.number }} on Jenkins, for this head">{% if work.tests.state == 'passed' %}✓ tests{% elif work.tests.state == 'failed' %}✗ tests{% elif work.tests.state == 'testing' %}… testing{% else %}{{ work.tests.state }}{% endif %}</a>{% endif %}
@@ -145,7 +145,10 @@
     if (li) show(li, m[1] === 'L').then(() => light(at));
   }
   const merge = document.getElementById('workMerge');
-  if (merge && window.magentaMerge) merge.addEventListener('click', () =>
-    magentaMerge.open({ repo, branch: work.dataset.branch, number: {{ work.number|default:"null" }} }, '{{ tiding.mood }}'));
+  if (merge && window.magentaMerge) {
+    const it = { repo, branch: work.dataset.branch, number: {{ work.number|default:"null" }} };
+    magentaMerge.prefetch(it);  // the one Merge… here: looked at now, so the sheet opens on it (Justin, 9 Nov)
+    merge.addEventListener('click', () => magentaMerge.open(it, '{{ tiding.mood }}'));
+  }
 })();
 </script>

@@ -12,7 +12,7 @@
 
 '''full-tools-offer''': after full-tools: the asks a person grants (merge, redeploy).
 
-{{Sent to agents|dial=line|value=full-tools-offer|text=What the standing orders won't let you do alone: <merge to="a few words on which PR"/> for a merge (🔀), <deploy to="a few words on which server"/> for a redeploy (🔄). Each posts a visible line here, and an icon sits by the Mood's name until a person does it.
+{{Sent to agents|dial=line|value=full-tools-offer|text=What the standing orders won't let you do alone: <merge to="a few words on which candidate branch"/> for a merge (🔀), <deploy to="a few words on which server"/> for a redeploy (🔄). Each posts a visible line here, and an icon sits by the Mood's name until a person does it.
 }}
 
 '''look-only''': the close of a look-only wake. Must keep the words "can look but not touch": the record reads them.
@@ -22,7 +22,7 @@
 
 '''tools-offer''': after look-only: how to ask for full tools, a merge or a redeploy.
 
-{{Sent to agents|dial=line|value=tools-offer|text=If answering needs your full tools, reply with only <tools to="a few words on what for"/>: the Mood shows "you requested tools for …" and 🔨 by its name, and someone trusted can wake you with them. To grant a <tools> request, mention the agent whose request it is and it is woken with its tools. The same ask, other things you cannot do on a look-only turn (Justin, 29 Oct): <merge to="a few words on which PR"/> for a merge (🔀), <deploy to="a few words on which server"/> for a redeploy (🔄). Each posts a visible line here, and an icon sits by the Mood's name until a person does it.
+{{Sent to agents|dial=line|value=tools-offer|text=If answering needs your full tools, reply with only <tools to="a few words on what for"/>: the Mood shows "you requested tools for …" and 🔨 by its name, and someone trusted can wake you with them. To grant a <tools> request, mention the agent whose request it is and it is woken with its tools. The same ask, other things you cannot do on a look-only turn (Justin, 29 Oct): <merge to="a few words on which candidate branch"/> for a merge (🔀), <deploy to="a few words on which server"/> for a redeploy (🔄). Each posts a visible line here, and an icon sits by the Mood's name until a person does it.
 }}
 
 '''after-loop''': on the wakes after a turn the tool-loop guard ended. {why} is the guard's own words.
@@ -143,6 +143,11 @@
 '''announced''': above the /announce posts made in other Moods since the last wake.
 
 {{Sent to agents|dial=line|value=announced|text=Announced to every Mood since you were last woken here (with /announce, in another Mood: not said here, but meant for you here too):
+}}
+
+'''candidates''': above the open candidate branches, one a line, on every wake (Justin, 9 Nov, #ramp). {count} is how many are open.
+
+{{Sent to agents|dial=line|value=candidates|text=Candidate branches open now across our repositories ({count}), most active first: each one's name, its branch, who works on it and in which Mood, its title and what it's for. Before you start work, check it isn't one of these already: if it is, build on that branch or talk with whoever has it; don't start a second. If what you're doing may conflict with one (the same files, the same feature), raise it in #ramp: there, say so; anywhere else, mention magent to carry it there. "Pull request" means GitHub's page for a candidate branch, nothing more.
 }}
 
 '''reacted''': above the reactions to its posts since the last wake.

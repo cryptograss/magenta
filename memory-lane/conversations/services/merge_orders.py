@@ -155,7 +155,7 @@ def preview(repo, branch='', number=None):
     base = ''
     if number:  # a pull request: its branch and base as its card has them (ramp.board, cached)
         from . import ramp
-        card = next((i for i in ramp.board().get('open', []) if i.get('repo') == repo and i.get('number') == int(number)),
+        card = next((i for i in ramp.board(stale_ok=True).get('open', []) if i.get('repo') == repo and i.get('number') == int(number)),
                     None)
         if card is None:
             raise Invalid(f'{repo}#{number} is not an open pull request here')
