@@ -67,10 +67,11 @@
   .work .gh { font-size: 11px; color: var(--muted); }
   tr.merged td { opacity: .65; }
   .ment { display: block; font-size: 12px; white-space: nowrap; }
-  .sorts { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; }
-  .sorts button { font: inherit; background: none; border: 1px solid var(--line); border-radius: 4px; padding: 1px 8px;
-                  color: var(--muted); cursor: pointer; }
-  .sorts button[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); }
+  th button.sort { font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; background: none; border: 0;
+                   padding: 0; cursor: pointer; border-bottom: 1px dotted currentColor; }
+  th button.sort:hover, th button.sort[aria-pressed="true"] { color: var(--ink); }
+  th button.sort[aria-pressed="true"]::after { content: ' ▾'; }
+  th button.sort[aria-pressed="true"].up::after { content: ' ▴'; }
   /* Who's on it (Justin, 9 Nov, #ramp): a button each; pressed once, only theirs; twice, theirs hidden. */
   .people { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
   .people button { font: inherit; background: none; border: 1px solid var(--line); border-radius: 12px; padding: 1px 9px;
@@ -144,15 +145,16 @@
   {% if board.mentions_missing %}<p class="why">Reading the record for where each was mentioned: "last said" fills in within a minute.</p>{% endif %}
 
   <h2>Open candidate branches</h2>
-  <p class="sorts">Sort by <button type="button" data-sort="active" aria-pressed="true">last activity</button>
-    <button type="button" data-sort="pushed" aria-pressed="false">last push</button>
-    <button type="button" data-sort="mentioned" aria-pressed="false">last mention</button>
-    <button type="button" data-sort="mood" aria-pressed="false" title="By Mood, A to Z; each Mood's newest first">mood</button></p>
   {% if everyone %}<p class="people" title="Click: only theirs. Again: theirs hidden. Again: everyone.">Who:
     {% for p in everyone %}<button type="button" data-person="{{ p.name }}" data-state="">{% if p.colour %}<span class="dot" style="--who: {{ p.colour }}"></span>{% endif %}{{ p.name }}<small>{{ p.count }}</small></button>{% endfor %}
     <span class="count"></span><button type="button" class="clear" hidden>everyone</button></p>{% endif %}
   <table id="open">
-    <thead><tr><th></th><th>candidate</th><th>who</th><th>where</th><th>size</th><th>pushed</th><th>last said</th><th>deploy</th></tr></thead>
+    {% comment %}Its heads sort it (Justin, 9 Nov, #ramp): the dot by last activity (as it opens), where by Mood, pushed and
+       last said by when; pressed again, the other way.{% endcomment %}
+    <thead><tr><th><button type="button" class="sort" data-sort="active" aria-pressed="true" title="Sort by last activity">●</button></th><th>candidate</th><th>who</th>
+      <th><button type="button" class="sort" data-sort="mood" aria-pressed="false" title="Sort by Mood, A to Z; each Mood's newest first">where</button></th><th>size</th>
+      <th><button type="button" class="sort" data-sort="pushed" aria-pressed="false" title="Sort by last push">pushed</button></th>
+      <th><button type="button" class="sort" data-sort="mentioned" aria-pressed="false" title="Sort by last mention">last said</button></th><th>deploy</th></tr></thead>
     <tbody>
     {% for i in open %}
     <tr class="{{ i.state }}" data-active="{{ i.active|date:'U'|default:0 }}" data-pushed="{{ i.pushed|date:'U'|default:0 }}"
@@ -178,7 +180,7 @@
       <td>{{ i.worked_on_by|default:i.author }}</td>
       <td>{% for m in i.where %}<a href="/moods/{{ m }}/"{% if not i.moods %} class="said" title="not on its card: where it was said"{% endif %}>#{{ m }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
       <td class="num size">{% if i.size %}<span class="add">+{{ i.size.added }}</span> <span class="rm">−{{ i.size.removed }}</span><br>{{ i.size.commits }} commit{{ i.size.commits|pluralize }}{% elif not i.held %}<span title="githouse doesn't copy this repository">—</span>{% endif %}</td>
-      <td class="num">{% if i.pushed %}{{ i.pushed|date:"j M H:i" }}Z{% endif %}</td>
+      <td class="num">{% if i.pushed_ago is not None %}<span title="block {{ i.pushed_block }}, {{ i.pushed|date:"j M H:i" }}Z">{% if i.pushed_ago %}{{ i.pushed_ago_said }} block{{ i.pushed_ago|pluralize }} ago{% else %}this block{% endif %}</span>{% elif i.pushed %}{{ i.pushed|date:"j M H:i" }}Z{% endif %}</td>
       <td>{% for m in i.mentions %}<a class="ment" href="/moods/{{ m.mood }}/#m-{{ m.id }}">#{{ m.mood }} · {{ m.who }} · {{ m.at|date:"j M H:i" }}Z</a>{% empty %}<span class="why" title="not said in any Mood in 60 days">—</span>{% endfor %}</td>
       <td class="why">{{ i.deploy }}</td>
     </tr>
@@ -235,14 +237,18 @@
 <script>
   // Sorting the open work, here and now: no reload. By Mood: A to Z, none last, each Mood's newest first.
   const body = document.querySelector('#open tbody');
-  document.querySelectorAll('.sorts button').forEach(b => b.addEventListener('click', () => {
-    document.querySelectorAll('.sorts button').forEach(o => o.setAttribute('aria-pressed', o === b ? 'true' : 'false'));
-    const key = b.dataset.sort;
+  // Its column heads sort it; the same head again turns it the other way (▾ newest or A first, ▴ the reverse).
+  document.querySelectorAll('#open th button.sort').forEach(b => b.addEventListener('click', () => {
+    const again = b.getAttribute('aria-pressed') === 'true';
+    document.querySelectorAll('#open th button.sort').forEach(o => { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); if (o !== b) o.classList.remove('up'); });
+    const up = again && !b.classList.contains('up');
+    b.classList.toggle('up', up);
+    const key = b.dataset.sort, sign = up ? -1 : 1;
     const rows = [...body.querySelectorAll('tr[data-active]')];
     const byMood = (x, y) => (!x.dataset.mood - !y.dataset.mood) || x.dataset.mood.localeCompare(y.dataset.mood);
+    const when = key === 'mood' ? 'active' : key;
     rows.sort((x, y) => (x.classList.contains('merged') - y.classList.contains('merged'))
-                        || (key === 'mood' ? byMood(x, y) : 0)
-                        || (Number(y.dataset[key === 'mood' ? 'active' : key]) - Number(x.dataset[key === 'mood' ? 'active' : key])));
+                        || sign * ((key === 'mood' ? byMood(x, y) : 0) || (Number(y.dataset[when]) - Number(x.dataset[when]))));
     rows.forEach(r => body.append(r));
   }));
   // Who's on it (Justin, 9 Nov, #ramp: "buttons to include/exclude each of the participants"). A button each:
