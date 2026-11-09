@@ -610,7 +610,10 @@ class ClaudeCodeWakerTest(TestCase):
     def test_project_dir_name_matches_claude_codes(self):
         self.assertEqual(project_dir_name('/home/magent/workspace/memory-lane/.claude/worktrees/importer-cleanup'),
                          '-home-magent-workspace-memory-lane--claude-worktrees-importer-cleanup')
-        self.assertTrue(os.path.isdir(os.path.expanduser('~/.claude/projects/' + project_dir_name(os.path.expanduser('~')))))
+        # Where Claude Code keeps this home's sessions: a check of the machine, only where Claude Code has run
+        # (not on Jenkins' branches agent, say; Plan, section 11).
+        if os.path.isdir(os.path.expanduser('~/.claude/projects')):
+            self.assertTrue(os.path.isdir(os.path.expanduser('~/.claude/projects/' + project_dir_name(os.path.expanduser('~')))))
 
 
 class FakeHTTP:

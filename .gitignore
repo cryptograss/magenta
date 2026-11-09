@@ -36,3 +36,4 @@ deletion-candidate/
 .env
 .env.local
 vault-plaintext.yml
+memory-lane/memory_viewer/_ci_sqlite.py

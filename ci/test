@@ -1,0 +1,14 @@
+#!/bin/sh
+# magenta's tests, as Jenkins' branches agent runs them (Cryptograss:Moods/ramp/Plan, section 11;
+# maybelle-config's maybelle/jobs/branch-tests.groovy): memory-lane's suite, on SQLite in memory.
+set -eu
+python3 -m venv /tmp/venv
+. /tmp/venv/bin/activate
+pip install -q --upgrade pip
+pip install -q -r memory-lane/requirements.txt
+cd memory-lane
+cat > memory_viewer/_ci_sqlite.py <<'PY'
+from memory_viewer.settings import *  # noqa: F401,F403
+DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}}
+PY
+DJANGO_SETTINGS_MODULE=memory_viewer._ci_sqlite PYTHONPATH=. python manage.py test conversations.tests
