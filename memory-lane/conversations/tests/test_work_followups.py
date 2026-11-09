@@ -2,6 +2,7 @@
 there shown under it on the page; one merged line, by the branch; the ramp's links to each work's page; the dots for each emergent asking for a merge
 are in test_ramp; who asked and who 👍'd it, on the merge sheet."""
 
+import time
 import json
 import uuid
 from datetime import timedelta
@@ -101,12 +102,28 @@ class MergedOnceTest(TestCase):
         return sorted(Message.objects.filter(source_file=todo.MERGED_SOURCE).values_list('mood__slug', flat=True))
 
     def test_not_said_again_where_the_button_merged_it(self):
+        # Unanswered yet, as when GitHub's webhook beats githouse's record: the button's merge, most likely.
         MergeOrder.objects.create(order='-', signature='-', nonce='n', repo='magenta', branch='re/foo', by='memory-lane',
-                                  pressed='justin', expires=0, mood='ramp')
+                                  pressed='justin', expires=int(time.time()) + 3600, mood='ramp')
         todo.announce_merge('cryptograss', 'magenta', 7, 'the foo work', 'jMyles', 'a' * 40, branch='re/foo')
         self.assertEqual(self.said(), ['ops'])
 
     def test_said_wherever_listed_otherwise(self):
+        todo.announce_merge('cryptograss', 'magenta', 7, 'the foo work', 'jMyles', 'a' * 40, branch='re/foo')
+        self.assertEqual(self.said(), ['ops', 'ramp'])
+
+    def test_a_refused_press_doesnt_count(self):
+        # A press refused said nothing in #ramp: GitHub's line is its only word of the merge.
+        refused = MergeOrder.objects.create(order='-', signature='-', nonce='n', repo='magenta', branch='re/foo',
+                                            by='memory-lane', pressed='justin', expires=int(time.time()) + 3600, mood='ramp')
+        with mock.patch('conversations.services.merge_orders.outcome',
+                        lambda o: {'status': 'refused', 'why': 'moved'} if o.id == refused.id else None):
+            todo.announce_merge('cryptograss', 'magenta', 7, 'the foo work', 'jMyles', 'a' * 40, branch='re/foo')
+        self.assertEqual(self.said(), ['ops', 'ramp'])
+
+    def test_an_expired_press_doesnt_count(self):
+        MergeOrder.objects.create(order='-', signature='-', nonce='n', repo='magenta', branch='re/foo',
+                                  by='memory-lane', pressed='justin', expires=0, mood='ramp')  # never answered, past its hour
         todo.announce_merge('cryptograss', 'magenta', 7, 'the foo work', 'jMyles', 'a' * 40, branch='re/foo')
         self.assertEqual(self.said(), ['ops', 'ramp'])
 
