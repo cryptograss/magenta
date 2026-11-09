@@ -12,7 +12,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from conversations.models import MergeOrder, Message, Mood, ThinkingEntity, Thumb, Tiding, TidingComment
+from conversations.models import WorkTiding, MergeOrder, Message, Mood, ThinkingEntity, Thumb, Tiding, TidingComment
 from conversations.services import links, ramp, tiding_links, todo
 from conversations.services.mood_view import event_line
 from conversations.tests.test_work_pages import WorkRepo
@@ -202,6 +202,45 @@ class SheetFullDiffTest(WorkRepo):
         self.assertIn('<a class="full" href="#" hidden', sheet)
         self.assertIn('`/moods/tidings/${body.page}/#diff`', sheet)
         self.assertIn("fetch('/api/ramp/work/'", sheet)
+
+
+class WorkPageNeverWaitsTest(WorkRepo):
+    """Justin, 9 Nov: "± See the full diff" sat ~8 s on Tidings before the page came. A work's page asked for a
+    fresh board, and rebuilding it takes seconds once it's a minute old. Now it reads the last one at once."""
+
+    def setUp(self):
+        super().setUp()
+        self.as_('justin')
+        self.tid = self.open_().json()['id']
+        self.rebuilt = []
+        p = mock.patch.object(ramp, '_rebuild', lambda: self.rebuilt.append(1))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def age(self, **item):
+        board = ramp.board()
+        if item:
+            board['open'] = [{**i, **item} for i in board['open']]
+        cache.set(ramp.KEY, {**board, 'built': time.time() - 3600}, None)   # an hour old
+
+    def test_an_old_board_is_read_and_rebuilt_behind(self):
+        self.age()
+        asked = []
+        with mock.patch.object(ramp, 'cards', lambda: asked.append(1) or self.cards):
+            self.assertEqual(self.page(self.tid).status_code, 200)
+        self.assertEqual(asked, [])          # no board was built while the page waited
+        self.assertEqual(self.rebuilt, [1])  # one is, behind it
+
+    def test_its_head_is_githouses_now_not_the_old_boards(self):
+        self.age(head='0' * 40)              # the board's head, from before a push
+        self.assertIn(self.head[:7], self.page(self.tid).content.decode())
+
+    def test_a_branch_the_old_board_hasnt_seen_still_gets_its_page(self):
+        self.age()
+        old = cache.get(ramp.KEY)
+        cache.set(ramp.KEY, {**old, 'open': []}, None)     # built before re/foo was pushed
+        WorkTiding.objects.all().delete()
+        self.assertEqual(self.open_().status_code, 200)    # asked a fresh board for it
 
 
 class CandidatesTest(WorkRepo):
