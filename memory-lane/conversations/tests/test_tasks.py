@@ -227,7 +227,7 @@ class StartingTest(TestCase):
         self.assertIsNone(rows[('blu', 'Weekly')]['last'])
         self.assertIn('trusted editor', rows[('blu', 'Proposed')]['error'])  # only an agent's revision: said why
         self.assertEqual([(r['agent'], r['task']) for r in board['recent']], [('blu', 'Connect')])
-        html = self.client.get('/moods/tasks/', {'embed': '1'}).content.decode()  # the board just read is kept
+        html = self.client.get('/tasks/', {'embed': '1'}).content.decode()  # the board just read is kept
         self.assertIn('mondays 09:00', html)
         self.assertIn('#connectome', html)
         from conversations.services import wiki_hooks

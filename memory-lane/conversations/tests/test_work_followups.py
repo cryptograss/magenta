@@ -139,34 +139,33 @@ class RampLinksAndSheetTest(WorkRepo):
 
     def ramp_page(self):
         cache.delete(ramp.KEY)
-        return self.client.get('/moods/pulls/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        return self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
 
     def test_the_works_name_opens_its_page(self):
+        # Its page is in the ramp, at /ramp/<repo>/<branch>/ (Justin, 9 Nov: "why does it take me to tidings?"),
+        # made the first time it's asked for; ± See the diff is the same page at #diff.
         self.as_('justin')
-        page = self.ramp_page()
-        self.assertIn('class="title openpage" href="https://github.com/cryptograss/magenta/pull/7" data-repo="magenta" '
-                      'data-branch="re/foo"', page)
-        # ± See the diff: the same page, made now if need be, at #diff (Justin, 9 Nov: where do I click for the diff?)
-        self.assertIn('class="see openpage" href="#" data-repo="magenta" data-branch="re/foo" data-hash="#diff"', page)
-        tid = self.open_().json()['id']
-        page = self.ramp_page()
-        self.assertIn(f'<a class="title" href="/moods/tidings/{tid}/"', page)
-        self.assertIn(f'<a class="see" href="/moods/tidings/{tid}/#diff"', page)
-        self.assertIn('<a class="gh" href="https://github.com/cryptograss/magenta/pull/7" target="_blank" rel="noopener" '
-                      'title="GitHub\'s pull request page for it">PR #7 ↗</a>', page)
+        for _ in range(2):  # without a page yet, then with one
+            page = self.ramp_page()
+            self.assertIn('<a class="title" href="/ramp/magenta/re/foo/"', page)
+            self.assertIn('<a class="see" href="/ramp/magenta/re/foo/#diff"', page)
+            self.assertIn('<a class="gh" href="https://github.com/cryptograss/magenta/pull/7" target="_blank" rel="noopener" '
+                          'title="GitHub\'s pull request page for it">PR #7 ↗</a>', page)
+            self.open_()
+        self.assertNotIn('/tidings/', page.split('<table id="open">')[1].split('</table>')[0])
 
     def test_signed_out_it_is_still_githubs(self):
         page = self.ramp_page()
         self.assertIn('<a class="title" href="https://github.com/cryptograss/magenta/pull/7" target="_blank"', page)
         self.assertIn('<a class="see" href="https://github.com/cryptograss/magenta/pull/7/files" target="_blank"', page)
-        self.assertNotIn('openpage', page.split('<table id="open">')[1].split('</table>')[0])
+        self.assertNotIn('/ramp/magenta/', page.split('<table id="open">')[1].split('</table>')[0])
 
     def test_merged_work_links_its_page(self):
         self.as_('justin')
-        tid = self.open_().json()['id']
+        self.open_()
         self.cards['merged'] = [dict(self.cards['open'][0])]
         page = self.ramp_page()
-        self.assertIn(f'<a class="title" href="/moods/tidings/{tid}/" title="Its page: what it changed, its commits, what was said">'
+        self.assertIn('<a class="title" href="/ramp/magenta/re/foo/" title="Its page: what it changed, its commits, what was said">'
                       'the re/foo work</a>', page)
         self.assertIn('<span class="ref">magenta:re/foo</span>', page)
 
@@ -185,23 +184,72 @@ class RampLinksAndSheetTest(WorkRepo):
 
 class SheetFullDiffTest(WorkRepo):
     """The merge sheet's "± See the full diff" (Justin, 9 Nov: "a link from the merge modal to see the full
-    diff"): the preview names the work's page, or none, and the sheet makes one on the click."""
-
-    def preview(self):
-        return self.client.get('/api/merge-orders/preview/', {'repo': 'magenta', 'branch': 're/foo'}).json()
-
-    def test_the_preview_names_its_page(self):
-        self.as_('justin')
-        self.assertIsNone(self.preview()['page'])
-        tid = self.open_().json()['id']
-        self.assertEqual(self.preview()['page'], tid)
+    diff"): the candidate's page, in the ramp, at #diff."""
 
     def test_the_sheet_links_to_it_at_the_diff(self):
         from django.template.loader import render_to_string
         sheet = render_to_string('conversations/_merge_sheet.html')
         self.assertIn('<a class="full" href="#" hidden', sheet)
-        self.assertIn('`/moods/tidings/${body.page}/#diff`', sheet)
-        self.assertIn("fetch('/api/ramp/work/'", sheet)
+        self.assertIn("`/ramp/${encodeURIComponent(body.repo)}/${body.branch.split('/').map(encodeURIComponent).join('/')}/#diff`", sheet)
+        self.assertIn("parent.postMessage({ magentaGo: to.pathname + to.hash }", sheet)  # from a frame: the one page opens it
+        self.assertNotIn('/tidings/', sheet)
+
+
+class CandidatePageTest(WorkRepo):
+    """A candidate branch's page has its own address in the ramp (Justin, 9 Nov, #ramp: "why does it take me to
+    the tidings page?"; Back to where it was opened from)."""
+
+    def framed(self, path):
+        return self.client.get(path, {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe')
+
+    def test_signed_in_it_is_made_when_first_asked_for(self):
+        from conversations.models import WorkTiding
+        self.as_('justin')
+        got = self.framed('/ramp/magenta/re/foo/')
+        self.assertEqual(got.status_code, 200)
+        page = got.content.decode()
+        self.assertIn('<title>magenta#7 · ramp · magenta</title>', page)
+        self.assertIn('<a class="back" href="/ramp/">‹ the ramp</a>', page)
+        self.assertEqual(WorkTiding.objects.filter(repo='magenta', branch='re/foo').count(), 1)
+        self.assertEqual(self.framed('/ramp/magenta/re/foo/').status_code, 200)   # the same page, not a second
+        self.assertEqual(WorkTiding.objects.filter(repo='magenta', branch='re/foo').count(), 1)
+
+    def test_signed_out_without_a_page_nothing_is_made(self):
+        from conversations.models import WorkTiding
+        self.assertEqual(self.framed('/ramp/magenta/re/foo/').status_code, 404)
+        self.assertFalse(WorkTiding.objects.exists())
+        self.as_('justin')
+        self.assertEqual(self.framed('/ramp/magenta/re/nothing/').status_code, 404)   # not open on the ramp
+
+    def test_opened_on_its_own_it_is_the_one_page_on_the_ramp(self):
+        got = self.client.get('/ramp/magenta/re/foo/', HTTP_SEC_FETCH_DEST='document')
+        self.assertEqual(got.status_code, 200)
+        self.assertIn('const initialSection = "ramp"', got.content.decode())
+
+    def test_its_old_tidings_address_is_sent_here(self):
+        self.as_('justin')
+        tid = self.open_().json()['id']
+        got = self.client.get(f'/tidings/{tid}/', HTTP_SEC_FETCH_DEST='document')
+        self.assertEqual((got.status_code, got['Location']), (302, '/ramp/magenta/re/foo/'))
+
+    def test_a_comment_line_opens_it_in_the_ramp(self):
+        self.as_('justin')
+        tiding = Tiding.objects.get(id=self.open_().json()['id'])
+        tiding_links.comment(tiding, ThinkingEntity.objects.get(name='justin'), 'Looks right.')
+        notice = Message.objects.get(source_file=tiding_links.COMMENT_SOURCE)
+        self.assertEqual(notice.content['work'], '/ramp/magenta/re/foo/')
+
+    def test_line_links_are_its_address(self):
+        self.as_('justin')
+        self.assertIn('`${location.origin}/ramp/magenta/re/foo/#${id}`', self.framed('/ramp/magenta/re/foo/').content.decode())
+
+    def test_the_one_page_keeps_back_its_own(self):
+        # The ramp's frame is moved with location.replace, never by a link inside it, so Back returns to where
+        # the candidate was opened from: the ramp's list, or the Mood whose merge sheet it was.
+        html = self.client.get('/moods/', HTTP_SEC_FETCH_DEST='document').content.decode()
+        self.assertIn("try { frame.contentWindow.location.replace(want); } catch (e) { frame.src = want; }", html)
+        self.assertIn("if (candidateAt(to.pathname)) { showSection('ramp', true, to.pathname, to.hash); return; }", html)
+        self.assertIn("showSection('ramp', false, location.pathname, location.hash);", html)
 
 
 class WorkPageNeverWaitsTest(WorkRepo):
@@ -267,3 +315,34 @@ class CandidatesTest(WorkRepo):
             got = self.client.get('/api/ramp/candidates/', HTTP_AUTHORIZATION='Bearer ' + 'k' * 40)
         self.assertEqual(got.status_code, 200)
         self.assertEqual([c['ref'] for c in got.json()['candidates']], ['magenta#7'])
+
+
+class RampWhoAndWhereTest(WorkRepo):
+    """The ramp sorted by Mood, and a button for each person on it (Justin, 9 Nov, #ramp: "sortable by mood",
+    "buttons to include/exclude each of the participants")."""
+
+    def test_who_is_read_from_the_card_loosely_and_logins_are_people(self):
+        got = ramp.people_of({'worked_on_by': 'magent, with skyler (testing on an iphone 17), justin; #uploads-and-embeds',
+                              'author': 'magent-cryptograss'})
+        self.assertEqual(got, ['magent', 'skyler', 'justin'])
+        got = ramp.people_of({'worked_on_by': 'blu (author), magent (carried the patch, opened the pr), justin (the ask)',
+                              'author': 'jMyles'})
+        self.assertEqual(got, ['blu', 'magent', 'justin'])
+        self.assertEqual(ramp.people_of({'worked_on_by': '', 'author': 'dependabot[bot]'}), ['dependabot[bot]'])
+        self.assertEqual(ramp.people_of({'worked_on_by': 're and magent, in #ramp', 'author': 're'}), ['re', 'magent'])
+
+    def test_where_is_its_moods_else_where_it_was_said(self):
+        [carded, bare] = ramp.with_people([{'moods': ['ramp'], 'mentions': [{'mood': 'ops'}]},
+                                           {'moods': [], 'mentions': [{'mood': 'ops'}, {'mood': 'ramp'}, {'mood': 'ops'}]}])
+        self.assertEqual((carded['where'], bare['where']), (['ramp'], ['ops', 'ramp']))
+
+    def test_the_page_has_a_button_each_and_each_row_says_who_and_where(self):
+        ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False})
+        cache.delete(ramp.KEY)
+        page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        self.assertIn('data-mood="ramp" data-people="magent re"', page)
+        self.assertIn('<button type="button" data-person="magent" data-state=""><span class="dot" style="--who: #ff67fd">'
+                      '</span>magent<small>1</small></button>', page)
+        self.assertIn('<button type="button" data-person="re" data-state=""><span class="dot" style="--who: #ff3c00"></span>'
+                      're<small>1</small></button>', page)
+        self.assertIn('data-sort="mood"', page)

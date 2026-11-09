@@ -427,7 +427,7 @@ def line(c):
     return f"▶ {who}, started {how}"
 
 
-# --- the tasks section (/moods/tasks/) ---------------------------------------------
+# --- the tasks section (/tasks/) ---------------------------------------------
 
 BOARD = 'tasks:board'
 BOARD_FOR = 300   # seconds the board is kept; a task page's change forgets it at once (wiki_hooks.yml: tasks)

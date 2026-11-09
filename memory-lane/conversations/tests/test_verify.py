@@ -66,7 +66,7 @@ class VerifyTest(TestCase):
                                                  'state': 'waiting', 'trusted': 1, 'edits': 1, 'editors': ['Re'],
                                                  'diff': 'https://x/index.php?diff=2&oldid=1'}],
                                       'editors': ['JMyles'], 'waiting': 1, 'error': ''}, 60)
-        html = self.client.get('/moods/verify/?embed=1').content.decode()
+        html = self.client.get('/verify/?embed=1').content.decode()
         self.assertIn('see the change and verify', html)
         self.assertIn('1 needs a look', html)
         self.assertEqual(self.client.get('/api/verify/').json()['waiting'], 1)
@@ -79,7 +79,7 @@ class VerifyTest(TestCase):
                                            requested_at=now, produced_at=now, delivered_at=now, block=26360334,
                                            sha256='0' * 64)
         BundleRecord.objects.create(id=uuid.uuid4(), emergent='re', mood='jams', requested_at=now, sha256='1' * 64)
-        html = self.client.get('/moods/verify/?embed=1').content.decode()
+        html = self.client.get('/verify/?embed=1').content.decode()
         self.assertIn('Instructions bundles', html)
         self.assertIn(f'Special:EmergentBundles/{made.id}', html)
         self.assertIn('26360334', html)

@@ -21,7 +21,7 @@
     --hover: #f6f3ee; --warn-ink: #7a4b00; --warn-bg: #ffe9b0; --dot-edge: #d6cfc2; --err: #b3261e;
     --wl-blue: #3b6fb6; --wl-red: #b5574d;  /* wiki links: a page that exists, one that doesn't yet */
     --heat-1: #5a9a6e; --heat-2: #2f8a55;  /* a Mood's warmth: sage, then a deeper green (moodWarmth; Justin, 5 Nov: amber and red felt urgent) */
-    --spoke-h: #4f9466;  /* a person spoke lately: a soft green (moodWarmth; Justin, 5 Nov: orange felt urgent; 1 Nov: #2e7d32 was "too much") */
+    --spoke-h-ink: #fff; --spoke-h: #4f9466;  /* a person spoke lately: a soft green (moodWarmth; Justin, 5 Nov: orange felt urgent; 1 Nov: #2e7d32 was "too much") */
   }
   /* Dark, when the system is: the same tokens, night colours. */
   @media (prefers-color-scheme: dark) {
@@ -32,7 +32,7 @@
       --hover: #262228; --warn-ink: #ffd27a; --warn-bg: #3b2c08; --dot-edge: #4d4652; --err: #ff8a80;
       --wl-blue: #8fb4ea; --wl-red: #e2918a;
       --heat-1: #8fc4a0; --heat-2: #7dd49c;
-      --spoke-h: #93c9a4;
+      --spoke-h: #93c9a4; --spoke-h-ink: #161417;
     }
   }
   * { box-sizing: border-box; }
@@ -505,6 +505,8 @@
   nav a.mood .meta .fresh { font-weight: 700; }
   nav a.mood .meta .fresh.h { color: var(--spoke-h); }
   nav a.mood .meta .fresh.e { color: var(--who, var(--agent)); }  /* the emergent who spoke, in its colour */
+  /* What people said that you haven't read: green, as "a person spoke lately" glows (Justin, 9 Nov). */
+  nav a.mood .badge:not(.bot) { background: var(--spoke-h); color: var(--spoke-h-ink); }
   nav a.mood .people-line:empty { display: none; }
   nav a.mood .people-line .hears { font-size: .85em; margin-left: 1px; }  /* listening by voice (services/listening.py) */
   nav a.mood .people-line .tooled { font-size: .8em; margin-left: 2px; }
@@ -1744,7 +1746,7 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/moods/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/moods/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/moods/prompts/" data-section="prompts">prompts</a><a href="/moods/status/" data-section="status">status</a><a href="/moods/todo/" data-section="todo">todo</a><a href="/moods/pulls/" data-section="pulls" title="The ramp: every open candidate branch, the last few merged">ramp</a><a href="/moods/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/moods/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a><a href="/moods/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/moods/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a></div></span></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/ramp/" data-section="ramp" title="The ramp: every open candidate branch, the last few merged">ramp</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/prompts/" data-section="prompts">prompts</a><a href="/status/" data-section="status">status</a><a href="/todo/" data-section="todo">todo</a><a href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a><a href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <!-- The block, the servers and the sprint, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
@@ -1806,18 +1808,18 @@
       <label class="readall" id="readAllLabel" hidden title="Each new message read aloud as it arrives, in its speaker's voice, the narrator saying who speaks, when an emergent starts thinking, and when a server redeploys. Your own messages aren't read.">read aloud as they come <select id="readAll"><option value="off">off</option><option value="here">this Mood</option><option value="everywhere">every Mood</option></select></label>
       <button type="button" id="voiceModeOpen" data-tour="voice-mode" class="readall" hidden title="Voice mode: what's read and what's next, big, and big buttons -- for driving, biking, walking">🎧 voice mode</button>
       <label class="readall" id="readSpeedLabel" hidden title="How fast things are read to you, in words a minute: emergents (and the narrator), and people (their messages and voice memos). Each voice is brought to it, whatever its own pace. Your browser's playback speed, so it costs nothing and changes at once.">words a minute: emergents <select id="readSpeed"></select> people <select id="readSpeedPeople"></select></label>
-      <a href="/moods/settings/#voices" id="voicesLink" hidden>voices</a>
+      <a href="/settings/#voices" id="voicesLink" hidden>voices</a>
       <a href="#" id="lookLink" hidden title="Your name written your way, BBS-style, and your icon's colour">your name</a>
       <a href="#" id="devicesLink" hidden>your devices</a>
       <a href="#" id="takenBackLink" hidden title="Who edited or deleted what in this Mood, and when; with the recovery key, what it said before">taken back here</a>
-      <a class="settings" href="/moods/status/" data-section="status" title="Emergents in every Mood, servers, backups, people, versions">status</a>
-      <a class="settings" href="/moods/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
-      <a class="settings" href="/moods/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
-      <a class="settings" href="/moods/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
+      <a class="settings" href="/status/" data-section="status" title="Emergents in every Mood, servers, backups, people, versions">status</a>
+      <a class="settings" href="/tidings/" data-section="tidings" title="Links and pictures from the Moods">tidings</a>
+      <a class="settings" href="/polls/" data-section="polls" title="Polls & Plebiscites: every Mood's polls, open ones first">polls</a>
+      <a class="settings" href="/prompts/" data-section="prompts" title="Each person's last 20 prompts, and what answering cost">prompts</a>
       <a href="#" id="signout" hidden>sign out</a>
     </div>
   </span>
-  <a class="gear" href="/moods/settings/" data-section="settings" title="Settings: how each emergent carries itself in each Mood" aria-label="Settings">⚙</a>
+  <a class="gear" href="/settings/" data-section="settings" title="Settings: how each emergent carries itself in each Mood" aria-label="Settings">⚙</a>
 </header>
 <div id="lightbox" hidden role="dialog" aria-label="Picture"><button type="button" class="close" aria-label="Close">✕</button>
   <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
@@ -3509,7 +3511,7 @@
   }
   async function miniShow(state) {
     miniClose();
-    if (!state || typeof state.back !== 'string' || !state.back.startsWith('/moods/tidings/')) return;
+    if (!state || typeof state.back !== 'string' || !state.back.startsWith('/tidings/')) return;
     mini.state = state;
     const el = mini.el = Object.assign(document.createElement('div'), { className: 'miniplayer' + (state.portrait ? ' portrait' : '') });
     el.setAttribute('role', 'region');
@@ -4538,7 +4540,7 @@
       // Its link's title, and the comment's first words, which open it there (Justin, 23 Oct). A line from
       // before they were kept says what it can.
       const msg = esc(e.message || ''), mood = encodeURIComponent(e.mood || current);
-      const at = e.tiding ? `/moods/tidings/${encodeURIComponent(e.tiding)}/` : '/moods/tidings/';
+      const at = e.work || (e.tiding ? `/tidings/${encodeURIComponent(e.tiding)}/` : '/tidings/');  // a candidate's: in the ramp
       const words = e.comment ? (e.comment.length > 40 ? e.comment.slice(0, 40).trimEnd() + '…' : e.comment) : '';
       const there = `${at}${e.comment_id ? '#c-' + encodeURIComponent(e.comment_id) : ''}`;
       if (e.html) {  // on a work's page: said whole, here as there (Justin, 9 Nov); ↩ answers it on the page too
@@ -4716,7 +4718,8 @@
     }
     if (e.type === 'work') {  // a piece of work's page opened, to talk about it (services/work_pages.py; Plan, section 9)
       el.className = 'event';
-      const page = e.tiding ? `/moods/tidings/${encodeURIComponent(e.tiding)}/` : '/moods/pulls/';
+      const page = e.repo && e.branch  // its page, in the ramp
+        ? `/ramp/${encodeURIComponent(e.repo)}/${String(e.branch).split('/').map(encodeURIComponent).join('/')}/` : '/ramp/';
       el.innerHTML = `💬 <b>${esc(shown(e.by || 'someone'))}</b> opened a page to talk about `
         + `<a href="${esc(page)}">${esc(e.ref || 'a piece of work')}</a>${e.title ? `: ${esc(e.title)}` : ''}`
         + ` · ${esc(stamp(e.created_at))}`;
@@ -7042,7 +7045,7 @@
   function onTidingsMark(tidings) {
     if (!tidings.length) return '';
     const titles = tidings.map(x => x.title).join(' · ');
-    return `<a class="ontidings" href="/moods/tidings/#t-${esc(tidings[0].id)}" title="On Tidings: ${esc(titles)}">★ ${tidings.length > 1 ? tidings.length + ' on ' : ''}Tidings</a>`;
+    return `<a class="ontidings" href="/tidings/#t-${esc(tidings[0].id)}" title="On Tidings: ${esc(titles)}">★ ${tidings.length > 1 ? tidings.length + ' on ' : ''}Tidings</a>`;
   }
   // Its links onto Tidings: a box each time (Justin, 21 Oct), to tick which and say what they'll be
   // called, and tag them. The title starts as the page's own, from its preview card.
@@ -7739,7 +7742,7 @@
   }
   setInterval(renderActivity, 1000);
   // On Tidings and the ramp, who's at work in every Mood (liveData, asked every 5 s), each a link to its Mood.
-  const ACTIVITY_SECTIONS = new Set(['tidings', 'pulls']);
+  const ACTIVITY_SECTIONS = new Set(['tidings', 'ramp']);
   const sectionActivity = document.getElementById('sectionActivity');
   function renderSectionActivity() {
     const all = ACTIVITY_SECTIONS.has(sectionNow)
@@ -9043,7 +9046,7 @@
     userMenu.hidden = true;
     showSection('settings', true);
     const frame = sectionFrames.querySelector('iframe[data-section="settings"]:not([data-fresh])');
-    if (frame) frame.src = '/moods/settings/?embed=1#voices';
+    if (frame) frame.src = '/settings/?embed=1#voices';
   });
 
   // --- reading aloud as they come ------------------------------------------------
@@ -10273,14 +10276,14 @@
   // --- one page: the Moods, and tidings, prompts, status and settings beside them -------------------
   // Each section is its own page, loaded into a frame the first time it's shown and kept: going back and
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
-  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'todo', 'pulls', 'tasks', 'journals', 'verify', 'hooks', 'settings'];
+  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
   // The address follows the Tidings frame while it shows (Justin, 4 Nov): a tiding opened from the list is
-  // its own address, to reload or share, and ‹ Tidings back to the list is /moods/tidings/ again.
+  // its own address, to reload or share, and ‹ Tidings back to the list is /tidings/ again.
   function tidingsAddress(f) {
     let at;
     try { at = f.contentWindow.location; } catch (err) { return null; }
-    if (!at.pathname.startsWith('/moods/tidings/')) return null;
+    if (!at.pathname.startsWith('/tidings/')) return null;
     const rest = new URLSearchParams(at.search);
     rest.delete('embed');
     return at.pathname + (rest.size ? '?' + rest : '') + at.hash;
@@ -10297,14 +10300,14 @@
   const sectionPending = {};
   // A data section's kept copy rots while you're away (Justin, 29 Oct: the prompts were "way outta date"):
   // one shown again after STALE_MS is redrawn behind the scenes and takes its place when it's in, seen or not.
-  const DATA_SECTIONS = new Set(['prompts', 'status', 'todo', 'pulls', 'tasks', 'journals', 'verify', 'hooks']);
+  const DATA_SECTIONS = new Set(['prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks']);
   const STALE_MS = 60000;
   function refreshSection(name, swapOpen) {
     const old = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
     if (!old || sectionFrames.querySelector(`iframe[data-section="${name}"][data-fresh]`)) return;  // its first load is fresh; or one's on its way
     if (sectionNow === name && !swapOpen) { sectionPending[name] = true; return; }  // under the reader: done when they leave, unless it's a data section
-    let at = `/moods/${name}/?embed=1`;  // where they were in it -- a link's discussion, say -- drawn again there
-    try { const l = old.contentWindow.location; if (l.pathname.startsWith(`/moods/${name}/`)) at = l.pathname + l.search; } catch (e) {}
+    let at = `/${name}/?embed=1`;  // where they were in it -- a link's discussion, say -- drawn again there
+    try { const l = old.contentWindow.location; if (l.pathname.startsWith(`/${name}/`)) at = l.pathname + l.search; } catch (e) {}
     const fresh = document.createElement('iframe');
     fresh.dataset.section = name;
     fresh.dataset.fresh = '1';
@@ -10324,7 +10327,16 @@
     fresh.src = at;
     sectionFrames.append(fresh);
   }
-  const sectionOf = path => SECTIONS.find(s => path.replace(/\/+$/, '') === '/moods/' + s) || null;
+  // A section's address is its own name at the top (Justin, 9 Nov: only the Moods and threads are /moods/...);
+  // the old /moods/<section>/ addresses are sent there (urls.py).
+  const OLD_SECTIONS = { pulls: 'ramp' };
+  const sectionOf = path => {
+    const old = /^\/moods\/[^/]+\/*$/.test(path), name = path.replace(/\/+$/, '').split('/').pop();
+    if (!old && path.split('/').filter(Boolean).length !== 1) return null;
+    if (!old) return SECTIONS.includes(name) ? name : null;
+    // An old address: /moods/pulls/ was the ramp; /moods/ramp/ never was a section -- it's the Mood #ramp.
+    return OLD_SECTIONS[name] || (name !== 'ramp' && SECTIONS.includes(name) ? name : null);
+  };
   // A frame, made once: tidings is asked for in the background at the start, so it's ready when wanted
   // (Justin, 21 Oct); the others load the first time they're shown. A plain spinner while one loads.
   function frameFor(name, keepQuiet, at) {
@@ -10341,18 +10353,33 @@
     loading.hidden = true;
     frame.addEventListener('load', function arrived() {
       let there = false;
-      try { there = frame.contentWindow.location.pathname.startsWith(`/moods/${name}/`); } catch (e) { there = true; }
+      try { there = frame.contentWindow.location.pathname.startsWith(`/${name}/`); } catch (e) { there = true; }
       if (!there) return;
       frame.dataset.loaded = Date.now();  // when this copy of the section was made, against STALE_MS
       loading.remove();
       frame.removeEventListener('load', arrived);
     });
-    frame.src = at || `/moods/${name}/?embed=1`;
+    frame.src = at || `/${name}/?embed=1`;
     frame.hidden = keepQuiet;
     sectionFrames.append(frame, loading);
     return frame;
   }
-  function showSection(name, push) {
+  // A candidate branch's page, in the ramp (Justin, 9 Nov: "why does it take me to tidings?"): /ramp/<repo>/<branch>/.
+  const candidateAt = path => /^\/ramp\/[^/]+\/.+\/$/.test(path);
+  // The ramp's frame shows what the address says: the list, or a candidate's page. It's moved with
+  // location.replace, so it adds no step of its own to Back: Back is the one page's alone, and returns to
+  // where the link was -- the ramp's list, or the Mood whose merge sheet it was (Justin, 9 Nov).
+  function rampFrameTo(path, hash) {
+    const want = `${path}?embed=1${hash || ''}`;
+    const frame = sectionFrames.querySelector('iframe[data-section="ramp"]:not([data-fresh])');
+    if (!frame) { frameFor('ramp', false, want); return; }
+    let there = null;
+    try { there = frame.contentWindow.location.pathname; } catch (e) {}
+    if (there === path && !hash) return;  // there already
+    try { frame.contentWindow.location.replace(want); } catch (e) { frame.src = want; }
+  }
+  function showSection(name, push, at, hash) {
+    if (name === 'ramp') rampFrameTo(at || '/ramp/', hash);
     const left = sectionNow;
     // Leaving Tidings with a video playing there: it follows (the small player, above).
     if (left === 'tidings' && name !== 'tidings') {
@@ -10384,8 +10411,9 @@
     });
     // Back to Tidings: the address is where its frame is, a tiding's own page if it was left there.
     const url = name === 'moods' ? (current ? '/moods/' + encodeURIComponent(current) + '/' : '/moods/')
-      : (name === 'tidings' && tidingsAddress(frameFor('tidings'))) || `/moods/${name}/`;
-    const here = name === 'tidings' ? location.pathname + location.search + location.hash : location.pathname;
+      : name === 'ramp' ? (at || '/ramp/') + (hash || '')
+      : (name === 'tidings' && tidingsAddress(frameFor('tidings'))) || `/${name}/`;
+    const here = name === 'tidings' || name === 'ramp' ? location.pathname + location.search + location.hash : location.pathname;
     if (push && here !== url) history.pushState({ section: name, slug: current }, '', url);
     const moreBtn = document.getElementById('sectionsMoreBtn');
     if (moreBtn) moreBtn.classList.toggle('active', ['prompts', 'status', 'todo', 'verify'].includes(name));
@@ -10457,28 +10485,39 @@
   // A link into one of Tidings' discussions, from the thread (a comment's line, a #t- link): opened in the
   // Tidings section, at that discussion -- not as a page of its own, nor the one page loaded again.
   document.addEventListener('click', e => {
-    const a = e.target.closest('a[href^="/moods/tidings/"]');
+    const a = e.target.closest('a[href^="/tidings/"], a[href^="/moods/tidings/"]');  // the old address, in what was said before 9 Nov
     if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
     const to = new URL(a.href, location.href);
-    const id = (to.pathname.match(/^\/moods\/tidings\/([0-9a-f-]{36})\/?$/) || [])[1];
+    const id = (to.pathname.match(/^(?:\/moods)?\/tidings\/([0-9a-f-]{36})\/?$/) || [])[1];
     if (!id) return;
     e.preventDefault();
     showSection('tidings', true);
     const frame = sectionFrames.querySelector('iframe[data-section="tidings"]:not([data-fresh])');
-    if (frame) frame.src = `/moods/tidings/${id}/?embed=1${to.hash}`;
+    if (frame) frame.src = `/tidings/${id}/?embed=1${to.hash}`;
+  });
+  // A link to a candidate branch's page, from a Mood (a merge sheet's "± See the full diff", a work line):
+  // opened in the ramp, at it.
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href^="/ramp/"]');
+    if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+    const to = new URL(a.href, location.href);
+    if (!candidateAt(to.pathname)) return;
+    e.preventDefault();
+    showSection('ramp', true, to.pathname, to.hash);
   });
   // A link inside a section into magenta: opened here, without loading anything again.
   window.addEventListener('message', async e => {
     if (e.origin !== location.origin || !e.data || typeof e.data.magentaGo !== 'string') return;
     const to = new URL(e.data.magentaGo, location.origin);
+    if (candidateAt(to.pathname)) { showSection('ramp', true, to.pathname, to.hash); return; }
     const sectionTo = sectionOf(to.pathname);
     if (sectionTo) { showSection(sectionTo, true); return; }
     // One tiding's page (a piece of work's, from the ramp): in the Tidings section, at it.
-    const tidingTo = (to.pathname.match(/^\/moods\/tidings\/([0-9a-f-]{36})\/?$/) || [])[1];
+    const tidingTo = (to.pathname.match(/^(?:\/moods)?\/tidings\/([0-9a-f-]{36})\/?$/) || [])[1];
     if (tidingTo) {
       showSection('tidings', true);
       const frame = sectionFrames.querySelector('iframe[data-section="tidings"]:not([data-fresh])');
-      if (frame) frame.src = `/moods/tidings/${tidingTo}/?embed=1${to.hash}`;
+      if (frame) frame.src = `/tidings/${tidingTo}/?embed=1${to.hash}`;
       return;
     }
     const id = (to.hash.match(/^#m-([0-9a-f-]+)$/) || [])[1];
@@ -10502,7 +10541,7 @@
     const sectionTo = sectionOf(location.pathname);
     // Back to Tidings, or to one tiding's own page (left by a link in it into a Mood): Tidings, its frame
     // where the address says.
-    const tidingAt = location.pathname.match(/^\/moods\/tidings\/([0-9a-f-]{36})\/?$/);
+    const tidingAt = location.pathname.match(/^\/tidings\/([0-9a-f-]{36})\/?$/);
     if (sectionTo === 'tidings' || tidingAt) {
       showSection('tidings', false);
       const frame = tidingsFrame(), there = frame && tidingsAddress(frame);
@@ -10511,6 +10550,10 @@
         asked.set('embed', '1');
         frame.src = `${location.pathname}?${asked}${location.hash}`;
       }
+      return;
+    }
+    if (sectionTo === 'ramp' || candidateAt(location.pathname)) {  // the list, or a candidate's page: the frame follows
+      showSection('ramp', false, location.pathname, location.hash);
       return;
     }
     if (sectionTo) { showSection(sectionTo, false); return; }
@@ -10525,14 +10568,15 @@
     // front page, or a #t- link elsewhere), it opens at that link's discussion.
     // Its order (?order=new) and a comment's #c- come along: a frame's own address opened on its own is
     // sent here without ?embed (views_settings._opened_on_its_own), and lands where it pointed.
-    const tidingAt = location.pathname.match(/^\/moods\/tidings\/[0-9a-f-]{36}\/?$/);
-    const tidingsAt = tidingAt ? tidingAt[0].replace(/\/?$/, '/') : sectionOf(location.pathname) === 'tidings' ? '/moods/tidings/' : null;
+    const tidingAt = location.pathname.match(/^\/tidings\/[0-9a-f-]{36}\/?$/);
+    const tidingsAt = tidingAt ? tidingAt[0].replace(/\/?$/, '/') : sectionOf(location.pathname) === 'tidings' ? '/tidings/' : null;
     const asked = new URLSearchParams(location.search);
     asked.set('embed', '1');
     frameFor('tidings', true, tidingsAt ? `${tidingsAt}?${asked}${location.hash}` : undefined);
     // Asked for a section: shown at once, before the Moods load behind it -- not a Mood first, then the
     // section (Justin, 23 Oct: from the front page, a link took "quite a while").
-    if (initialSection !== 'moods') showSection(initialSection, false);
+    if (initialSection === 'ramp') showSection('ramp', false, location.pathname, location.hash);  // the list, or a candidate's page
+    else if (initialSection !== 'moods') showSection(initialSection, false);
     // The list of Moods and the Mood in the address are asked for together: the Mood isn't kept waiting on
     // the list (Justin, 31 Oct: over a minute to load, the list rebuilding behind a deploy). Without a Mood
     // in the address, the list says which to open, so it's waited for.

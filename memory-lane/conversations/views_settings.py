@@ -67,7 +67,7 @@ def makers_offered():
 
 RECENT_BUNDLES = 8  # the newest bundles made, shown atop the instructions bundles section
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'pulls', 'tasks', 'journals', 'verify', 'hooks', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'settings')
 
 
 def _opened_on_its_own(request):
@@ -174,8 +174,8 @@ def tasks_page(request):
     return render(request, 'conversations/mood_tasks.html', {'board': tasks.board(), 'embed': True})
 
 
-@section('pulls')
-def pulls_page(request):
+@section('ramp')
+def ramp_page(request):
     """The ramp (services/ramp.py; Cryptograss:Moods/ramp/Plan, section 2): every open pull request and
     githouse branch across our repositories, the last few merged, the names used, githouse's log.
     Justin, 7 Nov: "Does githouse have a UI that I can see?" -- "build the ramp view"."""
@@ -185,8 +185,11 @@ def pulls_page(request):
     device = mood_auth.device_for(request)
     # The Merge buttons, for a merger signed in with their SSH key (Plan, section 10); githouse checks again.
     can_merge = bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id)
+    open_ = ramp.with_people(work.with_pages(thumbs.with_thumbs(ramp.with_tests(ramp.ordered(board['open'], '')))))
     return render(request, 'conversations/mood_pulls.html',
-                  {'board': board, 'open': work.with_pages(thumbs.with_thumbs(ramp.with_tests(ramp.ordered(board['open'], '')))),
+                  {'board': board, 'open': open_,
+                   # Who's on each, for the buttons that show or hide them (Justin, 9 Nov, #ramp).
+                   'everyone': ramp.everyone(open_),
                    'embed': True, 'can_merge': can_merge,
                    # The 👍 (Plan, section 8): any signed-in person, at either tier.
                    'can_thumb': bool(device) and device.entity.is_biological_human,
@@ -299,6 +302,7 @@ def _work_context(tiding_id, device):
         thumbs.with_thumbs([panel['item']])  # its 👍s; its open merge asks came with it (ramp.asks)
     panel['tests'] = ramp.test_runs().get((panel['repo'], panel['head'])) if panel['head'] else None
     panel['description_html'] = tiding_links.said_html(panel['description']) if panel['description'] else ''
+    panel['address'] = work.address(panel['repo'], panel['branch'])  # its own, in the ramp
     return {'work': panel, 'highlight_css': work.highlight_css(),
             'can_merge': bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id),
             'can_thumb': bool(device) and device.entity.is_biological_human,
@@ -309,15 +313,27 @@ def _work_context(tiding_id, device):
 @require_GET
 def tiding_page(request, tiding_id):
     """One link's page: itself and what's been said about it, as a comment can be said. Asked for with
-    ?embed=1, it draws inside the one page's Tidings frame; without, the one page, on Tidings."""
-    from .services import tiding_links
+    ?embed=1, it draws inside the one page's Tidings frame; without, the one page, on Tidings. A candidate
+    branch's page has its own address in the ramp, and is sent there."""
     from .views_auth import _uuid_or_none
     if not request.GET.get('embed'):
+        from .models import WorkTiding
+        from .services import work_pages as work
+        page = WorkTiding.objects.filter(tiding_id=_uuid_or_none(tiding_id)).first() if _uuid_or_none(tiding_id) else None
+        if page is not None:
+            from django.shortcuts import redirect
+            return redirect(work.address(page.repo, page.branch))
         from .views_moods import moods_page
         return moods_page(request, section='tidings')
     whole = _opened_on_its_own(request)
     if whole:
         return whole
+    return _tiding_response(request, tiding_id)
+
+
+def _tiding_response(request, tiding_id):
+    from .services import tiding_links
+    from .views_auth import _uuid_or_none
     device = mood_auth.device_for(request)
     viewer = device.entity_id if device else None
     try:
@@ -337,8 +353,40 @@ def tiding_page(request, tiding_id):
             # [[ in the box suggests PickiPedia titles, asked of the wiki itself (as the Moods' composer does).
             'pickipedia_url': getattr(settings, 'PICKIPEDIA_URL', 'https://pickipedia.xyz').rstrip('/'),
         })
-    response['X-Frame-Options'] = 'SAMEORIGIN'  # drawn in the one page's Tidings frame, as section() allows
+    response['X-Frame-Options'] = 'SAMEORIGIN'  # drawn in the one page's frame, as section() allows
     return response
+
+
+@ensure_csrf_cookie
+@require_GET
+def candidate_page(request, repo, branch):
+    """A candidate branch's page: /ramp/<repo>/<branch>/, in the ramp (Justin, 9 Nov: "why does it take me to
+    tidings?"). Asked for with ?embed=1, it draws in the one page's ramp frame; without, the one page, on the
+    ramp, at it. Its Tiding is made the first time a signed-in person asks for it (work_pages.open_page)."""
+    if not request.GET.get('embed'):
+        from .views_moods import moods_page
+        return moods_page(request, section='ramp')
+    whole = _opened_on_its_own(request)
+    if whole:
+        return whole
+    from django.http import HttpResponse
+    from .services import work_pages as work
+    page = work.page_of(repo, branch)
+    if page is None:
+        device = mood_auth.device_for(request)
+        if not (device and device.entity.is_biological_human):
+            response = HttpResponse(f'{repo}:{branch} has no page yet; signed in, you can open one.', status=404,
+                                    content_type='text/plain; charset=utf-8')
+            response['X-Frame-Options'] = 'SAMEORIGIN'
+            return response
+        try:
+            tiding = work.open_page(device.entity, repo, branch)
+        except work.Invalid as e:
+            response = HttpResponse(str(e), status=getattr(e, 'status', 400), content_type='text/plain; charset=utf-8')
+            response['X-Frame-Options'] = 'SAMEORIGIN'
+            return response
+        return _tiding_response(request, str(tiding.id))
+    return _tiding_response(request, str(page.tiding_id))
 
 
 @section('prompts')

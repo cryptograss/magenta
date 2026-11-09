@@ -100,12 +100,12 @@ class ThumbTest(TestCase):
     def test_the_ramp_shows_them(self):
         Thumb.objects.create(repo='magenta', branch='re/foo', commit=self.foo, by='skyler')
         self.as_('justin')
-        page = self.client.get('/moods/pulls/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
         self.assertIn('class="thumb" aria-pressed="false"', page)
         self.assertIn('👍 1', page)
         self.assertIn('>skyler</span>', page)
         self.client.cookies.clear()
-        page = self.client.get('/moods/pulls/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
         self.assertNotIn('class="thumb"', page)   # signed out: shown, not pressable
         self.assertIn('👍 1', page)
 

@@ -100,12 +100,8 @@ def api_merge_preview(request):
         return JsonResponse({'error': 'number: a pull request number'}, status=400)
     except merge_orders.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
-    from .services import work_pages as work
-    page = work.page_of(seen.get('repo', ''), seen.get('branch', ''))
     return JsonResponse({**seen, 'can': device.tier == 'key' and merge_orders.can_press(device.entity_id),
-                         'mergers': list(merge_orders.mergers()), **_who_wants(seen),
-                         # its page, for the sheet's "± See the full diff" (Justin, 9 Nov); None: made on the click
-                         'page': str(page.tiding_id) if page else None})
+                         'mergers': list(merge_orders.mergers()), **_who_wants(seen)})
 
 
 def _who_wants(seen):

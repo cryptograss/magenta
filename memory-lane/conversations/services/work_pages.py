@@ -71,6 +71,13 @@ def find(repo, branch, fresh_if_missing=False):
     return item
 
 
+def address(repo, branch):
+    """A candidate branch's page, in the ramp (Justin, 9 Nov: "why does it take me to tidings?"):
+    /ramp/<repo>/<branch>/, the branch's slashes kept."""
+    from urllib.parse import quote
+    return f'/ramp/{quote(repo, safe="")}/{quote(branch, safe="/")}/'
+
+
 def page_of(repo, branch):
     """The WorkTiding for this work, or None."""
     from conversations.models import WorkTiding
@@ -137,7 +144,7 @@ def open_page(by, repo, branch):
         raise Invalid(f'no Mood to talk about {repo}:{branch} in', 404)
     ref = f"{repo}#{item['number']}" if item.get('number') else f'{repo}:{branch}'
     site = getattr(settings, 'MAGENTA_URL', 'https://magenta.cryptograss.live').rstrip('/')
-    url = item.get('url') or f'{site}/moods/pulls/#{repo}:{branch}'
+    url = item.get('url') or f'{site}/ramp/#{repo}:{branch}'
     system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
     try:
         with transaction.atomic():

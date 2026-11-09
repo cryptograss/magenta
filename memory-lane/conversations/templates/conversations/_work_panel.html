@@ -65,7 +65,7 @@
     {% for m in work.item.moods %} · <a href="/moods/{{ m }}/">#{{ m }}</a>{% endfor %}
     {% if work.size %} · <span class="add">+{{ work.size.added }}</span> <span class="rm">−{{ work.size.removed }}</span> in {{ work.size.files }} file{{ work.size.files|pluralize }}{% endif %}
     {% if work.item.deploy %} · {{ work.item.deploy }}{% endif %}
-    · <a href="/moods/pulls/">the ramp</a>
+    · <a href="/ramp/">the ramp</a>
   </div>
 
   {% if work.description_html %}<div class="desc">{{ work.description_html|safe }}</div>{% endif %}
@@ -157,7 +157,7 @@
     const id = decodeURIComponent(a.getAttribute('href').slice(1));
     light(id);
     history.replaceState(history.state, '', '#' + id);
-    const link = `${location.origin}/moods/tidings/${tiding}/#${id}`;
+    const link = `${location.origin}{{ work.address|escapejs }}#${id}`;  // its address in the ramp
     try { await navigator.clipboard.writeText(link); flash(a, 'link copied'); } catch (err) { flash(a, link); }
   });
   function flash(a, words) {

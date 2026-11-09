@@ -751,7 +751,7 @@ def _tiding_link(ref):
         return None
     tiding = found[0]
     title = tiding.title or tiding.url
-    return (f'<a class="tidinglink" href="/moods/tidings/{tiding.id}/?embed=1" title="{html.escape(title)}">'
+    return (f'<a class="tidinglink" href="/tidings/{tiding.id}/?embed=1" title="{html.escape(title)}">'
             f'🔗 {html.escape(title[:80])}</a>')
 
 

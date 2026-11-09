@@ -1,4 +1,4 @@
-"""Tests for /moods/status/ and /api/status/, and removing Recent changes / Open work from /moods/."""
+"""Tests for /status/ and /api/status/, and removing Recent changes / Open work from /moods/."""
 
 import os
 import tempfile
@@ -38,10 +38,10 @@ class StatusPageTests(TestCase):
         self.assertNotIn('id="work"', html)
         self.assertNotIn('Recent changes', html)
         self.assertNotIn('Open work', html)
-        self.assertIn('href="/moods/status/"', html)
+        self.assertIn('href="/status/"', html)
 
     def test_status_page_renders_and_shows_viewer(self):
-        anon = self.client.get('/moods/status/?embed=1')
+        anon = self.client.get('/status/?embed=1')
         self.assertEqual(anon.status_code, 200)
         self.assertIn('status · magenta', anon.content.decode())
         self.assertIn('Spend by kind of turn', anon.content.decode())  # the shared kinds block is in (magent, #281)
@@ -50,12 +50,12 @@ class StatusPageTests(TestCase):
         _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
         signed = Client()
         signed.cookies[mood_auth.COOKIE] = token
-        resp = signed.get('/moods/status/?embed=1')
+        resp = signed.get('/status/?embed=1')
         self.assertEqual(resp.status_code, 200)
         self.assertIn('justin', resp.content.decode())
 
     def test_status_page_has_green_pie_and_grouped_heaps(self):
-        html = self.client.get('/moods/status/?embed=1').content.decode()
+        html = self.client.get('/status/?embed=1').content.decode()
         self.assertIn('.pie.ok', html)
         self.assertIn('.pie.pulse', html)
         self.assertIn('var(--ok)', html)

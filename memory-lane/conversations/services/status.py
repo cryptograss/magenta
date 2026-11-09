@@ -1,4 +1,4 @@
-"""The magenta status page (/moods/status/ and /api/status/): how the system stands now.
+"""The magenta status page (/status/ and /api/status/): how the system stands now.
 
 Six things on one page:
   1. Every agent's settings bar in every Mood (and everywhere), plus every vendor

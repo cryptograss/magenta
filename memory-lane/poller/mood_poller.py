@@ -1436,7 +1436,7 @@ def candidate_lines(texts, found):
     more = len(found) - len(shown)
     return (['', wake_line(texts, 'candidates', CANDIDATES_NOTE, count=len(found))]
             + [candidate_line(c) for c in shown]
-            + ([f'- and {more} more, on the ramp (/moods/pulls/)'] if more > 0 else []))
+            + ([f'- and {more} more, on the ramp (/ramp/)'] if more > 0 else []))
 
 
 def reactions_to(agent, page, seen):

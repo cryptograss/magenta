@@ -178,12 +178,12 @@ class MergeButtonTest(TestCase):
         with mock.patch('conversations.services.ramp.board', return_value=board), \
                 mock.patch('conversations.services.ramp.ordered', side_effect=lambda items, key: items):
             self.as_('justin')
-            ramp = self.client.get('/moods/pulls/', {'embed': '1'}).content.decode()
+            ramp = self.client.get('/ramp/', {'embed': '1'}).content.decode()
             self.assertIn('data-repo="magenta" data-branch="re/foo" data-number="7"', ramp)
             self.assertIn('id="mergeSheetTpl"', ramp)
             self.assertIn('id="mergeSheetTpl"', self.client.get('/moods/').content.decode())
             self.as_('rj')
-            self.assertNotIn('class="merge"', self.client.get('/moods/pulls/', {'embed': '1'}).content.decode())
+            self.assertNotIn('class="merge"', self.client.get('/ramp/', {'embed': '1'}).content.decode())
             self.assertNotIn('id="mergeSheetTpl"', self.client.get('/moods/').content.decode())
 
 

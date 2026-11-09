@@ -71,9 +71,21 @@
   .sorts button { font: inherit; background: none; border: 1px solid var(--line); border-radius: 4px; padding: 1px 8px;
                   color: var(--muted); cursor: pointer; }
   .sorts button[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); }
+  /* Who's on it (Justin, 9 Nov, #ramp): a button each; pressed once, only theirs; twice, theirs hidden. */
+  .people { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+  .people button { font: inherit; background: none; border: 1px solid var(--line); border-radius: 12px; padding: 1px 9px;
+                   color: var(--muted); cursor: pointer; }
+  .people button .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--who); margin-right: 4px; }
+  .people button small { opacity: .7; margin-left: 3px; }
+  .people button[data-state="in"] { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
+  .people button[data-state="in"]::before { content: '✓ '; }
+  .people button[data-state="out"] { text-decoration: line-through; opacity: .55; }
+  .people .clear[hidden], .people .count:empty { display: none; }
+  #open tr[hidden] { display: none; }
   pre.log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
             font-size: 12px; overflow-x: auto; white-space: pre; margin: 0; }
   .err { color: var(--err); }
+  a.said { opacity: .7; font-style: italic; }
   .tests { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line);
            color: var(--muted); text-decoration: none; }
   .tests.passed { color: var(--ok); border-color: var(--ok); }
@@ -105,17 +117,17 @@
 <header>
   <a class="brand" href="/moods/">magenta</a>
   <nav>
-    <a href="/moods/status/">status</a>
-    <a href="/moods/tidings/">tidings</a>
-    <a href="/moods/polls/">polls</a>
-    <a href="/moods/prompts/">prompts</a>
-    <a href="/moods/todo/">todo</a>
-    <a href="/moods/pulls/" aria-current="page">ramp</a>
-    <a href="/moods/tasks/">tasks</a>
-    <a href="/moods/journals/">journals</a>
-    <a href="/moods/verify/">bundles</a>
-    <a href="/moods/hooks/">wiki hooks</a>
-    <a href="/moods/settings/">settings</a>
+    <a href="/status/">status</a>
+    <a href="/tidings/">tidings</a>
+    <a href="/polls/">polls</a>
+    <a href="/prompts/">prompts</a>
+    <a href="/todo/">todo</a>
+    <a href="/ramp/" aria-current="page">ramp</a>
+    <a href="/tasks/">tasks</a>
+    <a href="/journals/">journals</a>
+    <a href="/verify/">bundles</a>
+    <a href="/hooks/">wiki hooks</a>
+    <a href="/settings/">settings</a>
   </nav>
 </header>
 <main>
@@ -134,32 +146,37 @@
   <h2>Open candidate branches</h2>
   <p class="sorts">Sort by <button type="button" data-sort="active" aria-pressed="true">last activity</button>
     <button type="button" data-sort="pushed" aria-pressed="false">last push</button>
-    <button type="button" data-sort="mentioned" aria-pressed="false">last mention</button></p>
+    <button type="button" data-sort="mentioned" aria-pressed="false">last mention</button>
+    <button type="button" data-sort="mood" aria-pressed="false" title="By Mood, A to Z; each Mood's newest first">mood</button></p>
+  {% if everyone %}<p class="people" title="Click: only theirs. Again: theirs hidden. Again: everyone.">Who:
+    {% for p in everyone %}<button type="button" data-person="{{ p.name }}" data-state="">{% if p.colour %}<span class="dot" style="--who: {{ p.colour }}"></span>{% endif %}{{ p.name }}<small>{{ p.count }}</small></button>{% endfor %}
+    <span class="count"></span><button type="button" class="clear" hidden>everyone</button></p>{% endif %}
   <table id="open">
     <thead><tr><th></th><th>candidate</th><th>who</th><th>where</th><th>size</th><th>pushed</th><th>last said</th><th>deploy</th></tr></thead>
     <tbody>
     {% for i in open %}
     <tr class="{{ i.state }}" data-active="{{ i.active|date:'U'|default:0 }}" data-pushed="{{ i.pushed|date:'U'|default:0 }}"
-        data-mentioned="{% if i.mentions %}{{ i.mentions.0.at|date:'U' }}{% else %}0{% endif %}">
+        data-mentioned="{% if i.mentions %}{{ i.mentions.0.at|date:'U' }}{% else %}0{% endif %}"
+        data-mood="{{ i.where.0|default:'' }}" data-people="{{ i.people|join:' ' }}">
       <td><span class="temp {{ i.temperature }}" title="{{ i.temperature }}{% if i.active %}: {{ i.active|timesince }} ago{% endif %}"></span></td>
       <td class="work">
         {% comment %}Every candidate is named and linked the same way, pull request or not (Justin, 9 Nov, #ramp: "convert all the
            existing PRs to branch candidates, and link to them"): its title goes to its page here; its name is
            repo:branch; a pull request is only a small link to GitHub's page for it.{% endcomment %}
-        {% if i.page %}<a class="title" href="/moods/tidings/{{ i.page.id }}/" title="Its page: what it changes, its commits, what's been said">{{ i.title|default:i.branch }}</a>{% elif can_thumb and i.branch and i.state != 'merged' %}<a class="title openpage" href="{{ i.url|default:'#' }}" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Its page: what it changes, its commits, what's been said">{{ i.title|default:i.branch }}</a>{% elif i.url %}<a class="title" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.title|default:i.branch }}</a>{% else %}<span class="title">{{ i.title|default:i.branch }}</span>{% endif %}
+        {% if i.branch and i.state != 'merged' and i.page or i.branch and i.state != 'merged' and can_thumb %}<a class="title" href="/ramp/{{ i.repo|urlencode:'' }}/{{ i.branch|urlencode }}/" title="Its page: what it changes, its commits, what's been said">{{ i.title|default:i.branch }}</a>{% elif i.url %}<a class="title" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.title|default:i.branch }}</a>{% else %}<span class="title">{{ i.title|default:i.branch }}</span>{% endif %}
         {% if i.state != 'open' and i.state != 'pushed' %}<span class="state {{ i.state }}"{% if i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{{ i.state }}</span>{% endif %}
         {% if i.tests %}<a class="tests {{ i.tests.state|slugify }}" href="{{ i.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ i.tests.number }} on Jenkins, for this head">{% if i.tests.state == 'passed' %}✓ tests{% elif i.tests.state == 'failed' %}✗ tests{% elif i.tests.state == 'testing' %}… testing{% else %}{{ i.tests.state }}{% endif %}</a>{% endif %}
         {% include "conversations/_asks.html" with w=i %}
         {% include "conversations/_thumb.html" with w=i %}
         <br><span class="ref">{{ i.repo }}:{{ i.branch|default:"?" }}</span>{% if i.base %}<span class="branch"> → {{ i.base }}</span>{% endif %}{% if i.number %} <a class="gh" href="{{ i.url }}" target="_blank" rel="noopener" title="GitHub's pull request page for it">PR #{{ i.number }} ↗</a>{% endif %}
         {% if i.branch and i.state != 'merged' %}<div class="acts">
-          {% if i.page %}<a class="see" href="/moods/tidings/{{ i.page.id }}/#diff" title="Every file it changes, each diff open">± See the diff</a>{% elif can_thumb %}<a class="see openpage" href="#" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" data-hash="#diff" title="Every file it changes, each diff open">± See the diff</a>{% elif i.url %}<a class="see" href="{{ i.url }}/files" target="_blank" rel="noopener" title="On GitHub">± See the diff ↗</a>{% endif %}
-          {% if i.page %}<a class="talk" href="/moods/tidings/{{ i.page.id }}/" title="Its page: what it changes, its commits, what's been said">💬 {{ i.page.comments }}</a>{% elif can_thumb %}<button type="button" class="talk" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Its page, to talk about it: what it changes, its commits, comments">💬 talk</button>{% endif %}
+          {% if i.page or can_thumb %}<a class="see" href="/ramp/{{ i.repo|urlencode:'' }}/{{ i.branch|urlencode }}/#diff" title="Every file it changes, each diff open">± See the diff</a>{% elif i.url %}<a class="see" href="{{ i.url }}/files" target="_blank" rel="noopener" title="On GitHub">± See the diff ↗</a>{% endif %}
+          {% if i.page or can_thumb %}<a class="talk" href="/ramp/{{ i.repo|urlencode:'' }}/{{ i.branch|urlencode }}/" title="Its page: what it changes, its commits, what's been said">💬 {% if i.page %}{{ i.page.comments }}{% else %}talk{% endif %}</a>{% endif %}
           {% if can_merge %}<button type="button" class="merge" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}"{% if i.number %} data-number="{{ i.number }}"{% endif %} title="Look at what it brings, then merge it, as you">Merge…</button>{% endif %}
         </div>{% endif %}
       </td>
       <td>{{ i.worked_on_by|default:i.author }}</td>
-      <td>{% for m in i.moods %}<a href="/moods/{{ m }}/">#{{ m }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
+      <td>{% for m in i.where %}<a href="/moods/{{ m }}/"{% if not i.moods %} class="said" title="not on its card: where it was said"{% endif %}>#{{ m }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
       <td class="num size">{% if i.size %}<span class="add">+{{ i.size.added }}</span> <span class="rm">−{{ i.size.removed }}</span><br>{{ i.size.commits }} commit{{ i.size.commits|pluralize }}{% elif not i.held %}<span title="githouse doesn't copy this repository">—</span>{% endif %}</td>
       <td class="num">{% if i.pushed %}{{ i.pushed|date:"j M H:i" }}Z{% endif %}</td>
       <td>{% for m in i.mentions %}<a class="ment" href="/moods/{{ m.mood }}/#m-{{ m.id }}">#{{ m.mood }} · {{ m.who }} · {{ m.at|date:"j M H:i" }}Z</a>{% empty %}<span class="why" title="not said in any Mood in 60 days">—</span>{% endfor %}</td>
@@ -176,7 +193,7 @@
     <tr><th>candidate</th><th>who</th><th>where</th><th>merged</th><th>deploy</th><th>live on</th></tr>
     {% for m in board.merged %}
     <tr>
-      <td class="work">{% if m.page %}<a class="title" href="/moods/tidings/{{ m.page.id }}/" title="Its page: what it changed, its commits, what was said">{{ m.title }}</a>{% else %}<span class="title">{{ m.title }}</span>{% endif %}
+      <td class="work">{% if m.page %}<a class="title" href="/ramp/{{ m.repo|urlencode:'' }}/{{ m.branch|urlencode }}/" title="Its page: what it changed, its commits, what was said">{{ m.title }}</a>{% else %}<span class="title">{{ m.title }}</span>{% endif %}
         <br><span class="ref">{{ m.repo }}{% if m.branch %}:{{ m.branch }}{% endif %}</span>{% if m.number %} <a class="gh" href="{{ m.url }}" target="_blank" rel="noopener" title="GitHub's pull request page for it">PR #{{ m.number }} ↗</a>{% endif %}</td>
       <td>{{ m.worked_on_by|default:m.author }}</td>
       <td>{% for mood in m.moods %}<a href="/moods/{{ mood }}/">#{{ mood }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
@@ -216,36 +233,51 @@
 </script>{% endif %}
 {% include "conversations/_thumbs_script.html" %}
 <script>
-  // 💬 talk, or the work's name: its page, made now (services/work_pages.py; Plan, section 9), and opened in
-  // Tidings (Justin, 9 Nov: the ramp's links go to the work's page, not GitHub).
-  document.querySelectorAll('button.talk, a.openpage').forEach(b => b.addEventListener('click', async e => {
-    if (b.tagName === 'A' && (e.button || e.metaKey || e.ctrlKey || e.shiftKey)) return;  // its GitHub page, in a tab
-    e.preventDefault(); e.stopPropagation();
-    if (b.disabled || b.dataset.busy) return;
-    b.disabled = true; b.dataset.busy = '1';
-    try {
-      const r = await fetch('/api/ramp/work/', { method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json',
-                   'X-CSRFToken': (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '' },
-        body: JSON.stringify({ repo: b.dataset.repo, branch: b.dataset.branch }) });
-      const got = await r.json();
-      if (!r.ok) { b.title = got.error || "that didn't work"; return; }
-      const to = `/moods/tidings/${got.id}/${b.dataset.hash || ''}`;  // ± See the diff: #diff, every diff open
-      if (parent !== window) parent.postMessage({ magentaGo: to }, location.origin); else location.href = to;
-    } finally { b.disabled = false; delete b.dataset.busy; }
-  }));
-</script>
-<script>
-  // Sorting the open work, here and now: no reload.
+  // Sorting the open work, here and now: no reload. By Mood: A to Z, none last, each Mood's newest first.
   const body = document.querySelector('#open tbody');
   document.querySelectorAll('.sorts button').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('.sorts button').forEach(o => o.setAttribute('aria-pressed', o === b ? 'true' : 'false'));
     const key = b.dataset.sort;
     const rows = [...body.querySelectorAll('tr[data-active]')];
+    const byMood = (x, y) => (!x.dataset.mood - !y.dataset.mood) || x.dataset.mood.localeCompare(y.dataset.mood);
     rows.sort((x, y) => (x.classList.contains('merged') - y.classList.contains('merged'))
-                        || (Number(y.dataset[key]) - Number(x.dataset[key])));
+                        || (key === 'mood' ? byMood(x, y) : 0)
+                        || (Number(y.dataset[key === 'mood' ? 'active' : key]) - Number(x.dataset[key === 'mood' ? 'active' : key])));
     rows.forEach(r => body.append(r));
   }));
+  // Who's on it (Justin, 9 Nov, #ramp: "buttons to include/exclude each of the participants"). A button each:
+  // once, only candidates with them (any of those so marked); twice, candidates with them hidden; again,
+  // as before. Kept in this browser.
+  (() => {
+    const bar = document.querySelector('.people');
+    if (!bar) return;
+    const KEY = 'ramp-people', buttons = [...bar.querySelectorAll('button[data-person]')];
+    let states = {};
+    try { states = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
+    const here = new Set(buttons.map(b => b.dataset.person));
+    Object.keys(states).forEach(n => { if (!here.has(n) || !['in', 'out'].includes(states[n])) delete states[n]; });
+    function apply() {
+      const ins = Object.keys(states).filter(n => states[n] === 'in'), outs = Object.keys(states).filter(n => states[n] === 'out');
+      let shown = 0, total = 0;
+      body.querySelectorAll('tr[data-active]').forEach(r => {
+        const on = (r.dataset.people || '').split(' ').filter(Boolean);
+        r.hidden = !((!ins.length || on.some(p => ins.includes(p))) && !on.some(p => outs.includes(p)));
+        total += 1; shown += r.hidden ? 0 : 1;
+      });
+      buttons.forEach(b => { b.dataset.state = states[b.dataset.person] || ''; });
+      const any = ins.length + outs.length > 0;
+      bar.querySelector('.count').textContent = any ? `${shown} of ${total} shown` : '';
+      bar.querySelector('.clear').hidden = !any;
+      try { localStorage.setItem(KEY, JSON.stringify(states)); } catch (e) {}
+    }
+    buttons.forEach(b => b.addEventListener('click', () => {
+      const n = b.dataset.person, now = states[n] || '';
+      if (now === '') states[n] = 'in'; else if (now === 'in') states[n] = 'out'; else delete states[n];
+      apply();
+    }));
+    bar.querySelector('.clear').addEventListener('click', () => { states = {}; apply(); });
+    apply();
+  })();
 </script>
 </body>
 </html>

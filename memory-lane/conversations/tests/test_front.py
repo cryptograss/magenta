@@ -78,7 +78,7 @@ class FrontPageTest(FrontBase):
         TidingVote.objects.create(tiding=made[0], by=self.justin)
         self.assertEqual([t['title'] for t in front.top_tidings()], ['Link 1', 'Link 0', 'Link 3', 'Link 2'])  # five at most
         html = self.client.get('/').content.decode()
-        self.assertIn(f'/moods/tidings/{made[1].id}/', html)
+        self.assertIn(f'/tidings/{made[1].id}/', html)
         self.assertIn('Link 2', html)
 
     def test_who_spoke_lately_where_and_its_first_words(self):
@@ -121,7 +121,7 @@ class FrontPageTest(FrontBase):
     def test_a_links_address_opens_the_one_page_at_its_discussion(self):
         said = self.say(self.skyler, self.jams, 'https://example.org/x')
         tiding = tiding_links.promote(said, self.justin, title='X')
-        page = self.client.get(f'/moods/tidings/{tiding.id}/').content.decode()
+        page = self.client.get(f'/tidings/{tiding.id}/').content.decode()
         self.assertIn('tidingAt', page)  # the one page, which opens the discussion in its Tidings frame
 
 
@@ -168,10 +168,10 @@ class RankingAndPinsTest(FrontBase):
         self.assertEqual(pin(client(self.skyler, 'key'), True).json()['pinned'], [str(first.id)])
         self.assertEqual([t['title'] for t in tiding_links.listed()], ['One', 'Two'])
         self.assertEqual([t['title'] for t in front.state()['tidings']][:1], ['One'])  # at once, not after the cache
-        page = client(self.skyler, 'key').get('/moods/tidings/?embed=1').content.decode()
+        page = client(self.skyler, 'key').get('/tidings/?embed=1').content.decode()
         self.assertIn('class="pinit"', page)
         self.assertIn('📌', page)
-        self.assertNotIn('class="pinit"', client(self.skyler, 'wiki').get('/moods/tidings/?embed=1').content.decode())
+        self.assertNotIn('class="pinit"', client(self.skyler, 'wiki').get('/tidings/?embed=1').content.decode())
         pin(client(self.justin, 'key'), False)
         self.assertEqual([t['title'] for t in tiding_links.listed()], ['Two', 'One'])
 
@@ -184,9 +184,9 @@ class RankingAndPinsTest(FrontBase):
         self.assertEqual([(s['who'], s['mood']) for s in front.lately()],
                          [('justin', 'jams'), ('skyler', 'magenta-interface')])  # each person once, at their latest
         html = self.client.get('/').content.decode()
-        self.assertIn('class="enter" href="/moods/tidings/"', html)                      # come in: Tidings
+        self.assertIn('class="enter" href="/tidings/"', html)                      # come in: Tidings
         self.assertIn('class="title" href="https://example.org/x"', html)              # a link's title: out to it
-        self.assertIn(f'<a href="/moods/tidings/{tiding.id}/">0 comments</a>', html)     # its comments: its discussion
+        self.assertIn(f'<a href="/tidings/{tiding.id}/">0 comments</a>', html)     # its comments: its discussion
         self.assertIn('<li><a href="/moods/magenta-interface/">', html)                 # who spoke: that Mood
 
 

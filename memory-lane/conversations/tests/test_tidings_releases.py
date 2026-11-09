@@ -107,7 +107,7 @@ class ReleaseStreamTests(TidingsTests):
     def test_the_page_shows_a_release_tile_among_the_pictures(self):
         self.image(1, added_by=self.justin)
         cache.set('tidings:releases', [self.release('Upright and Down Low', timezone.now() + timedelta(minutes=5))], 600)
-        html = self.client.get('/moods/tidings/?embed=1').content.decode()
+        html = self.client.get('/tidings/?embed=1').content.decode()
         self.assertIn('Pictures and releases', html)
         self.assertIn('class="pic release"', html)
         self.assertIn('Upright and Down Low', html)

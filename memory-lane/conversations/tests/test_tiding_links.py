@@ -108,7 +108,7 @@ class TidingLinksTest(TestCase):
     def test_the_page_lists_it_and_the_message_carries_its_star(self):
         said = self.say(self.skyler, 'https://www.example.org/fest')
         tid = self.promote(self.client_for(self.justin), said).json()['id']
-        page = self.client.get('/moods/tidings/?embed=1').content.decode()
+        page = self.client.get('/tidings/?embed=1').content.decode()
         self.assertIn('The Bluegrass Situation: a festival list</a><span class="host">(example.org)</span>', page)
         self.assertIn('0 comments', page)
         turn = next(t for t in self.client.get('/api/moods/jams/turns/').json()['turns'] if t['id'] == str(said.id))
@@ -242,18 +242,18 @@ class TidingTalkTests(TidingLinksTest):
         self.vote(self.client_for(self.skyler), tiding)
         [link] = tiding_links.listed()
         self.assertEqual((link['said_by'], link['by'], link['score']), ('skyler', 'justin', 1))
-        page = self.client.get('/moods/tidings/?embed=1').content.decode()
+        page = self.client.get('/tidings/?embed=1').content.decode()
         self.assertIn('posted by skyler · promoted by justin', page)
         self.assertIn('class="rank"', page)  # numbered, HN-style
         said2 = self.say(self.justin, 'https://example.org/two')
         tiding_links.promote(said2, self.justin)
-        page = self.client.get('/moods/tidings/?embed=1').content.decode()
+        page = self.client.get('/tidings/?embed=1').content.decode()
         self.assertIn('posted and promoted by justin', page)
 
     def test_the_discussion_page_renders_inside_the_one_page(self):
         said, tiding = self.promoted()
         self.comment(self.client_for(self.justin), tiding, 'looking forward')
-        page = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1')
+        page = self.client.get(f'/tidings/{tiding.id}/?embed=1')
         self.assertEqual(page.status_code, 200)
         self.assertEqual(page['X-Frame-Options'], 'SAMEORIGIN')  # else the frame stays blank
         html = page.content.decode()
@@ -263,23 +263,23 @@ class TidingTalkTests(TidingLinksTest):
         self.assertNotIn('<textarea id="say"', html)
         self.assertIn('sign in', html)
         with override_settings(PICKIPEDIA_OAUTH_CLIENT_ID='client-1', PICKIPEDIA_OAUTH_CLIENT_SECRET='secret-1'):
-            html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
-        self.assertIn(f'href="/moods/auth/wiki/?next=/moods/tidings/{tiding.id}/" target="_top"', html)
+            html = self.client.get(f'/tidings/{tiding.id}/?embed=1').content.decode()
+        self.assertIn(f'href="/moods/auth/wiki/?next=/tidings/{tiding.id}/" target="_top"', html)
         # Signed in: the box, and [[ suggesting PickiPedia's titles.
-        html = self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        html = self.client_for(self.justin).get(f'/tidings/{tiding.id}/?embed=1').content.decode()
         self.assertIn('>add comment</button>', html)
         self.assertIn('saving…', html)
         self.assertIn('.comment:target', html)
         self.assertIn('id="wikiSuggest"', html)
         self.assertIn('list=prefixsearch', html)
-        gone = self.client.get(f'/moods/tidings/{uuid.uuid4()}/?embed=1')
+        gone = self.client.get(f'/tidings/{uuid.uuid4()}/?embed=1')
         self.assertEqual(gone.status_code, 404)
 
     def test_the_posts_own_words_are_at_the_top_but_not_a_comment(self):
         # Justin, 24 Oct: what the message says besides its link, in full, as the post's own text.
         said = self.say(self.skyler, 'Molly Tuttle is on the **Saturday** bill https://example.org/lineup\n\n- tent\n- capo')
         tiding = tiding_links.promote(said, self.justin)
-        html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        html = self.client.get(f'/tidings/{tiding.id}/?embed=1').content.decode()
         post = html.split('<div class="post">')[1].split('<section class="comments">')[0]
         # Right under who posted it, in the link's own block -- not below it, after a rule.
         self.assertLess(html.index('class="meta muted"'), html.index('<div class="post">'))
@@ -289,7 +289,7 @@ class TidingTalkTests(TidingLinksTest):
         self.assertIn('<li>capo</li>', post)                        # all of it, not 200 characters
         self.assertNotIn('example.org/lineup', post)                # the link is the title already
         # The box right under it, before what's been said (Justin, 24 Oct): a top-level comment by default.
-        signed_in = self.client_for(self.justin).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        signed_in = self.client_for(self.justin).get(f'/tidings/{tiding.id}/?embed=1').content.decode()
         self.assertLess(signed_in.index('<div class="post">'), signed_in.index('<form class="say"'))
         self.assertLess(signed_in.index('<form class="say"'), signed_in.index('<section class="comments">'))
         self.assertIn('id="replyTo" name="reply_to" value=""', signed_in)
@@ -299,7 +299,7 @@ class TidingTalkTests(TidingLinksTest):
         self.assertEqual(link['comments'], 0)                       # not counted
         only_link = self.say(self.skyler, 'https://example.org/other')
         tiding2 = tiding_links.promote(only_link, self.justin)
-        self.assertNotIn('<div class="post">', self.client.get(f'/moods/tidings/{tiding2.id}/?embed=1').content.decode())
+        self.assertNotIn('<div class="post">', self.client.get(f'/tidings/{tiding2.id}/?embed=1').content.decode())
 
     def test_what_a_message_says_besides_its_link(self):
         url = 'https://example.org/lineup'
@@ -324,7 +324,7 @@ class TidingTalkTests(TidingLinksTest):
         said, tiding = self.promoted()
         self.say(self.magent, [{'type': 'text', 'text': f'↩ #m-{said.id}\nI read it: worth a listen.'}])
         self.assertEqual([n['snippet'] for n in tiding_links.thread(said.id)], ['I read it: worth a listen.'])
-        self.assertIn('worth a listen', self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode())
+        self.assertIn('worth a listen', self.client.get(f'/tidings/{tiding.id}/?embed=1').content.decode())
 
     def test_a_secret_said_in_a_comment_is_kept_out_of_the_record(self):
         from conversations.models import TidingComment
@@ -334,7 +334,7 @@ class TidingTalkTests(TidingLinksTest):
         self.assertNotIn(key, TidingComment.objects.get().text)  # and so not in the Mood's line either
 
     def test_no_such_link_page_is_a_404_not_a_crash(self):
-        self.assertEqual(self.client.get('/moods/tidings/not-a-uuid/?embed=1').status_code, 404)
+        self.assertEqual(self.client.get('/tidings/not-a-uuid/?embed=1').status_code, 404)
         self.assertEqual(self.client.get('/api/tidings/not-a-uuid/').status_code, 404)
 
     def test_a_promotion_takes_the_title_and_tags_its_promoter_gives(self):
@@ -387,19 +387,19 @@ class TidingTalkTests(TidingLinksTest):
 
     def test_the_pencil_shows_to_whoever_may_retitle(self):
         said, tiding = self.promoted()  # promoted by justin
-        listing = lambda client: client.get('/moods/tidings/?embed=1').content.decode()  # noqa: E731
+        listing = lambda client: client.get('/tidings/?embed=1').content.decode()  # noqa: E731
         self.assertIn('class="retitle"', listing(self.client_for(self.skyler)))  # an SSH key
         self.assertNotIn('class="retitle"', listing(self.client_for(self.skyler, tier='wiki')))
         self.assertNotIn('class="retitle"', listing(Client()))
         self.assertNotIn('class="withdraw"', listing(self.client_for(self.skyler)))
         self.assertIn('class="withdraw"', listing(self.client_for(self.justin)))
-        page = self.client_for(self.skyler).get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        page = self.client_for(self.skyler).get(f'/tidings/{tiding.id}/?embed=1').content.decode()
         self.assertIn('class="retitle"', page)
 
     def test_a_comment_is_drawn_as_the_mood_draws_it(self):
         said, tiding = self.promoted()
         self.comment(self.client_for(self.justin), tiding, 'Two things.\n\n- `pip` first\n- then [[Old Crow Medicine Show]]')
-        html = self.client.get(f'/moods/tidings/{tiding.id}/?embed=1').content.decode()
+        html = self.client.get(f'/tidings/{tiding.id}/?embed=1').content.decode()
         self.assertIn('<code>pip</code>', html)
         self.assertIn('<li>', html)
         self.assertIn('/wiki/Old_Crow_Medicine_Show', html)
@@ -438,7 +438,7 @@ class TidingRoundTwoReviewTests(TidingLinksTest):
         with CARD, PUBLIC:
             tiding = tiding_links.promote(said, self.justin, title='Fest list')
         for ref in (str(tiding.id), str(tiding.id)[:8]):
-            self.assertIn(f'/moods/tidings/{tiding.id}/', render_html(f'see #t-{ref}'))
+            self.assertIn(f'/tidings/{tiding.id}/', render_html(f'see #t-{ref}'))
         self.assertNotIn('tidinglink', render_html('see #t-00000000'))
         self.assertNotIn('tidinglink', render_html('see #t-0000-000000'))  # neither: left as it was written
 
@@ -537,10 +537,10 @@ class CommentEditingTests(TestCase):
         self.assertEqual(SealedCopy.objects.get(message_id=row.id).kind, 'edited')  # the old words, kept sealed
         [node] = tiding_links.tree_of(self.tiding, self.said.id)
         self.assertEqual((node['changed'], '<strong>first</strong>' in node['html']), ('edited', True))
-        page = skyler.get(f'/moods/tidings/{self.tiding.id}/?embed=1').content.decode()
+        page = skyler.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
         self.assertIn('class="editsaid"', page)
         self.assertIn('edited', page)
-        self.assertNotIn('class="editsaid"', self.client_for(self.justin).get(f'/moods/tidings/{self.tiding.id}/?embed=1').content.decode())
+        self.assertNotIn('class="editsaid"', self.client_for(self.justin).get(f'/tidings/{self.tiding.id}/?embed=1').content.decode())
 
     def test_a_day_on_it_stays_as_it_was_said(self):
         from conversations.models import TidingComment
@@ -580,7 +580,7 @@ class CommentEditingTests(TestCase):
     def test_the_list_draws_with_comments_under_a_link(self):
         skyler = self.client_for(self.skyler)
         skyler.post(f'/api/tidings/{self.tiding.id}/comments/', json.dumps({'text': 'one'}), content_type='application/json')
-        page = skyler.get('/moods/tidings/?embed=1')
+        page = skyler.get('/tidings/?embed=1')
         self.assertEqual(page.status_code, 200)
         self.assertIn('1 comment', page.content.decode())
 

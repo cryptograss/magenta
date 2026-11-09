@@ -85,10 +85,10 @@ class RunTest(TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, 'Cryptograss:Moods/interfaces/todo')
         self.assertContains(page, "The push isn't set up here")
-        framed = self.client.get('/moods/hooks/', {'embed': '1'})  # a section under the ▾ (Justin, 7 Nov)
+        framed = self.client.get('/hooks/', {'embed': '1'})  # a section under the ▾ (Justin, 7 Nov)
         self.assertContains(framed, 'Cryptograss:Moods/interfaces/todo')
         self.assertEqual(framed['X-Frame-Options'], 'SAMEORIGIN')
-        self.assertContains(self.client.get('/moods/hooks/'), 'href="/moods/hooks/" data-section="hooks"')
+        self.assertContains(self.client.get('/hooks/'), 'href="/hooks/" data-section="hooks"')
 
     def test_the_pulse_carries_the_newest_run_and_since_gives_the_runs_after_it(self):
         """hunter's poller keeps its own copies of the wake's pages (poller/wiki_rules): the pulse's seq tells it

@@ -165,7 +165,7 @@ class PollsTest(TestCase):
         self.assertEqual(page['viewer'], 'skyler')
         self.assertIn('skyler', page['humans'])
         self.assertNotIn('magent', page['humans'])
-        self.assertEqual(Client().get('/moods/polls/?embed=1').status_code, 200)
+        self.assertEqual(Client().get('/polls/?embed=1').status_code, 200)
 
     # --- agents ---------------------------------------------------------------------------------------
 

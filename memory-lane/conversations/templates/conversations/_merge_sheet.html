@@ -48,7 +48,7 @@
       <div class="who"></div>
       <pre class="log" hidden></pre>
       <pre class="stat" hidden></pre>
-      <a class="full" href="#" hidden title="Its page: every file's diff open, every line an address">± See the full diff</a>
+      <a class="full" href="#" hidden title="The candidate's page: every file's diff open, every line an address">± See the full diff</a>
       <div class="say"></div>
       <div class="row"><button type="button" class="no">Close</button><button type="button" class="go" hidden>Merge now</button></div>
     </div>
@@ -86,35 +86,20 @@ window.magentaMerge = (() => {
     s.$('.no').addEventListener('click', s.shut);
     el.addEventListener('click', e => { if (e.target === el) s.shut(); });
     s.$('.go').addEventListener('click', () => press(s));
-    // ± See the full diff: its page at #diff, made first if it has none. The sheet shuts; Merge… opens it again
-    // at once (its preview is kept). Already on that page: its diffs opened under the sheet.
-    s.$('.full').addEventListener('click', async e => {
-      const a = e.currentTarget;
-      if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) { if (a.dataset.made) return; e.preventDefault(); return; }
-      if (!a.dataset.made) {
-        e.preventDefault(); e.stopPropagation();
-        if (a.dataset.busy) return;
-        a.dataset.busy = '1';
-        try {
-          const r = await fetch('/api/ramp/work/', { method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-            body: JSON.stringify({ repo: a.dataset.repo, branch: a.dataset.branch }) });
-          const got = await r.json();
-          if (!r.ok) { s.say(got.error || ('memory-lane said ' + r.status), 'err'); return; }
-          a.href = `/moods/tidings/${got.id}/#diff`; a.dataset.made = '1';
-          kept.clear();  // the previews kept say it had no page
-        } finally { delete a.dataset.busy; }
-        a.click();  // again, now with its address: as any link to a page here
-        return;
-      }
-      const to = new URL(a.href, location.href);
-      if (to.pathname === location.pathname) {
-        e.preventDefault(); e.stopPropagation();
-        s.shut();
-        window.dispatchEvent(new Event('magentaShowDiff'));
-        return;
-      }
+    // ± See the full diff: the candidate's page, in the ramp, at #diff (made there if it has none). In the one
+    // page (a Mood's sheet) its click handler opens it in the ramp, and Back comes here; in a frame (the ramp,
+    // a candidate's page), the one page is asked to. Already on that very page: its diffs open under the sheet.
+    s.$('.full').addEventListener('click', e => {
+      if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;  // a new tab: its own address
+      const to = new URL(e.currentTarget.href, location.href);
       s.shut();
+      if (to.pathname === location.pathname) {
+        e.preventDefault();
+        window.dispatchEvent(new Event('magentaShowDiff'));
+      } else if (window.parent !== window) {
+        e.preventDefault();
+        parent.postMessage({ magentaGo: to.pathname + to.hash }, location.origin);
+      }
     });
     sheets.set(mood, s);
     return s;
@@ -166,13 +151,10 @@ window.magentaMerge = (() => {
     drawWho(s, body);
     s.$('.log').textContent = body.log.trim(); s.$('.log').hidden = false;
     s.$('.stat').textContent = body.stat.trim(); s.$('.stat').hidden = false;
-    // The whole diff, on its page (Justin, 9 Nov: "a link from the merge modal to see the full diff"): its
-    // address if it has a page, else made on the click.
+    // The whole diff, on the candidate's page (Justin, 9 Nov: "a link from the merge modal to see the full diff").
     const full = s.$('.full');
-    full.dataset.repo = body.repo; full.dataset.branch = body.branch;
-    full.href = body.page ? `/moods/tidings/${body.page}/#diff` : '#';
-    full.dataset.made = body.page ? '1' : '';
-    full.hidden = false;
+    if (body.branch) full.href = `/ramp/${encodeURIComponent(body.repo)}/${body.branch.split('/').map(encodeURIComponent).join('/')}/#diff`;
+    full.hidden = !body.branch;
     if (body.can) {
       s.$('.go').hidden = false;
       s.say(`Signed by memory-lane on your press; githouse checks it again and merges --no-ff, exactly this commit.`);
