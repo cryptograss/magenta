@@ -103,6 +103,7 @@ urlpatterns = [
     path('api/merge-orders/whose/', views_merge.api_merge_whose, name='api_merge_whose'),
     path('api/merge-orders/preview/', views_merge.api_merge_preview, name='api_merge_preview'),
     path('api/merge-orders/press/', views_merge.api_merge_press, name='api_merge_press'),
+    path('api/ramp/thumb/', views_merge.api_ramp_thumb, name='api_ramp_thumb'),  # the 👍 (Plan, section 8)
     path('api/merge-orders/pending/', views_merge.api_merge_orders_pending, name='api_merge_orders_pending'),
     path('api/merge-orders/<uuid:order_id>/', views_merge.api_merge_order, name='api_merge_order'),
     path('api/moods/<slug:slug>/turns/', views_moods.api_mood_turns, name='api_mood_turns'),

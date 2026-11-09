@@ -127,3 +127,42 @@ def api_merge_press(request):
     except merge_orders.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'id': str(kept.id), **merge_orders.status(kept)}, status=201)
+
+
+# --- the 👍 (Plan, section 8): "I like this", from any person's signed-in device; a signal, never a merge -------
+
+@require_POST
+def api_ramp_thumb(request):
+    """POST {"repo", "branch", "commit", "number"?}: give that commit of the work a 👍 as this device's person,
+    or take theirs back. The commit must be the head githouse has now, so a 👍 is on what the presser saw.
+    {"on", "liked": names on the head now, "thumbs"}. Any signed-in person may, at either tier."""
+    from .services import mood_auth, thumbs
+    from .views_admin import locked_response
+    from .views_auth import _under_limit
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to 👍'}, status=401)
+    if not device.entity.is_biological_human:
+        return JsonResponse({'error': 'a 👍 is a person\'s'}, status=403)
+    person = device.entity_id
+    if not _under_limit(f'thumb:{person}', 30):
+        return JsonResponse({'error': 'thirty a minute is plenty; wait a minute'}, status=429)
+    try:
+        body = json.loads(request.body)
+        repo, branch, commit = (body[k] for k in ('repo', 'branch', 'commit'))
+        if not all(isinstance(v, str) for v in (repo, branch, commit)):
+            raise TypeError
+        number = int(body['number']) if body.get('number') else None
+        head = thumbs.head_of(repo, branch, number)
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        if isinstance(e, thumbs.Invalid):
+            return JsonResponse({'error': str(e)}, status=400)
+        return JsonResponse({'error': 'expected {"repo", "branch", "commit"}'}, status=400)
+    if head != commit:
+        return JsonResponse({'error': f'{repo}:{branch} moved since you looked; look again', 'head': head}, status=409)
+    on = thumbs.toggle(person, repo, branch, commit)
+    found = thumbs.of(repo, branch, head)
+    return JsonResponse({'on': on, 'liked': [t['by'] for t in found if t['current']],
+                         'thumbs': [{**t, 'at': t['at'].isoformat()} for t in found]})

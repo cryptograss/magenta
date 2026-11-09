@@ -1862,6 +1862,27 @@ class MergeOrder(models.Model):
         return f"{self.repo}:{self.branch} by {self.by} ({self.nonce[:12]})"
 
 
+class Thumb(models.Model):
+    """A 👍 on a piece of work (Cryptograss:Moods/ramp/Plan, section 8): one person liked this commit of it. A
+    signal only: githouse never asks for one, since it is only memory-lane's say-so. It's on a commit, so once
+    the branch moves it's shown as on an older one (services/thumbs.py)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    repo = models.CharField(max_length=64)
+    branch = models.CharField(max_length=200)
+    commit = models.CharField(max_length=40)
+    by = models.CharField(max_length=60)
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'ramp_thumbs'
+        ordering = ['at']
+        constraints = [models.UniqueConstraint(fields=['repo', 'branch', 'commit', 'by'], name='one_thumb_a_commit')]
+        indexes = [models.Index(fields=['repo', 'branch'])]
+
+    def __str__(self):
+        return f"👍 {self.repo}:{self.branch} {self.commit[:8]} by {self.by}"
+
+
 # ============================================================================
 # Import Tracking Constants
 # ============================================================================
