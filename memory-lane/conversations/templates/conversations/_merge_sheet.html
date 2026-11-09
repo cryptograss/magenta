@@ -22,6 +22,7 @@
                        border: 1px solid var(--line, #e6e1d8); background: none; color: inherit; }
   #mergeSheet button.go { background: var(--accent, #b8106b); border-color: var(--accent, #b8106b); color: #fff; font-weight: 600; }
   #mergeSheet button:disabled { opacity: .5; cursor: default; }
+  #mergeSheet button.done { background: var(--ok, #2e9e5b); border-color: var(--ok, #2e9e5b); color: #fff; font-weight: 600; }
 </style>
 <div id="mergeSheet" hidden role="dialog" aria-modal="true" aria-labelledby="mergeSheetTitle">
   <div class="box">
@@ -55,6 +56,7 @@ window.magentaMerge = (() => {
     $('.sub').textContent = '';
     $('.log').hidden = $('.stat').hidden = true;
     $('.go').hidden = true; $('.go').disabled = false;
+    $('.no').textContent = 'Close'; $('.no').classList.remove('done');
     say('Looking at it in githouse’s copy…');
     sheet.hidden = false;
     const q = new URLSearchParams({ repo: work.repo, branch: work.branch || '' });
@@ -95,9 +97,14 @@ window.magentaMerge = (() => {
         await new Promise(go => setTimeout(go, 3000));
         status = await (await fetch(`/api/merge-orders/${status.id}/`, { credentials: 'same-origin' })).json();
       }
-      if (status.status === 'merged') say(`Merged into ${seen.into} as ${String(status.merge || '').slice(0, 12)}.`, 'ok');
+      if (status.status === 'merged') {
+        say(`Merged into ${seen.into} as ${String(status.merge || '').slice(0, 12)}.`, 'ok');
+        // Done: one green button, which closes the sheet (Justin, 9 Nov).
+        $('.go').hidden = true;
+        $('.no').textContent = 'Merged ✓'; $('.no').classList.add('done');
+      }
       else if (status.status === 'waiting') say('githouse hasn’t answered in two minutes; the order is good for an hour.', 'err');
-      else say(`${status.status === 'expired' ? 'Expired' : 'Refused'}: ${status.why || ''}`, 'err');
+      else { say(`${status.status === 'expired' ? 'Expired' : 'Refused'}: ${status.why || ''}`, 'err'); $('.go').hidden = true; }
     } catch (e) {
       say('Lost touch with memory-lane: ' + e.message, 'err');
     } finally {
