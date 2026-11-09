@@ -1651,6 +1651,57 @@ class ConsiderLoopTest(TestCase):
             self.assertIn('- arthel:re/x (no pull request; re): x', prompt)
             self.assertIn('raise it in #ramp', prompt)
 
+    def test_a_session_is_told_the_whole_list_once_then_what_changed(self):
+        # Justin, 9 Nov (#ramp): the whole list on a session's first wake in a Mood, then only what changed.
+        c449 = {'ref': 'magenta#449', 'branch': 'magent/work-followups', 'number': 449, 'who': 'magent', 'moods': ['ramp'],
+                'state': 'open', 'title': 'Work pages, round two', 'about': ''}
+        c451 = {'ref': 'magenta#451', 'branch': 'magent/candidates', 'number': 451, 'who': 'magent', 'moods': [],
+                'state': 'open', 'title': 'Candidates', 'about': ''}
+        cx = {'ref': 'arthel:re/x', 'branch': 're/x', 'number': None, 'who': 're', 'moods': [], 'state': 'pushed',
+              'title': 'x', 'about': ''}
+        poller_box = []
+
+        class Following(ConsiderAPI):
+            # Each turn forks a new session: the next wake resumes the one the last turn made.
+            found, rotated = [c449, cx], None
+            def candidates(inner):
+                return inner.found
+            def sessions(inner, slug, sender):
+                told = (poller_box[0].state.get('candidates_told') or {}) if poller_box else {}
+                newest = inner.rotated or next((t['session'] for t in told.values()), None)
+                return [newest] if newest else ['s-local']
+        api = Following()
+        poller = self.make(api, FakeScreen('pass'))
+        poller_box.append(poller)
+        can = self.waker.can_wake
+        self.waker.can_wake = lambda s: True  # the forks are this machine's
+
+        def look(minute):
+            api.add(post(f'p{minute}', minute))
+            self.at(minutes=minute + 1)
+            poller.consider_once()
+            return self.waker.woken[-1][1]
+
+        first = look(1)
+        self.assertIn('Candidate branches open now across our repositories (2)', first)
+        self.assertIn('- arthel:re/x (no pull request; re): x', first)
+        self.assertNotIn('\x00', first)
+        same = look(3)
+        self.assertIn('Candidate branches: none opened, changed or closed since your last wake in this session (2 open)', same)
+        self.assertNotIn('Work pages, round two', same)
+        api.found = [{**c449, 'title': 'Work pages, round three'}, c451]
+        news = look(5)
+        self.assertIn('what changed since your last wake in this session (2 open now)', news)
+        self.assertIn('+ magenta#451 (magent/candidates; magent): Candidates', news)
+        self.assertIn('~ magenta#449 (magent/work-followups; magent; #ramp): Work pages, round three', news)
+        self.assertIn('− arthel:re/x (no longer open: merged or closed)', news)
+        self.assertNotIn('open now across our repositories', news)
+        # A new session (rotated, say, or a turn that never ran): the whole list again.
+        api.rotated = 's-rotated'
+        again = look(7)
+        self.assertIn('Candidate branches open now across our repositories (2)', again)
+        self.waker.can_wake = can
+
     def test_a_wake_without_the_candidates_still_goes(self):
         class Unreachable(ConsiderAPI):
             def candidates(inner):
