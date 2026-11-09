@@ -305,3 +305,58 @@ class FollowAndTidyTest(_Release):
         self.assertIn("const tidingAt = location.pathname.match(/^\\/tidings\\/([0-9a-f-]{36})\\/?$/);", source)
         # ☰ on a phone, from a section, is the Moods.
         self.assertIn("if (document.body.classList.contains('in-section')) {\n      showSection('moods', true);", source)
+
+
+TORRENT_YAML = YAML + """bittorrent_infohash: 2F1BEA2EB182412CD2612E13CE06B83C11DDBCC6
+bittorrent_trackers:
+- udp://tracker.opentrackr.org:1337/announce
+bittorrent_webseeds:
+- https://ipfs.delivery-kid.cryptograss.live/ipfs/QmbYnW2BpVxwvJZDE3e4iaJcH3xn1QDugRZuofuv1JDkJg
+bittorrent_torrent_url: https://delivery-kid.cryptograss.live/torrent/2f1bea2eb182412cd2612e13ce06b83c11ddbcc6.torrent
+"""
+
+
+@override_settings(MOOD_ADMINS=('justin',), PICKIPEDIA_URL='https://pickipedia.xyz')
+class ReleaseTorrentTest(_Release):
+    """Justin, 8 Nov: a release's tiding showed IPFS and no BitTorrent; BitTorrent is the bigger pick."""
+
+    def test_the_magnet_is_built_as_the_release_page_builds_it(self):
+        from conversations.services import tidings
+        info = tidings._release_info(CID, http=FakeWiki({f'Release:{CID}': TORRENT_YAML}))
+        t = info['torrent']
+        self.assertEqual(t['infohash'], '2f1bea2eb182412cd2612e13ce06b83c11ddbcc6')
+        self.assertEqual(t['magnet'],
+                         'magnet:?xt=urn:btih:2f1bea2eb182412cd2612e13ce06b83c11ddbcc6'
+                         '&dn=Do%20you%20use%20AI%20subtitiles%3F'
+                         '&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce'
+                         f'&ws=https%3A%2F%2Fipfs.delivery-kid.cryptograss.live%2Fipfs%2F{CID}')
+        self.assertEqual(t['file'], 'https://delivery-kid.cryptograss.live/torrent/2f1bea2eb182412cd2612e13ce06b83c11ddbcc6.torrent')
+
+    def test_no_infohash_no_torrent(self):
+        from conversations.services import tidings
+        self.assertIsNone(tidings._release_info(CID, http=FakeWiki({f'Release:{CID}': YAML}))['torrent'])
+        self.assertIsNone(tidings.torrent_of({'bittorrent_infohash': 'not-a-hash'}))
+        self.assertEqual(tidings.torrent_of({'bittorrent_infohash': 'ab' * 20,
+                                             'bittorrent_torrent_url': 'javascript:alert(1)'})['file'], '')
+
+    def page_with(self, yaml_text):
+        from conversations.services import tidings
+        info = tidings._release_info(CID, http=FakeWiki({f'Release:{CID}': yaml_text}))
+        client = self.client_for(self.justin)
+        with mock.patch('conversations.services.tidings.release_info', return_value=info):
+            tid = self.post(client, {'cid': CID}).json()['id']
+            return client.get(f'/moods/tidings/{tid}/?embed=1').content.decode()
+
+    def test_bittorrent_comes_first_and_loud(self):
+        page = self.page_with(TORRENT_YAML)
+        self.assertIn('class="bt" href="magnet:?xt=urn:btih:2f1bea2eb182412cd2612e13ce06b83c11ddbcc6', page)
+        self.assertIn('⬇ Download with BitTorrent', page)
+        self.assertIn('.torrent file</a>', page)
+        self.assertLess(page.index('Download with BitTorrent'), page.index('>on IPFS</a>'))
+        self.assertNotIn('still being made', page)
+
+    def test_before_its_torrent_ipfs_is_the_way(self):
+        page = self.page_with(YAML)
+        self.assertNotIn('Download with BitTorrent', page)
+        self.assertIn('The BitTorrent download is still being made.', page)
+        self.assertIn(f'href="https://ipfs.delivery-kid.cryptograss.live/ipfs/{CID}', page)

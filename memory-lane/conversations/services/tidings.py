@@ -39,6 +39,7 @@ up to AGENT_CAP of the agents' messages from the same stretch.
 """
 
 import heapq
+import re
 from collections import defaultdict
 from datetime import timedelta
 
@@ -451,6 +452,26 @@ def release_info(cid, http=None):
     return found
 
 
+def torrent_of(data, name=''):
+    """A Release's BitTorrent download, from its YAML: {'magnet', 'file', 'infohash'}, or None if it has no
+    infohash yet (Blue Railroad Imports writes it a few minutes after the Release page). The magnet is built as
+    PickiPedia's Release page builds it (ReleaseContentHandler::renderTorrentLink): its name, its trackers, and
+    its webseeds, so a client can fetch from delivery-kid's IPFS gateway even with no peers."""
+    from urllib.parse import quote
+    infohash = str(data.get('bittorrent_infohash') or '').strip().lower()
+    if not re.fullmatch(r'[0-9a-f]{40}', infohash):
+        return None
+    magnet = f'magnet:?xt=urn:btih:{infohash}'
+    if name:
+        magnet += '&dn=' + quote(name, safe='')
+    for key, param in (('bittorrent_trackers', 'tr'), ('bittorrent_webseeds', 'ws')):
+        for url in data.get(key) or []:
+            if isinstance(url, str) and url.strip():
+                magnet += f'&{param}=' + quote(url.strip(), safe='')
+    file = str(data.get('bittorrent_torrent_url') or '').strip()
+    return {'infohash': infohash, 'magnet': magnet, 'file': file if file.startswith('https://') else ''}
+
+
 def _release_info(cid, http=None):
     import requests
     import yaml
@@ -494,6 +515,9 @@ def _release_info(cid, http=None):
         'captions_page': f"{pickipedia_url()}/wiki/{page}/captions",
         'portrait': bool(width and height and int(height) > int(width)),
         'page': f'{pickipedia_url()}/wiki/{page}',
+        # BitTorrent first (Justin, 8 Nov: "make the BitTorrent louder and prouder"): it's what more people
+        # know and can open at once. None until the Release has its torrent.
+        'torrent': torrent_of(data, str(data.get('title') or '').strip() or cid),
     }
 
 
