@@ -10894,9 +10894,12 @@
     }
 
     // Its slide-in only when it's new: redrawn every second (an agent's clock), it slid in again each time and the
-    // top line flickered (Justin, 8 Nov).
-    if (pastBar && pastBar === renderVoiceMode.pastWas) pastBar = pastBar.replace('class="bar ', 'class="bar still ');
-    else renderVoiceMode.pastWas = pastBar;
+    // top line flickered (Justin, 8 Nov). New is what it is, not its words: a memo's clock and an upload's percent
+    // change every second, and slid it in again each time (Justin, 9 Nov, recording on his phone).
+    const pastKey = voicePending ? 'memo:' + voicePending.state
+      : readLastDone ? 'heard:' + (readLastDone.id || readLastDone.whenLabel || '') + ':' + readLabel(readLastDone) : '';
+    if (pastBar && pastKey === renderVoiceMode.pastWas) pastBar = pastBar.replace('class="bar ', 'class="bar still ');
+    else renderVoiceMode.pastWas = pastKey;
     const bars = pastBar
       + (now ? bar('now', readRecording ? 'held' : readHeld ? 'paused' : 'now', readLabel(now), -1) : '')
       + workBars().map(w => bar('work', 'at work', w, -1)).join('')
