@@ -26,3 +26,5 @@ pillow-heif>=1.0,<2
 segno>=1.6,<2
 # Where a reader's address is, for SSH-key sign-ins (conversations/services/geoip.py): DB-IP's database, read here.
 maxminddb>=2.6,<4
+# Syntax colours on a piece of work's page: its diffs and whole files (conversations/services/work_pages.py).
+Pygments>=2.17,<3

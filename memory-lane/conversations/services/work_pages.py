@@ -12,6 +12,7 @@ Everything here reads githouse's copy, which memory-lane mounts read-only. Nothi
 only git's plumbing, on objects.
 """
 
+import html
 import re
 import time
 import uuid
@@ -21,6 +22,7 @@ HOME_MOOD = 'ramp'        # where a piece of work with no Mood of its own is tal
 MAX_DIFF = 400_000        # characters of one file's diff shown; past that, a link to the whole file
 MAX_FILE = 1_000_000      # characters of a file shown whole
 MAX_COMMITS = 200
+MAX_HIGHLIGHT = 300_000   # characters of a file given syntax colours; a longer one is shown plain
 _SHA = re.compile(r'[0-9a-f]{40}')
 
 
@@ -237,7 +239,93 @@ def diff_of(repo, base, head, path):
             new += 1
         elif line.startswith('\\'):
             rows.append({'kind': 'note', 'old': None, 'new': None, 'text': line})
+    # Each side's whole file coloured once, and each line given its own: a line inside a long string or comment
+    # is coloured as what it's in, which a diff's lines alone can't tell.
+    sides = {'new': highlighted(path, _blob(held, head, path)), 'old': highlighted(path, _blob(held, base, path))}
+    for row in rows:
+        side = 'old' if row['kind'] == 'del' else 'new'
+        number, lines = row.get(side), sides[side]
+        coloured = lines[number - 1] if row['kind'] in ('add', 'del', 'ctx') and lines and 0 < number <= len(lines) else None
+        row['html'] = coloured if coloured is not None else _plain(row['text'])
     return {'repo': repo, 'base': base, 'head': head, 'path': path, 'rows': rows, 'cut': cut}
+
+
+# --- syntax colours (Pygments): each line its own HTML, so every line keeps its address --------------------
+
+def _lines(text):
+    lines = text.split('\n')
+    if lines and lines[-1] == '':
+        lines.pop()
+    return lines
+
+
+def _plain(line):
+    return html.escape(line, quote=False)
+
+
+def _blob(held, commit, path):
+    """The file at a commit, '' if it isn't there (added or removed by the work) or is too long to colour."""
+    from .githouse import _git
+    if _git(held, 'cat-file', '-t', f'{commit}:{path}').strip() != 'blob':
+        return ''
+    size = _git(held, 'cat-file', '-s', f'{commit}:{path}').strip()
+    if not size.isdigit() or int(size) > MAX_HIGHLIGHT:
+        return ''
+    return _git(held, 'cat-file', 'blob', f'{commit}:{path}')
+
+
+def _token_class(ttype):
+    from pygments.token import STANDARD_TYPES
+    while ttype not in STANDARD_TYPES:
+        ttype = ttype.parent
+    return STANDARD_TYPES[ttype]
+
+
+def highlighted(path, text):
+    """The file's lines as HTML, each token in a <span class> of Pygments' short names; None if there's nothing
+    to colour by (no lexer for its name, binary, too long), or the colours wouldn't line up with git's lines."""
+    if not text or len(text) > MAX_HIGHLIGHT or '\0' in text[:8000]:
+        return None
+    from pygments.lexers import get_lexer_for_filename
+    from pygments.util import ClassNotFound
+    try:
+        lexer = get_lexer_for_filename(path.rsplit('/', 1)[-1], stripnl=False, ensurenl=False)
+    except ClassNotFound:
+        return None
+    lines = ['']
+    try:
+        for ttype, value in lexer.get_tokens(text.replace('\r\n', '\n')):
+            name = _token_class(ttype)
+            for n, piece in enumerate(value.split('\n')):
+                if n:
+                    lines.append('')
+                if piece:
+                    escaped = html.escape(piece, quote=False)
+                    lines[-1] += f'<span class="{name}">{escaped}</span>' if name else escaped
+    except Exception:  # noqa: BLE001 -- a lexer that chokes on a file: shown plain, not an error
+        return None
+    if lines and lines[-1] == '':
+        lines.pop()
+    return lines if len(lines) == len(_lines(text.replace('\r\n', '\n'))) else None
+
+
+_CSS = None
+
+
+def highlight_css():
+    """Pygments' colours for table.code: a light style, and a dark one when the reader's system is dark."""
+    global _CSS
+    if _CSS is None:
+        from pygments.formatters import HtmlFormatter
+        rules = lambda style: '\n'.join(line for line in HtmlFormatter(style=style).get_style_defs('table.code td.t')
+                                        .splitlines() if line.startswith('table.code td.t .')
+                                        # no red box round what a lexer didn't expect (a template's {% %} in HTML)
+                                        and not line.startswith(('table.code td.t .err', 'table.code td.t .hll')))
+        # Dark: the light style's colours undone first, so none it sets and the dark one doesn't is left on.
+        _CSS = (f'{rules("default")}\n@media (prefers-color-scheme: dark) {{\n'
+                f'table.code td.t span {{ color: inherit; font-weight: inherit; font-style: inherit; background: none; }}\n'
+                f'{rules("github-dark")}\n}}')
+    return _CSS
 
 
 def file_at(repo, commit, path):
@@ -251,7 +339,6 @@ def file_at(repo, commit, path):
     text = _git(held, 'cat-file', 'blob', f'{commit}:{path}')
     binary = '\0' in text[:8000]
     cut = len(text) > MAX_FILE
-    lines = [] if binary else text[:MAX_FILE].split('\n')
-    if lines and lines[-1] == '':
-        lines.pop()
-    return {'repo': repo, 'commit': commit, 'path': path, 'lines': lines, 'cut': cut, 'binary': binary}
+    lines = [] if binary else _lines(text[:MAX_FILE])
+    shown = (None if binary or cut else highlighted(path, text)) or [_plain(line) for line in lines]
+    return {'repo': repo, 'commit': commit, 'path': path, 'lines': shown, 'cut': cut, 'binary': binary}

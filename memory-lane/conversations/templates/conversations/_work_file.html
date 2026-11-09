@@ -1,6 +1,6 @@
 {# A whole file at a commit (services/work.file_at): every line an address, L:<path>:<n>. #}
 {% if f.binary %}<p class="muted">{{ f.path }} is binary at {{ f.commit|slice:":8" }}: nothing to read here.</p>{% else %}
 <table class="code file" data-path="{{ f.path }}">
-{% for line in f.lines %}<tr id="L:{{ f.path }}:{{ forloop.counter }}"><td class="n"><a href="#L:{{ f.path }}:{{ forloop.counter }}">{{ forloop.counter }}</a></td><td class="t">{{ line }}</td></tr>
+{% for line in f.lines %}<tr id="L:{{ f.path }}:{{ forloop.counter }}"><td class="n"><a href="#L:{{ f.path }}:{{ forloop.counter }}">{{ forloop.counter }}</a></td><td class="t">{{ line|safe }}</td></tr>
 {% endfor %}</table>
 {% if f.cut %}<p class="muted">Cut short here: the file is too long to show whole.</p>{% endif %}{% endif %}

@@ -3,6 +3,7 @@
 address."""
 
 import json
+import re
 import tempfile
 from pathlib import Path
 from unittest import mock
@@ -17,7 +18,8 @@ from conversations.tests.test_githouse import Repo, git
 from conversations.tests.test_ramp import card
 
 
-class WorkPageTest(TestCase):
+class WorkRepo(TestCase):
+    """magenta in githouse's copy: main, and re/foo (#7) changing app.py and adding new.txt."""
 
     def setUp(self):
         cache.clear()
@@ -61,6 +63,9 @@ class WorkPageTest(TestCase):
 
     def page(self, tiding_id, **more):
         return self.client.get(f'/moods/tidings/{tiding_id}/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe', **more)
+
+
+class WorkPageTest(WorkRepo):
 
     def test_opened_once_on_a_line_in_its_mood(self):
         # The card names #ramp and #ops; #ops doesn't exist here, so the first that does.
@@ -120,6 +125,7 @@ class WorkPageTest(TestCase):
 
     def test_the_whole_file_every_line_an_address(self):
         html = self.client.get('/api/ramp/file/', {'repo': 'magenta', 'commit': self.head, 'path': 'app.py'}).content.decode()
+        html = re.sub(r'</?span[^>]*>', '', html)   # its colours aside (HighlightTest)
         for n, text in enumerate(['one', '2', 'three', 'four'], 1):
             self.assertIn(f'<tr id="L:app.py:{n}"><td class="n"><a href="#L:app.py:{n}">{n}</a></td><td class="t">{text}</td></tr>', html)
 
@@ -157,3 +163,49 @@ class CardDescriptionTest(TestCase):
         pull = {'base': {'repo': {'full_name': 'cryptograss/magenta'}, 'ref': 'main'}, 'number': 9, 'title': 'x',
                 'head': {'ref': 're/x'}, 'body': None}
         self.assertNotIn('<pre', pr_cards.card(pull))
+
+
+class HighlightTest(WorkRepo):
+    """Syntax colours (Pygments; Justin, 9 Nov): each side's whole file coloured, each line given its own."""
+
+    def setUp(self):
+        super().setUp()
+        git(self.repo.work, 'checkout', '-q', 're/foo')
+        (self.repo.work / 'doc.py').write_text('x = """one\ntwo\n"""\n')
+        (self.repo.work / 'notes.zzz').write_text('<b>plain</b>\n')
+        git(self.repo.work, 'add', '.')
+        git(self.repo.work, 'commit', '-q', '-m', 'more')
+        self.head2 = git(self.repo.work, 'rev-parse', 'HEAD')
+        self.repo.ref('refs/heads/re/foo', self.head2)
+        git(self.repo.work, 'checkout', '-q', 'main')
+
+    def diff(self, path, head=None):
+        return self.client.get('/api/ramp/diff/', {'repo': 'magenta', 'base': self.base, 'head': head or self.head2,
+                                                   'path': path}).content.decode()
+
+    def test_a_line_inside_a_string_is_coloured_as_the_string(self):
+        html = self.diff('doc.py')
+        self.assertIn('<tr class="add" id="D:doc.py:2"><td class="n"></td><td class="n"><a href="#D:doc.py:2">2</a></td>'
+                      '<td class="t"><span class="s2">two</span></td></tr>', html)
+
+    def test_a_removed_line_is_coloured_from_the_old_file(self):
+        html = self.diff('app.py', head=self.head)
+        self.assertIn('<td class="t"><span class="n">two</span></td>', html)   # "two", from the base's app.py
+
+    def test_a_file_with_no_lexer_is_plain_and_escaped(self):
+        html = self.diff('notes.zzz')
+        self.assertIn('<td class="t">&lt;b&gt;plain&lt;/b&gt;</td>', html)
+        whole = self.client.get('/api/ramp/file/', {'repo': 'magenta', 'commit': self.head2, 'path': 'notes.zzz'})
+        self.assertIn('<td class="t">&lt;b&gt;plain&lt;/b&gt;</td>', whole.content.decode())
+
+    def test_the_whole_file_coloured_and_the_page_has_the_colours(self):
+        html = self.client.get('/api/ramp/file/', {'repo': 'magenta', 'commit': self.head2, 'path': 'doc.py'}).content.decode()
+        self.assertIn('<a href="#L:doc.py:1">1</a></td><td class="t"><span class="n">x</span>', html)
+        css = work.highlight_css()
+        self.assertIn('table.code td.t .k {', css)
+        self.assertIn('@media (prefers-color-scheme: dark)', css)
+        self.assertNotIn('.err', css)
+
+    def test_a_long_file_is_plain(self):
+        with mock.patch.object(work, 'MAX_HIGHLIGHT', 5):
+            self.assertIsNone(work.highlighted('doc.py', 'x = 1\ny = 2\n'))

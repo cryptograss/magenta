@@ -298,7 +298,7 @@ def _work_context(tiding_id, device):
         thumbs.with_thumbs([panel['item']])
     panel['tests'] = ramp.test_runs().get((panel['repo'], panel['head'])) if panel['head'] else None
     panel['description_html'] = tiding_links.said_html(panel['description']) if panel['description'] else ''
-    return {'work': panel,
+    return {'work': panel, 'highlight_css': work.highlight_css(),
             'can_merge': bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id),
             'can_thumb': bool(device) and device.entity.is_biological_human,
             'me': device.entity_id if device else ''}
