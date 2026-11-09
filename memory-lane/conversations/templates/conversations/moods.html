@@ -99,6 +99,18 @@
   header .badge.soft { background: var(--accent-soft); color: var(--accent); }
   header .badge[hidden] { display: none; }
   #sectionFrames[hidden] { display: none; }
+  /* Tidings and the ramp: who's at work in every Mood, one line above the section (Justin, 9 Nov, #ramp: "bring the
+     emergent activities bar ... so that it's available on both tidings and ramp"). Each links to its Mood. */
+  #sectionActivity { display: flex; align-items: center; gap: 4px 14px; padding: 3px 16px; font-size: 12px; color: var(--muted);
+                     border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+  #sectionActivity::-webkit-scrollbar { display: none; }
+  #sectionActivity[hidden] { display: none; }
+  #sectionActivity .one { display: inline-flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; }
+  #sectionActivity .one:hover .where { text-decoration: underline; }
+  #sectionActivity .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--who, var(--agent)); animation: pulse 1.2s ease-in-out infinite; }
+  #sectionActivity .one.held .dot { animation: none; opacity: .35; }
+  #sectionActivity b { color: var(--who, var(--agent)); }
+  #sectionActivity .where { color: var(--accent); }
   #sectionFrames iframe { flex: 1; width: 100%; border: 0; background: var(--bg); }
   #sectionFrames iframe[hidden] { display: none; }
   body.in-section .layout, body.in-section #crumb, body.in-section #todo { display: none; }
@@ -1875,6 +1887,7 @@
 </div>
 <div id="reaching" hidden><div class="spin"></div><span>finding it…</span></div>
 <!-- Tidings, prompts, status and settings: each its own page, loaded once and kept, beside the Moods. -->
+<div id="sectionActivity" role="status" aria-label="Emergents at work" hidden></div>
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
   <nav id="nav" data-tour="moods" data-tour-open="menu"><div id="moodList"><div class="label">Moods</div></div></nav>
@@ -7610,6 +7623,32 @@
       + '</span>').join('');
   }
   setInterval(renderActivity, 1000);
+  // On Tidings and the ramp, who's at work in every Mood (liveData, asked every 5 s), each a link to its Mood.
+  const ACTIVITY_SECTIONS = new Set(['tidings', 'pulls']);
+  const sectionActivity = document.getElementById('sectionActivity');
+  function renderSectionActivity() {
+    const all = ACTIVITY_SECTIONS.has(sectionNow)
+      ? Object.entries(liveData).flatMap(([slug, d]) => (d.activities || []).map(a => ({ ...a, mood: slug })))
+          .sort((x, y) => (x.since || 0) - (y.since || 0))
+      : [];
+    sectionActivity.hidden = !all.length;
+    if (!all.length) { if (sectionActivity._html) sectionActivity.innerHTML = sectionActivity._html = ''; return; }
+    const queued = a => /a turn is under way/i.test(a.why || '');
+    const held = a => a.doing === 'held' && !queued(a);
+    const html = all.map(a => `<a class="one${held(a) ? ' held' : ''}" href="/moods/${encodeURIComponent(a.mood)}/" style="--who: ${agentColor(a.emergent)}">`
+      + `<span class="dot"></span>${icon(a.emergent, false)}<b>${esc(a.emergent)}</b>`
+      + ` <span class="where">#${esc(a.mood)}</span> · `
+      + (a.doing === 'waking' ? 'waking' : held(a) ? `held: ${esc(a.why || 'not yet')}` : esc(a.doing || 'at work'))
+      + (a.since ? ` · ${elapsed(a.since)}` : '') + '</a>').join('');
+    if (html !== sectionActivity._html) sectionActivity.innerHTML = sectionActivity._html = html;
+  }
+  sectionActivity.addEventListener('click', e => {
+    const a = e.target.closest('a.one');
+    if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    window.postMessage({ magentaGo: a.getAttribute('href') }, location.origin);  // as a link in a section opens a Mood
+  });
+  setInterval(renderSectionActivity, 1000);
 
   // --- @-completion: people in this Mood first, then everyone else -------
   const suggest = document.getElementById('suggest');
@@ -10201,6 +10240,7 @@
       try { const w = tidingsFrame() && tidingsFrame().contentWindow; if (w && w.magentaHandoff) w.magentaHandoff(); } catch (e) {}
     }
     sectionNow = name;
+    try { renderSectionActivity(); } catch (e) {}  // shown or hidden at once, not a second later
     if (left !== name && left === 'tidings') markTidingsSeen();  // what came while they read it is seen too
     if (left !== name && sectionPending[left]) { delete sectionPending[left]; refreshSection(left); }
     document.body.classList.toggle('in-section', name !== 'moods');
