@@ -116,8 +116,9 @@
 </header>
 <main>
   <h1>The ramp</h1>
-  <p class="lede">Every open pull request across our repositories, and every branch pushed to githouse without one yet;
-    the last {{ board.merged|length }} merged. Who worked on it and where come from the foot of its description, by way of its
+  <p class="lede">Every candidate branch open across our repositories: each branch pushed to githouse for merging, with
+    or without a pull request (GitHub's page for it); the last {{ board.merged|length }} merged. Who worked on it and where come
+    from the foot of its description, by way of its
     <a href="https://pickipedia.xyz/wiki/Category:Pull_requests" target="_blank" rel="noopener">card</a>; heads, sizes and
     merges from githouse's copy; mentions and 🪢 asks from the record. The dot is its temperature: the last push or
     mention, within a day, three, two weeks, or longer. A 👍 is a person saying "I like this" of the head commit: it
@@ -126,12 +127,12 @@
   {% if board.error %}<p class="err">{{ board.error }}</p>{% endif %}
   {% if board.mentions_missing %}<p class="why">Reading the record for where each was mentioned: "last said" fills in within a minute.</p>{% endif %}
 
-  <h2>Open</h2>
+  <h2>Open candidate branches</h2>
   <p class="sorts">Sort by <button type="button" data-sort="active" aria-pressed="true">last activity</button>
     <button type="button" data-sort="pushed" aria-pressed="false">last push</button>
     <button type="button" data-sort="mentioned" aria-pressed="false">last mention</button></p>
   <table id="open">
-    <thead><tr><th></th><th>work</th><th>who</th><th>where</th><th>size</th><th>pushed</th><th>last said</th><th>deploy</th></tr></thead>
+    <thead><tr><th></th><th>candidate</th><th>who</th><th>where</th><th>size</th><th>pushed</th><th>last said</th><th>deploy</th></tr></thead>
     <tbody>
     {% for i in open %}
     <tr class="{{ i.state }}" data-active="{{ i.active|date:'U'|default:0 }}" data-pushed="{{ i.pushed|date:'U'|default:0 }}"
@@ -140,7 +141,7 @@
       <td class="work">
         {% if i.page %}<a class="ref" href="/moods/tidings/{{ i.page.id }}/" title="Its page: the work, its diff, and what's been said">{% if i.number %}{{ i.repo }}#{{ i.number }}{% else %}{{ i.repo }}{% endif %}</a>{% elif can_thumb and i.branch and i.state != 'merged' %}<a class="ref openpage" href="{{ i.url|default:'#' }}" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Its page: the work, its diff, and what's been said">{% if i.number %}{{ i.repo }}#{{ i.number }}{% else %}{{ i.repo }}{% endif %}</a>{% elif i.number %}<a class="ref" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.repo }}#{{ i.number }}</a>{% else %}<span class="ref">{{ i.repo }}</span>{% endif %}{% if i.url and i.page or i.url and can_thumb %} <a class="gh" href="{{ i.url }}" target="_blank" rel="noopener" title="On GitHub">↗</a>{% endif %}
         <span class="title">{{ i.title }}</span>
-        {% if i.state != 'open' %}<span class="state {{ i.state }}"{% if i.state == 'pushed' %} title="on githouse, no pull request yet"{% elif i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{% if i.state == 'pushed' %}no PR yet{% else %}{{ i.state }}{% endif %}</span>{% endif %}
+        {% if i.state != 'open' %}<span class="state {{ i.state }}"{% if i.state == 'pushed' %} title="on githouse; no pull request for it on GitHub"{% elif i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{% if i.state == 'pushed' %}no pull request{% else %}{{ i.state }}{% endif %}</span>{% endif %}
         {% if i.tests %}<a class="tests {{ i.tests.state|slugify }}" href="{{ i.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ i.tests.number }} on Jenkins, for this head">{% if i.tests.state == 'passed' %}✓ tests{% elif i.tests.state == 'failed' %}✗ tests{% elif i.tests.state == 'testing' %}… testing{% else %}{{ i.tests.state }}{% endif %}</a>{% endif %}
         {% include "conversations/_asks.html" with w=i %}
         {% include "conversations/_thumb.html" with w=i %}
@@ -156,14 +157,14 @@
       <td class="why">{{ i.deploy }}</td>
     </tr>
     {% empty %}
-    <tr><td colspan="8">Nothing open.</td></tr>
+    <tr><td colspan="8">No candidate branches open.</td></tr>
     {% endfor %}
     </tbody>
   </table>
 
   <h2>Merged lately</h2>
   <table>
-    <tr><th>work</th><th>who</th><th>where</th><th>merged</th><th>deploy</th><th>live on</th></tr>
+    <tr><th>candidate</th><th>who</th><th>where</th><th>merged</th><th>deploy</th><th>live on</th></tr>
     {% for m in board.merged %}
     <tr>
       <td class="work">{% if m.page %}<a class="ref" href="/moods/tidings/{{ m.page.id }}/" title="Its page: the work, its diff, and what was said">{{ m.repo }}#{{ m.number }}</a> <a class="gh" href="{{ m.url }}" target="_blank" rel="noopener" title="On GitHub">↗</a>{% else %}<a class="ref" href="{{ m.url }}" target="_blank" rel="noopener">{{ m.repo }}#{{ m.number }}</a>{% endif %} <span class="title">{{ m.title }}</span></td>

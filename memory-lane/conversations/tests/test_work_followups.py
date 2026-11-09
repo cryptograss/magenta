@@ -173,3 +173,29 @@ class RampLinksAndSheetTest(WorkRepo):
         self.assertEqual(got['asks'], [{'by': 're', 'mood': 'ramp', 'id': 'x', 'colour': '#ff3c00'}])
         self.assertEqual(sorted((t['by'], t['current']) for t in got['thumbs']), [('justin', True), ('skyler', False)])
         json.dumps(got)  # as the sheet gets it
+
+
+class CandidatesTest(WorkRepo):
+    """The open candidate branches, for each wake (Justin, 9 Nov): ramp.candidates and /api/ramp/candidates/."""
+
+    def test_each_open_candidate_with_its_short_description(self):
+        self.cards['open'][0]['description'] = ('The **foo** work: it makes [foo](https://example.org) faster.\n\n'
+                                                 'More detail.\n\nDeploy: none\nWorked on by: re, in #ramp')
+        [c] = ramp.candidates()
+        self.assertEqual({k: c[k] for k in ('ref', 'branch', 'number', 'title', 'about', 'state')},
+                         {'ref': 'magenta#7', 'branch': 're/foo', 'number': 7, 'title': 'the re/foo work',
+                          'about': 'The foo work: it makes foo faster.', 'state': 'open'})
+
+    def test_a_short_description(self):
+        self.assertEqual(ramp.short_description('Deploy: none\nWorked on by: x'), '')
+        self.assertEqual(ramp.short_description('Worked on by: x\n\nThe point.'), 'The point.')
+        long = ramp.short_description('word ' * 100)
+        self.assertEqual((len(long), long[-1]), (ramp.CANDIDATE_SAID, '…'))
+
+    def test_only_for_a_runners_key(self):
+        from django.test import override_settings
+        with override_settings(MOOD_RUNNER_KEYS={'re': 'k' * 40}):
+            self.assertEqual(self.client.get('/api/ramp/candidates/').status_code, 401)
+            got = self.client.get('/api/ramp/candidates/', HTTP_AUTHORIZATION='Bearer ' + 'k' * 40)
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual([c['ref'] for c in got.json()['candidates']], ['magenta#7'])

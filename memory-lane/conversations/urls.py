@@ -95,6 +95,7 @@ urlpatterns = [
     path('api/verify/', views_settings.api_verify, name='api_verify'),
     path('api/usage/', views_settings.api_usage, name='api_usage'),
     path('api/usage/plan/', views_runner.api_plan, name='api_usage_plan'),
+    path('api/ramp/candidates/', views_runner.api_candidates, name='api_ramp_candidates'),
     path('api/usage/kinds/', views_settings.api_usage_kinds, name='api_usage_kinds'),
     path('api/auth/admin/', views_admin.api_admin, name='api_auth_admin'),
     path('api/brakes/', views_admin.api_brakes, name='api_brakes'),  # githouse asks, before every merge

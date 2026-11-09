@@ -1629,6 +1629,39 @@ class ConsiderLoopTest(TestCase):
         poller.consider_once()
         self.assertNotIn('Beta is tonight', self.waker.woken[1][1])  # once
 
+    def test_every_wake_lists_the_candidate_branches(self):
+        # Justin, 9 Nov (#ramp): each emergent told of the open candidates on each wake, not to duplicate one.
+        class WithCandidates(ConsiderAPI):
+            def candidates(inner):
+                return [{'ref': 'magenta#449', 'branch': 'magent/work-followups', 'number': 449, 'who': 'magent, justin',
+                         'moods': ['ramp'], 'state': 'open', 'title': 'Work pages, round two',
+                         'about': 'Comments whole in the Mood.'},
+                        {'ref': 'arthel:re/x', 'branch': 're/x', 'number': None, 'who': 're', 'moods': [],
+                         'state': 'pushed', 'title': 'x', 'about': ''}]
+        api = WithCandidates()
+        poller = self.make(api, FakeScreen('pass'))
+        for n in (1, 3):
+            api.add(post(f'p{n}', n))
+            self.at(minutes=n + 1)
+            poller.consider_once()
+        for _, prompt in self.waker.woken[:2]:
+            self.assertIn('Candidate branches open now across our repositories (2)', prompt)
+            self.assertIn('- magenta#449 (magent/work-followups; magent, justin; #ramp): Work pages, round two '
+                          'Comments whole in the Mood.', prompt)
+            self.assertIn('- arthel:re/x (no pull request; re): x', prompt)
+            self.assertIn('raise it in #ramp', prompt)
+
+    def test_a_wake_without_the_candidates_still_goes(self):
+        class Unreachable(ConsiderAPI):
+            def candidates(inner):
+                return None
+        api = Unreachable()
+        poller = self.make(api, FakeScreen('pass'))
+        api.add(post('a', 1))
+        self.at(minutes=2)
+        poller.consider_once()
+        self.assertNotIn('Candidate branches', self.waker.woken[0][1])
+
     def test_a_quiet_look_hears_of_open_polls(self):
         # re's review of #157: a poll posted without an @mention reached a quiet look as a bare /poll line.
         class Polled(ConsiderAPI):

@@ -181,7 +181,7 @@ class RampTest(TestCase):
         page = self.client.get('/moods/pulls/?embed=1')
         self.assertEqual(page.status_code, 200)
         text = page.content.decode()
-        for seen in ('magenta#7', 'the re/foo work', 'magenta:magent/bar', 'no PR yet', '#jams', 'magent/old', 'second'):
+        for seen in ('magenta#7', 'the re/foo work', 'magenta:magent/bar', 'no pull request', '#jams', 'magent/old', 'second'):
             self.assertIn(seen, text)
 
     def test_with_no_githouse_and_no_wiki(self):

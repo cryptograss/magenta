@@ -520,3 +520,35 @@ def ordered(items, by):
     key = {'pushed': lambda i: i.get('pushed') or floor,
            'mentioned': lambda i: (i.get('mentions') or [{'at': floor}])[0]['at']}.get(by, lambda i: i.get('active') or floor)
     return sorted(items, key=lambda i: (i['state'] == 'merged', -key(i).timestamp()))
+
+
+# --- the candidate branches, told to each emergent on each wake (Justin, 9 Nov, #ramp) ----------------------
+# "Candidate branches", not "pull requests": a pull request is GitHub's page for one (Justin, 9 Nov).
+
+CANDIDATE_SAID = 160      # characters of a candidate's description told in a wake
+_FOOTER = re.compile(r'^\s*(deploy(ment)?|worked on by)\s*:', re.I)
+
+
+def short_description(text):
+    """A candidate's description, short: its first paragraph that isn't its Deploy / Worked on by footer, as
+    plain words, cut at CANDIDATE_SAID."""
+    from .mood_view import snippet_of
+    for para in re.split(r'\n\s*\n', text or ''):
+        lines = [line for line in para.splitlines() if line.strip() and not _FOOTER.match(line)]
+        said = snippet_of('\n'.join(lines))
+        if said:
+            return said if len(said) <= CANDIDATE_SAID else said[:CANDIDATE_SAID - 1].rstrip() + '…'
+    return ''
+
+
+def candidates():
+    """Every open candidate branch, most active first: [{'ref', 'repo', 'branch', 'number', 'title', 'about',
+    'who', 'moods', 'state'}]. 'ref' is repo#N for one with a pull request, else repo:branch."""
+    out = []
+    for i in ordered([i for i in board().get('open', []) if i.get('state') != 'merged'], ''):
+        out.append({'ref': f"{i['repo']}#{i['number']}" if i.get('number') else f"{i['repo']}:{i.get('branch', '')}",
+                    'repo': i['repo'], 'branch': i.get('branch', ''), 'number': i.get('number'),
+                    'title': i.get('title', ''), 'about': short_description(i.get('description', '')),
+                    'who': i.get('worked_on_by') or i.get('author', ''), 'moods': i.get('moods', []),
+                    'state': i.get('state', 'open')})
+    return out
