@@ -2925,8 +2925,8 @@
                  person: PACES.includes(store.get('readPacePerson')) ? store.get('readPacePerson') : nearest(Math.min(NATURAL.person * wasSpeed, 220)) };
   function clipSays(audio) {
     const src = audio.currentSrc || audio.src || '';
-    if (src.startsWith('blob:')) return null;  // a chime
     const f = new URLSearchParams((src.split('#')[1] || ''));
+    if (!f.has('words')) return null;  // a chime: it says no words (a clip fetched ahead is a blob: too, and does)
     return { who: f.get('who') === 'agent' ? 'agent' : 'person', words: Number(f.get('words')) || 0 };
   }
   // Its own pace: a short clip -- the narrator's "Magent, with tools, says:" -- is mostly the quiet at its
@@ -9332,7 +9332,10 @@
       const body = await r.json();
       for (const k of ['url', 'intro']) {
         if (body[k] && body[k].startsWith('/')) {
-          try { body[k] = URL.createObjectURL(await (await fetch(body[k])).blob()); } catch (e) {}
+          // Its #words=…&who=… comes along: without it the page took the clip for a chime and played it at 1x
+          // (Justin, 9 Nov: re's message after his memo "didn't seem to respect the words" a minute).
+          const said = body[k].includes('#') ? body[k].slice(body[k].indexOf('#')) : '';
+          try { body[k] = URL.createObjectURL(await (await fetch(body[k])).blob()) + said; } catch (e) {}
         }
       }
       return new Response(JSON.stringify(body), { status: r.status, headers: { 'Content-Type': 'application/json' } });
