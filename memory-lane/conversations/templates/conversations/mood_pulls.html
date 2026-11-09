@@ -56,7 +56,11 @@
   .size .add { color: var(--ok); } .size .rm { color: var(--err); }
   .state.draft { color: var(--muted); } .state.pushed { color: var(--accent); border-color: var(--accent); }
   .state.merged { color: #8250df; border-color: #8250df; }
-  .state.ask { color: var(--ok); border-color: var(--ok); }
+  .asks { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+          border: 1px solid var(--ok); color: var(--ok); vertical-align: 1px; }
+  .askdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--who); }
+  .askdot:hover { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--who); }
+  .work .gh { font-size: 11px; color: var(--muted); }
   tr.merged td { opacity: .65; }
   .ment { display: block; font-size: 12px; white-space: nowrap; }
   .sorts { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; }
@@ -134,11 +138,11 @@
         data-mentioned="{% if i.mentions %}{{ i.mentions.0.at|date:'U' }}{% else %}0{% endif %}">
       <td><span class="temp {{ i.temperature }}" title="{{ i.temperature }}{% if i.active %}: {{ i.active|timesince }} ago{% endif %}"></span></td>
       <td class="work">
-        {% if i.number %}<a class="ref" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.repo }}#{{ i.number }}</a>{% else %}<span class="ref">{{ i.repo }}</span>{% endif %}
+        {% if i.page %}<a class="ref" href="/moods/tidings/{{ i.page.id }}/" title="Its page: the work, its diff, and what's been said">{% if i.number %}{{ i.repo }}#{{ i.number }}{% else %}{{ i.repo }}{% endif %}</a>{% elif can_thumb and i.branch and i.state != 'merged' %}<a class="ref openpage" href="{{ i.url|default:'#' }}" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Its page: the work, its diff, and what's been said">{% if i.number %}{{ i.repo }}#{{ i.number }}{% else %}{{ i.repo }}{% endif %}</a>{% elif i.number %}<a class="ref" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.repo }}#{{ i.number }}</a>{% else %}<span class="ref">{{ i.repo }}</span>{% endif %}{% if i.url and i.page or i.url and can_thumb %} <a class="gh" href="{{ i.url }}" target="_blank" rel="noopener" title="On GitHub">↗</a>{% endif %}
         <span class="title">{{ i.title }}</span>
         {% if i.state != 'open' %}<span class="state {{ i.state }}"{% if i.state == 'pushed' %} title="on githouse, no pull request yet"{% elif i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{% if i.state == 'pushed' %}no PR yet{% else %}{{ i.state }}{% endif %}</span>{% endif %}
         {% if i.tests %}<a class="tests {{ i.tests.state|slugify }}" href="{{ i.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ i.tests.number }} on Jenkins, for this head">{% if i.tests.state == 'passed' %}✓ tests{% elif i.tests.state == 'failed' %}✗ tests{% elif i.tests.state == 'testing' %}… testing{% else %}{{ i.tests.state }}{% endif %}</a>{% endif %}
-        {% if i.asked %}<a class="state ask" href="/moods/{{ i.asked.mood }}/#m-{{ i.asked.id }}" title="{{ i.asked.by }} asked for this merge in #{{ i.asked.mood }}">🪢 asked</a>{% endif %}
+        {% include "conversations/_asks.html" with w=i %}
         {% include "conversations/_thumb.html" with w=i %}
         {% if i.page %}<a class="talk" href="/moods/tidings/{{ i.page.id }}/" title="Its page: the work, its diff, and what's been said">💬 {{ i.page.comments }}</a>{% elif can_thumb and i.branch and i.state != 'merged' %}<button type="button" class="talk" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Open a page to talk about it: the work, its diff, comments">💬 talk</button>{% endif %}
         {% if i.branch %}<br><span class="branch">{{ i.repo }}:{{ i.branch }}{% if i.base %} → {{ i.base }}{% endif %}</span>{% endif %}
@@ -162,7 +166,7 @@
     <tr><th>work</th><th>who</th><th>where</th><th>merged</th><th>deploy</th><th>live on</th></tr>
     {% for m in board.merged %}
     <tr>
-      <td class="work"><a class="ref" href="{{ m.url }}" target="_blank" rel="noopener">{{ m.repo }}#{{ m.number }}</a> <span class="title">{{ m.title }}</span></td>
+      <td class="work">{% if m.page %}<a class="ref" href="/moods/tidings/{{ m.page.id }}/" title="Its page: the work, its diff, and what was said">{{ m.repo }}#{{ m.number }}</a> <a class="gh" href="{{ m.url }}" target="_blank" rel="noopener" title="On GitHub">↗</a>{% else %}<a class="ref" href="{{ m.url }}" target="_blank" rel="noopener">{{ m.repo }}#{{ m.number }}</a>{% endif %} <span class="title">{{ m.title }}</span></td>
       <td>{{ m.worked_on_by|default:m.author }}</td>
       <td>{% for mood in m.moods %}<a href="/moods/{{ mood }}/">#{{ mood }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
       <td class="num">{% if m.merged %}{{ m.merged|date:"j M H:i" }}Z{% endif %}</td>
@@ -197,9 +201,13 @@
 </script>{% endif %}
 {% include "conversations/_thumbs_script.html" %}
 <script>
-  // 💬 talk: the work's page, made now (services/work_pages.py; Plan, section 9), and opened in Tidings.
-  document.querySelectorAll('button.talk').forEach(b => b.addEventListener('click', async () => {
-    b.disabled = true;
+  // 💬 talk, or the work's name: its page, made now (services/work_pages.py; Plan, section 9), and opened in
+  // Tidings (Justin, 9 Nov: the ramp's links go to the work's page, not GitHub).
+  document.querySelectorAll('button.talk, a.openpage').forEach(b => b.addEventListener('click', async e => {
+    if (b.tagName === 'A' && (e.button || e.metaKey || e.ctrlKey || e.shiftKey)) return;  // its GitHub page, in a tab
+    e.preventDefault(); e.stopPropagation();
+    if (b.disabled || b.dataset.busy) return;
+    b.disabled = true; b.dataset.busy = '1';
     try {
       const r = await fetch('/api/ramp/work/', { method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json',
@@ -209,7 +217,7 @@
       if (!r.ok) { b.title = got.error || "that didn't work"; return; }
       const to = `/moods/tidings/${got.id}/`;
       if (parent !== window) parent.postMessage({ magentaGo: to }, location.origin); else location.href = to;
-    } finally { b.disabled = false; }
+    } finally { b.disabled = false; delete b.dataset.busy; }
   }));
 </script>
 <script>

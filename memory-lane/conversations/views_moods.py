@@ -24,6 +24,7 @@ from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_changes, wiki_feed, wiki_hooks, wiki_ledger, wiki_upload
 from .services import emergent_commands, merge_orders, mood_auth
 from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
+from .services.tiding_links import said_html  # a comment on a work's page, as the Mood shows it
 from .services.mood_view import (
     from_wiki_tier,
     MACHINERY_SENDERS, how_payload, activity, activities, background_tasks, is_summary, is_wrapper, known_names, mentions_in, addressed_in, mood_payload,
@@ -377,7 +378,7 @@ def api_mood_turns(request, slug):
                                                    'who', 'tier', 'label', 'device', 'devices', 'file', 'page', 'sha',
                                                    'message', 'already', 'author', 'for', 'from_mood', 'to_mood', 'thread', 'into', 'was', 'about', 'context',
                                                    'pulled', 'pull', 'commit_url', 'cid', 'draft', 'as', 'key',
-                                                   'tiding', 'comment_id', 'changes', 'task', 'revision', 'reason', 'tools', 'lines', 'steps', 'job', 'stage', 'url', 'hook', 'via', 'error')},
+                                                   'tiding', 'comment_id', 'changes', 'ref', 'changed', 'task', 'revision', 'reason', 'tools', 'lines', 'steps', 'job', 'stage', 'url', 'hook', 'via', 'error')},
                                # A deploy's server, linked to its page; a release, with its player.
                                **({'server_url': servers.page_url(text.get('server'))} if text.get('type') == 'deploy' else {}),
                                **({'html': render_html(f"[[Release:{text['cid']}]]")}
@@ -385,7 +386,10 @@ def api_mood_turns(request, slug):
                                # A handoff's context, as a message is shown (services/handoff.py).
                                **({'html': render_html(text.get('context') or '')} if text.get('type') == 'handoff' else {}),
                                # A task's prompt, filled in, as it was sent (services/tasks.py).
-                               **({'html': render_html(text.get('text') or '')} if text.get('type') == 'task' else {})})
+                               **({'html': render_html(text.get('text') or '')} if text.get('type') == 'task' else {}),
+                               # A comment on a work's page, whole (services/tiding_links._notice; Justin, 9 Nov).
+                               **({'html': said_html(text['text'])}
+                                  if text.get('type') == 'tiding-comment' and text.get('text') else {})})
         elif kind == 'compaction':
             compactions_out.append({'id': str(msg.id), 'session_id': str(msg.session_id or ''),
                                     'created_at': msg.created_at.isoformat(), 'html': render_html(text)})
@@ -1776,8 +1780,11 @@ def api_github_hook(request):
         pr_cards.heard(*name.split('/', 1), int(pull.get('number') or 0))  # its card, whatever happened to it
     if event == 'pull_request' and body.get('action') == 'closed' and pull.get('merged') and '/' in name:
         owner, repo = name.split('/', 1)
+        head = pull.get('head') or {}
         todo.merged_now(owner, repo, int(pull.get('number') or 0), pull.get('title') or '',
-                        (pull.get('merged_by') or {}).get('login') or '', commit=pull.get('merge_commit_sha') or '')
+                        (pull.get('merged_by') or {}).get('login') or '', commit=pull.get('merge_commit_sha') or '',
+                        # its branch, if it's this repository's: merged by the button, the Mood says so already
+                        branch=head.get('ref') or '' if (head.get('repo') or {}).get('full_name') == name else '')
         todo.heard(event, f"ticked {name}#{pull.get('number')}")
         return JsonResponse({'ticked': f"{name}#{pull.get('number')}"})
     todo.heard(event, 'nothing to do')

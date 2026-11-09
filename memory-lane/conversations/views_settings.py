@@ -181,6 +181,7 @@ def pulls_page(request):
     Justin, 7 Nov: "Does githouse have a UI that I can see?" -- "build the ramp view"."""
     from .services import merge_orders, mood_auth, ramp, thumbs, work_pages as work
     board = ramp.board()
+    work.with_merged_pages(board.get('merged', []))
     device = mood_auth.device_for(request)
     # The Merge buttons, for a merger signed in with their SSH key (Plan, section 10); githouse checks again.
     can_merge = bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id)
@@ -295,7 +296,7 @@ def _work_context(tiding_id, device):
         return {}
     panel = work.panel(page)
     if panel['item']:
-        thumbs.with_thumbs([panel['item']])
+        thumbs.with_thumbs([panel['item']])  # its 👍s; its open merge asks came with it (ramp.asks)
     panel['tests'] = ramp.test_runs().get((panel['repo'], panel['head'])) if panel['head'] else None
     panel['description_html'] = tiding_links.said_html(panel['description']) if panel['description'] else ''
     return {'work': panel, 'highlight_css': work.highlight_css(),

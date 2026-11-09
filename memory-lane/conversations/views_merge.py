@@ -2,6 +2,7 @@
 services/merge_orders.py says why; Cryptograss:Moods/ramp/Plan, section 8."""
 
 import json
+import logging
 
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -10,6 +11,8 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .models import MergeOrder
 from .services import merge_orders
+
+log = logging.getLogger(__name__)
 
 
 @csrf_exempt  # the order carries its own SSH signature, which githouse checks
@@ -98,7 +101,23 @@ def api_merge_preview(request):
     except merge_orders.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({**seen, 'can': device.tier == 'key' and merge_orders.can_press(device.entity_id),
-                         'mergers': list(merge_orders.mergers())})
+                         'mergers': list(merge_orders.mergers()), **_who_wants(seen)})
+
+
+def _who_wants(seen):
+    """For the sheet (Justin, 9 Nov): {'asks': the open 🪢 asks naming it, a dot each ({'by', 'mood', 'id',
+    'colour'}); 'thumbs': its 👍s ({'by', 'at', 'current'}: on the commit about to merge, or an older one)}."""
+    from .services import ramp, thumbs
+    try:
+        item = next((i for i in ramp.board().get('open', [])
+                     if i.get('repo') == seen['repo'] and i.get('branch') == seen['branch']), None)
+        asks = [{k: a[k] for k in ('by', 'mood', 'id', 'colour')} for a in (item or {}).get('asks', [])]
+        liked = [{'by': t['by'], 'at': t['at'].isoformat(), 'current': t['current']}
+                 for t in thumbs.of(seen['repo'], seen['branch'], seen['commit'])]
+    except Exception as e:  # noqa: BLE001 -- a nicety: the sheet merges without it
+        log.warning('merge preview: asks and 👍s: %s', e)
+        return {'asks': [], 'thumbs': []}
+    return {'asks': asks, 'thumbs': liked}
 
 
 @require_POST

@@ -319,7 +319,7 @@ def stamp():
     return cache.get(STAMP) or 0
 
 
-def merged_now(owner, repo, number, title='', by='', commit=''):
+def merged_now(owner, repo, number, title='', by='', commit='', branch=''):
     """GitHub says this pull request just merged: kept as merged, every list asked again,
     and each Mood whose list links it told so, in its thread (in the background)."""
     from conversations.models import Mood
@@ -331,21 +331,31 @@ def merged_now(owner, repo, number, title='', by='', commit=''):
     cache.delete_many([f'todo:{slug}' for slug in Mood.objects.values_list('slug', flat=True)])
     cache.delete('todo:all_moods')
     changed()
-    _in_background(announce_merge, owner, repo, number, title, by, commit)
+    _in_background(announce_merge, owner, repo, number, title, by, commit, branch)
 
 
 MERGED_SOURCE = 'merged'  # an event line (mood_view.EVENT_SOURCES): a pull request on the list merged
 
 
-def announce_merge(owner, repo, number, title='', by='', commit=''):
+def announce_merge(owner, repo, number, title='', by='', commit='', branch=''):
     """A line in each Mood whose to-do list links this pull request: "memory-lane#142 (226537a)
-    merged by jMyles", and which item it ticks; its title shown on hover."""
+    merged by jMyles", and which item it ticks; its title shown on hover. Not in a Mood whose merge button
+    merged its branch: that Mood has its line already, by the branch's name (merge_orders.announce; Justin,
+    9 Nov: "let's just show the branch")."""
     import time
     import uuid
-    from conversations.models import ConversationParticipant, Message, Mood
+    from datetime import timedelta
+    from django.utils import timezone
+    from conversations.models import ConversationParticipant, MergeOrder, Message, Mood
     system = None
     repository = same(f'{owner}/{repo}')
-    for mood in Mood.objects.all():
+    # Only a press githouse merged, or may yet (its record not written when GitHub's webhook lands): a refused or
+    # expired press said nothing in its Mood, so GitHub's line is that Mood's only word of the merge (re, 9 Nov).
+    from . import merge_orders
+    pressed_in = {o.mood for o in MergeOrder.objects.filter(repo=repo, branch=branch,
+                                                            received_at__gte=timezone.now() - timedelta(days=2))
+                  .exclude(mood='') if merge_orders.status(o).get('status') in ('merged', 'waiting')} if branch else set()
+    for mood in Mood.objects.exclude(slug__in=pressed_in):
         items = for_mood(mood).get('items', [])
         for item in items:
             found = _PULL.match(item.get('link') or '')

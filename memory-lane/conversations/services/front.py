@@ -26,6 +26,18 @@ MAX_SLOGANS, MAX_SLOGAN = 60, 240
 HEX = set('0123456789abcdef')
 # Each agent's own colour, as the Moods page draws them (AGENT_COLORS in moods.html, Justin, 21 Oct).
 AGENT_COLOURS = {'magent': '#ff67fd', 're': '#ff3c00', 'blu': '#1976d2'}
+AGENT_PALETTE = ('#1f8a70', '#c77c02', '#5b5bd6', '#0b7fab', '#8e5a2b', '#6b8e23')  # AGENT_PALETTE in moods.html
+
+
+def agent_colour(name):
+    """An emergent's colour, as the Moods page picks it (agentColor in moods.html): its own, else one of the
+    palette's, by its name's hash."""
+    if name in AGENT_COLOURS:
+        return AGENT_COLOURS[name]
+    h = 0
+    for ch in name or '':
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    return AGENT_PALETTE[h % len(AGENT_PALETTE)]
 
 
 def top_tidings(limit=TOP):

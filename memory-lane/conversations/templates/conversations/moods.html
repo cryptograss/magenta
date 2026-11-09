@@ -1052,6 +1052,13 @@
   .event.release a { color: inherit; }
   .event.release .body { margin-top: 4px; color: var(--ink); font-size: 13.5px; }
   .event.release .body .embed .caption { display: none; }  /* the line above says what it is */
+  /* A comment on a work's page, said whole (services/tiding_links._notice): its line, its words under it. */
+  .event.tiding-comment.whole { text-align: left; }
+  .event.tiding-comment.whole .body { margin-top: 4px; padding: 2px 0 2px 10px; border-left: 3px solid var(--line);
+                                      color: var(--ink); font-size: 14px; }
+  .event.tiding-comment.whole .body > :first-child { margin-top: 0; }
+  .event.tiding-comment.whole .body > :last-child { margin-bottom: 0; }
+  .event .muted { color: var(--muted); }
   .event.wiki a { color: inherit; }
   .event.wiki .delta { color: var(--muted); text-decoration: none; }
   .event.wiki summary { cursor: pointer; }
@@ -2111,6 +2118,9 @@
   let badgesBy = {};        // slug -> {person, agent}: a person's and an emergent's, apart (Justin, 29 Oct)
   let withReplies = store.get('bellReplies', false);  // agents' answers to you: counted and listed only if asked for
   let baseTitle = 'magenta';
+  // Which Mood is on screen, for the merge sheets (_merge_sheet.html): each shows only over its own Mood.
+  window.magentaMoodOnScreen = () => sectionNow === 'moods' ? current : null;
+  const mergeSheetsFollow = () => { if (window.magentaMerge) magentaMerge.show(window.magentaMoodOnScreen()); };
   let sectionNow = 'moods';  // or tidings, prompts, status, settings (showSection)
   let people = [];          // everyone who can be named, for @-completion
   let groups = [];          // tags for a group (@core: everyone who signs in with an SSH key)
@@ -4491,8 +4501,19 @@
       const msg = esc(e.message || ''), mood = encodeURIComponent(e.mood || current);
       const at = e.tiding ? `/moods/tidings/${encodeURIComponent(e.tiding)}/` : '/moods/tidings/';
       const words = e.comment ? (e.comment.length > 40 ? e.comment.slice(0, 40).trimEnd() + '…' : e.comment) : '';
+      const there = `${at}${e.comment_id ? '#c-' + encodeURIComponent(e.comment_id) : ''}`;
+      if (e.html) {  // on a work's page: said whole, here as there (Justin, 9 Nov); ↩ answers it on the page too
+        el.className = 'event tiding-comment whole';
+        el.innerHTML = `💬 <b>${nameHtml(e.by || 'someone')}</b> on <a href="${there}">${esc(e.title || 'its page')}</a>`
+          + `${e.changed === 'edited' ? ' <span class="muted">(edited)</span>' : ''} · ${esc(stamp(e.created_at))}`
+          + `<div class="body">${e.html}</div>`;
+        container.appendChild(el);
+        prev = null;
+        return;
+      }
       el.innerHTML = `💬 <b>${nameHtml(e.by || 'someone')}</b> commented on <a href="${at}">${e.title ? '“' + esc(e.title) + '”' : 'Tidings'}</a>`
-        + (words ? `: <a href="${at}${e.comment_id ? '#c-' + encodeURIComponent(e.comment_id) : ''}">“${esc(words)}”</a>`
+        + (words ? `: <a href="${there}">“${esc(words)}”</a>`
+           : e.changed === 'deleted' ? ' <span class="muted">(deleted)</span>'
            : msg ? ` · <a href="/moods/${mood}/#m-${msg}" title="the link was posted in this message">what was said</a>` : '')
         + ` · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
@@ -6359,6 +6380,7 @@
     stash();
     gen++;
     current = slug;
+    mergeSheetsFollow();  // a merge sheet opened here shows; another Mood's waits for it
     recordPath(slug);
     sayHere(slug);  // shown here to everyone, and gone from where they were
     renderVideoCards();  // the videos waiting for a draft page are per Mood
@@ -10255,6 +10277,7 @@
     if (left !== name && sectionPending[left]) { delete sectionPending[left]; refreshSection(left); }
     document.body.classList.toggle('in-section', name !== 'moods');
     sectionFrames.hidden = name === 'moods';
+    mergeSheetsFollow();
     if (name === 'tidings') markTidingsSeen();  // the badges count from this visit on
     if (name === 'tidings' && left !== 'tidings') miniHome();
     miniDodge();
@@ -10722,6 +10745,11 @@
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/moods/sw.js', { scope: '/moods/' }).catch(() => {});
 })();
 </script>
-{% if can_merge %}{% include "conversations/_merge_sheet.html" %}{% endif %}
+{% if can_merge %}{% include "conversations/_merge_sheet.html" %}
+<script>
+  // A merge sheet covers its Mood's pane, not the page, and goes and comes with its Mood (Justin, 9 Nov).
+  magentaMerge.within(() => document.getElementById('main'));
+  magentaMerge.show(window.magentaMoodOnScreen ? window.magentaMoodOnScreen() : null);
+</script>{% endif %}
 </body>
 </html>

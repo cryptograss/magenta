@@ -11,7 +11,7 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 
 from conversations.models import Message, Mood, ThinkingEntity
-from conversations.services import ramp
+from conversations.services import front, ramp
 from conversations.tests.test_githouse import Repo, git
 
 
@@ -190,6 +190,40 @@ class RampTest(TestCase):
             board = ramp.board(now=self.now)
         self.assertEqual((board['open'], board['repos'], board['log']), ([], [], []))
         self.assertIn('cards are missing', board['error'])
+
+
+class AskDotsTest(RampTest):
+    """A dot of its colour for each emergent asking for a merge (Justin, 9 Nov), on the ramp and its sheet."""
+
+    def setUp(self):
+        super().setUp()
+        ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False})
+
+    def test_a_dot_for_each_emergent_asking(self):
+        self.say('re', '<merge to="magenta#7, the foo fix"/>')
+        self.say('magent', '<merge to="magenta#7 too"/>')
+        pull = next(i for i in ramp.board(now=self.now)['open'] if i['number'] == 7)
+        self.assertEqual(sorted((a['by'], a['colour']) for a in pull['asks']),
+                         [('magent', '#ff67fd'), ('re', '#ff3c00')])
+        self.assertEqual(pull['asked'], pull['asks'][-1])
+
+    def test_an_emergent_asking_twice_is_one_dot(self):
+        self.say('re', '<merge to="magenta#7"/>')
+        self.say('re', '<merge to="magenta#7, again"/>')
+        pull = next(i for i in ramp.board(now=self.now)['open'] if i['number'] == 7)
+        self.assertEqual([a['by'] for a in pull['asks']], ['re'])
+
+    def test_the_ramp_draws_the_dots(self):
+        self.say('re', '<merge to="magenta#7"/>')
+        page = self.client.get('/moods/pulls/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        self.assertIn('class="askdot" href="/moods/jams/#m-', page)
+        self.assertIn('style="--who: #ff3c00"', page)
+        self.assertNotIn('🪢 asked', page)
+
+    def test_any_emergents_colour(self):
+        self.assertEqual(front.agent_colour('blu'), '#1976d2')
+        self.assertIn(front.agent_colour('someone-new'), front.AGENT_PALETTE)
+        self.assertEqual(front.agent_colour('someone-new'), front.agent_colour('someone-new'))
 
 
 class BranchTestsTest(TestCase):

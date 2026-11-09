@@ -500,6 +500,9 @@ def event_line(content):
         return f"⚙ {c.get('server', 'a server')} {said.get(c.get('state'), c.get('state', ''))}{commit}{by_}"
     if kind == 'work':
         return f"💬 {by or 'someone'} opened a page to talk about {c.get('ref', 'a piece of work')}: {c.get('title', '')}".rstrip(': ')
+    if kind == 'tiding-comment':  # services/tiding_links._notice: a work's page's comment is kept whole
+        said = snippet_of(c['text']) if c.get('text') else c.get('comment', '')
+        return f"💬 {by or 'someone'} commented on {c.get('title', 'Tidings')}" + (f": {said}" if said else '')
     if kind == 'merged':
         return f"✓ {c.get('pull') or c.get('title', 'a pull request')}{commit} merged{by_}: {c.get('title', '')}".rstrip(': ')
     if kind == 'release':
