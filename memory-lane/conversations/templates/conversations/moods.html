@@ -1232,6 +1232,9 @@
   /* Who is a person and who is an agent, wherever a name appears. */
   .ico { width: 13px; height: 13px; fill: currentColor; vertical-align: -1px; margin-right: 4px; flex: none; }
   .people .who.typing::after { content: ' typing…'; color: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
+  #toolsOpen .askdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--who); margin-right: 3px; vertical-align: 0; }
+  #toolsOpen a.asker { color: inherit; text-decoration: none; font-weight: 600; }
+  #toolsOpen a.asker:hover { text-decoration: underline; }
   #toolsOpen .askmerge { font: inherit; font-size: 12px; padding: 0 8px; border-radius: 4px; cursor: pointer;
                          border: 1px solid var(--accent); background: none; color: var(--accent); }
   #tasks { display: none; flex-wrap: wrap; gap: 6px; padding: 2px 16px 0; font-size: 12px; color: var(--muted);
@@ -2474,6 +2477,7 @@
         const payload = await r.json();
         const before = liveData;
         liveData = payload.moods || {};
+        freshAsks(liveData);
         renderBanner(payload.banner || null);
         // A word somewhere newer than the list knew: re-sorted (Justin, 1 Nov), else only who's around redrawn.
         if (Object.entries(liveData).some(([slug, d]) => d.said && d.said !== (before[slug] || {}).said)) renderNav();
@@ -7559,21 +7563,58 @@
   }
 
   const typingEl = document.getElementById('typing');
-  // Open asks here (/api/moods/ asked): each a link to its own message in the thread (Justin, 29 Oct:
-  // "the notice at the bottom needs to be a link to that message"). Until the event lands -- a full-tools
-  // wake, a merged event, a deploy event -- they stay, with 🔨/🪢/🖥️ by the Mood's name.
+  // Open asks here (/api/moods/ asked, kept fresh by /api/moods/live/): each a link to its own message in the thread
+  // (Justin, 29 Oct: "the notice at the bottom needs to be a link to that message"). Until the event lands -- a
+  // full-tools wake, a merged event, a deploy event -- they stay, with 🔨/🪢/🖥️ by the Mood's name.
+  // A merge ask is drawn by what it names: one line for each candidate branch not merged yet, with a dot and the
+  // name of every emergent asking for it, and one Merge… (Justin, 9 Nov: two lines and two buttons for #449).
+  const askTime = at => new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  function askOne(t) {
+    return `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
+      + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.emergent, true)}<b>${esc(shown(t.emergent))}</b>`
+      + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
+      + `${esc(askTime(t.at))}</a>`;
+  }
+  function askWorks(t) {  // what a merge ask names, not merged yet: the server's word, else read from its words
+    if (Array.isArray(t.works)) return t.works;
+    return window.magentaMerge ? magentaMerge.named(t.for) : [];
+  }
   function renderAsksOpen() {
     const box = document.getElementById('toolsOpen'), m = moods.find(x => x.slug === current);
-    box.innerHTML = ((m && m.asked) || []).map(t =>
-      `<a class="msglink" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
-        + ` title="Go to where it asked">${ASK_EMOJI[t.kind] || '🔨'} ${icon(t.emergent, true)}<b>${esc(shown(t.emergent))}</b>`
-        + ` ${esc(t.kind === 'tools' ? `requested tools for ${t.for}` : t.kind === 'merge' ? `requested a merge for ${t.for}` : `requested a redeploy of ${t.for}`)} · `
-        + `${esc(new Date(t.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}</a>`
-        // A 🪢 ask's work, each a Merge… for a merger: what it names, looked at, then merged (Plan, section 10).
-        + (t.kind === 'merge' && CAN_MERGE && window.magentaMerge ? magentaMerge.named(t.for).map(w =>
-          ` <button type="button" class="askmerge" data-repo="${esc(w.repo)}" data-branch="${esc(w.branch || '')}"`
-          + ` data-number="${esc(w.number || '')}">Merge ${esc(w.number ? w.repo + '#' + w.number : w.repo + ':' + w.branch)}…</button>`).join('') : '')
-      ).join('<br>');
+    const asks = (m && m.asked) || [], lines = [], byWork = new Map();
+    for (const t of asks) {
+      const works = t.kind === 'merge' ? askWorks(t) : [];
+      if (!works.length) { lines.push({ at: t.at, html: askOne(t) }); continue; }
+      for (const w of works) {
+        const name = w.number ? `${w.repo}#${w.number}` : `${w.repo}:${w.branch}`;
+        if (!byWork.has(name)) byWork.set(name, { w, name, asks: [] });
+        const got = byWork.get(name);
+        if (!got.asks.some(a => a.emergent === t.emergent)) got.asks.push(t);
+      }
+    }
+    for (const { w, name, asks: by } of byWork.values()) {
+      by.sort((a, b) => a.at < b.at ? -1 : 1);
+      const who = by.map(t => `<a class="msglink asker" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
+        + ` title="${esc(t.emergent)} asked at ${esc(askTime(t.at))}: ${esc(t.for)}"><span class="askdot" style="--who: ${agentColor(t.emergent)}"></span>`
+        + `${esc(shown(t.emergent))}</a>`).join(', ');
+      const last = by[by.length - 1].at;
+      lines.push({ at: last, html: `<span class="askwork">🪢 ${who} asked to merge <b>${esc(name)}</b> · ${esc(askTime(last))}</span>`
+        + (CAN_MERGE && window.magentaMerge ? ` <button type="button" class="askmerge" data-repo="${esc(w.repo)}" data-branch="${esc(w.branch || '')}"`
+          + ` data-number="${esc(w.number || '')}">Merge ${esc(name)}…</button>` : '') });
+    }
+    lines.sort((a, b) => a.at < b.at ? -1 : 1);
+    box.innerHTML = lines.map(l => l.html).join('<br>');
+  }
+  // The asks as the live poll has them now: one answered (merged, redeployed, woken) goes at once.
+  function freshAsks(live) {
+    let changed = false;
+    for (const m of moods) {
+      const d = live[m.slug];
+      if (!d || !('asked' in d)) continue;
+      const now = d.asked && d.asked.length ? d.asked : undefined;
+      if (JSON.stringify(now || null) !== JSON.stringify(m.asked || null)) { m.asked = now; changed = true; }
+    }
+    if (changed) { renderAsksOpen(); renderNav(); }
   }
   document.getElementById('toolsOpen').addEventListener('click', e => {
     const b = e.target.closest('button.askmerge');

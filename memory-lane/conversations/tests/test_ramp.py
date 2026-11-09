@@ -220,6 +220,23 @@ class AskDotsTest(RampTest):
         self.assertIn('style="--who: #ff3c00"', page)
         self.assertNotIn('🪢 asked', page)
 
+    def test_an_ask_carries_what_it_names_not_merged_yet(self):
+        # Justin, 9 Nov: an ask naming #451 and #449 kept a Merge for #449 after #449 merged.
+        from conversations.services import tools_ask
+        self.say('re', '<merge to="magenta#7 and magenta:magent/bar"/>')
+        [ask] = tools_ask.open_requests()['jams']
+        self.assertEqual(ask['works'], [{'repo': 'magenta', 'number': 7}, {'repo': 'magenta', 'branch': 'magent/bar'}])
+        git(self.repo.work, 'merge', '-q', '--no-ff', '-m', 'Merge pull request #7', 're/foo')
+        self.repo.push()
+        cache.clear()
+        [ask] = tools_ask.open_requests()['jams']
+        self.assertEqual(ask['works'], [{'repo': 'magenta', 'branch': 'magent/bar'}])
+
+    def test_the_live_poll_carries_the_asks(self):
+        self.say('re', '<merge to="magenta#7"/>')
+        live = self.client.get('/api/moods/live/').json()['moods']
+        self.assertEqual([a['emergent'] for a in live['jams']['asked']], ['re'])
+
     def test_any_emergents_colour(self):
         self.assertEqual(front.agent_colour('blu'), '#1976d2')
         self.assertIn(front.agent_colour('someone-new'), front.AGENT_PALETTE)

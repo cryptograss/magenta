@@ -79,7 +79,8 @@ def open_requests():
             answered.add(((slug, agent, kind), mid))
         else:
             found.setdefault(slug, []).append({'kind': kind, 'emergent': agent, 'for': purpose,
-                                               'at': m.created_at.isoformat(), 'id': str(m.id)})
+                                               'at': m.created_at.isoformat(), 'id': str(m.id),
+                                               **({'works': unmerged(purpose)} if kind == 'merge' else {})})
     for asks in found.values():
         asks.sort(key=lambda a: a['at'])
     cache.set(SCAN_KEY, {'to': now, 'latest': latest, 'answered': answered}, 2 * LOOK_BACK.total_seconds())
@@ -149,6 +150,35 @@ def _merged_elsewhere(purpose):
                 and all(githouse.branch_merged(repo, branch) for repo, branch in branches))
     except Exception:  # noqa: BLE001 -- GitHub unreachable: the ask stands until its event lands
         return False
+
+
+def unmerged(purpose):
+    """The candidate branches a merge ask names that haven't merged yet: [{'repo', 'number'} or {'repo', 'branch'}],
+    in the order named, each once. The page draws one line for each, with every emergent asking for it (Justin,
+    9 Nov: an ask naming #451 and #449 kept a Merge for #449 after #449 merged). One it can't say about counts as
+    not merged."""
+    import requests
+
+    from . import githouse
+    from .todo import _merged
+    out, seen = [], set()
+    for _, repo, number in named_pulls(purpose) or []:
+        if (repo, number) in seen:
+            continue
+        seen.add((repo, number))
+        try:
+            done = _merged('cryptograss', repo, number, requests)
+        except Exception:  # noqa: BLE001 -- GitHub unreachable: shown as still wanted
+            done = False
+        if not done:
+            out.append({'repo': repo, 'number': number})
+    for repo, branch in named_branches(purpose) or []:
+        if (repo, branch) in seen:
+            continue
+        seen.add((repo, branch))
+        if not githouse.branch_merged(repo, branch):
+            out.append({'repo': repo, 'branch': branch})
+    return out
 
 
 def named_servers(purpose):
