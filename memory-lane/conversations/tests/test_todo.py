@@ -222,6 +222,6 @@ class AllTodosTest(TestCase):
         res = self.client.get('/api/todo/')
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()['total'], 4)
-        page_res = self.client.get('/moods/todo/?embed=1')
+        page_res = self.client.get('/todo/?embed=1')
         self.assertEqual(page_res.status_code, 200)
         self.assertIn('Newest task from Oct 30', page_res.content.decode())

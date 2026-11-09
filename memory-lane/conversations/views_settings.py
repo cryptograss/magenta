@@ -67,7 +67,7 @@ def makers_offered():
 
 RECENT_BUNDLES = 8  # the newest bundles made, shown atop the instructions bundles section
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'pulls', 'tasks', 'journals', 'verify', 'hooks', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'settings')
 
 
 def _opened_on_its_own(request):
@@ -174,8 +174,8 @@ def tasks_page(request):
     return render(request, 'conversations/mood_tasks.html', {'board': tasks.board(), 'embed': True})
 
 
-@section('pulls')
-def pulls_page(request):
+@section('ramp')
+def ramp_page(request):
     """The ramp (services/ramp.py; Cryptograss:Moods/ramp/Plan, section 2): every open pull request and
     githouse branch across our repositories, the last few merged, the names used, githouse's log.
     Justin, 7 Nov: "Does githouse have a UI that I can see?" -- "build the ramp view"."""

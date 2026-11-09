@@ -74,6 +74,6 @@ class SoundDefaultsTest(TestCase):
     def test_the_settings_page_shows_them_beside_this_browsers_own(self):
         # Justin, 5 Nov: "I don't see the defaults in settings".
         from django.test import Client
-        html = Client().get('/moods/settings/?embed=1').content.decode()
+        html = Client().get('/settings/?embed=1').content.decode()
         self.assertIn('id="soundsBox"', html)
         self.assertIn('Magenta:Sounds', html)

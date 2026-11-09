@@ -139,7 +139,7 @@ class RampLinksAndSheetTest(WorkRepo):
 
     def ramp_page(self):
         cache.delete(ramp.KEY)
-        return self.client.get('/moods/pulls/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        return self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
 
     def test_the_works_name_opens_its_page(self):
         self.as_('justin')
@@ -147,7 +147,7 @@ class RampLinksAndSheetTest(WorkRepo):
                       'data-branch="re/foo"', self.ramp_page())
         tid = self.open_().json()['id']
         page = self.ramp_page()
-        self.assertIn(f'<a class="ref" href="/moods/tidings/{tid}/"', page)
+        self.assertIn(f'<a class="ref" href="/tidings/{tid}/"', page)
         self.assertIn('<a class="gh" href="https://github.com/cryptograss/magenta/pull/7"', page)
 
     def test_signed_out_it_is_still_githubs(self):
@@ -159,7 +159,7 @@ class RampLinksAndSheetTest(WorkRepo):
         self.as_('justin')
         tid = self.open_().json()['id']
         self.cards['merged'] = [dict(self.cards['open'][0])]
-        self.assertIn(f'<a class="ref" href="/moods/tidings/{tid}/" title="Its page: the work, its diff, and what was said">'
+        self.assertIn(f'<a class="ref" href="/tidings/{tid}/" title="Its page: the work, its diff, and what was said">'
                       'magenta#7</a>', self.ramp_page())
 
     def test_the_sheet_says_who_asked_and_who_liked_it(self):

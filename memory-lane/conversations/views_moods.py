@@ -1561,7 +1561,9 @@ def app_manifest(request):
         'description': 'Moods: where cryptograss talks, people and agents together.',
         'id': '/moods/',
         'start_url': '/moods/',
-        'scope': '/moods/',
+        # The whole site, so the sections (/tidings/, /ramp/, ...) open inside the app, not in a browser.
+        # The service worker stays at /moods/: its push subscriptions are kept on that registration.
+        'scope': '/',
         'display': 'standalone',
         'background_color': '#fbfaf7',
         'theme_color': '#b8106b',
@@ -1659,6 +1661,8 @@ async function takeShare(request) {
   }
   return Response.redirect('/moods/?shared=kept', 303);
 }
+// The one page, at a Mood or at a section (Justin, 9 Nov: the sections moved from /moods/<section>/ to /<section>/).
+const ONE_PAGE = /^\/(moods|tidings|polls|prompts|status|todo|ramp|tasks|journals|verify|hooks|settings)\//;
 // A push (services/push.py): a mention or an answer, while magenta is closed.
 // A magenta page in front of its person tells them itself, so then: nothing.
 self.addEventListener('push', e => {
@@ -1666,7 +1670,7 @@ self.addEventListener('push', e => {
   try { n = e.data ? e.data.json() : null; } catch (err) {}
   if (!n || !n.title) return;
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    if (list.some(c => c.visibilityState === 'visible' && new URL(c.url).pathname.startsWith('/moods/'))) return;
+    if (list.some(c => c.visibilityState === 'visible' && ONE_PAGE.test(new URL(c.url).pathname))) return;
     // The badge: the mark alone, which Android shows in the status bar (it reads only its alpha).
     // timestamp: when it was said, so one held while the phone slept doesn't say "now".
     return self.registration.showNotification(n.title, { body: n.body || '', tag: n.tag, icon: '/moods/icon-192.png',
@@ -1686,7 +1690,7 @@ self.addEventListener('notificationclick', e => {
   const url = '/moods/' + encodeURIComponent(slug || '') + '/' + (id ? '#m-' + id : '');
   e.waitUntil((async () => {
     const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const open = list.find(c => new URL(c.url).pathname.startsWith('/moods/'));
+    const open = list.find(c => ONE_PAGE.test(new URL(c.url).pathname));
     if (!open) return self.clients.openWindow(url);
     try { await open.focus(); } catch (err) {}
     const heard = await new Promise(resolve => {

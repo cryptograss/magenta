@@ -106,7 +106,7 @@
     const to = new URL(a.href, location.href);
     if (to.origin !== location.origin) { a.target = '_top'; return; }
     if (to.pathname === location.pathname && to.hash) return;  // within this page
-    if (to.pathname.startsWith('/moods/tidings/')) return;  // a link's discussion: it opens in this frame
+    if (to.pathname.startsWith('/tidings/')) return;  // a link's discussion: it opens in this frame
     if (a.classList.contains('thumb')) return;  // a picture: the one page's lightbox (mood_tiding_tools.html)
     e.preventDefault();
     parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
@@ -118,21 +118,21 @@
 <header>
   <a class="brand" href="/moods/">magenta</a>
   <nav>
-    <a href="/moods/status/">status</a>
-    <a href="/moods/tidings/" aria-current="page">tidings</a>
-    <a href="/moods/polls/">polls</a>
-    <a href="/moods/prompts/">prompts</a>
-    <a href="/moods/todo/">todo</a>
-    <a href="/moods/pulls/">ramp</a>
-    <a href="/moods/tasks/">tasks</a>
-    <a href="/moods/journals/">journals</a>
-    <a href="/moods/verify/">bundles</a>
-    <a href="/moods/hooks/">wiki hooks</a>
-    <a href="/moods/settings/">settings</a>
+    <a href="/status/">status</a>
+    <a href="/tidings/" aria-current="page">tidings</a>
+    <a href="/polls/">polls</a>
+    <a href="/prompts/">prompts</a>
+    <a href="/todo/">todo</a>
+    <a href="/ramp/">ramp</a>
+    <a href="/tasks/">tasks</a>
+    <a href="/journals/">journals</a>
+    <a href="/verify/">bundles</a>
+    <a href="/hooks/">wiki hooks</a>
+    <a href="/settings/">settings</a>
   </nav>
 </header>
 <main>
-  <nav class="order" aria-label="Order">{% if order == 'new' %}<a href="/moods/tidings/?embed=1">top</a> · <b>new</b>{% else %}<b>top</b> · <a href="/moods/tidings/?embed=1&amp;order=new">new</a>{% endif %}</nav>
+  <nav class="order" aria-label="Order">{% if order == 'new' %}<a href="/tidings/?embed=1">top</a> · <b>new</b>{% else %}<b>top</b> · <a href="/tidings/?embed=1&amp;order=new">new</a>{% endif %}</nav>
   {% if tidings.links %}
   <ol class="links">
   {% for link in tidings.links %}
@@ -141,11 +141,11 @@
         <button type="button" class="vote{% if link.mine %} mine{% endif %}" data-vote="/api/tidings/{{ link.id }}/vote/"
                 title="{% if link.mine %}Take your upvote back{% else %}Upvote{% endif %}" aria-label="upvote">▲</button>
         <span class="score">{{ link.score }}</span></span>
-      {% if link.release %}<a class="rthumb" href="/moods/tidings/{{ link.id }}/?embed=1" title="Play it, and see what's said at which moment"><img loading="lazy" src="{{ link.poster }}" alt="" onerror="this.remove()"><span class="play" aria-hidden="true">▶</span></a>{% endif %}
+      {% if link.release %}<a class="rthumb" href="/tidings/{{ link.id }}/?embed=1" title="Play it, and see what's said at which moment"><img loading="lazy" src="{{ link.poster }}" alt="" onerror="this.remove()"><span class="play" aria-hidden="true">▶</span></a>{% endif %}
       <span class="body">
-        {% if link.release %}<span class="chip rel">release</span><a class="title" href="/moods/tidings/{{ link.id }}/?embed=1">{{ link.title }}</a>{% else %}<a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a>{% endif %}<span class="host">({{ link.host }})</span>{% if link.pinned %}<span class="pin" title="Pinned to the top">📌</span>{% endif %}{% if link.may_retitle %}<button type="button" class="retitle" data-tiding="{{ link.id }}" title="Give it another title">✎</button>{% endif %}
+        {% if link.release %}<span class="chip rel">release</span><a class="title" href="/tidings/{{ link.id }}/?embed=1">{{ link.title }}</a>{% else %}<a class="title" href="{{ link.url }}" rel="noopener noreferrer" target="_blank">{{ link.title }}</a>{% endif %}<span class="host">({{ link.host }})</span>{% if link.pinned %}<span class="pin" title="Pinned to the top">📌</span>{% endif %}{% if link.may_retitle %}<button type="button" class="retitle" data-tiding="{{ link.id }}" title="Give it another title">✎</button>{% endif %}
         <div class="meta">{% if link.release %}uploaded by {{ link.said_by|default:"someone" }} · promoted by {{ link.by|default:"someone" }}{% elif link.said_by == link.by %}posted and promoted by {{ link.by|default:"someone" }}{% else %}posted by {{ link.said_by|default:"someone" }} · promoted by {{ link.by|default:"someone" }}{% endif %}
-          · <a href="/moods/tidings/{{ link.id }}/?embed=1">{{ link.comments }} comment{{ link.comments|pluralize }}</a>
+          · <a href="/tidings/{{ link.id }}/?embed=1">{{ link.comments }} comment{{ link.comments|pluralize }}</a>
           · <a href="/moods/{{ link.mood }}/#m-{{ link.message }}" title="{{ link.said_by }}: “{{ link.snippet }}”">{{ link.at|date:"M j, g:i A" }} in #{{ link.mood }}</a>{% if link.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ link.id }}" title="Take it off Tidings">take it off</button>{% endif %}{% if link.may_pin %}<button type="button" class="pinit" data-tiding="{{ link.id }}" data-on="{{ link.pinned|yesno:'0,1' }}" title="{% if link.pinned %}Let it go from the top{% else %}Keep it at the top of Tidings{% endif %}">{% if link.pinned %}unpin{% else %}pin{% endif %}</button>{% endif %}</div>
       </span>
     </li>
@@ -162,7 +162,7 @@
     <div class="pic release">
       <a class="poster" href="{{ pic.page }}" target="_top" title="{{ pic.title }}, on PickiPedia">{% if pic.poster %}<img loading="lazy" src="{{ pic.poster }}" alt="" onerror="this.remove()">{% endif %}<span class="kind">{{ pic.kind }}</span>{% if pic.video %}<span class="play" aria-hidden="true">▶</span>{% endif %}</a>
       <div class="meta">
-        <div class="marks"><span class="chip rel">release</span>{% if pic.tiding %}<a class="chip talk" href="/moods/tidings/{{ pic.tiding }}/?embed=1" title="Its page on Tidings: play it, and say what's at which moment">💬 talk</a>{% elif viewer %}<button type="button" class="chip torel" data-cid="{{ pic.cid }}" title="Put it on Tidings, to be voted on and talked about by the moment">★ tidings</button>{% endif %}</div>
+        <div class="marks"><span class="chip rel">release</span>{% if pic.tiding %}<a class="chip talk" href="/tidings/{{ pic.tiding }}/?embed=1" title="Its page on Tidings: play it, and say what's at which moment">💬 talk</a>{% elif viewer %}<button type="button" class="chip torel" data-cid="{{ pic.cid }}" title="Put it on Tidings, to be voted on and talked about by the moment">★ tidings</button>{% endif %}</div>
         <a class="rtitle" href="{{ pic.page }}" target="_top">{{ pic.title }}</a>
         <span class="muted"><span class="who" title="uploaded by {{ pic.by }}">{{ pic.by|default:"unknown" }}</span>{{ pic.at|date:"M j, g:i A" }}</span>
       </div>
@@ -200,7 +200,7 @@
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() } });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || r.status);
-      location.href = `/moods/tidings/${d.id}/?embed=1`;
+      location.href = `/tidings/${d.id}/?embed=1`;
     } catch (err) {
       b.textContent = was;
       b.disabled = false;

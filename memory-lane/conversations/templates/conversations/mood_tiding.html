@@ -199,7 +199,7 @@
     if (a.target === '_top') return;  // signing in: the whole page goes, and comes back here
     // Its title: this page's own address, to share or open in a tab. Pressed here, it's here already.
     if (a.matches('h1 a.title') && to.pathname === location.pathname) { e.preventDefault(); scrollTo({ top: 0 }); return; }
-    if (to.pathname.startsWith('/moods/tidings/')) return;  // the listing or another discussion: in this frame
+    if (to.pathname.startsWith('/tidings/')) return;  // the listing or another discussion: in this frame
     if (a.matches('.words a.img')) return;  // a picture: the one page's lightbox (mood_tiding_tools.html)
     e.preventDefault();
     parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
@@ -520,7 +520,7 @@
 </head>
 <body>
 <main{% if tiding.release %} class="wide"{% endif %}>
-  {% if work %}<a class="back" href="/moods/pulls/">‹ the ramp</a>{% else %}<a class="back" href="/moods/tidings/?embed=1">‹ Tidings</a>{% endif %}
+  {% if work %}<a class="back" href="/ramp/">‹ the ramp</a>{% else %}<a class="back" href="/tidings/?embed=1">‹ Tidings</a>{% endif %}
 
   {% if tiding.release %}
   {% with r=tiding.release %}
@@ -543,9 +543,9 @@
           <span class="score">{{ tiding.score }}</span></span>
         <span class="body">
           <span class="chip rel">release</span>
-          <h1><a class="title" href="/moods/tidings/{{ tiding.id }}/" title="This tiding's own page: its link to share">{{ tiding.title }}</a>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}</h1>
+          <h1><a class="title" href="/tidings/{{ tiding.id }}/" title="This tiding's own page: its link to share">{{ tiding.title }}</a>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}</h1>
           <div class="meta muted">uploaded by {{ r.by|default:tiding.said_by|default:"someone" }}{% if r.upload_block_s %} at block {{ r.upload_block_s }}{% endif %} · promoted by {{ tiding.by|default:"someone" }}
-            · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
+            · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
             {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
           {% if r.performers %}<div class="with">with {% for p in r.performers %}<a href="{{ p.page }}" target="_blank" rel="noopener">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
           {% if r.description %}<div class="desc">{{ r.description }}</div>{% endif %}
@@ -567,7 +567,7 @@
     <span class="body">
       <a class="title" href="{{ tiding.url }}" rel="noopener noreferrer" target="_blank">{{ tiding.title }}</a><span class="host">({{ tiding.host }})</span>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}
       <div class="meta muted">{% if tiding.embed.kind == 'release' %}uploaded by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% elif tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
-        · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/moods/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
+        · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
         {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
       {% if tiding.post %}
       <!-- What the message said besides its link (Justin, 24 Oct): the post's own words, right under who posted
@@ -606,7 +606,7 @@
   {% else %}
   <!-- Signed out: no box that can't be typed in (Justin, 23 Oct), but the way in -- and back here after. -->
   <p class="say signin">
-    {% if wiki_signin %}<a class="button" href="/moods/auth/wiki/?next=/moods/tidings/{{ tiding.id }}/" target="_top">sign in with PickiPedia</a>
+    {% if wiki_signin %}<a class="button" href="/moods/auth/wiki/?next=/tidings/{{ tiding.id }}/" target="_top">sign in with PickiPedia</a>
     <span class="muted">to say something here, or upvote</span>
     {% else %}<span class="muted"><a href="/moods/" target="_top">sign in</a> to say something here, or upvote</span>{% endif %}
   </p>
@@ -923,7 +923,7 @@
       // What's playing, and where: what the small player needs to play it on. Nothing if it isn't playing.
       window.magentaPlaying = () => (gone || v.paused || v.ended) ? null : {
         id: tidingId, title: JSON.parse(document.getElementById('tidingTitle').textContent),
-        back: `/moods/tidings/${tidingId}/`, hls: v.dataset.hls || '', src: v.dataset.src || v.currentSrc || v.getAttribute('src') || '',
+        back: `/tidings/${tidingId}/`, hls: v.dataset.hls || '', src: v.dataset.src || v.currentSrc || v.getAttribute('src') || '',
         poster: v.getAttribute('poster') || '', t: v.currentTime, rate: v.playbackRate, muted: v.muted,
         captions: vtt ? JSON.parse(vtt.textContent) : '', cc: !!(v.textTracks[0] && v.textTracks[0].mode === 'showing'),
         portrait: !!(v.videoHeight > v.videoWidth) };

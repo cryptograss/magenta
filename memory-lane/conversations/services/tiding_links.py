@@ -687,7 +687,7 @@ def mention_of(notice, agent):
                 # No #m- link: the poller would read the Mood from there (mood_poller.linked_message).
                 above.append(f"[{said.sender_id}, in #{said.mood_slug}] {(reply_to(prose(said.content) or '')[1])[:ASKED_EACH]}")
             break
-    where = f"/moods/tidings/{tiding.id}/#c-{asked.id}"
+    where = f"/tidings/{tiding.id}/#c-{asked.id}"
     text = (f"@{agent}: {asked.by_id} asked you on Tidings, in the discussion of “{tiding.title or tiding.url}” "
             f"({tiding.url}), {where}:\n\n{asked.text}"
             + (('\n\nWhat it answers, nearest first:\n' + '\n'.join(above)) if above else '')

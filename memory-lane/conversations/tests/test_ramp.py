@@ -1,4 +1,4 @@
-"""The ramp page (/moods/pulls/; services/ramp.py): open work from the cards and githouse, its mentions, asks and
+"""The ramp page (/ramp/; services/ramp.py): open work from the cards and githouse, its mentions, asks and
 temperature, the last merged and where they run. Real bare repositories; the wiki's cards stood in for."""
 
 import tempfile
@@ -178,7 +178,7 @@ class RampTest(TestCase):
 
     def test_the_page(self):
         self.say('re', 'magenta#7 looks good')
-        page = self.client.get('/moods/pulls/?embed=1')
+        page = self.client.get('/ramp/?embed=1')
         self.assertEqual(page.status_code, 200)
         text = page.content.decode()
         for seen in ('magenta#7', 'the re/foo work', 'magenta:magent/bar', 'no PR yet', '#jams', 'magent/old', 'second'):
@@ -215,7 +215,7 @@ class AskDotsTest(RampTest):
 
     def test_the_ramp_draws_the_dots(self):
         self.say('re', '<merge to="magenta#7"/>')
-        page = self.client.get('/moods/pulls/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
         self.assertIn('class="askdot" href="/moods/jams/#m-', page)
         self.assertIn('style="--who: #ff3c00"', page)
         self.assertNotIn('🪢 asked', page)

@@ -5,7 +5,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 TEMPLATES = Path(__file__).resolve().parent.parent / 'templates' / 'conversations'
-SECTIONS = ('status', 'tidings', 'polls', 'prompts', 'todo', 'pulls', 'tasks', 'journals', 'verify', 'hooks', 'settings')
+SECTIONS = ('status', 'tidings', 'polls', 'prompts', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'settings')
 
 
 class SectionNavTest(SimpleTestCase):
@@ -15,4 +15,4 @@ class SectionNavTest(SimpleTestCase):
             html = (TEMPLATES / f'mood_{page}.html').read_text()
             nav = html[html.index('<nav>'):html.index('</nav>')]
             for section in SECTIONS:
-                self.assertIn(f'href="/moods/{section}/"', nav, f'{page} has no {section}')
+                self.assertIn(f'href="/{section}/"', nav, f'{page} has no {section}')

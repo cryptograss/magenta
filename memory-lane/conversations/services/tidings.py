@@ -1,5 +1,5 @@
-"""The tidings pages: /moods/tidings/ and its /api/tidings/ show pictures;
-/moods/prompts/ and its /api/prompts/ show prompts. The two live here as one
+"""The tidings pages: /tidings/ and its /api/tidings/ show pictures;
+/prompts/ and its /api/prompts/ show prompts. The two live here as one
 file because a prompt's answering turn is read from the same posts the
 picture scan walks.
 
@@ -507,7 +507,7 @@ def stream(pictures, releases):
 
 
 def tidings_state(viewer=None, order='top'):
-    """What /moods/tidings/ shows: the links promoted from the Moods (services/tiding_links.py), then the
+    """What /tidings/ shows: the links promoted from the Moods (services/tiding_links.py), then the
     pictures and the latest releases, which the page shows as one stream (`stream`). (Each picture's
     `preview` is its small form for the gallery; see views_moods.media_preview.)
     `viewer` is who's looking: each link says whether they voted for it. `order`: top (pinned, then ranked) or new."""
@@ -520,7 +520,7 @@ def tidings_state(viewer=None, order='top'):
 
 
 def prompts_state():
-    """What /moods/prompts/ shows: each human's prompts, with their Wiki names
+    """What /prompts/ shows: each human's prompts, with their Wiki names
     joined on so the page can write people as the wiki knows them."""
     from conversations.services import wiki_auth
     state = {'prompts': prompt_tidings()}

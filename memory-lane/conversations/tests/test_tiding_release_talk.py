@@ -77,7 +77,7 @@ class ReleaseTalkTest(_Release):
         said = client.post(f'/api/tidings/{tid}/comments/', json.dumps({'text': '0:12 the subtitles question lands'}),
                            content_type='application/json')
         self.assertIn(said.status_code, (200, 201))
-        page = client.get(f'/moods/tidings/{tid}/?embed=1').content.decode()
+        page = client.get(f'/tidings/{tid}/?embed=1').content.decode()
         self.assertIn(f'data-hls="https://ipfs.delivery-kid.cryptograss.live/ipfs/{CID}/master.m3u8"', page)
         self.assertIn('class="moments"', page)
         self.assertIn('class="stamp"', page)
@@ -91,12 +91,12 @@ class ReleaseTalkTest(_Release):
         client = self.client_for(self.justin)
         with mock.patch('conversations.services.tidings.release_tidings', return_value=[release]), \
              mock.patch('conversations.services.tidings.picture_tidings', return_value=[]):
-            before = client.get('/moods/tidings/?embed=1').content.decode()
+            before = client.get('/tidings/?embed=1').content.decode()
             self.assertIn(f'data-cid="{CID}"', before)
             tid = self.post(client, {'cid': CID}).json()['id']
-            after = client.get('/moods/tidings/?embed=1').content.decode()
+            after = client.get('/tidings/?embed=1').content.decode()
         self.assertNotIn(f'class="chip torel" data-cid="{CID}"', after)
-        self.assertIn(f'/moods/tidings/{tid}/?embed=1" title="Its page on Tidings', after)
+        self.assertIn(f'/tidings/{tid}/?embed=1" title="Its page on Tidings', after)
 
 
 YAML = f"""blockheight: 26319913
@@ -211,7 +211,7 @@ class ReleaseStageTest(_Release):
         client = self.client_for(self.justin)
         with mock.patch('conversations.services.tidings.release_info', return_value=info):
             tid = self.post(client, {'cid': CID}).json()['id']
-            page = client.get(f'/moods/tidings/{tid}/?embed=1').content.decode()
+            page = client.get(f'/tidings/{tid}/?embed=1').content.decode()
         self.assertIn('class="stage portrait"', page)
         self.assertIn('id="captionsVtt"', page)
         self.assertIn('Justin Myles Holmes</a>', page)
@@ -226,8 +226,8 @@ class ReleaseStageTest(_Release):
         with mock.patch('conversations.services.tidings.release_tidings', return_value=[]), \
              mock.patch('conversations.services.tidings.picture_tidings', return_value=[]):
             tid = self.post(client, {'cid': CID}).json()['id']
-            listing = client.get('/moods/tidings/?embed=1').content.decode()
-        self.assertIn(f'<a class="rthumb" href="/moods/tidings/{tid}/?embed=1"', listing)
+            listing = client.get('/tidings/?embed=1').content.decode()
+        self.assertIn(f'<a class="rthumb" href="/tidings/{tid}/?embed=1"', listing)
         self.assertIn(f'src="https://ipfs.delivery-kid.cryptograss.live/ipfs/{CID}/poster.jpg"', listing)
 
 
@@ -258,7 +258,7 @@ class FollowAndTidyTest(_Release):
         self.assertEqual(tiding_links.listed()[0]['comments'], 2)  # the two that still say something
 
     def test_its_page_has_a_quality_row_and_hands_off(self):
-        page = self.client_for(self.justin).get(f'/moods/tidings/{self.tiding.id}/?embed=1').content.decode()
+        page = self.client_for(self.justin).get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
         self.assertIn('<div class="quality" aria-label="Quality" hidden></div>', page)
         self.assertIn('id="tidingTitle"', page)
         self.assertIn('window.magentaHandoff', page)
@@ -285,10 +285,10 @@ class FollowAndTidyTest(_Release):
     def test_signed_out_it_follows_too_and_its_title_is_its_own_page(self):
         """Justin, 4 Nov: "even if the user is not signed in, I still want the video to follow them", and "the
         title of the tiding needs to be a link to the tiding, not to the release page"."""
-        page = self.client.get(f'/moods/tidings/{self.tiding.id}/?embed=1').content.decode()  # nobody signed in
+        page = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()  # nobody signed in
         self.assertIn('window.magentaPlaying', page)
         self.assertIn('window.magentaHandoff', page)
-        self.assertIn(f'<h1><a class="title" href="/moods/tidings/{self.tiding.id}/"', page)
+        self.assertIn(f'<h1><a class="title" href="/tidings/{self.tiding.id}/"', page)
         self.assertIn('>its Release page</a>', page)  # the Release page keeps its own link
 
     def test_it_follows_across_a_whole_page_load(self):
@@ -302,6 +302,6 @@ class FollowAndTidyTest(_Release):
         self.assertIn('if (mini.carried && mini.carried.id === id)', source)
         self.assertIn('if (v.readyState < 1) return { ...mini.state };', source)  # not loaded yet: still where it was
         # Back to a tiding's own page is Tidings at that page, not a Mood called "tidings".
-        self.assertIn("const tidingAt = location.pathname.match(/^\\/moods\\/tidings\\/([0-9a-f-]{36})\\/?$/);", source)
+        self.assertIn("const tidingAt = location.pathname.match(/^\\/tidings\\/([0-9a-f-]{36})\\/?$/);", source)
         # ☰ on a phone, from a section, is the Moods.
         self.assertIn("if (document.body.classList.contains('in-section')) {\n      showSection('moods', true);", source)

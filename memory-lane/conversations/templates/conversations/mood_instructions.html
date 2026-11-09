@@ -44,13 +44,13 @@
 <header>
   <a class="brand" href="/moods/{{ mood.slug }}/">magenta</a>
   <a href="/moods/{{ mood.slug }}/">back to {{ mood.title|default:mood.slug }}</a>
-  <a href="/moods/settings/">settings</a>
+  <a href="/settings/">settings</a>
 </header>
 <main>
   <h1>How {{ agent }} is told to be, in {{ mood.title|default:mood.slug }}</h1>
   <p class="lede">What reaches {{ agent }} here, read from the code that sends it, so it can't drift from what's sent.
     Its instructions are changed on PickiPedia, on the pages below; the settings on the
-    <a href="/moods/settings/">settings page</a>; the wording of each wake lives in memory-lane's
+    <a href="/settings/">settings page</a>; the wording of each wake lives in memory-lane's
     <code>poller/mood_poller.py</code>.</p>
 
   <h2>Its instructions</h2>

@@ -1,6 +1,6 @@
-"""Tests for /moods/tidings/ and /api/tidings/: the last 20 pictures released
+"""Tests for /tidings/ and /api/tidings/: the last 20 pictures released
 into the Moods, each with its tiny preview and its wiki and faces marks.
-The prompt half of the old page now lives at /moods/prompts/ (test_mood_prompts)."""
+The prompt half of the old page now lives at /prompts/ (test_mood_prompts)."""
 
 import uuid
 from datetime import timedelta
@@ -17,15 +17,15 @@ class TidingsPageTests(TidingsTests):
     # --- the page -----------------------------------------------------------
 
     def test_tidings_page_renders_and_is_linked_from_moods(self):
-        response = self.client.get('/moods/tidings/?embed=1')
+        response = self.client.get('/tidings/?embed=1')
         self.assertEqual(response.status_code, 200)
         self.assertIn('tidings · magenta', response.content.decode())
         self.assertIn('Pictures', response.content.decode())
         self.assertNotIn('Prompts', response.content.decode())  # its own tab since Justin's 20 Oct memo
 
         moods_html = self.client.get('/moods/').content.decode()
-        self.assertIn('href="/moods/tidings/"', moods_html)
-        self.assertIn('href="/moods/prompts/"', moods_html)
+        self.assertIn('href="/tidings/"', moods_html)
+        self.assertIn('href="/prompts/"', moods_html)
 
     def test_api_tidings_lists_the_links_and_pictures_and_naught_else(self):
         self.image(3, added_by=self.justin)
@@ -90,7 +90,7 @@ class TidingsPageTests(TidingsTests):
 
     def test_pictures_appear_on_the_page(self):
         self.image(3, added_by=self.justin)
-        html = self.client.get('/moods/tidings/?embed=1').content.decode()
+        html = self.client.get('/tidings/?embed=1').content.decode()
         self.assertIn('justin', html)
         self.assertIn('class="thumb"', html)
         # Justin, 21 Oct: a picture nobody's named anyone in says nothing about faces.
@@ -103,19 +103,19 @@ class TidingsPageTests(TidingsTests):
             FaceName.objects.create(media=picture, box=[x, 0, 1, 1], person=person, by=self.justin, at=timezone.now())
         [entry] = tidings.picture_tidings()
         self.assertEqual([p['name'] for p in entry['people']], ['Justin Holmes', 'Skyler Golden'])  # left to right, once
-        html = self.client.get('/moods/tidings/?embed=1').content.decode()
+        html = self.client.get('/tidings/?embed=1').content.decode()
         self.assertIn('/wiki/Skyler_Golden', html)
 
     def test_a_picture_carries_what_the_lightbox_and_pickipedia_need(self):
         picture = self.image(2, added_by=self.skyler)
-        html = self.client.get('/moods/tidings/?embed=1').content.decode()
+        html = self.client.get('/tidings/?embed=1').content.decode()
         self.assertIn(f'data-sha="{picture.sha256}"', html)
         self.assertNotIn('class="chip topp"', html)  # nobody signed in: not offered
 
     # --- Justin's 20 Oct round: no intro, thumbnails --------------------------
 
     def test_no_intro_description_and_no_lede(self):
-        html = self.client.get('/moods/tidings/?embed=1').content.decode()
+        html = self.client.get('/tidings/?embed=1').content.decode()
         self.assertNotIn("record's newest", html)
         self.assertNotIn('class="lede"', html)
 
@@ -123,7 +123,7 @@ class TidingsPageTests(TidingsTests):
         picture = self.image(7, added_by=self.justin)
         [entry] = tidings.picture_tidings()
         self.assertEqual(entry['preview'], f'{entry["url"]}/preview')
-        html = self.client.get('/moods/tidings/?embed=1').content.decode()
+        html = self.client.get('/tidings/?embed=1').content.decode()
         self.assertIn(f'src="/moods/media/{picture.sha256}.png/preview"', html)
 
     # --- the preview endpoint ----------------------------------------------------

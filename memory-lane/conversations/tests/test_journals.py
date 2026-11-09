@@ -74,7 +74,7 @@ class JournalsTest(TestCase):
 
     def test_the_section_renders_and_says_when_the_wiki_is_down(self):
         journals.board(http=Wiki())  # kept, so the page reads it
-        html = self.client.get('/moods/journals/', {'embed': '1'}).content.decode()
+        html = self.client.get('/journals/', {'embed': '1'}).content.decode()
         self.assertIn('The night githouse came up', html)
         self.assertIn('https://pickipedia.xyz/wiki/Emergent:Magent/Journal/26353823', html)
         cache.clear()

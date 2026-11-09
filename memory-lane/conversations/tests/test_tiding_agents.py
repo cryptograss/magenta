@@ -87,7 +87,7 @@ class AgentsOnTidingsTest(TestCase):
         self.assertIn('“example.org/lineup” (https://example.org/lineup)', turn['text'])  # the link
         self.assertIn('@magent can you check?', turn['text'])               # what was asked
         self.assertIn('Who is headlining Saturday?', turn['text'])          # and what it answers
-        self.assertIn(f"/moods/tidings/{self.tiding.id}/#c-{asked['id']}", turn['text'])
+        self.assertIn(f"/tidings/{self.tiding.id}/#c-{asked['id']}", turn['text'])
         self.assertEqual(self.mentions('re'), [])                            # only who was asked
 
     def test_the_turns_cost_row_keeps_what_woke_it(self):
@@ -150,7 +150,7 @@ class AgentsOnTidingsTest(TestCase):
         # The stream again, or the transcript after it: once only.
         self.turn_ends('Molly Tuttle headlines Saturday.', [notice], session=session)
         self.assertEqual(TidingComment.objects.filter(by=self.magent).count(), 1)
-        page = self.client.get(f'/moods/tidings/{self.tiding.id}/?embed=1').content.decode()
+        page = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
         self.assertIn('Molly Tuttle headlines Saturday.', page)
 
     def test_a_silence_or_a_wake_about_something_else_goes_nowhere(self):

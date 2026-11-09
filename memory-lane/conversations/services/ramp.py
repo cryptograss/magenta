@@ -1,4 +1,4 @@
-"""The ramp, as a page (/moods/pulls/; Cryptograss:Moods/ramp/Plan, section 2).
+"""The ramp, as a page (/ramp/; Cryptograss:Moods/ramp/Plan, section 2).
 
 Justin's voice memo of 30 Oct, in #ramp: every open pull request across our repositories, and the last few
 merged, with who worked on it and where, sorted by last push or last mention, with a temperature (re, the
@@ -424,7 +424,7 @@ def live_on(repo_name, head, runs):
 # --- the board -------------------------------------------------------------------------------------
 
 def board(now=None):
-    """Everything /moods/pulls/ shows: {'open', 'merged', 'names', 'log', 'repos', 'error'}."""
+    """Everything /ramp/ shows: {'open', 'merged', 'names', 'log', 'repos', 'error'}."""
     if now is None:
         found = cache.get(KEY)
         if found is not None:

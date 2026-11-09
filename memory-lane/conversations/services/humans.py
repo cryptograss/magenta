@@ -42,7 +42,7 @@ def pane(slug, now=None):
     for c in (TidingComment.objects.filter(by_id__in=people).exclude(changed='deleted')
               .select_related('tiding').order_by('-at')[:500]):
         if c.by_id not in latest or c.at > latest[c.by_id][0]:
-            latest[c.by_id] = (c.at, 'tiding', c.tiding.title or c.tiding.url, f'/moods/tidings/{c.tiding_id}/#c-{c.id}')
+            latest[c.by_id] = (c.at, 'tiding', c.tiding.title or c.tiding.url, f'/tidings/{c.tiding_id}/#c-{c.id}')
     since = now - timedelta(seconds=HERE_BLOCKS * BLOCK_SECONDS)
     recent = [h for h in here if h['at'] >= since]
     shown = recent if len(recent) >= AT_LEAST else here[:AT_LEAST]

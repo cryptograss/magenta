@@ -62,7 +62,7 @@ class WorkRepo(TestCase):
         return self.client.post('/api/ramp/work/', json.dumps(body), content_type='application/json')
 
     def page(self, tiding_id, **more):
-        return self.client.get(f'/moods/tidings/{tiding_id}/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe', **more)
+        return self.client.get(f'/tidings/{tiding_id}/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe', **more)
 
 
 class WorkPageTest(WorkRepo):
@@ -140,12 +140,12 @@ class WorkPageTest(WorkRepo):
 
     def test_the_ramp_offers_a_page_then_links_it(self):
         self.as_('justin')
-        html = self.client.get('/moods/pulls/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        html = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
         self.assertIn('<button type="button" class="talk" data-repo="magenta" data-branch="re/foo"', html)
         tid = self.open_().json()['id']
         cache.clear()
-        html = self.client.get('/moods/pulls/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
-        self.assertIn(f'<a class="talk" href="/moods/tidings/{tid}/"', html)
+        html = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        self.assertIn(f'<a class="talk" href="/tidings/{tid}/"', html)
 
 
 class CardDescriptionTest(TestCase):
@@ -258,7 +258,7 @@ class AwkwardFilesTest(WorkRepo):
         self.as_('justin')
         tid = self.client.post('/api/ramp/work/', json.dumps({'repo': 'magenta', 'branch': 're/foo'}),
                                content_type='application/json').json()['id']
-        html = self.client.get(f'/moods/tidings/{tid}/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        html = self.client.get(f'/tidings/{tid}/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
         png = html[html.index('<li data-path="icon.png">'):]
         png = png[:png.index('</li>')]
         self.assertIn('binary', png)

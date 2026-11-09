@@ -1,4 +1,4 @@
-"""The emergents' journals, for the journals section (/moods/journals/; Justin, 8 Nov: "add journals to the
+"""The emergents' journals, for the journals section (/journals/; Justin, 8 Nov: "add journals to the
 chevron menu"). Each entry is a PickiPedia page, Emergent:<Name>/Journal/<block>, written by that emergent
 (recall.journal_prefix): listed newest first by block across every emergent, each with its heading and its
 first lines. Read from the wiki at most every KEEP seconds; a new or changed entry forgets it at once

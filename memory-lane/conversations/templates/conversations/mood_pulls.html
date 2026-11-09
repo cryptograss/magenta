@@ -101,17 +101,17 @@
 <header>
   <a class="brand" href="/moods/">magenta</a>
   <nav>
-    <a href="/moods/status/">status</a>
-    <a href="/moods/tidings/">tidings</a>
-    <a href="/moods/polls/">polls</a>
-    <a href="/moods/prompts/">prompts</a>
-    <a href="/moods/todo/">todo</a>
-    <a href="/moods/pulls/" aria-current="page">ramp</a>
-    <a href="/moods/tasks/">tasks</a>
-    <a href="/moods/journals/">journals</a>
-    <a href="/moods/verify/">bundles</a>
-    <a href="/moods/hooks/">wiki hooks</a>
-    <a href="/moods/settings/">settings</a>
+    <a href="/status/">status</a>
+    <a href="/tidings/">tidings</a>
+    <a href="/polls/">polls</a>
+    <a href="/prompts/">prompts</a>
+    <a href="/todo/">todo</a>
+    <a href="/ramp/" aria-current="page">ramp</a>
+    <a href="/tasks/">tasks</a>
+    <a href="/journals/">journals</a>
+    <a href="/verify/">bundles</a>
+    <a href="/hooks/">wiki hooks</a>
+    <a href="/settings/">settings</a>
   </nav>
 </header>
 <main>
@@ -138,13 +138,13 @@
         data-mentioned="{% if i.mentions %}{{ i.mentions.0.at|date:'U' }}{% else %}0{% endif %}">
       <td><span class="temp {{ i.temperature }}" title="{{ i.temperature }}{% if i.active %}: {{ i.active|timesince }} ago{% endif %}"></span></td>
       <td class="work">
-        {% if i.page %}<a class="ref" href="/moods/tidings/{{ i.page.id }}/" title="Its page: the work, its diff, and what's been said">{% if i.number %}{{ i.repo }}#{{ i.number }}{% else %}{{ i.repo }}{% endif %}</a>{% elif can_thumb and i.branch and i.state != 'merged' %}<a class="ref openpage" href="{{ i.url|default:'#' }}" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Its page: the work, its diff, and what's been said">{% if i.number %}{{ i.repo }}#{{ i.number }}{% else %}{{ i.repo }}{% endif %}</a>{% elif i.number %}<a class="ref" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.repo }}#{{ i.number }}</a>{% else %}<span class="ref">{{ i.repo }}</span>{% endif %}{% if i.url and i.page or i.url and can_thumb %} <a class="gh" href="{{ i.url }}" target="_blank" rel="noopener" title="On GitHub">↗</a>{% endif %}
+        {% if i.page %}<a class="ref" href="/tidings/{{ i.page.id }}/" title="Its page: the work, its diff, and what's been said">{% if i.number %}{{ i.repo }}#{{ i.number }}{% else %}{{ i.repo }}{% endif %}</a>{% elif can_thumb and i.branch and i.state != 'merged' %}<a class="ref openpage" href="{{ i.url|default:'#' }}" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Its page: the work, its diff, and what's been said">{% if i.number %}{{ i.repo }}#{{ i.number }}{% else %}{{ i.repo }}{% endif %}</a>{% elif i.number %}<a class="ref" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.repo }}#{{ i.number }}</a>{% else %}<span class="ref">{{ i.repo }}</span>{% endif %}{% if i.url and i.page or i.url and can_thumb %} <a class="gh" href="{{ i.url }}" target="_blank" rel="noopener" title="On GitHub">↗</a>{% endif %}
         <span class="title">{{ i.title }}</span>
         {% if i.state != 'open' %}<span class="state {{ i.state }}"{% if i.state == 'pushed' %} title="on githouse, no pull request yet"{% elif i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{% if i.state == 'pushed' %}no PR yet{% else %}{{ i.state }}{% endif %}</span>{% endif %}
         {% if i.tests %}<a class="tests {{ i.tests.state|slugify }}" href="{{ i.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ i.tests.number }} on Jenkins, for this head">{% if i.tests.state == 'passed' %}✓ tests{% elif i.tests.state == 'failed' %}✗ tests{% elif i.tests.state == 'testing' %}… testing{% else %}{{ i.tests.state }}{% endif %}</a>{% endif %}
         {% include "conversations/_asks.html" with w=i %}
         {% include "conversations/_thumb.html" with w=i %}
-        {% if i.page %}<a class="talk" href="/moods/tidings/{{ i.page.id }}/" title="Its page: the work, its diff, and what's been said">💬 {{ i.page.comments }}</a>{% elif can_thumb and i.branch and i.state != 'merged' %}<button type="button" class="talk" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Open a page to talk about it: the work, its diff, comments">💬 talk</button>{% endif %}
+        {% if i.page %}<a class="talk" href="/tidings/{{ i.page.id }}/" title="Its page: the work, its diff, and what's been said">💬 {{ i.page.comments }}</a>{% elif can_thumb and i.branch and i.state != 'merged' %}<button type="button" class="talk" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}" title="Open a page to talk about it: the work, its diff, comments">💬 talk</button>{% endif %}
         {% if i.branch %}<br><span class="branch">{{ i.repo }}:{{ i.branch }}{% if i.base %} → {{ i.base }}{% endif %}</span>{% endif %}
         {% if can_merge and i.state != 'merged' and i.branch %}<button type="button" class="merge" data-repo="{{ i.repo }}" data-branch="{{ i.branch }}"{% if i.number %} data-number="{{ i.number }}"{% endif %} title="Look at what it brings, then merge it, as you">Merge…</button>{% endif %}
       </td>
@@ -166,7 +166,7 @@
     <tr><th>work</th><th>who</th><th>where</th><th>merged</th><th>deploy</th><th>live on</th></tr>
     {% for m in board.merged %}
     <tr>
-      <td class="work">{% if m.page %}<a class="ref" href="/moods/tidings/{{ m.page.id }}/" title="Its page: the work, its diff, and what was said">{{ m.repo }}#{{ m.number }}</a> <a class="gh" href="{{ m.url }}" target="_blank" rel="noopener" title="On GitHub">↗</a>{% else %}<a class="ref" href="{{ m.url }}" target="_blank" rel="noopener">{{ m.repo }}#{{ m.number }}</a>{% endif %} <span class="title">{{ m.title }}</span></td>
+      <td class="work">{% if m.page %}<a class="ref" href="/tidings/{{ m.page.id }}/" title="Its page: the work, its diff, and what was said">{{ m.repo }}#{{ m.number }}</a> <a class="gh" href="{{ m.url }}" target="_blank" rel="noopener" title="On GitHub">↗</a>{% else %}<a class="ref" href="{{ m.url }}" target="_blank" rel="noopener">{{ m.repo }}#{{ m.number }}</a>{% endif %} <span class="title">{{ m.title }}</span></td>
       <td>{{ m.worked_on_by|default:m.author }}</td>
       <td>{% for mood in m.moods %}<a href="/moods/{{ mood }}/">#{{ mood }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
       <td class="num">{% if m.merged %}{{ m.merged|date:"j M H:i" }}Z{% endif %}</td>
@@ -215,7 +215,7 @@
         body: JSON.stringify({ repo: b.dataset.repo, branch: b.dataset.branch }) });
       const got = await r.json();
       if (!r.ok) { b.title = got.error || "that didn't work"; return; }
-      const to = `/moods/tidings/${got.id}/`;
+      const to = `/tidings/${got.id}/`;
       if (parent !== window) parent.postMessage({ magentaGo: to }, location.origin); else location.href = to;
     } finally { b.disabled = false; delete b.dataset.busy; }
   }));
