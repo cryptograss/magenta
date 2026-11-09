@@ -520,7 +520,7 @@
 </head>
 <body>
 <main{% if tiding.release %} class="wide"{% endif %}>
-  <a class="back" href="/moods/tidings/?embed=1">‹ Tidings</a>
+  {% if work %}<a class="back" href="/moods/pulls/">‹ the ramp</a>{% else %}<a class="back" href="/moods/tidings/?embed=1">‹ Tidings</a>{% endif %}
 
   {% if tiding.release %}
   {% with r=tiding.release %}
@@ -557,6 +557,8 @@
       </div>
       <section class="momentsec" hidden><h2>Moments</h2><ol class="momentlist"></ol></section>
   {% endwith %}
+  {% elif work %}
+  {% include "conversations/_work_panel.html" %}
   {% else %}
   <div class="thelink" id="t-{{ tiding.id }}">
     <span class="rank"><button type="button" class="vote{% if tiding.mine %} mine{% endif %}" data-vote="/api/tidings/{{ tiding.id }}/vote/"

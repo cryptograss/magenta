@@ -166,3 +166,65 @@ def api_ramp_thumb(request):
     found = thumbs.of(repo, branch, head)
     return JsonResponse({'on': on, 'liked': [t['by'] for t in found if t['current']],
                          'thumbs': [{**t, 'at': t['at'].isoformat()} for t in found]})
+
+
+# --- a page for each piece of work (Plan, section 9): a Tiding, with the work above its comments -------------
+
+@require_POST
+def api_ramp_work(request):
+    """POST {"repo", "branch"}: this work's page, made now if it has none. {"id": the Tiding's}."""
+    from .services import mood_auth, work_pages as work
+    from .views_admin import locked_response
+    from .views_auth import _under_limit
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to open its page'}, status=401)
+    if not device.entity.is_biological_human:
+        return JsonResponse({'error': 'a person opens a page'}, status=403)
+    if not _under_limit(f'work-page:{device.entity_id}', 10):
+        return JsonResponse({'error': 'ten a minute is plenty; wait a minute'}, status=429)
+    try:
+        body = json.loads(request.body)
+        repo, branch = body['repo'], body['branch']
+        if not (isinstance(repo, str) and isinstance(branch, str)):
+            raise TypeError
+    except (ValueError, KeyError, TypeError):
+        return JsonResponse({'error': 'expected {"repo", "branch"}'}, status=400)
+    try:
+        tiding = work.open_page(device.entity, repo, branch)
+    except work.Invalid as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    return JsonResponse({'id': str(tiding.id)})
+
+
+def _fragment(request, template, build):
+    from django.http import HttpResponse
+    from django.shortcuts import render
+    from .services import work_pages as work
+    try:
+        found = build()
+    except work.Invalid as e:
+        return HttpResponse(str(e), status=e.status, content_type='text/plain; charset=utf-8')
+    response = render(request, template, found)
+    response['Cache-Control'] = 'public, max-age=3600'  # by commit: what's there never changes
+    return response
+
+
+@require_GET
+def api_ramp_diff(request):
+    """GET ?repo=&base=&head=&path=: one file's changes, drawn for the work's page; every line an address."""
+    from .services import work_pages as work
+    q = request.GET
+    return _fragment(request, 'conversations/_work_diff.html',
+                     lambda: {'d': work.diff_of(q.get('repo', ''), q.get('base', ''), q.get('head', ''), q.get('path', ''))})
+
+
+@require_GET
+def api_ramp_file(request):
+    """GET ?repo=&commit=&path=: a whole file at a commit, every line an address."""
+    from .services import work_pages as work
+    q = request.GET
+    return _fragment(request, 'conversations/_work_file.html',
+                     lambda: {'f': work.file_at(q.get('repo', ''), q.get('commit', ''), q.get('path', ''))})

@@ -1,0 +1,36 @@
+<style>
+  .thumbs { font-size: 12px; color: var(--muted); }
+  .thumbs .stale { opacity: .6; }
+  button.thumb { font: inherit; font-size: 12px; padding: 0 7px; border-radius: 4px; cursor: pointer;
+                 border: 1px solid var(--line); background: none; color: var(--muted); }
+  button.thumb[aria-pressed="true"] { border-color: var(--ok); color: var(--ink); background: var(--hover); }
+  button.thumb:disabled { cursor: default; }
+</style>
+{% if can_thumb %}<script>
+  // The 👍 (Plan, section 8): pressed, it's on this head as you; pressed again, taken back. A signal only.
+  const thumbCsrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '';
+  document.querySelectorAll('.thumbs button.thumb').forEach(b => b.addEventListener('click', async () => {
+    const box = b.closest('.thumbs'), d = box.dataset;
+    b.disabled = true;
+    try {
+      const r = await fetch('/api/ramp/thumb/', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': thumbCsrf() },
+        body: JSON.stringify({ repo: d.repo, branch: d.branch, commit: d.commit, number: d.number || null }),
+      });
+      const got = await r.json();
+      if (!r.ok) { b.title = got.error || 'that didn\'t work'; if (r.status === 409) location.reload(); return; }
+      b.setAttribute('aria-pressed', got.on ? 'true' : 'false');
+      b.textContent = '👍' + (got.liked.length ? ' ' + got.liked.length : '');
+      const who = box.querySelector('.who');
+      who.replaceChildren();
+      got.thumbs.forEach((t, n) => {
+        const s = document.createElement('span');
+        s.textContent = t.by + (t.current ? '' : ' (older commit)');
+        if (!t.current) s.className = 'stale';
+        if (n) who.append(', ');
+        who.append(s);
+      });
+    } finally { b.disabled = false; }
+  }));
+</script>{% endif %}

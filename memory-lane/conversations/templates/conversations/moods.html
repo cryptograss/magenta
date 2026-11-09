@@ -4641,6 +4641,16 @@
       prev = null;
       return;
     }
+    if (e.type === 'work') {  // a piece of work's page opened, to talk about it (services/work_pages.py; Plan, section 9)
+      el.className = 'event';
+      const page = e.tiding ? `/moods/tidings/${encodeURIComponent(e.tiding)}/` : '/moods/pulls/';
+      el.innerHTML = `💬 <b>${esc(shown(e.by || 'someone'))}</b> opened a page to talk about `
+        + `<a href="${esc(page)}">${esc(e.ref || 'a piece of work')}</a>${e.title ? `: ${esc(e.title)}` : ''}`
+        + ` · ${esc(stamp(e.created_at))}`;
+      container.appendChild(el);
+      prev = null;
+      return;
+    }
     if (e.type === 'merged') {  // a pull request on this Mood's to-do list merged (services/todo.py)
       el.className = 'event';
       // "memory-lane#142 (226537a) merged by justin": which one, and its commit; its title on hover.
@@ -10313,6 +10323,14 @@
     const to = new URL(e.data.magentaGo, location.origin);
     const sectionTo = sectionOf(to.pathname);
     if (sectionTo) { showSection(sectionTo, true); return; }
+    // One tiding's page (a piece of work's, from the ramp): in the Tidings section, at it.
+    const tidingTo = (to.pathname.match(/^\/moods\/tidings\/([0-9a-f-]{36})\/?$/) || [])[1];
+    if (tidingTo) {
+      showSection('tidings', true);
+      const frame = sectionFrames.querySelector('iframe[data-section="tidings"]:not([data-fresh])');
+      if (frame) frame.src = `/moods/tidings/${tidingTo}/?embed=1${to.hash}`;
+      return;
+    }
     const id = (to.hash.match(/^#m-([0-9a-f-]+)$/) || [])[1];
     let slug = (to.pathname.match(/^\/moods\/([^/]+)\/?$/) || [])[1];
     const message = (to.pathname.match(/^\/messages\/([0-9a-f-]+)\/?$/) || [])[1];

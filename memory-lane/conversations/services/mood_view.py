@@ -33,7 +33,7 @@ INTERRUPT_SOURCE = 'interrupt'
 NEW_MOOD_SOURCE = 'mood-new'
 EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
                  'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task', 'instructions', 'sprint-note',
-                 'helper', 'alarm', 'wiki-missed', 'wiki-hook')  # wiki-missed: services/wiki_changes.py; wiki-hook: services/wiki_hooks.py  # helper: a helper its run stopped before it reported (views_runner.finish_turn); alarm: services/alarms.py  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
+                 'helper', 'alarm', 'wiki-missed', 'wiki-hook', 'work')  # work: services/work_pages.py, a work's page opened  # wiki-missed: services/wiki_changes.py; wiki-hook: services/wiki_hooks.py  # helper: a helper its run stopped before it reported (views_runner.finish_turn); alarm: services/alarms.py  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).
 POSTED = ('mood-web', 'mood-attest')
@@ -498,6 +498,8 @@ def event_line(content):
     if kind == 'deploy':
         said = {'started': 'began redeploying', 'finished': 'redeployed', 'failed': 'failed to redeploy'}
         return f"⚙ {c.get('server', 'a server')} {said.get(c.get('state'), c.get('state', ''))}{commit}{by_}"
+    if kind == 'work':
+        return f"💬 {by or 'someone'} opened a page to talk about {c.get('ref', 'a piece of work')}: {c.get('title', '')}".rstrip(': ')
     if kind == 'merged':
         return f"✓ {c.get('pull') or c.get('title', 'a pull request')}{commit} merged{by_}: {c.get('title', '')}".rstrip(': ')
     if kind == 'release':

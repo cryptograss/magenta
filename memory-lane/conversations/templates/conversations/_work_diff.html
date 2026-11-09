@@ -1,0 +1,9 @@
+{# One file's changes on a work's page (services/work.diff_of): every line an address, D:<path>:<n> on the head's side, D:<path>:-<n> for a removed line. #}
+<table class="code diff" data-path="{{ d.path }}">
+{% for r in d.rows %}{% if r.kind == 'hunk' %}<tr class="hunk"><td class="n"></td><td class="n"></td><td class="t">{{ r.text }}</td></tr>
+{% elif r.kind == 'note' %}<tr class="note"><td class="n"></td><td class="n"></td><td class="t">{{ r.text }}</td></tr>
+{% elif r.kind == 'del' %}<tr class="del" id="D:{{ d.path }}:-{{ r.old }}"><td class="n"><a href="#D:{{ d.path }}:-{{ r.old }}">{{ r.old }}</a></td><td class="n"></td><td class="t">{{ r.text }}</td></tr>
+{% else %}<tr class="{{ r.kind }}" id="D:{{ d.path }}:{{ r.new }}"><td class="n">{% if r.old %}{{ r.old }}{% endif %}</td><td class="n"><a href="#D:{{ d.path }}:{{ r.new }}">{{ r.new }}</a></td><td class="t">{{ r.text }}</td></tr>
+{% endif %}{% empty %}<tr><td class="t muted" colspan="3">No changes to show (a binary file, or a mode change).</td></tr>{% endfor %}
+</table>
+{% if d.cut %}<p class="muted">Cut short here: the rest is too long to show. <a href="#" class="wholefile" data-path="{{ d.path }}">The whole file</a>.</p>{% endif %}

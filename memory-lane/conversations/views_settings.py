@@ -179,13 +179,13 @@ def pulls_page(request):
     """The ramp (services/ramp.py; Cryptograss:Moods/ramp/Plan, section 2): every open pull request and
     githouse branch across our repositories, the last few merged, the names used, githouse's log.
     Justin, 7 Nov: "Does githouse have a UI that I can see?" -- "build the ramp view"."""
-    from .services import merge_orders, mood_auth, ramp, thumbs
+    from .services import merge_orders, mood_auth, ramp, thumbs, work_pages as work
     board = ramp.board()
     device = mood_auth.device_for(request)
     # The Merge buttons, for a merger signed in with their SSH key (Plan, section 10); githouse checks again.
     can_merge = bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id)
     return render(request, 'conversations/mood_pulls.html',
-                  {'board': board, 'open': thumbs.with_thumbs(ramp.with_tests(ramp.ordered(board['open'], ''))),
+                  {'board': board, 'open': work.with_pages(thumbs.with_thumbs(ramp.with_tests(ramp.ordered(board['open'], '')))),
                    'embed': True, 'can_merge': can_merge,
                    # The 👍 (Plan, section 8): any signed-in person, at either tier.
                    'can_thumb': bool(device) and device.entity.is_biological_human,
@@ -286,6 +286,24 @@ def tidings_page(request):
     })
 
 
+def _work_context(tiding_id, device):
+    """{'work', 'can_merge', 'can_thumb', 'me'} for a piece of work's page; {} for any other tiding."""
+    from .models import WorkTiding
+    from .services import merge_orders, ramp, thumbs, tiding_links, work_pages as work
+    page = WorkTiding.objects.filter(tiding_id=tiding_id).first()
+    if page is None:
+        return {}
+    panel = work.panel(page)
+    if panel['item']:
+        thumbs.with_thumbs([panel['item']])
+    panel['tests'] = ramp.test_runs().get((panel['repo'], panel['head'])) if panel['head'] else None
+    panel['description_html'] = tiding_links.said_html(panel['description']) if panel['description'] else ''
+    return {'work': panel,
+            'can_merge': bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id),
+            'can_thumb': bool(device) and device.entity.is_biological_human,
+            'me': device.entity_id if device else ''}
+
+
 @ensure_csrf_cookie
 @require_GET
 def tiding_page(request, tiding_id):
@@ -310,6 +328,8 @@ def tiding_page(request, tiding_id):
         from .services import wiki_auth
         response = render(request, 'conversations/mood_tiding.html', {
             'tiding': _rights(state, device),
+            # A piece of work's page (Plan, section 9): the work above its comments.
+            **_work_context(state['id'], device),
             'viewer': viewer,
             'embed': True,
             'wiki_signin': wiki_auth.enabled(),
