@@ -127,4 +127,4 @@ class AskClosedTest(GithouseRefsTest):
         self.assertTrue(_merged_elsewhere('magenta:re/merged-one and magenta:re/closed-one'))
         self.assertFalse(_merged_elsewhere('magenta:re/closed-one and magenta:re/live-one'))
         self.assertEqual(unmerged('magenta:re/closed-one, then magenta:re/live-one'),
-                         [{'repo': 'magenta', 'branch': 're/live-one'}])
+                         [{'repo': 'magenta', 'branch': 're/live-one', 'thumbs': []}])
