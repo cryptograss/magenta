@@ -106,8 +106,8 @@ class TodoTicksByBranchTest(GithouseRefsTest):
         sha = git(self.repo.work, 'rev-parse', 'HEAD')
         git(self.repo.bare, 'update-ref', '-d', 'refs/heads/re/live-one')
         self.repo.ref('refs/merged/re/live-one', sha)
-        cache.delete('githouse:branch:magenta:re/live-one')   # (githouse's answer is a minute old at most)
-        self.assertFalse(self.items()['Merge magenta:re/live-one']['done'])   # the list is still the kept one
+        # githouse's "not yet" from the look above is still kept (a minute): the list is the kept one too.
+        self.assertFalse(self.items()['Merge magenta:re/live-one']['done'])
         # ... and memory-lane announces it: the list is asked again at once.
         MergeOrder.objects.create(repo='magenta', branch='re/live-one', by='justin', mood='ramp', order='o',
                                   signature='s', nonce='n1', expires=int(time.time()) + 600)

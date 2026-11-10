@@ -291,6 +291,10 @@ def announce_merged(now=None):
                                         'commit': merge[:40], 'by': order.pressed or order.by,
                                         'commit_url': f'https://github.com/cryptograss/{order.repo}/commit/{merge}'
                                         if merge else ''})
+        # githouse's "not merged yet" is kept a minute (githouse.UNMERGED_FOR): drop it, or a list looked at in the
+        # minute before the press is built again from it and the item waits that minute out (re, 10 Nov).
+        from django.core.cache import cache
+        cache.delete_many([f'githouse:branch:{order.repo}:{order.branch}', f'githouse:closed:{order.repo}:{order.branch}'])
         said += 1
     if said:
         from . import ramp, todo
