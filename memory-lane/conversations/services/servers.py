@@ -188,8 +188,25 @@ def moods_for(name):
     return [m for m in (Mood.by_slug(slug) for slug in server['moods']) if m is not None]
 
 
-def record_deploy(name, state, commit='', by='', note=''):
-    """Announce a deploy event in the Moods it concerns; returns how many."""
+_REPO = re.compile(r'[A-Za-z0-9._-]{1,60}')
+_COMMIT = re.compile(r'[0-9a-f]{7,40}')
+
+
+def deployed_commits(given):
+    """{repo: commit} from a deploy report's "commits", what its playbook put on the server (maybelle-config's
+    report-deploy.sh): only names and hashes that look like ones, ten at most; {} for anything else."""
+    if not isinstance(given, dict):
+        return {}
+    found = {}
+    for repo, commit in list(given.items())[:10]:
+        if isinstance(repo, str) and isinstance(commit, str) and _REPO.fullmatch(repo) and _COMMIT.fullmatch(commit):
+            found[repo] = commit
+    return found
+
+
+def record_deploy(name, state, commit='', by='', note='', commits=None):
+    """Announce a deploy event in the Moods it concerns; returns how many. `commits`, {repo: commit}, is what the
+    deploy put on the server, kept with the event: the ramp shows a merge as live there once it's in that commit."""
     from conversations.models import ConversationParticipant, Message
     took = None
     if state in ('finished', 'failed'):
@@ -197,7 +214,7 @@ def record_deploy(name, state, commit='', by='', note=''):
         if started and started.get('state') == 'started':
             took = round(time.time() - started['at_ts'])
     content = {'type': 'deploy', 'server': name, 'state': state, 'commit': commit[:40], 'by': by[:40],
-               'note': note[:200], 'took': took}
+               'note': note[:200], 'took': took, **({'commits': commits} if commits else {})}
     system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
     moods = moods_for(name)
     stamp = int(time.time() * 1000)
@@ -206,4 +223,7 @@ def record_deploy(name, state, commit='', by='', note=''):
         for mood in moods])
     cache.delete(f'server-check:{name}')  # look again: it may be back, or gone
     cache.delete(_deploy_key(name))
+    if state == 'finished':
+        from . import ramp
+        ramp.changed()  # the ramp's "live on" column, now: not at the next rebuild
     return len(moods)

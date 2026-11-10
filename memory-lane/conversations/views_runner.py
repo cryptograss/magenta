@@ -470,7 +470,8 @@ def api_deploys(request):
     """A deploy script says a server's redeploy started, finished or failed.
 
     Body: {"server": "hunter", "state": "started"|"finished"|"failed",
-           "commit": "<sha>", "by": "<who ran it>", "note": "..."}.
+           "commit": "<sha>", "by": "<who ran it>", "note": "...",
+           "commits": {"magenta": "<sha>"}}: the last, what the deploy put on the server.
     Announced in the Moods it concerns (services/servers.py).
     """
     from .services import servers
@@ -488,7 +489,8 @@ def api_deploys(request):
     if name not in servers.NAMES or state not in servers.STATES:
         return JsonResponse({'error': f'server: one of {servers.NAMES}; state: one of {servers.STATES}'}, status=400)
     told = servers.record_deploy(name, state, commit=str(body.get('commit') or ''), by=str(body.get('by') or ''),
-                                 note=str(body.get('note') or ''))
+                                 note=str(body.get('note') or ''),
+                                 commits=servers.deployed_commits(body.get('commits')))
     return JsonResponse({'server': name, 'state': state, 'moods': told}, status=201)
 
 
