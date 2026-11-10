@@ -25,7 +25,9 @@ and ticking off what's been done.
 
 A renamed Mood's list is found under its old name too, until it's moved.
 
-**Merges tick themselves.** An open item whose link is a GitHub pull
+**Merges tick themselves.** An open item whose link is a candidate branch's page in the ramp,
+/ramp/<repo>/<branch>/, shows as done once githouse has merged that branch ('merged': true), or closed it
+unmerged ('closed': true; Justin, 10 Nov: "so that todos and asks get resolved"). So does one whose link is a GitHub pull
 request shows as done once GitHub says it was merged ('merged': true) --
 whatever the page says, so nobody has to tick a merge by hand. The page
 itself is left as it was; an agent tidies it when it next touches the list.
@@ -127,7 +129,7 @@ def for_mood(mood, http=None):
     if text is not None and not error:
         from .todo_ticks import tick_later  # merged, but open on the page: a bot ticks it there too
         for item in items:
-            if item.get('merged'):
+            if item.get('merged') or item.get('closed'):
                 tick_later(title, item['link'])
     page = f"{pickipedia_url()}/wiki/{quote(title.replace(' ', '_'))}"
     found = {'page': page, 'edit': f'{page}?action=edit', 'exists': text is not None, 'items': items,
@@ -278,10 +280,39 @@ def _merged(owner, repo, number, http):
     return found
 
 
+# A candidate branch's page (work_pages.address): the item is that branch, merged or closed as githouse says.
+_BRANCH_PAGE = re.compile(r'^https?://[^/\s]+/ramp/([\w.-]+)/([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)/?(?:[#?].*)?$')
+
+
+def _branch_state(link):
+    """'merged' or 'closed' for an item linking a candidate branch's page that githouse has merged or closed;
+    None for anything else, or while it's open."""
+    from . import githouse
+    match = _BRANCH_PAGE.match(link or '')
+    if not match:
+        return None
+    repo, branch = match.group(1), match.group(2)
+    if githouse.branch_merged(repo, branch):
+        return 'merged'
+    if githouse.branch_closed(repo, branch):
+        return 'closed'
+    return None
+
+
 def with_merges(items, http):
-    """The items, an open one linking a GitHub pull request that's been merged marked done ('merged': True)."""
+    """The items, an open one linking a GitHub pull request that's been merged marked done ('merged': True); one
+    linking a candidate branch's page, done when githouse merged it ('merged') or closed it ('closed')."""
     out = []
     for item in items:
+        if not item['done'] and _BRANCH_PAGE.match(item.get('link') or ''):
+            try:
+                state = _branch_state(item['link'])
+            except Exception:  # noqa: BLE001 -- githouse's copy unreadable: the item stands as written
+                state = None
+            if state:
+                item = {**item, 'done': True, state: True}
+            out.append(item)
+            continue
         match = _PULL.match(item.get('link') or '')
         if match and not item['done']:
             try:
@@ -317,6 +348,13 @@ def changed():
 
 def stamp():
     return cache.get(STAMP) or 0
+
+
+def forget_all():
+    """Every Mood's list asked again (githouse merged something: its items tick at their next look)."""
+    from conversations.models import Mood
+    cache.delete_many([f'todo:{slug}' for slug in Mood.objects.values_list('slug', flat=True)] + ['todo:all_moods'])
+    changed()
 
 
 def merged_now(owner, repo, number, title='', by='', commit='', branch=''):

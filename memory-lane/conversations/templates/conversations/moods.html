@@ -2622,7 +2622,7 @@
   function todoId(it) { return 'todo-' + it.task.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60); }
   function todoItem(it) {
     const who = it.who.map(n => n.toLowerCase() === viewer ? '<span class="you">you</span>' : esc(shown(n.toLowerCase())));
-    const meta = [it.merged ? 'merged, says GitHub' : it.kind, who.join(', ')].filter(Boolean).join(' · ');
+    const meta = [it.merged ? 'merged' : it.closed ? 'closed, not merged' : it.kind, who.join(', ')].filter(Boolean).join(' · ');
     // A task with a link is the link, as on PickiPedia (its <todo> tag), and one link whole: a [[page]]
     // inside it would be a link in a link, which browsers cut apart. The note is never wrapped.
     const href = it.link ? linkOf(it.link) : '';
