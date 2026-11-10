@@ -317,6 +317,8 @@
                                             box-shadow: 0 8px 24px rgba(0,0,0,.35); font-size: 17px; }
   /* Leaving voice mode: first in ☰, big (Justin, 8 Nov: the line under the buttons was "a waste of space"). */
   #leaveVoice { display: none; }
+  /* A phone hides the top bar's mark: the front page (to show someone, its QR code to scan) is atop ☰ (Justin, 10 Nov). */
+  #navHome { display: none; }
   body.voice-mode #leaveVoice { display: block; width: 100%; font: inherit; font-size: 18px; text-align: left; padding: 14px 16px;
                                 border: 0; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
   #voiceMode { position: fixed; inset: 41px 0 0 0; z-index: 30; background: var(--bg); display: none; flex-direction: column;
@@ -1725,6 +1727,12 @@
     header .preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
     #menu { display: block; }
     header .brand { display: none; }  /* the Mood's name matters more here */
+    #navHome { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+               color: var(--ink); text-decoration: none; }
+    #navHome .logo { width: 26px; height: 26px; flex: none; background: var(--accent);
+                     -webkit-mask: url(/moods/mark-96.png) center / contain no-repeat; mask: url(/moods/mark-96.png) center / contain no-repeat; }
+    #navHome b { display: block; color: var(--accent); font-size: 15px; }
+    #navHome small { display: block; color: var(--muted); font-size: 12px; }
     header .block { display: none; }
     header .crumb::before { content: none; }
     header .crumb.moods, header .sections { display: none; }  /* ☰ is the Moods; the account menu has the rest */
@@ -1974,7 +1982,7 @@
 <div id="sectionActivity" role="status" aria-label="Emergents at work" hidden></div>
 <div id="sectionFrames"{% if not initial_section or initial_section == "moods" %} hidden{% endif %}></div>
 <div class="layout">
-  <nav id="nav" data-tour="moods" data-tour-open="menu"><button type="button" id="leaveVoice">🎧 leave voice mode</button><div id="moodList"><div class="label">Moods</div></div></nav>
+  <nav id="nav" data-tour="moods" data-tour-open="menu"><button type="button" id="leaveVoice">🎧 leave voice mode</button><a id="navHome" href="/" title="magenta's front page: what it is, and its QR code to scan"><span class="logo" aria-hidden="true"></span><span><b>magenta</b><small>the front page · its QR code</small></span></a><div id="moodList"><div class="label">Moods</div></div></nav>
   <div id="grip" title="Drag to resize; double-click to reset"><button type="button" class="navfold" id="navFold" title="Fold the Moods away" aria-label="Fold the Moods list away" aria-expanded="true">‹</button></div>
   <div id="voiceMode" role="region" aria-label="Voice mode"></div>
   <main id="main"><div id="topbar"><div id="moodbar" data-tour="mood-bar"></div><div id="pins" data-tour="pins" hidden></div></div><div class="inner" id="inner"><div class="empty">Loading…</div></div>
