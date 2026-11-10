@@ -84,6 +84,48 @@ def page_of(repo, branch):
     return WorkTiding.objects.select_related('tiding').filter(repo=repo, branch=branch).first()
 
 
+# A candidate named in what's said, as repo:branch or repo#N: a link to its page (Justin, 10 Nov). Only a work
+# whose page opens: one open on the ramp, or one that has a page already (a merged one, say). Anything else
+# stays as written, so a link never leads to "not open on the ramp".
+LINKS_KEY = 'work:links'
+LINKS_FOR = 30   # seconds what's linkable is kept: messages are drawn on every poll
+
+
+def linkable():
+    """{'branches': {(repo, branch)}, 'numbers': {(repo, number): branch}}: the work a name in a message may link.
+    From the last board, however old, never building one (that takes seconds), and the pages already opened."""
+    from django.core.cache import cache
+    found = cache.get(LINKS_KEY)
+    if found is not None:
+        return found
+    from . import ramp
+    from conversations.models import WorkTiding
+    branches, numbers = set(), {}
+    for item in (cache.get(ramp.KEY) or {}).get('open', []):
+        repo, branch = item.get('repo'), item.get('branch')
+        if repo and branch:
+            branches.add((repo, branch))
+            if item.get('number'):
+                numbers[(repo, int(item['number']))] = branch
+    for repo, branch, number in WorkTiding.objects.values_list('repo', 'branch', 'number'):
+        branches.add((repo, branch))
+        if number:
+            numbers.setdefault((repo, int(number)), branch)
+    found = {'branches': branches, 'numbers': numbers}
+    cache.set(LINKS_KEY, found, LINKS_FOR)
+    return found
+
+
+def link_for(repo, branch=None, number=None):
+    """The page's address for repo:branch or repo#number, if its page opens; else None."""
+    known = linkable()
+    if number is not None:
+        branch = known['numbers'].get((repo, int(number)))
+    if branch and (repo, branch) in known['branches']:
+        return address(repo, branch)
+    return None
+
+
 def pages_for(items):
     """{(repo, branch): {'id', 'comments'}} for the items that have a page: for the ramp's 💬."""
     from conversations.models import WorkTiding
@@ -170,6 +212,8 @@ def open_page(by, repo, branch):
         return page_of(repo, branch).tiding
     line.content = {**line.content, 'tiding': str(tiding.id)}
     Message.objects.filter(id=line.id).update(content=line.content)
+    from django.core.cache import cache
+    cache.delete(LINKS_KEY)  # its name links from now on, not in half a minute
     return tiding
 
 

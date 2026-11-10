@@ -954,6 +954,10 @@
   /* '#': a Mood, or a message as a card (mood_view._hash_link); "linked from" under what's linked to. */
   a.moodlink { color: var(--accent); text-decoration: none; font-weight: 600; }
   a.moodlink:hover { text-decoration: underline; }
+  /* A candidate branch named in a message (services/mood_view._CANDIDATE): its page, in the ramp. */
+  a.branchlink { color: var(--accent); text-decoration: none; }
+  a.branchlink:hover { text-decoration: underline; }
+  code > a.branchlink { color: inherit; text-decoration: underline dotted; }
   .turn .body a.msglink { display: block; margin: 4px 0; padding: 3px 8px; border-left: 2px solid var(--accent); border-radius: 0 6px 6px 0;
                           background: var(--code); color: var(--muted); text-decoration: none; font-size: .92em;
                           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

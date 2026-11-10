@@ -768,6 +768,22 @@ def _hash_link(match):
     return f'<a class="moodlink" href="/moods/{slug}/" data-mood="{slug}">#{ref}</a>'
 
 
+# A candidate branch named in what's said -- magenta:re/foo, or magenta#453 -- links to its page in the ramp
+# (Justin, 10 Nov), when it has one (work_pages.link_for). Not inside a word, a path or a URL (those are linked
+# already); a branch ends on a letter or digit, so a sentence's full stop stays outside.
+_CANDIDATE = re.compile(r'(?<![\w/:.@#&;-])([a-z][\w.-]*)(?::(\w(?:[\w./-]*\w)?)|#(\d{1,6}))(?![\w/-])', re.I)
+
+
+def _candidate_link(match):
+    """The link for a match of _CANDIDATE, or None if it names no work with a page."""
+    from .work_pages import link_for
+    repo, branch, number = match.group(1), match.group(2), match.group(3)
+    href = link_for(repo, branch=branch) if branch else link_for(repo, number=int(number))
+    if not href:
+        return None
+    return f'<a class="branchlink" href="{href}" title="Its page, in the ramp">{match.group(0)}</a>'
+
+
 def _link_url(match):
     """Link a bare URL, leaving sentence punctuation outside the anchor."""
     url, tail = _trim_url(match.group(1))
@@ -838,6 +854,10 @@ def _inline(text, mentionable=()):
         whole = _WIKILINK.fullmatch(match.group(1).strip())
         if whole:
             return stash(f'<code>{_wikilink(whole)}</code>')
+        # Or only a candidate branch's name, `magenta:re/foo`: its page, in code's type (Justin, 10 Nov).
+        named = _CANDIDATE.fullmatch(match.group(1).strip())
+        if named and (link := _candidate_link(named)):
+            return stash(f'<code>{link}</code>')
         codes.append(match.group(1))
         return f'\x01{len(codes) - 1}\x01'
 
@@ -849,6 +869,7 @@ def _inline(text, mentionable=()):
                                       f'<audio controls preload="none" src="{m.group(2)}" title="{m.group(1)}"></audio>'), text)
     text = _MD_LINK.sub(lambda m: stash(f'<a href="{m.group(2)}"{_OUT}>{m.group(1)}</a>'), text)
     text = _URL.sub(lambda m: stash(_link_url(m)), text)
+    text = _CANDIDATE.sub(lambda m: stash(link) if (link := _candidate_link(m)) else m.group(0), text)
     text = _HASH.sub(lambda m: stash(_hash_link(m)), text)
     if mentionable:
         text = _MENTION.sub(_mention(mentionable, stash), text)
