@@ -206,6 +206,42 @@ class AskTest(TestCase):
                  content={'type': 'deploy', 'server': 'hunter', 'state': 'finished', 'by': 'justin', 'note': ''})
         self.assertEqual(self.asked(), [])
 
+    def test_merge_asks_naming_different_branches_all_stand(self):
+        # Justin, 10 Nov 20:28Z: magent asked for three merges, then for a fourth; only the fourth stayed, and the
+        # three, unmerged, had no pills. A merge ask names its own branches, so each one stands until they merge.
+        import tempfile
+        from unittest import mock
+
+        from django.test import override_settings
+        with override_settings(GITHOUSE_DIR=tempfile.mkdtemp()):
+            self.say('re', '<merge to="magenta:re/one"/>', 1)
+            self.say('re', '<merge to="magenta:re/two"/>', 2)
+            merged = set()
+            with mock.patch('conversations.services.githouse.branch_merged', lambda repo, branch: branch in merged), \
+                    mock.patch('conversations.services.githouse.branch_closed', lambda repo, branch: False), \
+                    mock.patch('conversations.services.tools_ask.named_branches',
+                               lambda purpose: [('magenta', purpose.split(':')[1])] if ':' in purpose else []):
+                self.assertEqual([t['for'] for t in self.asked()], ['magenta:re/one', 'magenta:re/two'])
+                merged.add('re/two')
+                cache.clear()
+                self.assertEqual([t['for'] for t in self.asked()], ['magenta:re/one'])
+
+    def test_another_branchs_merge_doesnt_answer_a_named_ask(self):
+        # Justin, 10 Nov 20:28Z: rabbithole's form-keeps-draft, merged from #ramp, cleared the ask there for
+        # maybelle-config's secret check. The Mood's merged event answers only an ask that names nothing.
+        import tempfile
+        from unittest import mock
+
+        from django.test import override_settings
+        with override_settings(GITHOUSE_DIR=tempfile.mkdtemp()):
+            self.say('re', '<merge to="magenta:re/one"/>', 1)
+            self.say('system', 'merged', 2, session=None, source='merged',
+                     content={'type': 'merged', 'pull': 'rabbithole:re/other', 'title': 'other', 'by': 'justin', 'about': ''})
+            with mock.patch('conversations.services.githouse.branch_merged', lambda repo, branch: False), \
+                    mock.patch('conversations.services.githouse.branch_closed', lambda repo, branch: False), \
+                    mock.patch('conversations.services.tools_ask.named_branches', lambda purpose: [('magenta', 're/one')]):
+                self.assertEqual([t['for'] for t in self.asked()], ['magenta:re/one'])
+
     def test_a_newer_ask_replaces_an_older_ask_of_the_same_kind(self):
         self.say('re', '<tools to="push the fix"/>', 1, session=self.sid)
         self.say('re', '<tools to="rebase first, then push"/>', 2, session=self.sid)
@@ -263,7 +299,8 @@ class IncrementalAskTest(AskTest):
     def test_an_answered_ask_is_not_asked_again(self):
         from unittest import mock
         from conversations.services import tools_ask
-        self.say('re', 'Done.\n\n<merge to="#1"/>\n<deploy to="hunter"/>', 1)
+        # An ask naming nothing, so the Mood's merged event answers it (one naming #1 waits for #1 itself).
+        self.say('re', 'Done.\n\n<merge to="the fix"/>\n<deploy to="hunter"/>', 1)
         self.say('system', '', 2, source='merged', content={'type': 'merged'})
         self.assertEqual([a['kind'] for a in self.asked()], ['deploy'])
         cache.delete(tools_ask.KEY)
