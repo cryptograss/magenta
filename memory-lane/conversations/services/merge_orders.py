@@ -293,6 +293,7 @@ def announce_merged(now=None):
                                         if merge else ''})
         said += 1
     if said:
-        from . import ramp
+        from . import ramp, todo
         ramp.changed()  # the ramp drops what merged
+        todo.forget_all()  # and a to-do item linking its page ticks now, not in a minute
     return said

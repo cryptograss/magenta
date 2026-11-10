@@ -146,14 +146,16 @@ def _merged_elsewhere(purpose):
         # both []: nothing named. Either way the ask stands until its event lands.
         return False
     try:
+        # A branch closed unmerged answers it too: there's nothing left to merge (Justin, 10 Nov).
         return (all(_merged(owner, repo, number, requests) for owner, repo, number in pulls)
-                and all(githouse.branch_merged(repo, branch) for repo, branch in branches))
+                and all(githouse.branch_merged(repo, branch) or githouse.branch_closed(repo, branch)
+                        for repo, branch in branches))
     except Exception:  # noqa: BLE001 -- GitHub unreachable: the ask stands until its event lands
         return False
 
 
 def unmerged(purpose):
-    """The candidate branches a merge ask names that haven't merged yet: [{'repo', 'number'} or {'repo', 'branch'}],
+    """The candidate branches a merge ask names that haven't merged yet (nor been closed): [{'repo', 'number'} or {'repo', 'branch'}],
     in the order named, each once. The page draws one line for each, with every emergent asking for it (Justin,
     9 Nov: an ask naming #451 and #449 kept a Merge for #449 after #449 merged). One it can't say about counts as
     not merged."""
@@ -176,7 +178,7 @@ def unmerged(purpose):
         if (repo, branch) in seen:
             continue
         seen.add((repo, branch))
-        if not githouse.branch_merged(repo, branch):
+        if not (githouse.branch_merged(repo, branch) or githouse.branch_closed(repo, branch)):
             out.append({'repo': repo, 'branch': branch})
     return out
 

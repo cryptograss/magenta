@@ -123,8 +123,8 @@
         data-status="{% if item.done or item.merged %}done{% else %}open{% endif %}"
         data-search="{{ item.task|lower }} {{ item.note|lower }} {% for w in item.who %}{{ w|lower }} {% endfor %}#{{ item.mood }}">
       <span class="statusicon {% if item.merged %}is-merged{% elif item.done %}is-done{% else %}is-open{% endif %}"
-            title="{% if item.merged %}Merged pull request{% elif item.done %}Done{% else %}Open{% endif %}">
-        {% if item.merged %}🔀{% elif item.done %}✓{% else %}○{% endif %}
+            title="{% if item.merged %}Merged{% elif item.closed %}Closed, not merged{% elif item.done %}Done{% else %}Open{% endif %}">
+        {% if item.merged %}🔀{% elif item.closed %}✕{% elif item.done %}✓{% else %}○{% endif %}
       </span>
       <div class="content">
         <div>
