@@ -393,3 +393,15 @@ class ClashTest(TestCase):
         self.assertIn('conflicts in: a.txt', page)
         self.assertIn('⇄ magenta#7</span>', page)
         self.assertIn('would conflict with this in: b.txt', page)
+
+
+class RampMoodFilterTest(TestCase):
+    """Justin, 10 Nov: a Mood's name on the ramp filters the list to that Mood's candidates, open and merged."""
+
+    def test_mood_names_filter_rather_than_go(self):
+        from pathlib import Path
+        page = (Path(__file__).resolve().parent.parent / 'templates' / 'conversations' / 'mood_pulls.html').read_text()
+        self.assertIn('data-moods="{{ i.where|join:\' \' }}"', page)
+        self.assertIn('<tr data-moods="{{ m.moods|join:\' \' }}">', page)
+        self.assertEqual(page.count('data-filter-mood="'), 2)  # open and merged
+        self.assertIn('class="moodfilter" hidden', page)

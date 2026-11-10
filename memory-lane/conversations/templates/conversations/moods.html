@@ -527,6 +527,12 @@
   nav a.mood .toolsask .askgroup + .askgroup { margin-left: 4px; }
   nav a.mood .toolsask { min-width: 0; }
   nav a.mood .toolsask .askcand { min-width: 0; gap: 2px; }
+  /* The candidates' line: three a row at most, each cut with … to its third (Justin, 10 Nov). */
+  nav a.mood .toolsask.cands { display: flex; flex-wrap: wrap; gap: 2px 6px; margin: 2px 0 1px; font-size: 12px; }
+  nav a.mood .toolsask.cands .br { flex-basis: 100%; height: 0; }  /* after every third: a new row */
+  nav a.mood .toolsask.cands .askgroup + .askgroup { margin-left: 0; }
+  nav a.mood .toolsask.cands .candname { max-width: 14em; }
+  nav a.mood .toolsask.cands .askcand { max-width: 100%; }
   nav a.mood .toolsask .candname { min-width: 0; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                                    font: 500 10.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
                                    background: var(--hover); border-radius: 4px; padding: 0 4px; }
@@ -2177,7 +2183,9 @@
   // request"): 🔨●● 🪢●, not every icon, then every dot. One icon a kind, however many asks.
   // A merge ask shows as the candidate branch it names, with a dot for each emergent asking (Justin, 9 Nov:
   // "show the name of the candidate branch ... with the emergent color dots next to it"); one already merged, none.
-  function askGroups(asked) {
+  // The candidates go on a line of their own, after the usage numbers, at most three a row (Justin, 10 Nov):
+  // askGroups(asked) is the title's icons, askGroups(asked, true) the candidates.
+  function askGroups(asked, candidates) {
     const kinds = new Map(), works = new Map();
     const dots = agents => agents.map(a => `<span class="askdot" style="background: ${agentColor(a)}"></span>`).join('');
     for (const t of asked) {
@@ -2194,10 +2202,11 @@
       if (!kinds.has(icon)) kinds.set(icon, []);
       kinds.get(icon).push(t.emergent);  // a dot an ask: two merges asked, two dots (Justin, 30 Oct)
     }
-    return [...works.values()].map(({ w, ref, agents }) => `<span class="askgroup askcand">`
+    if (candidates) return [...works.values()].map(({ w, ref, agents }) => `<span class="askgroup askcand">`
       + `<span class="candname" title="${esc(`${ref}${w.number && w.branch ? ` (${w.branch})` : ''}: merge asked by ${agents.map(shown).join(', ')}`)}">`
-      + `${esc(w.branch || ref)}</span>${dots(agents)}</span>`).join('')
-      + [...kinds].map(([icon, agents]) => `<span class="askgroup">${icon}${dots(agents)}</span>`).join('');
+      + `${esc((w.branch || '').split('/').pop() || ref)}</span>${dots(agents)}</span>`)  // its name after the owner's: room for more
+      .map((html, i, all) => html + ((i + 1) % 3 === 0 && i + 1 < all.length ? '<span class="br"></span>' : '')).join('');
+    return [...kinds].map(([icon, agents]) => `<span class="askgroup">${icon}${dots(agents)}</span>`).join('');
   }
   const askLine = t => `${esc(shown(t.emergent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
     : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
@@ -2423,9 +2432,10 @@
       return `
       <a class="mood ${m.slug === current ? 'active' : ''}${onTrail ? ' on-trail' : ''}${depth ? ' sub' : ''}${depth && (!m.forked_at || m.compacted) ? ' fresh' : depth && m.incorporated ? ' back' : ''}" style="--depth: ${depth}; ${onTrail ? `--trail-pct: ${trailPct}%; --trail-op: ${trailOp};` : ''}" href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
         ${trailMark}
-        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${foldBtn}${(m.asked || []).length
+        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${foldBtn}${askGroups(m.asked || [])
           ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${askGroups(m.asked)}</span>` : ''}${badgeHtml(m.slug)}</div>
-        <div class="meta">${moodWarmth(m)}</div>
+        <div class="meta">${moodWarmth(m)}</div>${askGroups(m.asked || [], true)
+          ? `<div class="toolsask cands">${askGroups(m.asked, true)}</div>` : ''}
         <div class="meta people-line">${peopleLine(m.slug)}</div>
       </a>`;
     };

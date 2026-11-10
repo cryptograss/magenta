@@ -73,6 +73,10 @@
   th button.sort[aria-pressed="true"]::after { content: ' ▾'; }
   th button.sort[aria-pressed="true"].up::after { content: ' ▴'; }
   /* Who's on it (Justin, 9 Nov, #ramp): a button each; pressed once, only theirs; twice, theirs hidden. */
+  .moodfilter { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; }
+  .moodfilter b { color: var(--accent); }
+  a[data-filter-mood].on { font-weight: 700; color: var(--accent); }
+  .moodfilter button { font: inherit; background: none; border: 1px solid var(--line); border-radius: 12px; padding: 1px 9px; color: var(--muted); cursor: pointer; }
   .people { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
   .people button { font: inherit; background: none; border: 1px solid var(--line); border-radius: 12px; padding: 1px 9px;
                    color: var(--muted); cursor: pointer; }
@@ -149,6 +153,7 @@
   {% if board.mentions_missing %}<p class="why">Reading the record for where each was mentioned: "last said" fills in within a minute.</p>{% endif %}
 
   <h2>Open candidate branches</h2>
+  <p class="moodfilter" hidden>Only candidates from <b></b>, open and merged: <span class="count"></span> <button type="button" class="clear">every Mood</button></p>
   {% if everyone %}<p class="people" title="Click: only theirs. Again: theirs hidden. Again: everyone.">Who:
     {% for p in everyone %}<button type="button" data-person="{{ p.name }}" data-state="">{% if p.colour %}<span class="dot" style="--who: {{ p.colour }}"></span>{% endif %}{{ p.name }}<small>{{ p.count }}</small></button>{% endfor %}
     <span class="count"></span><button type="button" class="clear" hidden>everyone</button></p>{% endif %}
@@ -163,7 +168,7 @@
     {% for i in open %}
     <tr class="{{ i.state }}" data-active="{{ i.active|date:'U'|default:0 }}" data-pushed="{{ i.pushed|date:'U'|default:0 }}"
         data-mentioned="{% if i.mentions %}{{ i.mentions.0.at|date:'U' }}{% else %}0{% endif %}"
-        data-mood="{{ i.where.0|default:'' }}" data-people="{{ i.people|join:' ' }}">
+        data-mood="{{ i.where.0|default:'' }}" data-moods="{{ i.where|join:' ' }}" data-people="{{ i.people|join:' ' }}">
       <td><span class="temp {{ i.temperature }}" title="{{ i.temperature }}{% if i.active %}: {{ i.active|timesince }} ago{% endif %}"></span></td>
       <td class="work">
         {% comment %}Every candidate is named and linked the same way, pull request or not (Justin, 9 Nov, #ramp: "convert all the
@@ -184,7 +189,7 @@
         </div>{% endif %}
       </td>
       <td>{{ i.worked_on_by|default:i.author }}</td>
-      <td>{% for m in i.where %}<a href="/moods/{{ m }}/"{% if not i.moods %} class="said" title="not on its card: where it was said"{% endif %}>#{{ m }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
+      <td>{% for m in i.where %}<a href="/moods/{{ m }}/" data-filter-mood="{{ m }}"{% if not i.moods %} class="said" title="not on its card: where it was said; click: only this Mood's"{% else %} title="Only this Mood's candidates (ctrl-click: open the Mood)"{% endif %}>#{{ m }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
       <td class="num size">{% if i.size %}<span class="add">+{{ i.size.added }}</span> <span class="rm">−{{ i.size.removed }}</span><br>{{ i.size.commits }} commit{{ i.size.commits|pluralize }}{% elif not i.held %}<span title="githouse doesn't copy this repository">—</span>{% endif %}</td>
       <td class="num">{% if i.pushed_ago is not None %}<span title="block {{ i.pushed_block }}, {{ i.pushed|date:"j M H:i" }}Z">{% if i.pushed_ago %}{{ i.pushed_ago_said }} block{{ i.pushed_ago|pluralize }} ago{% else %}this block{% endif %}</span>{% elif i.pushed %}{{ i.pushed|date:"j M H:i" }}Z{% endif %}</td>
       <td>{% for m in i.mentions %}<a class="ment" href="/moods/{{ m.mood }}/#m-{{ m.id }}">#{{ m.mood }} · {{ m.who }} · {{ m.at|date:"j M H:i" }}Z</a>{% empty %}<span class="why" title="not said in any Mood in 60 days">—</span>{% endfor %}</td>
@@ -197,14 +202,14 @@
   </table>
 
   <h2>Merged lately</h2>
-  <table>
+  <table id="merged">
     <tr><th>candidate</th><th>who</th><th>where</th><th>merged</th><th>deploy</th><th>live on</th></tr>
     {% for m in board.merged %}
-    <tr>
+    <tr data-moods="{{ m.moods|join:' ' }}">
       <td class="work">{% if m.page %}<a class="title" href="/ramp/{{ m.repo|urlencode:'' }}/{{ m.branch|urlencode }}/" title="Its page: what it changed, its commits, what was said">{{ m.title }}</a>{% else %}<span class="title">{{ m.title }}</span>{% endif %}
         <br><span class="ref">{{ m.repo }}{% if m.branch %}:{{ m.branch }}{% endif %}</span>{% if m.number %} <a class="gh" href="{{ m.url }}" target="_blank" rel="noopener" title="GitHub's pull request page for it">PR #{{ m.number }} ↗</a>{% elif m.merge %} <span class="branch" title="merged by githouse: the merge commit on {{ m.base }}">→ {{ m.base }} as {{ m.merge|slice:':8' }}</span>{% endif %}</td>
       <td>{{ m.worked_on_by|default:m.author }}</td>
-      <td>{% for mood in m.moods %}<a href="/moods/{{ mood }}/">#{{ mood }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
+      <td>{% for mood in m.moods %}<a href="/moods/{{ mood }}/" data-filter-mood="{{ mood }}" title="Only this Mood's candidates (ctrl-click: open the Mood)">#{{ mood }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
       <td class="num">{% if m.merged %}{{ m.merged|date:"j M H:i" }}Z{% endif %}</td>
       <td class="why">{{ m.deploy }}</td>
       <td>{% if m.live_on is None %}<span class="why" title="this repository's deploys don't record what they ran yet">—</span>{% elif m.live_on %}{{ m.live_on|join:", " }}{% else %}<span class="state">not yet</span>{% endif %}</td>
@@ -288,7 +293,8 @@
       let shown = 0, total = 0;
       body.querySelectorAll('tr[data-active]').forEach(r => {
         const on = (r.dataset.people || '').split(' ').filter(Boolean);
-        r.hidden = !((!ins.length || on.some(p => ins.includes(p))) && !on.some(p => outs.includes(p)));
+        r.dataset.notPeople = (!ins.length || on.some(p => ins.includes(p))) && !on.some(p => outs.includes(p)) ? '' : '1';
+        r.hidden = !!(r.dataset.notPeople || r.dataset.notMood);
         total += 1; shown += r.hidden ? 0 : 1;
       });
       buttons.forEach(b => { b.dataset.state = states[b.dataset.person] || ''; });
@@ -304,6 +310,36 @@
     }));
     bar.querySelector('.clear').addEventListener('click', () => { states = {}; apply(); });
     apply();
+  })();
+  // A Mood's name in "where": only that Mood's candidates, open and merged (Justin, 10 Nov: "instead of taking me
+  // directly to that mood, I'd rather have it filter the list"). Again, or "every Mood": all of them. Ctrl- or
+  // cmd-click still opens the Mood. Not kept: a look, not a setting.
+  (() => {
+    const box = document.querySelector('.moodfilter');
+    const rows = () => document.querySelectorAll('#open tr[data-active], #merged tr[data-moods]');
+    let only = '';
+    function apply() {
+      let shown = 0, total = 0;
+      rows().forEach(r => {
+        r.dataset.notMood = !only || (r.dataset.moods || '').split(' ').includes(only) ? '' : '1';
+        r.hidden = !!(r.dataset.notPeople || r.dataset.notMood);
+        if (only) { total += 1; shown += r.dataset.notMood ? 0 : 1; }
+      });
+      box.hidden = !only;
+      box.querySelector('b').textContent = '#' + only;
+      box.querySelector('.count').textContent = only ? `${shown} of ${total}` : '';
+      document.querySelectorAll('a[data-filter-mood]').forEach(a => a.classList.toggle('on', !!only && a.dataset.filterMood === only));
+    }
+    document.addEventListener('click', e => {
+      const a = e.target.closest('a[data-filter-mood]');
+      if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+      e.preventDefault();
+      e.stopPropagation();
+      only = only === a.dataset.filterMood ? '' : a.dataset.filterMood;
+      apply();
+      if (only) box.scrollIntoView({ block: 'nearest' });
+    }, true);
+    box.querySelector('.clear').addEventListener('click', () => { only = ''; apply(); });
   })();
 </script>
 </body>
