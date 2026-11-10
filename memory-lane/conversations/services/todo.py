@@ -259,6 +259,21 @@ def _recently_merged(owner, repo, http):
     return None if found == 'unknown' else found
 
 
+def _pull_closed(owner, repo, number, http):
+    """Whether this pull request is closed on GitHub, merged or not (Justin, 10 Nov 23:01Z: rabbithole #29-#33,
+    closed when their work moved to magent/ branches and merged through githouse, kept their asks' pills).
+    From the same listing of recently closed pull requests as _recently_merged, cached as long; False if GitHub
+    won't say, so an ask stands rather than clearing on no answer."""
+    key = f'todo:closed:{same(f"{owner}/{repo}")}'
+    found = cache.get(key)
+    if found is None:
+        listed = _github(f'/repos/{owner}/{repo}/pulls', http, state='closed', sort='updated', direction='desc',
+                         per_page=100)
+        found = {p['number'] for p in listed} if isinstance(listed, list) else 'unknown'
+        cache.set(key, found, CLOSED_FOR)
+    return found != 'unknown' and number in found
+
+
 def _merged(owner, repo, number, http):
     """Whether this pull request was merged: githouse's copy says, by its head's ancestry (services/githouse.py;
     Cryptograss:Moods/ramp/Plan, section 4), and GitHub is asked only of a repository or a pull request githouse

@@ -142,15 +142,16 @@ def _merged_elsewhere(purpose):
     import requests
 
     from . import githouse
-    from .todo import _merged
+    from .todo import _merged, _pull_closed
     pulls, branches = named_pulls(purpose), named_branches(purpose)
     if pulls is None or branches is None or not (pulls or branches):
         # None: a name in a repository we can't say about (re, 7 Nov: never clear on the known half alone);
         # both []: nothing named. Either way the ask stands until its event lands.
         return False
     try:
-        # A branch closed unmerged answers it too: there's nothing left to merge (Justin, 10 Nov).
-        return (all(_merged(owner, repo, number, requests) for owner, repo, number in pulls)
+        # A branch or a pull request closed unmerged answers it too: there's nothing left to merge (Justin, 10 Nov).
+        return (all(_merged(owner, repo, number, requests) or _pull_closed(owner, repo, number, requests)
+                    for owner, repo, number in pulls)
                 and all(githouse.branch_merged(repo, branch) or githouse.branch_closed(repo, branch)
                         for repo, branch in branches))
     except Exception:  # noqa: BLE001 -- GitHub unreachable: the ask stands until its event lands
@@ -158,7 +159,7 @@ def _merged_elsewhere(purpose):
 
 
 def unmerged(purpose):
-    """The candidate branches a merge ask names that haven't merged yet (nor been closed): [{'repo', 'number',
+    """The candidate branches and pull requests a merge ask names that haven't merged yet (nor been closed): [{'repo', 'number',
     'branch'} or {'repo', 'branch'}], in the order named, each once. The page draws one line for each, with every
     emergent asking for it (Justin, 9 Nov: an ask naming #451 and #449 kept a Merge for #449 after #449 merged);
     the Mood list shows each by its branch's name (Justin, 9 Nov), a pull request's as the ramp last had it (''
@@ -167,14 +168,14 @@ def unmerged(purpose):
 
     from . import githouse
     from .ramp import branch_of
-    from .todo import _merged
+    from .todo import _merged, _pull_closed
     out, seen = [], set()
     for _, repo, number in named_pulls(purpose) or []:
         if (repo, number) in seen:
             continue
         seen.add((repo, number))
         try:
-            done = _merged('cryptograss', repo, number, requests)
+            done = _merged('cryptograss', repo, number, requests) or _pull_closed('cryptograss', repo, number, requests)
         except Exception:  # noqa: BLE001 -- GitHub unreachable: shown as still wanted
             done = False
         if not done:
