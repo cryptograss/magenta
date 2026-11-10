@@ -163,6 +163,9 @@ ASIDE_OPEN, ASIDE_CLOSE = '\ue000', '\ue001'
 _ASIDE = re.compile(f'{ASIDE_OPEN}([^{ASIDE_CLOSE}]*){ASIDE_CLOSE}')
 
 
+_TAG = re.compile(r'<(?:merge|deploy|tools|react|wait|take|silent)\b[^<>]*/>', re.I)  # an ask or a gesture
+
+
 def unmarked(text):
     """`text` with its asides as plain words."""
     return _ASIDE.sub(r'\1', text or '')
@@ -482,13 +485,22 @@ def script_for(text, part=0):
     """(what to say, voice name, settings) for a message's text: its `part`th
     voice block, or, with none, the message as written."""
     from .handoff import split as split_handoffs
+    from .mood_view import trailing_asks
     rest, directions = split_voices(text)
     rest, _ = split_handoffs(rest)  # what went to another Mood isn't read out here
     if directions:
         direction = directions[min(max(part, 0), len(directions) - 1)]
         if direction['script']:
             return direction['script'][:MAX_SCRIPT_CHARS], direction['voice'], direction['settings']
-    return plain(rest, asides=True)[:MAX_SCRIPT_CHARS], '', {}
+    # Its asks (<merge to="..."/>), as the page shows them: "requested a merge for ...", the narrator's. Read as a
+    # tag, ElevenLabs said none of it but its words were counted, so the page took the piece for a fast one and
+    # slowed it (Justin, 9 Nov: "the message after that read slowly"; heard at 0.92x, its pace taken as 240).
+    rest, asks = trailing_asks(rest)
+    said = _TAG.sub(' ', rest)  # any other, mid-message: not read
+    for ask in asks:
+        reason = re.sub(r'(\w)#(\d+)', r'\1 number \2', ask['reason'])  # magenta#455: "magenta number 455"
+        said += f"\n\n{ASIDE_OPEN}{plain(reason)}{ASIDE_CLOSE}"
+    return plain(said, asides=True)[:MAX_SCRIPT_CHARS], '', {}
 
 
 def _cut(text, limit):

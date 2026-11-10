@@ -150,3 +150,15 @@ class AsideTest(TestCase):
         self.assertEqual([(m['text'], m['voice']) for m in fake.made],
                          [('Merged', theirs), ('a hash', narrator), ('see', theirs)])
         self.assertEqual(fake.made[2]['previous_request_ids'], ['req-1'])  # stitched onto their own piece, not the aside
+
+    def test_an_ask_is_the_narrators_and_its_tag_isnt_counted(self):
+        # Justin, 9 Nov: a message ending in <merge to="..."/> read slowly. Its tag wasn't said, but its words were
+        # counted, so the page took the last piece for a fast one (240 a minute) and slowed it to 0.92x.
+        script = voice.script_for('I checked it on a phone.\n\n<merge to="magenta#455, voice bar still"/>')[0]
+        parts = voice.pieces(script)
+        self.assertEqual([voice.unmarked(p) for p in parts],
+                         ['I checked it on a phone.', 'requested a merge for magenta number 455, voice bar still'])
+        self.assertEqual([voice.aside(p) for p in parts], [False, True])
+
+    def test_a_gesture_mid_message_isnt_read(self):
+        self.assertEqual(voice.pieces(voice.script_for('Done <react emoji="👍" to="re"/> there.')[0]), ['Done there.'])
