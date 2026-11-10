@@ -1282,8 +1282,15 @@
   #toolsOpen .askdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--who); margin-right: 3px; vertical-align: 0; }
   #toolsOpen a.asker { color: inherit; text-decoration: none; font-weight: 600; }
   #toolsOpen a.asker:hover { text-decoration: underline; }
-  #toolsOpen .askmerge { font: inherit; font-size: 12px; padding: 0 8px; border-radius: 4px; cursor: pointer;
-                         border: 1px solid var(--accent); background: none; color: var(--accent); }
+  #toolsOpen .askpills { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 2px 0; }
+  #toolsOpen .askpill { display: inline-flex; align-items: center; gap: 2px; padding: 0 0 0 6px; border-radius: 10px;
+                        border: 1px solid var(--accent); max-width: 100%; }
+  #toolsOpen .askpill a.asker { display: inline-flex; padding: 2px 0; }
+  #toolsOpen .askpill .askdot { margin-right: 1px; }
+  #toolsOpen .askmerge, #toolsOpen .askname { font: inherit; font-size: 12px; padding: 0 8px 0 3px; border: 0; border-radius: 0 10px 10px 0;
+                         background: none; color: var(--accent); cursor: pointer; white-space: nowrap; overflow: hidden;
+                         text-overflow: ellipsis; max-width: 32ch; }
+  #toolsOpen .askmerge:hover, #toolsOpen a.askname:hover { text-decoration: underline; }
   #tasks { display: none; flex-wrap: wrap; gap: 6px; padding: 2px 16px 0; font-size: 12px; color: var(--muted);
            max-width: 760px; margin: 0 auto; }
   #tasks.on { display: flex; }
@@ -7692,18 +7699,27 @@
         if (!got.asks.some(a => a.emergent === t.emergent)) got.asks.push(t);
       }
     }
+    // Merges, one small pill each in a single row (Justin, 10 Nov: three asks took six lines, and the Mood was hard
+    // to read): a dot for each emergent asking, in its colour, then the branch alone -- no "merge", no repository;
+    // the sheet names both. A dot goes to where it asked.
+    const pills = [];
     for (const { w, name, asks: by } of byWork.values()) {
       by.sort((a, b) => a.at < b.at ? -1 : 1);
-      const who = by.map(t => `<a class="msglink asker" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
-        + ` title="${esc(t.emergent)} asked at ${esc(askTime(t.at))}: ${esc(t.for)}"><span class="askdot" style="--who: ${agentColor(t.emergent)}"></span>`
-        + `${esc(shown(t.emergent))}</a>`).join(', ');
-      const last = by[by.length - 1].at;
-      lines.push({ at: last, html: `<span class="askwork">🪢 ${who} asked to merge <b>${esc(name)}</b> · ${esc(askTime(last))}</span>`
-        + (CAN_MERGE && window.magentaMerge ? ` <button type="button" class="askmerge" data-repo="${esc(w.repo)}" data-branch="${esc(w.branch || '')}"`
-          + ` data-number="${esc(w.number || '')}">Merge ${esc(name)}…</button>` : '') });
+      const dots = by.map(t => `<a class="msglink asker" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
+        + ` title="${esc(shown(t.emergent))} asked at ${esc(askTime(t.at))}: ${esc(t.for)}"`
+        + ` aria-label="${esc(shown(t.emergent))} asked"><span class="askdot" style="--who: ${agentColor(t.emergent)}"></span></a>`).join('');
+      const label = esc(w.branch || name);
+      const page = w.branch ? `/ramp/${encodeURIComponent(w.repo)}/${String(w.branch).split('/').map(encodeURIComponent).join('/')}/` : '/ramp/';
+      pills.push({ at: by[by.length - 1].at, html: `<span class="askpill">${dots}`
+        + (CAN_MERGE && window.magentaMerge
+          ? `<button type="button" class="askmerge" data-repo="${esc(w.repo)}" data-branch="${esc(w.branch || '')}"`
+            + ` data-number="${esc(w.number || '')}" title="Merge ${esc(name)}…">${label}</button>`
+          : `<a class="askname" href="${esc(page)}" title="${esc(name)}">${label}</a>`) + '</span>' });
     }
     lines.sort((a, b) => a.at < b.at ? -1 : 1);
-    box.innerHTML = lines.map(l => l.html).join('<br>');
+    pills.sort((a, b) => a.at < b.at ? -1 : 1);
+    box.innerHTML = lines.map(l => l.html).join('<br>')
+      + (pills.length ? `<div class="askpills">${pills.map(p => p.html).join('')}</div>` : '');
     // Each Merge… here, looked at before it's pressed: the sheet opens on it (Justin, 9 Nov).
     if (window.magentaMerge) box.querySelectorAll('button.askmerge').forEach(b =>
       magentaMerge.prefetch({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }));

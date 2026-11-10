@@ -31,6 +31,7 @@ COMPACTION_PREFIX = 'This session is being continued from a previous conversatio
 INTERRUPT_SOURCE = 'interrupt'
 # System rows shown as a line in the thread.
 NEW_MOOD_SOURCE = 'mood-new'
+WORK_SOURCE = 'work'  # services/work_pages.SOURCE: the line a work's page hangs on, never drawn
 EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
                  'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task', 'instructions', 'sprint-note',
                  'helper', 'alarm', 'wiki-missed', 'wiki-hook', 'work')  # work: services/work_pages.py, a work's page opened  # wiki-missed: services/wiki_changes.py; wiki-hook: services/wiki_hooks.py  # helper: a helper its run stopped before it reported (views_runner.finish_turn); alarm: services/alarms.py  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
@@ -1066,6 +1067,11 @@ def timeline(mood, after=None, before=None, limit=None, start=None):
         rows = rows.filter(created_at__lt=before.created_at)
 
     def item(msg):
+        # A work's page opened isn't news (Justin, 10 Nov: "All I did was go to the CB page in order to look at the
+        # full diff"): its line is only what the page's Tiding hangs on. What's said on the page still shows, as
+        # its own line ('tiding-comment').
+        if msg.source_file == WORK_SOURCE:
+            return None
         if msg.source_file in EVENT_SOURCES and isinstance(msg.content, dict):
             return ('event', msg, msg.content)  # a server redeployed, someone stopped an agent: a line in the thread
         if msg.sender_id == HARNESS:

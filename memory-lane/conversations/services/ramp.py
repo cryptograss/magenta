@@ -718,6 +718,21 @@ def short_description(text):
     return ''
 
 
+SHEET_SAID = 200   # characters of a candidate's description the merge sheet shows (Justin, 10 Nov: "~200")
+
+
+def description_start(text, limit=SHEET_SAID):
+    """The start of a candidate's description as plain words: every paragraph but its Deploy / Worked on by footer,
+    run together, cut at `limit` on a word. '' for none."""
+    from .mood_view import snippet_of
+    lines = [line for line in (text or '').splitlines() if line.strip() and not _FOOTER.match(line)]
+    said = snippet_of('\n'.join(lines))
+    if len(said) <= limit:
+        return said
+    cut = said[:limit - 1]
+    return (cut[:cut.rfind(' ')] if ' ' in cut[limit // 2:] else cut).rstrip(' ,;:') + '…'
+
+
 def candidates():
     """Every open candidate branch, most active first: [{'ref', 'repo', 'branch', 'number', 'title', 'about',
     'who', 'moods', 'state'}]. 'ref' is repo#N for one with a pull request, else repo:branch."""
