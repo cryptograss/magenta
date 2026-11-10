@@ -109,19 +109,39 @@ def _ask_reason(kind, to):
     return lead + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10])
 
 
+# Or on a line of its own anywhere, words after it too (Justin, 10 Nov: "I see <merge to=…/> instead of getting the
+# merge ask" -- magent had closed with a goodnight under it). Not in a fenced code block: a tag shown there is an
+# example. A tag inside a sentence, or in backticks, is still words.
+_ASK_LINE = re.compile(r'^[ \t]*<(tools|merge|deploy)\s+to="([^"<>]{1,200})"\s*/>[ \t]*$', re.M)
+_FENCED = re.compile(r'```.*?(?:```|\Z)', re.S)
+
+
 def trailing_asks(text):
-    """(words, [{'type', 'reason'}]) for a reply that ends with asks after words; (text, []) if it doesn't.
+    """(words, [{'type', 'reason'}]) for a reply with asks among its words: at the very end, or each on a line of its
+    own anywhere; (text, []) if it has none. The asks in the order written; their tags taken out of the words.
     A reply that is only an ask is quiet_reason's, not this."""
-    words, asks = text or '', []
+    words, tail = text or '', []
     while True:
         m = _ASK_TAIL.search(words)
         if not m:
             break
-        asks.insert(0, {'type': m.group(1), 'reason': _ask_reason(m.group(1), m.group(2))})
+        tail.insert(0, {'type': m.group(1), 'reason': _ask_reason(m.group(1), m.group(2))})
         words = words[:m.start()]
-    if not asks or not words.strip():
+    fences = [(f.start(), f.end()) for f in _FENCED.finditer(words)]
+    asks, kept, at = [], [], 0
+    for m in _ASK_LINE.finditer(words):
+        if any(a <= m.start() < b for a, b in fences):
+            continue
+        asks.append({'type': m.group(1), 'reason': _ask_reason(m.group(1), m.group(2))})
+        kept.append(words[at:m.start()])
+        at = m.end() + (words[m.end():m.end() + 1] == '\n')  # the line goes, its newline with it
+    asks += tail
+    if not asks:
         return text, []
-    return words.rstrip(), asks
+    words = re.sub(r'\n{3,}', '\n\n', ''.join(kept) + words[at:]).strip()
+    if not words:
+        return text, []
+    return words, asks
 
 
 def quiet_reason(text):

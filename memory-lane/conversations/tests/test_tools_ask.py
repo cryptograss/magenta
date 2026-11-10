@@ -94,6 +94,26 @@ class AskTest(TestCase):
             self.say('re', text, 1)
         self.assertEqual(self.asked(), [])
 
+    def test_an_ask_on_its_own_line_counts_with_words_after_it(self):
+        # Justin, 10 Nov (#ramp): magent's <merge to="…"/> went out as text, a goodnight line under it.
+        from conversations.services.mood_view import trailing_asks
+        text = ('Pushed and green.\n\n<merge to="magenta:magent/tick-summary, whenever maybelle next redeploys"/>\n\n'
+                "It's midnight there.")
+        self.assertEqual(trailing_asks(text),
+                         ("Pushed and green.\n\nIt's midnight there.",
+                          [{'type': 'merge', 'reason': 'requested a merge for magenta:magent/tick-summary, whenever '
+                                                       'maybelle next redeploys'}]))
+        self.say('re', text, 1)
+        self.assertEqual([t['kind'] for t in self.asked()], ['merge'])
+        # One mid-reply and one at the end: both, in the order written.
+        words, asks = trailing_asks('A.\n<deploy to="hunter"/>\nB.\n<merge to="#310"/>')
+        self.assertEqual((words, [a['type'] for a in asks]), ('A.\nB.', ['deploy', 'merge']))
+
+    def test_a_tag_shown_in_a_code_block_is_not_an_ask(self):
+        from conversations.services.mood_view import trailing_asks
+        text = 'Write it like this:\n\n```\n<merge to="magenta:re/foo"/>\n```\n\nand it posts a line.'
+        self.assertEqual(trailing_asks(text), (text, []))
+
     def test_a_merge_ask_clears_once_github_says_its_pulls_merged(self):
         # Justin, 31 Oct: the 🔀 for #316 stood after the merge, since its webhook event never reached the Mood.
         # Now GitHub is asked, as the to-do lists ask it: every pull request the ask names merged, it's answered.
