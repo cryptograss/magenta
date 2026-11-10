@@ -247,31 +247,32 @@ def _github(path, http, **params):
     return response.json() if response.status_code == 200 else None
 
 
-def _recently_merged(owner, repo, http):
-    """{number} of a repository's recently closed pull requests that were merged; None if GitHub won't say."""
-    key = f'todo:merged:{same(f"{owner}/{repo}")}'
-    found = cache.get(key)
-    if found is None:
-        listed = _github(f'/repos/{owner}/{repo}/pulls', http, state='closed', sort='updated', direction='desc',
-                         per_page=100)
-        found = {p['number'] for p in listed if p.get('merged_at')} if isinstance(listed, list) else 'unknown'
-        cache.set(key, found, CLOSED_FOR)
-    return None if found == 'unknown' else found
-
-
-def _pull_closed(owner, repo, number, http):
-    """Whether this pull request is closed on GitHub, merged or not (Justin, 10 Nov 23:01Z: rabbithole #29-#33,
-    closed when their work moved to magent/ branches and merged through githouse, kept their asks' pills).
-    From the same listing of recently closed pull requests as _recently_merged, cached as long; False if GitHub
-    won't say, so an ask stands rather than clearing on no answer."""
+def _recently_closed(owner, repo, http):
+    """{number: merged} of a repository's recently closed pull requests; None if GitHub won't say. One listing,
+    cached, read by both _recently_merged and _pull_closed (re, 10 Nov: two keys fetched it twice, and memory-lane
+    asks GitHub without a token, 60 an hour)."""
     key = f'todo:closed:{same(f"{owner}/{repo}")}'
     found = cache.get(key)
     if found is None:
         listed = _github(f'/repos/{owner}/{repo}/pulls', http, state='closed', sort='updated', direction='desc',
                          per_page=100)
-        found = {p['number'] for p in listed} if isinstance(listed, list) else 'unknown'
+        found = {p['number']: bool(p.get('merged_at')) for p in listed} if isinstance(listed, list) else 'unknown'
         cache.set(key, found, CLOSED_FOR)
-    return found != 'unknown' and number in found
+    return None if found == 'unknown' else found
+
+
+def _recently_merged(owner, repo, http):
+    """{number} of a repository's recently closed pull requests that were merged; None if GitHub won't say."""
+    closed = _recently_closed(owner, repo, http)
+    return None if closed is None else {n for n, merged in closed.items() if merged}
+
+
+def _pull_closed(owner, repo, number, http):
+    """Whether this pull request is closed on GitHub, merged or not (Justin, 10 Nov 23:01Z: rabbithole #29-#33,
+    closed when their work moved to magent/ branches and merged through githouse, kept their asks' pills).
+    False if GitHub won't say, so an ask stands rather than clearing on no answer."""
+    closed = _recently_closed(owner, repo, http)
+    return bool(closed) and number in closed
 
 
 def _merged(owner, repo, number, http):
