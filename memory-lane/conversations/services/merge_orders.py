@@ -144,6 +144,22 @@ def can_press(person):
     return bool(person) and person in mergers() and bool(_key())
 
 
+def _no_base(held, repo, branch, number, into):
+    """Why there's nothing to merge into, in words that say what to do (Justin, 10 Nov: "magenta has no
+    magent/candidates here", for a pull request stacked on another that had since merged)."""
+    from .githouse import _sha
+    work = f'{repo}#{number}' if number else f'{repo}:{branch}'
+    if not into:
+        return f'{repo} has no branch to merge into here'
+    if _sha(held, f'refs/merged/{into}') or _sha(held, f'refs/closed/{into}'):
+        gone = 'has merged' if _sha(held, f'refs/merged/{into}') else 'was closed'
+        main = DEPLOYS_FROM.get(repo) or next((b for b in ('main', 'master', 'production') if _sha(held, f'refs/heads/{b}')),
+                                              'main')
+        return (f'{work} is built on {into}, which {gone} since, so there is nothing to merge it into. '
+                f'Its author rebases it onto {main} and points its pull request at {main}; then it can merge.')
+    return f'{work} is to merge into {into}, and githouse has no {repo}:{into}'
+
+
 def preview(repo, branch='', number=None):
     """What merging this work would bring, from githouse's copy: {'repo', 'branch', 'commit', 'into', 'tip',
     'log', 'stat'}. The commit is the branch's head here, or its pull request's head (a branch pushed only to
@@ -164,12 +180,13 @@ def preview(repo, branch='', number=None):
         raise Invalid('which branch? (not one that is merged into)')
     commit = _sha(held, f'refs/heads/{branch}') or (_sha(held, f'refs/pull/{int(number)}/head') if number else None)
     if not commit:
-        raise Invalid(f'githouse has no {repo}:{branch}')
+        raise Invalid(f'githouse has no {repo}:{branch}: its author pushes it to githouse (the hunter remote), '
+                      'then it can merge here')
     into = base or DEPLOYS_FROM.get(repo) or next((b for b in ('production', 'main', 'master')
                                                    if _sha(held, f'refs/heads/{b}')), '')
     tip = _sha(held, f'refs/heads/{into}') if into else None
     if not tip:
-        raise Invalid(f'{repo} has no {into or "branch to merge into"} here')
+        raise Invalid(_no_base(held, repo, branch, number, into))
     if _git(held, 'rev-list', '--count', f'{tip}..{commit}').strip() == '0':  # nothing it has that the target hasn't
         raise Invalid(f'{repo}:{branch} ({commit[:8]}) is in {into} already')
     return {'repo': repo, 'branch': branch, 'number': int(number) if number else None, 'commit': commit,
