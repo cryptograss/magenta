@@ -179,7 +179,7 @@ def tick(title, links, http=None, settle=1.5):
             new = ticked(new, link)
         if new == text:
             return edited  # all done, there
-        done = bot.edit(title, new, 'Merged, says GitHub: ' + ', '.join(links), revision, minor=True)
+        done = bot.edit(title, new, 'Merged or closed, says githouse or GitHub: ' + ', '.join(links), revision, minor=True)
         if (done.get('edit') or {}).get('result') == 'Success':
             edited = True
             time.sleep(settle)  # then read it again: did every tick stay?
