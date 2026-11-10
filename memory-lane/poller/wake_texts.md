@@ -150,6 +150,16 @@
 {{Sent to agents|dial=line|value=candidates|text=Candidate branches open now across our repositories ({count}), most active first: each one's name, its branch, who works on it and in which Mood, its title and what it's for. Before you start work, check it isn't one of these already: if it is, build on that branch or talk with whoever has it; don't start a second. If what you're doing may conflict with one (the same files, the same feature), raise it in #ramp: there, say so; anywhere else, mention magent to carry it there. "Pull request" means GitHub's page for a candidate branch, nothing more.
 }}
 
+'''candidates-changed''': on a later wake of the same session in a Mood, above only what changed in the open candidate branches since it was last told: + opened, ~ changed, − no longer open (Justin, 9 Nov, #ramp). {count} is how many are open now.
+
+{{Sent to agents|dial=line|value=candidates-changed|text=Candidate branches: what changed since your last wake in this session ({count} open now). + opened, ~ changed, − no longer open. What the full list told you stands: build on an open one rather than start a second, and take a conflict to #ramp.
+}}
+
+'''candidates-same''': on a later wake of the same session in a Mood, when no candidate branch opened, changed or closed since it was last told. {count} is how many are open.
+
+{{Sent to agents|dial=line|value=candidates-same|text=Candidate branches: none opened, changed or closed since your last wake in this session ({count} open).
+}}
+
 '''reacted''': above the reactions to its posts since the last wake.
 
 {{Sent to agents|dial=line|value=reacted|text=Reactions to your posts here since you were last woken (a nod, not a question: nothing to answer unless one tells you something):

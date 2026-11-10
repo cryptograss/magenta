@@ -1427,6 +1427,35 @@ def candidate_line(c):
     return f"- {c.get('ref')} ({'; '.join(w for w in where if w)}){draft}: {c.get('title') or ''}{about}".rstrip(': ')
 
 
+CANDIDATES_CHANGED = recovered('line', 'candidates-changed')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+CANDIDATES_SAME = recovered('line', 'candidates-same')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
+# Where a wake's candidates go, until the turn is sent and its session known (Poller.fill_candidates): the whole list
+# on a session's first wake in a Mood, and after that only what changed since that session was told (Justin, 9 Nov).
+CANDIDATES_SLOT = '\x00candidates\x00'
+
+
+def candidate_key(c):
+    return c.get('ref') or f"{c.get('repo')}:{c.get('branch')}"
+
+
+def candidate_news(texts, found, seen):
+    """The wake's lines for the open candidates: every one (candidate_lines) when `seen` is None, else only what
+    changed since `seen` ({key: its line as told}): + opened, ~ changed, − no longer open; one line if nothing did."""
+    if seen is None:
+        return candidate_lines(texts, found)
+    now = {candidate_key(c): candidate_line(c) for c in found}
+    added = [line for key, line in now.items() if key not in seen]
+    changed = [line for key, line in now.items() if key in seen and seen[key] != line]
+    gone = [key for key in seen if key not in now]
+    if not (added or changed or gone):
+        return ['', wake_line(texts, 'candidates-same', CANDIDATES_SAME, count=len(found))]
+    news = (['+ ' + line[2:] for line in added] + ['~ ' + line[2:] for line in changed]
+            + [f'− {key} (no longer open: merged or closed)' for key in gone])
+    more = len(news) - CANDIDATES_TOLD
+    return (['', wake_line(texts, 'candidates-changed', CANDIDATES_CHANGED, count=len(found))] + news[:CANDIDATES_TOLD]
+            + ([f'- and {more} more changes, on the ramp (/moods/pulls/)'] if more > 0 else []))
+
+
 def candidate_lines(texts, found):
     """The open candidate branches, told on every wake (Justin, 9 Nov, #ramp): what's being worked on across our
     repositories, so a turn doesn't start what's already a branch, and takes a conflict to #ramp."""
@@ -2651,6 +2680,7 @@ class MoodPoller:
         """Wake one turn; (outcome, reply, what it cost). Safe to run beside others. One that comes back with
         nothing, failed, is tried once more (RETRY_PAUSE), and the Mood told if it fails again."""
         stop = self.stop_check(slug, options.get('since'))
+        prompt = self.fill_candidates(slug, session_id, prompt, options)
         outcome, reply, cost, failure = self.run_turn_once(slug, session_id, prompt, dict(options))
         if failure and failure['retry'] and not (stop and stop()):
             logger.warning(f'{slug}: came back with nothing ({failure["why"]}); trying once more')
@@ -3018,10 +3048,39 @@ class MoodPoller:
             page = None
         return (self.typing_lines(page, slug) + self.pronoun_lines(page) + self.local_time_lines(page) + self.announced_lines(slug, page) + self.reacted_lines(slug, page)
                 + self.nearmiss_lines(slug, page)
-                + candidate_lines(self.texts, self.api.candidates() if hasattr(self.api, "candidates") else None)
+                + self.candidates_slot(slug)
                 # Open polls, on every kind of wake: a quiet look too (re's review of #157).
                 + (open_polls(self.agent, page) if page else [])
                 + (wake_extras(verbosity or self.knob(slug, 'verbosity', 'normal'), slug, self.texts) if length else []))
+
+    def candidates_slot(self, slug):
+        """The open candidates, asked now and kept for this wake; in the prompt, a slot that fill_candidates
+        fills once the turn's session is known. Nothing if memory-lane can't say."""
+        found = self.api.candidates() if hasattr(self.api, 'candidates') else None
+        if found is None:
+            return []
+        if not hasattr(self, '_candidates_found'):
+            self._candidates_found = {}
+        self._candidates_found[slug] = found
+        return [CANDIDATES_SLOT]
+
+    def fill_candidates(self, slug, session_id, prompt, options):
+        """The prompt with its candidates slot filled, as the turn goes out: the whole list unless this turn
+        resumes the session last told of them in this Mood, then only what changed (candidate_news). Each turn
+        forks a new session id, so what's kept is the id this turn makes: a turn that never ran made no session,
+        and the next resumes an older one and is told the whole list again."""
+        if CANDIDATES_SLOT not in prompt:
+            return prompt
+        found = getattr(self, '_candidates_found', {}).pop(slug, None) or []
+        told = self.state.setdefault('candidates_told', {}).get(slug) or {}
+        seen = told.get('seen') if session_id and told.get('session') == session_id else None
+        lines = candidate_news(self.texts, found, seen) if found or seen else []
+        options.setdefault('new_session', str(uuid.uuid4()))
+        self.state['candidates_told'][slug] = {'session': options['new_session'],
+                                               'seen': {candidate_key(c): candidate_line(c) for c in found}}
+        self.save()
+        said = '\n'.join(lines)
+        return prompt.replace('\n' + CANDIDATES_SLOT, '\n' + said if said else '').replace(CANDIDATES_SLOT, said)
 
     def pronoun_lines(self, page):
         """Who's here (the Mood's emergents and people) and their pronouns, those that pass the allowlist.
