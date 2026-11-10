@@ -129,8 +129,8 @@ def branch_merged(name, branch):
 def branch_closed(name, branch):
     """Whether a mergeable, <repo>:<branch>, was closed without merging: its owner deleted it, and its name moved
     to refs/closed/ (Justin, 10 Nov: "push the merged / wontfixed status from githouse to the moods"). False while
-    it's live or merged; None if githouse doesn't hold the repository. Kept as briefly as a not-yet: a closed name
-    can be pushed again."""
+    it's live or merged; None if githouse doesn't hold the repository. Closed is as final as merged: githouse never
+    takes a used name again (GeneralOrders: "A branch's name is used once"), so a closed answer is kept as long."""
     repo = repository(name)
     if repo is None or not _BRANCH.fullmatch(branch or ''):
         return None
@@ -138,5 +138,5 @@ def branch_closed(name, branch):
     found = cache.get(key)
     if found is None:
         found = _sha(repo, f'refs/closed/{branch}') is not None
-        cache.set(key, found, UNMERGED_FOR)
+        cache.set(key, found, MERGED_FOR if found else UNMERGED_FOR)
     return found

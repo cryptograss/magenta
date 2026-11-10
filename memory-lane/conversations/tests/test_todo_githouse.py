@@ -64,11 +64,12 @@ class BranchClosedTest(GithouseRefsTest):
         self.assertIs(githouse.branch_closed('magenta', 're/live-one'), False)
         self.assertIsNone(githouse.branch_closed('arthel', 're/x'))          # a repository githouse doesn't hold
 
-    def test_a_closed_name_pushed_again_is_open_within_a_minute(self):
+    def test_closed_is_final_and_kept_like_merged(self):
+        # githouse never takes a used name again, so a closed answer isn't asked of git again within the day.
         self.assertIs(githouse.branch_closed('magenta', 're/closed-one'), True)
         git(self.repo.bare, 'update-ref', '-d', 'refs/closed/re/closed-one')
-        cache.delete('githouse:closed:magenta:re/closed-one')   # (kept UNMERGED_FOR: a minute)
-        self.assertIs(githouse.branch_closed('magenta', 're/closed-one'), False)
+        self.assertIs(githouse.branch_closed('magenta', 're/closed-one'), True)
+        self.assertIs(githouse.branch_closed('magenta', 're/live-one'), False)   # a not-yet: asked again in a minute
 
 
 class TodoTicksByBranchTest(GithouseRefsTest):
