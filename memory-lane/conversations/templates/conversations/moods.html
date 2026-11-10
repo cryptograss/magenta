@@ -667,6 +667,9 @@
      than widening the thread for a finger to drag it off into blank (Skyler, 8 Nov: "I can swipe right for way
      too long into infinite blank screen"; #general ran to 612px on a 402px phone). A code block keeps its own scroll. */
   main { overflow-x: hidden; overflow-wrap: anywhere; }
+  /* ...but not a message's heading line: there "anywhere" let a squeezed line shrink a name to one letter a line,
+     "magent" down the page (Justin, 10 Nov, on a phone). Names break at spaces, as before. */
+  main .who { overflow-wrap: normal; }
   /* --gutter: what the jump strip takes at the right (25px + margins). When the
      window leaves room beside the column the text never reaches it; when the
      column fills the width (a phone, zoomed in), its text stops short of it. */
