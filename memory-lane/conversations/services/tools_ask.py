@@ -27,16 +27,18 @@ KINDS = {
 _PREFIX = {'tools': 'requested tools for ', 'merge': 'requested a merge for ', 'deploy': 'requested a redeploy of '}
 
 
-SCAN_KEY = 'asks-scan'
+SCAN_KEY = 'asks-scan-2'   # -2: keys gained a fourth part (each merge ask its own, 10 Nov); the old scan is unread
 OVERLAP = timedelta(minutes=10)  # each read starts this far before the last: a row stamped late is still met
 
 
 def open_requests():
     """{slug: [{'kind', 'emergent', 'for', 'at', 'id'}]}: asks not yet answered by their event there.
 
-    The newest ask of each kind by each agent in each Mood is kept between reads, and each read looks only at
-    what came since the last (Justin, 1 Nov: reading a week of agents' messages afresh took 11 s, every time
-    the Moods list was built). An ask once answered stays answered: its event doesn't go away."""
+    The newest tools and deploy ask by each agent in each Mood is kept between reads; every merge ask is kept,
+    each its own, since one names other branches than the last (Justin, 10 Nov: asking to merge the secret check
+    hid the asks for happenings-pinned and gitignore-env, still unmerged). Each read looks only at what came since
+    the last (Justin, 1 Nov: reading a week of agents' messages afresh took 11 s, every time the Moods list was
+    built). An ask once answered stays answered: its event doesn't go away."""
     kept = cache.get(KEY)
     if kept is not None:
         return kept
@@ -52,7 +54,7 @@ def open_requests():
     want = Q()
     for kind in KINDS:
         want |= Q(t__contains=KINDS[kind]['tag'])
-    latest = scan['latest']  # (slug, agent, kind) -> (message id, its time, what it's for)
+    latest = scan['latest']  # (slug, agent, kind, the message for a merge ask else '') -> (message id, its time, what it's for)
     for m in (Message.objects.filter(created_at__gt=since, mood__isnull=False, sender_id__in=agents)
               .annotate(t=Cast('content', TextField())).filter(want)
               .select_related('mood').order_by('created_at')):
@@ -60,7 +62,7 @@ def open_requests():
         said = quiet_reason(text)
         asks = [said] if said else trailing_asks(text)[1]  # alone, or after words (Justin, 31 Oct)
         for kind, reasons in _by_kind(asks).items():
-            key = (m.mood.slug, m.sender_id, kind)
+            key = (m.mood.slug, m.sender_id, kind, str(m.id) if kind == 'merge' else '')
             if key not in latest or latest[key][1] <= m.created_at:
                 latest[key] = (m.id, m.created_at, '; '.join(reasons))
     # Older than the look back: no longer shown, so no longer kept.
@@ -71,12 +73,13 @@ def open_requests():
     asking = [(k, v) for k, v in latest.items() if (k, v[0]) not in answered]
     requests = Message.objects.filter(id__in=[v[0] for _, v in asking]).select_related('mood').in_bulk()
     found = {}
-    for (slug, agent, kind), (mid, _, purpose) in asking:
+    for key, (mid, _, purpose) in asking:
+        slug, agent, kind, _ = key
         m = requests.get(mid)
         if m is None:
             continue
         if _answered(kind, slug, agent, m, purpose):
-            answered.add(((slug, agent, kind), mid))
+            answered.add((key, mid))
         else:
             found.setdefault(slug, []).append({'kind': kind, 'emergent': agent, 'for': purpose,
                                                'at': m.created_at.isoformat(), 'id': str(m.id),
@@ -218,6 +221,12 @@ def _answered(kind, slug, agent, request, purpose=''):
     source = KINDS[kind]['source']
     if kind == 'deploy':
         return _redeployed(request, purpose)
+    pulls, branches = (named_pulls(purpose), named_branches(purpose)) if kind == 'merge' else (None, None)
+    if pulls is not None and branches is not None and (pulls or branches):
+        # It names what it's for, all of it known: answered when that has merged (or closed), never by another
+        # branch's merge landing in the Mood (Justin, 10 Nov 20:28Z: rabbithole's form-keeps-draft, merged from
+        # #ramp, cleared the ask there for maybelle-config's secret check).
+        return _merged_elsewhere(purpose)
     if source:
         if Message.objects.filter(mood=request.mood, source_file=source, created_at__gt=request.created_at).exists():
             return True
