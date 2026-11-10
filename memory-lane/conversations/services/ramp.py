@@ -386,8 +386,9 @@ def temperature(item, now):
 # --- what's running --------------------------------------------------------------------------------
 
 def running():
-    """{repo: {server: commit}} for what we know is running: magenta's own commit on maybelle, and the
-    maybelle-config commit each server's last deploy ran."""
+    """{repo: {server: commit}} for what we know is running: magenta's own commit on maybelle, the maybelle-config
+    commit each server's last deploy ran, and whatever else that deploy said it put there (its "commits": magenta
+    on hunter, 10 Nov). What maybelle says of itself comes first: it's the running thing."""
     from . import servers, status
     found = {}
     try:
@@ -398,8 +399,12 @@ def running():
         log.warning('ramp: magenta version: %s', e)
     for name in servers.NAMES:
         deploy = servers.last_deploy(name) or {}
-        if deploy.get('commit') and deploy.get('state') == 'finished':
+        if deploy.get('state') != 'finished':
+            continue
+        if deploy.get('commit'):
             found.setdefault('maybelle-config', {})[name] = deploy['commit']
+        for repo, commit in (deploy.get('commits') or {}).items():
+            found.setdefault(repo, {}).setdefault(name, commit)
     return found
 
 
