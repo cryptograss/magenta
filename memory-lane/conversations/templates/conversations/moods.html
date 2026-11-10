@@ -7722,12 +7722,16 @@
     // to read): a dot for each emergent asking, in its colour, then the branch alone -- no "merge", no repository;
     // the sheet names both. A dot goes to where it asked.
     const pills = [];
+    // The branch alone, unless another asked-for candidate here has the same branch in another repository
+    // (re/ci-test in rabbithole and pickipedia-mcp, 9 Nov): then its repository too, or the pills look alike.
+    const repoOf = {};
+    for (const { w } of byWork.values()) if (w.branch) (repoOf[w.branch] = repoOf[w.branch] || new Set()).add(w.repo);
     for (const { w, name, asks: by } of byWork.values()) {
       by.sort((a, b) => a.at < b.at ? -1 : 1);
       const dots = by.map(t => `<a class="msglink asker" href="#m-${esc(t.id)}" data-mood="${esc(current)}" data-reveal="${esc(t.id)}"`
         + ` title="${esc(shown(t.emergent))} asked at ${esc(askTime(t.at))}: ${esc(t.for)}"`
         + ` aria-label="${esc(shown(t.emergent))} asked"><span class="askdot" style="--who: ${agentColor(t.emergent)}"></span></a>`).join('');
-      const label = esc(w.branch || name);
+      const label = esc(w.branch && repoOf[w.branch].size > 1 ? `${w.repo}:${w.branch}` : (w.branch || name));
       const page = w.branch ? `/ramp/${encodeURIComponent(w.repo)}/${String(w.branch).split('/').map(encodeURIComponent).join('/')}/` : '/ramp/';
       pills.push({ at: by[by.length - 1].at, html: `<span class="askpill">${dots}`
         + (CAN_MERGE && window.magentaMerge
