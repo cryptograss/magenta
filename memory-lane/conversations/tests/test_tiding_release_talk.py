@@ -345,7 +345,7 @@ class ReleaseTorrentTest(_Release):
         client = self.client_for(self.justin)
         with mock.patch('conversations.services.tidings.release_info', return_value=info):
             tid = self.post(client, {'cid': CID}).json()['id']
-            return client.get(f'/moods/tidings/{tid}/?embed=1').content.decode()
+            return client.get(f'/tidings/{tid}/?embed=1').content.decode()
 
     def test_bittorrent_comes_first_and_loud(self):
         page = self.page_with(TORRENT_YAML)
