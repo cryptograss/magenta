@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FAQ · magenta</title>
+<title>{{ doc.title }} · magenta</title>
 <style>
   :root {
     --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
@@ -53,6 +53,7 @@
   .slide.cover p { color: var(--muted); font-size: 18px; margin: 0; }
   .slide.cover .hint { margin-top: 28px; font-size: 13px; }
   .bar { flex: none; display: flex; align-items: center; justify-content: center; gap: 14px; padding: 10px 16px 16px; }
+  .bar[hidden] { display: none; }
   .bar button { font: inherit; font-size: 18px; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
                 background: var(--panel); color: var(--ink); cursor: pointer; }
   .bar button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
@@ -75,31 +76,55 @@
   #wikiPreview dt { color: var(--muted); }
   #wikiPreview dd { margin: 0; overflow-wrap: anywhere; }
   #source-html { display: none; }
+  /* A straight document (no [[Category:Magenta slideshows]]): the page as written, in magenta's colours. */
+  .stage.doc { overflow-y: auto; }
+  .doc article { max-width: 760px; margin: 0 auto; padding: 28px 24px 64px; font-size: 17px; line-height: 1.6; }
+  .doc article h1, .doc article h2, .doc article h3 { line-height: 1.2; margin: 1.4em 0 .5em; }
+  .doc article h2 { font-size: 26px; color: var(--accent); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .doc article img { max-width: 100%; height: auto; }
+  .doc article pre, .doc article code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .9em; }
+  .doc article pre { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; }
+  .doc article table { border-collapse: collapse; max-width: 100%; display: block; overflow-x: auto; }
+  .doc article th, .doc article td { border: 1px solid var(--line); padding: 4px 8px; }
+  .doc article .doc-title { font-size: clamp(30px, 5vw, 48px); margin: 0 0 18px; color: var(--accent); border: none; }
 </style>
 </head>
 <body>
 <header>
   <a class="brand" href="/moods/">magenta</a>
-  <span class="where">FAQ</span>
+  <span class="where">{{ doc.title }}</span>
   <a class="source" href="{{ source }}" target="_blank" rel="noopener">edit on PickiPedia ↗</a>
 </header>
 <div class="stage" id="stage">
-  {% if not faq.html %}<div class="empty">{{ faq.error|default:"The FAQ is empty." }}<br><a href="{{ source }}">Read it on PickiPedia</a></div>{% endif %}
+  {% if not doc.html %}<div class="empty">{% if doc.error %}{{ doc.error }}{% else %}{{ doc.title }} is empty.{% endif %}<br><a href="{{ source }}">Read it on PickiPedia</a></div>{% endif %}
 </div>
 <div class="bar" id="bar" hidden>
   <button id="prev" aria-label="previous">←</button>
   <div class="dots" id="dots"></div>
   <button id="next" aria-label="next">→</button>
 </div>
-{# MediaWiki's own rendering of Magenta:FAQ (sanitized by the parser); split into slides below. #}
-<div id="source-html">{{ faq.html|safe }}</div>
+{# MediaWiki's own rendering of the page (sanitized by the parser): split into slides below, or shown whole. #}
+<div id="source-html" data-slides="{{ doc.slides|yesno:'1,' }}" data-title="{{ doc.title }}" data-cover="{{ cover }}">{{ doc.html|safe }}</div>
 <script>
 (function () {
   const stage = document.getElementById('stage');
   const root = document.querySelector('#source-html .mw-parser-output') || document.getElementById('source-html');
   // Links as the wiki writes them (/wiki/...) point back at the wiki.
   root.querySelectorAll('a[href^="/"]').forEach(a => { a.href = 'https://pickipedia.xyz' + a.getAttribute('href'); });
-  root.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+  root.querySelectorAll('a:not([href^="#"])').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });  // the contents' own anchors stay in the page
+  const src = document.getElementById('source-html');
+
+  // Not a slideshow: the page whole, as a document (services/documents.py).
+  if (!src.dataset.slides) {
+    if (!root.textContent.trim()) return;
+    stage.classList.add('doc');
+    const article = document.createElement('article');
+    const h = Object.assign(document.createElement('h1'), { className: 'doc-title', textContent: src.dataset.title });
+    article.append(h, ...Array.from(root.childNodes));
+    stage.appendChild(article);
+    previews();
+    return;
+  }
 
   // Each top-level bullet is a question; the deeper bullets after it, its answer. Read bullet by bullet with
   // their depth, since a blank line in the wikitext ends one list and starts another.
@@ -119,7 +144,8 @@
   const slides = [];
   const cover = document.createElement('section');
   cover.className = 'slide cover';
-  cover.innerHTML = '<img src="/moods/icon-192.png" alt=""><h2>magenta</h2><p>frequently asked questions</p><p class="hint">→ or swipe</p>';
+  cover.innerHTML = '<img src="/moods/icon-192.png" alt=""><h2>magenta</h2><p></p><p class="hint">→ or swipe</p>';
+  cover.querySelector('p').textContent = src.dataset.cover || src.dataset.title;
   slides.push(cover);
   items.forEach((it, i) => {
     const s = document.createElement('section');
@@ -179,8 +205,10 @@
     x0 = null;
   });
   go(parseInt(location.hash.slice(1), 10) || 0, true);
+  previews();
 
   // PickiPedia links previewed on hover, as the Moods do (moods.html; /api/wiki/preview/). Mouse only.
+  function previews() {
   const esc = t => String(t).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
   const previews = new Map();
   const card = Object.assign(document.createElement('div'), { id: 'wikiPreview', hidden: true });
@@ -202,7 +230,7 @@
   const hide = () => { clearTimeout(timer); over = null; card.hidden = true; };
   document.addEventListener('pointerover', e => {
     if (e.pointerType !== 'mouse') return;
-    const a = e.target.closest && e.target.closest('.slide a[href]');
+    const a = e.target.closest && e.target.closest('.slide a[href], article a[href]');
     if (!a || a === over) return;
     const t = titleOf(a);
     if (!t) return;
@@ -222,11 +250,12 @@
     }, 350);
   });
   document.addEventListener('pointerout', e => {
-    const a = e.target.closest && e.target.closest('.slide a[href]');
+    const a = e.target.closest && e.target.closest('.slide a[href], article a[href]');
     if (a && a === over && !a.contains(e.relatedTarget)) hide();
   });
   document.addEventListener('keydown', hide);
   stage.addEventListener('scroll', hide, true);
+  }
 })();
 </script>
 </body>
