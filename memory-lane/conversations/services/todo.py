@@ -379,9 +379,9 @@ def merged_now(owner, repo, number, title='', by='', commit='', branch=''):
     from conversations.models import Mood
     repository = same(f'{owner}/{repo}')  # a link to the old place is kept under the new one
     cache.set(f'todo:pull:{repository}#{number}', True, MERGED_FOR)
-    recent = cache.get(f'todo:merged:{repository}')
-    if isinstance(recent, set):
-        cache.set(f'todo:merged:{repository}', recent | {number}, CLOSED_FOR)
+    closed = cache.get(f'todo:closed:{repository}')  # _recently_closed's listing, if it's kept: merged is closed too
+    if isinstance(closed, dict):
+        cache.set(f'todo:closed:{repository}', {**closed, number: True}, CLOSED_FOR)
     cache.delete_many([f'todo:{slug}' for slug in Mood.objects.values_list('slug', flat=True)])
     cache.delete('todo:all_moods')
     changed()
