@@ -196,7 +196,7 @@
     {% for m in board.merged %}
     <tr>
       <td class="work">{% if m.page %}<a class="title" href="/ramp/{{ m.repo|urlencode:'' }}/{{ m.branch|urlencode }}/" title="Its page: what it changed, its commits, what was said">{{ m.title }}</a>{% else %}<span class="title">{{ m.title }}</span>{% endif %}
-        <br><span class="ref">{{ m.repo }}{% if m.branch %}:{{ m.branch }}{% endif %}</span>{% if m.number %} <a class="gh" href="{{ m.url }}" target="_blank" rel="noopener" title="GitHub's pull request page for it">PR #{{ m.number }} ↗</a>{% endif %}</td>
+        <br><span class="ref">{{ m.repo }}{% if m.branch %}:{{ m.branch }}{% endif %}</span>{% if m.number %} <a class="gh" href="{{ m.url }}" target="_blank" rel="noopener" title="GitHub's pull request page for it">PR #{{ m.number }} ↗</a>{% elif m.merge %} <span class="branch" title="merged by githouse: the merge commit on {{ m.base }}">→ {{ m.base }} as {{ m.merge|slice:':8' }}</span>{% endif %}</td>
       <td>{{ m.worked_on_by|default:m.author }}</td>
       <td>{% for mood in m.moods %}<a href="/moods/{{ mood }}/">#{{ mood }}</a>{% if not forloop.last %} {% endif %}{% endfor %}</td>
       <td class="num">{% if m.merged %}{{ m.merged|date:"j M H:i" }}Z{% endif %}</td>

@@ -10981,6 +10981,7 @@
 <script>
   // A merge sheet covers its Mood's pane, not the page, and goes and comes with its Mood (Justin, 9 Nov).
   magentaMerge.within(() => document.getElementById('main'));
+  magentaMerge.barUnder(() => document.querySelector('body > header'));  // the bar, on every page: below the nav
   magentaMerge.show(window.magentaMoodOnScreen ? window.magentaMoodOnScreen() : null);
 </script>{% endif %}
 </body>
