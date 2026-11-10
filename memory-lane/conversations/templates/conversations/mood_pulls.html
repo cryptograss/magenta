@@ -92,6 +92,10 @@
   .tests.passed { color: var(--ok); border-color: var(--ok); }
   .tests.failed { color: var(--err); border-color: var(--err); }
   .tests.testing { color: var(--warn); border-color: var(--warn); }
+  /* Conflicts (services/ramp.clashes; Skyler and Justin, 10 Nov): with its base, and with another open candidate. */
+  .clash { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--warn);
+           color: var(--warn); cursor: help; }
+  .clash.base { border-color: var(--err); color: var(--err); }
   button.merge { font: inherit; font-size: 12px; padding: 1px 9px; border-radius: 4px; cursor: pointer;
                  border: 1px solid var(--accent); background: none; color: var(--accent); }
   button.merge:hover { background: var(--accent-soft); }
@@ -168,6 +172,8 @@
         {% if i.branch and i.state != 'merged' and i.page or i.branch and i.state != 'merged' and can_thumb %}<a class="title" href="/ramp/{{ i.repo|urlencode:'' }}/{{ i.branch|urlencode }}/" title="Its page: what it changes, its commits, what's been said">{{ i.title|default:i.branch }}</a>{% elif i.url %}<a class="title" href="{{ i.url }}" target="_blank" rel="noopener">{{ i.title|default:i.branch }}</a>{% else %}<span class="title">{{ i.title|default:i.branch }}</span>{% endif %}
         {% if i.state != 'open' and i.state != 'pushed' %}<span class="state {{ i.state }}"{% if i.state == 'merged' %} title="githouse has it merged; its card hasn't caught up"{% endif %}>{{ i.state }}</span>{% endif %}
         {% if i.tests %}<a class="tests {{ i.tests.state|slugify }}" href="{{ i.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ i.tests.number }} on Jenkins, for this head">{% if i.tests.state == 'passed' %}✓ tests{% elif i.tests.state == 'failed' %}✗ tests{% elif i.tests.state == 'testing' %}… testing{% else %}{{ i.tests.state }}{% endif %}</a>{% endif %}
+        {% if i.conflicts %}<span class="clash base" title="Merging it into {{ i.base|default:'its base' }} as githouse has it now conflicts in: {{ i.conflicts|join:', ' }}. Its author merges or rebases onto it first.">⚠ conflicts with {{ i.base|default:'its base' }}</span>{% endif %}
+        {% for c in i.clashes %}<span class="clash" title="If both merged, {{ c.ref }}{% if c.branch %} ({{ c.branch }}){% endif %} would conflict with this in: {{ c.files|join:', ' }}. Whichever merges second rebases.">⇄ {{ c.ref }}</span>{% endfor %}
         {% include "conversations/_asks.html" with w=i %}
         {% include "conversations/_thumb.html" with w=i %}
         <br><span class="ref">{{ i.repo }}:{{ i.branch|default:"?" }}</span>{% if i.base %}<span class="branch"> → {{ i.base }}</span>{% endif %}{% if i.number %} <a class="gh" href="{{ i.url }}" target="_blank" rel="noopener" title="GitHub's pull request page for it">PR #{{ i.number }} ↗</a>{% endif %}

@@ -464,6 +464,75 @@ def live_on(repo_name, head, runs):
 
 # --- the board -------------------------------------------------------------------------------------
 
+# --- conflicts ---------------------------------------------------------------------------------------
+
+CLASH_FOR = 7 * 86400   # an answer about two commits never changes: kept a week
+CLASH_PAIRS = 600       # pairs of candidates tried at most in one build (the rest wait for the next)
+
+
+def _merge_tree(repo, one, two, scratch):
+    """The files merging commit `two` into `one` would conflict in: [] if it merges cleanly, None if git can't say.
+    git merge-tree does the merge in memory; the objects it makes go to `scratch`, since githouse's copy is
+    mounted read-only. Kept by the two commits' ids, which never change."""
+    import os
+    import subprocess
+    key = f'ramp:clash:{repo.name}:{one}:{two}'
+    found = cache.get(key)
+    if found is not None:
+        return found
+    env = {**os.environ, 'GIT_OBJECT_DIRECTORY': scratch, 'GIT_ALTERNATE_OBJECT_DIRECTORIES': str(repo / 'objects')}
+    try:
+        done = subprocess.run(['git', '-c', 'safe.directory=*', '--git-dir', str(repo), 'merge-tree', '--write-tree',
+                               '--name-only', '--no-messages', one, two], env=env, capture_output=True, text=True,
+                              timeout=20)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning('ramp: merge-tree in %s: %s', repo.name, e)
+        return None
+    if done.returncode not in (0, 1):  # 1 is "it conflicts"; anything else, git couldn't say (too old, a bad id)
+        return None
+    files = list(dict.fromkeys(f for f in done.stdout.splitlines()[1:] if f.strip())) if done.returncode else []
+    cache.set(key, files, CLASH_FOR)
+    return files
+
+
+def clashes(items, held, refs):
+    """Whether each open candidate would conflict (Skyler and Justin, 10 Nov: "a conflict tab that tells us if there
+    is conflict in the code"), as two marks on its row:
+    item['conflicts']: the files it conflicts with its base in, as githouse has the base now ([] if none);
+    item['clashes']: [{'ref', 'files'}], the other open candidates on the same base it would conflict with, if both
+    merged -- the ones touching the same lines, not merely the same files (in magenta nearly every branch touches
+    moods.html, so files alone would mark them all)."""
+    import tempfile
+    open_ = [i for i in items if i.get('state') != 'merged' and i.get('head') and i['repo'] in held]
+    for i in open_:
+        i['ref'] = f"{i['repo']}#{i['number']}" if i.get('number') else f"{i['repo']}:{i.get('branch', '')}"
+        i['clashes'] = []
+    tried = 0
+    with tempfile.TemporaryDirectory(prefix='ramp-merge-') as scratch:
+        for i in open_:
+            base = _base(refs[i['repo']], i.get('base', ''), i['repo'])
+            tip = refs[i['repo']].get(f'refs/heads/{base}')
+            i['_base_name'] = base
+            i['conflicts'] = _merge_tree(held[i['repo']], tip[0], i['head'], scratch) if tip else None
+        for n, a in enumerate(open_):
+            for b in open_[n + 1:]:
+                if a['repo'] != b['repo'] or a['_base_name'] != b['_base_name'] or a['head'] == b['head']:
+                    continue
+                if tried >= CLASH_PAIRS:
+                    break
+                tried += 1
+                # Less what either conflicts with its base in already: that's the base's quarrel, said by its own
+                # mark, not these two's (#462, built on main, isn't at odds with #436 because #436 is with main).
+                own = set(a.get('conflicts') or []) | set(b.get('conflicts') or [])
+                files = [f for f in (_merge_tree(held[a['repo']], a['head'], b['head'], scratch) or []) if f not in own]
+                if files:
+                    a['clashes'].append({'ref': b['ref'], 'branch': b.get('branch', ''), 'files': files})
+                    b['clashes'].append({'ref': a['ref'], 'branch': a.get('branch', ''), 'files': files})
+    for i in open_:
+        i.pop('_base_name', None)
+    return items
+
+
 def board(now=None, stale_ok=False):
     """Everything /ramp/ shows: {'open', 'merged', 'names', 'log', 'repos', 'error'}.
 
@@ -530,6 +599,10 @@ def board(now=None, stale_ok=False):
         log.warning('ramp: asks: %s', e)
     for item in items:
         item['temperature'] = temperature(item, now)
+    try:
+        clashes(items, held, refs)
+    except Exception as e:  # noqa: BLE001 -- a nicety: the board stands without it
+        log.warning('ramp: clashes: %s', e)
     merged = []
     for c in got['merged'][:MERGED_SHOWN]:
         repo_name, number = c.get('repo', ''), int(c.get('number') or 0)

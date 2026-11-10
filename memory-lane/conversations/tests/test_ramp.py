@@ -314,3 +314,82 @@ class BranchTestsTest(TestCase):
         self.runs([self.build(1, 'magenta', 'a' * 40, 'FAILURE')])
         items = ramp.with_tests([{'repo': 'magenta', 'head': 'a' * 40}, {'repo': 'magenta', 'head': 'd' * 40}])
         self.assertEqual([i['tests'] and i['tests']['state'] for i in items], ['failed', None])
+
+
+class ClashTest(TestCase):
+    """Skyler and Justin, 10 Nov: the ramp says when a candidate would conflict -- with its base, and with another
+    open candidate -- before anyone presses Merge."""
+
+    def setUp(self):
+        import os
+        import subprocess
+        cache.clear()
+        self.mount = Path(tempfile.mkdtemp())
+        self.repo = Repo(self.mount)
+        w = self.repo.work
+
+        def change(branch, text, start='main', name='a.txt'):
+            git(w, 'checkout', '-q', start)
+            git(w, 'checkout', '-q', '-b', branch)
+            (w / name).write_text(text)
+            git(w, 'add', name)
+            git(w, 'commit', '-q', '-m', branch)
+            return git(w, 'rev-parse', 'HEAD')
+        (w / 'a.txt').write_text('one\n')
+        git(w, 'add', 'a.txt')
+        git(w, 'commit', '-q', '-m', 'a')
+        self.heads = {'re/left': change('re/left', 'left\n'), 'magent/right': change('magent/right', 'right\n'),
+                      'blu/elsewhere': change('blu/elsewhere', 'b\n', name='b.txt')}
+        git(w, 'checkout', '-q', 'main')
+        (w / 'a.txt').write_text('main moved\n')
+        git(w, 'commit', '-q', '-am', 'main moves')
+        self.heads['re/later'] = change('re/later', 'main moved\nand more\n')
+        self.repo.push()
+        # githouse's copy is mounted read-only: the check makes its objects elsewhere.
+        for root, dirs, files in os.walk(self.repo.bare):
+            for n in dirs + files:
+                os.chmod(os.path.join(root, n), 0o555 if n in dirs else 0o444)
+        self.addCleanup(subprocess.run, ['chmod', '-R', 'u+w', str(self.mount)])
+
+    def items(self):
+        return [{'repo': 'magenta', 'number': None, 'branch': b, 'base': 'main', 'state': 'pushed', 'head': h}
+                for b, h in self.heads.items()]
+
+    def test_with_its_base_and_with_each_other(self):
+        refs = {'magenta': ramp._refs(self.repo.bare)}
+        got = {i['branch']: i for i in ramp.clashes(self.items(), {'magenta': self.repo.bare}, refs)}
+        self.assertEqual(got['re/left']['conflicts'], ['a.txt'])      # main changed the same line since
+        self.assertEqual(got['blu/elsewhere']['conflicts'], [])       # another file
+        self.assertEqual(got['re/later']['conflicts'], [])            # built on main as it is
+        # re/left and magent/right are each at odds with main already: that's their own mark, not a clash between them.
+        self.assertEqual(got['re/left']['clashes'], [])
+        self.assertEqual([c['ref'] for c in got['re/later']['clashes']], [])
+        self.assertEqual(got['blu/elsewhere']['clashes'], [])
+
+    def test_two_candidates_at_odds_with_each_other_only(self):
+        w = self.repo.work
+        import subprocess
+        subprocess.run(['chmod', '-R', 'u+w', str(self.mount)], check=True)
+        git(w, 'checkout', '-q', 'main')
+        git(w, 'checkout', '-q', '-b', 'magent/also-later')
+        (w / 'a.txt').write_text('main moved\nbut otherwise\n')
+        git(w, 'commit', '-q', '-am', 'also')
+        self.heads['magent/also-later'] = git(w, 'rev-parse', 'HEAD')
+        self.repo.push()
+        refs = {'magenta': ramp._refs(self.repo.bare)}
+        got = {i['branch']: i for i in ramp.clashes(self.items(), {'magenta': self.repo.bare}, refs)}
+        self.assertEqual(got['magent/also-later']['conflicts'], [])
+        self.assertEqual(got['re/later']['clashes'], [{'ref': 'magenta:magent/also-later', 'branch': 'magent/also-later',
+                                                       'files': ['a.txt']}])
+        self.assertEqual([c['ref'] for c in got['magent/also-later']['clashes']], ['magenta:re/later'])
+
+    def test_the_row_says_so(self):
+        from django.template.loader import render_to_string
+        item = {'repo': 'magenta', 'branch': 're/left', 'base': 'main', 'state': 'pushed', 'title': 'left', 'author': 're',
+                'worked_on_by': '', 'where': [], 'mentions': [], 'people': [], 'size': {}, 'held': True, 'deploy': '',
+                'conflicts': ['a.txt'], 'clashes': [{'ref': 'magenta#7', 'branch': 're/foo', 'files': ['b.txt']}]}
+        page = render_to_string('conversations/mood_pulls.html', {'open': [item], 'board': {'merged': [], 'names': []}})
+        self.assertIn('⚠ conflicts with main</span>', page)
+        self.assertIn('conflicts in: a.txt', page)
+        self.assertIn('⇄ magenta#7</span>', page)
+        self.assertIn('would conflict with this in: b.txt', page)
