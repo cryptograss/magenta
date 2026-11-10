@@ -536,3 +536,29 @@ class SheetSaysWhatItIsTest(WorkRepo):
         self.assertIn('<div class="about" hidden><b class="title"></b><span class="words"></span></div>', sheet)
         self.assertNotIn('class="log"', sheet)
         self.assertIn('<pre class="stat" hidden></pre>', sheet)   # what it changes, still
+
+
+from conversations.tests.test_githouse import git  # noqa: E402
+
+
+class SheetForABranchOnlyOnGitHubTest(WorkRepo):
+    """Justin, 10 Nov (#ramp): Merge on maybelle-config:magent/resdtp-releases said "githouse has no ...". It was pushed
+    only to GitHub, with a pull request; githouse held it as refs/pull/298/head alone. Named repo:branch, the sheet
+    now finds its pull request on the ramp's card and shows that head; githouse merges it from GitHub's."""
+
+    def test_named_by_branch_it_finds_the_pull_requests_head(self):
+        git(self.repo.bare, 'update-ref', '-d', 'refs/heads/re/foo')   # only refs/pull/7/head is left
+        ramp.board()
+        self.as_('justin')
+        seen = self.client.get('/api/merge-orders/preview/', {'repo': 'magenta', 'branch': 're/foo'})
+        self.assertEqual(seen.status_code, 200, seen.content)
+        self.assertEqual((seen.json()['commit'], seen.json()['number']), (self.head, 7))
+
+    def test_with_no_pull_request_either_it_still_says_so(self):
+        git(self.repo.bare, 'update-ref', '-d', 'refs/heads/re/foo')
+        self.cards['open'] = []
+        ramp.board()
+        self.as_('justin')
+        seen = self.client.get('/api/merge-orders/preview/', {'repo': 'magenta', 'branch': 're/foo'})
+        self.assertEqual(seen.status_code, 400)
+        self.assertIn('githouse has no magenta:re/foo', seen.json()['error'])

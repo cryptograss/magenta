@@ -162,6 +162,15 @@ def preview(repo, branch='', number=None):
         branch, base = branch or card.get('branch', ''), card.get('base', '')
     if not _BRANCH.fullmatch(branch or '') or branch in ('main', 'master', 'production'):
         raise Invalid('which branch? (not one that is merged into)')
+    if not number and not _sha(held, f'refs/heads/{branch}'):
+        # Named repo:branch, but pushed only to GitHub, with a pull request (Justin, 10 Nov: "githouse has no
+        # maybelle-config:magent/resdtp-releases"; 18 open then): githouse holds its head as refs/pull/<n>/head, and
+        # merges it by reading GitHub's head (githouse.merge). Its card says which pull request it is.
+        from . import ramp
+        card = next((i for i in ramp.board(stale_ok=True).get('open', [])
+                     if i.get('repo') == repo and i.get('branch') == branch and i.get('number')), None)
+        if card is not None:
+            number, base = int(card['number']), card.get('base', '')
     commit = _sha(held, f'refs/heads/{branch}') or (_sha(held, f'refs/pull/{int(number)}/head') if number else None)
     if not commit:
         raise Invalid(f'githouse has no {repo}:{branch}')
