@@ -718,6 +718,15 @@ def short_description(text):
     return ''
 
 
+def branch_of(repo, number):
+    """The branch of repo's pull request #number, as the last board built says; '' if it doesn't say. Never builds a
+    board (seconds, on maybelle): what asks it is drawn every few seconds (the Mood list's merge asks)."""
+    for item in (cache.get(KEY) or {}).get('open', []):
+        if item.get('repo') == repo and item.get('number') == number:
+            return item.get('branch') or ''
+    return ''
+
+
 def candidates():
     """Every open candidate branch, most active first: [{'ref', 'repo', 'branch', 'number', 'title', 'about',
     'who', 'moods', 'state'}]. 'ref' is repo#N for one with a pull request, else repo:branch."""

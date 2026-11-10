@@ -155,13 +155,15 @@ def _merged_elsewhere(purpose):
 
 
 def unmerged(purpose):
-    """The candidate branches a merge ask names that haven't merged yet (nor been closed): [{'repo', 'number'} or {'repo', 'branch'}],
-    in the order named, each once. The page draws one line for each, with every emergent asking for it (Justin,
-    9 Nov: an ask naming #451 and #449 kept a Merge for #449 after #449 merged). One it can't say about counts as
-    not merged."""
+    """The candidate branches a merge ask names that haven't merged yet (nor been closed): [{'repo', 'number',
+    'branch'} or {'repo', 'branch'}], in the order named, each once. The page draws one line for each, with every
+    emergent asking for it (Justin, 9 Nov: an ask naming #451 and #449 kept a Merge for #449 after #449 merged);
+    the Mood list shows each by its branch's name (Justin, 9 Nov), a pull request's as the ramp last had it (''
+    if it hasn't). One it can't say about counts as not merged."""
     import requests
 
     from . import githouse
+    from .ramp import branch_of
     from .todo import _merged
     out, seen = [], set()
     for _, repo, number in named_pulls(purpose) or []:
@@ -173,7 +175,7 @@ def unmerged(purpose):
         except Exception:  # noqa: BLE001 -- GitHub unreachable: shown as still wanted
             done = False
         if not done:
-            out.append({'repo': repo, 'number': number})
+            out.append({'repo': repo, 'number': number, 'branch': branch_of(repo, number)})
     for repo, branch in named_branches(purpose) or []:
         if (repo, branch) in seen:
             continue
