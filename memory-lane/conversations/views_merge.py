@@ -57,7 +57,11 @@ def api_merge_order(request, order_id):
     """One order's status, as githouse's records say: waiting, merged, refused (and why) or expired."""
     order = get_object_or_404(MergeOrder, id=order_id)
     now = merge_orders.status(order)
-    if now.get('status') == 'merged' and order.mood == '':  # a Mood's order: announce_merged has told the ramp
+    # Merged: the ramp's kept board is marked old now, whichever page pressed it. This answer is what turns the bar
+    # ✓ and reloads the ramp behind a Mood; announce_merged would tell the ramp too, but only at githouse's next look
+    # (5 s), and a reload before that drew the old board, the branch still open, until the ramp was left and
+    # opened again (Justin, 10 Nov, #ramp: magent/mood-list-candidates, pressed in #interfaces).
+    if now.get('status') == 'merged':
         from django.core.cache import cache
         from .services import ramp
         if cache.add(f'ramp-told:{order.id}', 1, 3 * 3600):  # once, however often it's asked after

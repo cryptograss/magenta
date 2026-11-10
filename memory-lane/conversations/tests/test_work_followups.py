@@ -186,6 +186,31 @@ class RampLinksAndSheetTest(WorkRepo):
         json.dumps(got)  # as the sheet gets it
 
 
+class MergedFromAMoodTellsTheRampTest(WorkRepo):
+    """Justin, 10 Nov (#ramp): merged magent/mood-list-candidates from #interfaces' sheet, and the ramp kept showing
+    it open until he left it and came back. The ✓ reloaded the ramp before announce_merged had marked its board
+    old; now the answer that turns the bar ✓ marks it, for a Mood's order too."""
+
+    def test_a_moods_order_merged_marks_the_board_old_once(self):
+        order = MergeOrder.objects.create(repo='magenta', branch='re/foo', by='justin', mood='interfaces', order='o',
+                                          signature='s', nonce='n2', expires=int(time.time()) + 600)
+        told = []
+        with mock.patch('conversations.services.merge_orders.status', lambda o: {'status': 'merged'}), \
+             mock.patch.object(ramp, 'changed', lambda: told.append(1)):
+            for _ in range(3):   # the sheet asks every second or so
+                self.assertEqual(self.client.get(f'/api/merge-orders/{order.id}/').json()['status'], 'merged')
+        self.assertEqual(told, [1])
+
+    def test_one_still_waiting_tells_it_nothing(self):
+        order = MergeOrder.objects.create(repo='magenta', branch='re/foo', by='justin', mood='interfaces', order='o',
+                                          signature='s', nonce='n3', expires=int(time.time()) + 600)
+        told = []
+        with mock.patch('conversations.services.merge_orders.status', lambda o: {'status': 'waiting'}), \
+             mock.patch.object(ramp, 'changed', lambda: told.append(1)):
+            self.client.get(f'/api/merge-orders/{order.id}/')
+        self.assertEqual(told, [])
+
+
 class SheetFullDiffTest(WorkRepo):
     """The merge sheet's "± See the full diff" (Justin, 9 Nov: "a link from the merge modal to see the full
     diff"): the candidate's page, in the ramp, at #diff."""
