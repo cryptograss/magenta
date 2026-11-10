@@ -10,6 +10,10 @@
   section.work .state.merged { color: #8250df; border-color: #8250df; }
   section.work .tests.passed { color: #2e9e5b; border-color: #2e9e5b; }
   section.work .tests.failed { color: #c0392b; border-color: #c0392b; }
+  section.work .clash { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid #d48806;
+    color: #d48806; text-decoration: none; cursor: help; }
+  section.work .clash.base { border-color: #c0392b; color: #c0392b; }
+  section.work ul.files .conflict { color: #c0392b; font-size: 11.5px; margin-left: 6px; }
   section.work .wmeta { font-size: 12.5px; color: var(--muted); margin: 4px 0 10px; }
   section.work .wmeta span.add, section.work .files span.add { color: #2e9e5b; }
   section.work .wmeta span.rm, section.work .files span.rm { color: #c0392b; }
@@ -55,6 +59,8 @@
     {% if work.item.url %}<a class="ref" href="{{ work.item.url }}" target="_blank" rel="noopener">{{ work.ref }}</a>{% else %}<span class="ref">{{ work.ref }}</span>{% endif %}
     <h2 class="wtitle">{{ work.item.title|default:tiding.title }}</h2>
     {% if work.tests %}<a class="tests {{ work.tests.state|slugify }}" href="{{ work.tests.url }}console" target="_blank" rel="noopener" title="branch-tests #{{ work.tests.number }} on Jenkins, for this head">{% if work.tests.state == 'passed' %}✓ tests{% elif work.tests.state == 'failed' %}✗ tests{% elif work.tests.state == 'testing' %}… testing{% else %}{{ work.tests.state }}{% endif %}</a>{% endif %}
+    {% if work.conflicts %}<span class="clash base" title="Merging it into {{ work.base }} as githouse has it now conflicts in: {{ work.conflicts|join:', ' }}. Its author merges or rebases onto {{ work.base }} first.">⚠ conflicts with {{ work.base }}</span>{% endif %}
+    {% for c in work.clashes %}{% if c.branch %}<a class="clash" href="/ramp/{{ work.repo|urlencode:'' }}/{{ c.branch|urlencode }}/"{% else %}<span class="clash"{% endif %} title="If both merged, {{ c.ref }} would conflict with this in: {{ c.files|join:', ' }}. Whichever merges second rebases.">⇄ {{ c.ref }}{% if c.branch %}</a>{% else %}</span>{% endif %}{% endfor %}
     {% if work.item %}{% include "conversations/_asks.html" with w=work.item %}{% include "conversations/_thumb.html" with w=work.item %}{% endif %}
     {% if can_merge and work.item and work.state != 'merged' %}<button type="button" class="merge" id="workMerge" title="Look at what it brings, then merge it, as you">Merge…</button>{% endif %}
   </div>
@@ -75,6 +81,7 @@
   <ul class="files">
     {% for f in work.files %}<li data-path="{{ f.path }}"><button type="button" class="file" title="Show what changed in it">{{ f.path }}</button>
       {% if f.binary %}<span class="muted">binary</span>{% else %}<span class="add">+{{ f.added }}</span> <span class="rm">−{{ f.removed }}</span>{% endif %}
+      {% if f.conflict %}<span class="conflict" title="This file is where it conflicts">⚠ conflict</span>{% endif %}
       {% if not f.binary %}<a href="#" class="whole" title="The whole file at this head, every line numbered">whole file</a>{% endif %}
       <div class="view" hidden></div></li>{% endfor %}
   </ul>
