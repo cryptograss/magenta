@@ -43,7 +43,7 @@ FRESH_EVERY = 30        # seconds between reads of what's new
 BUILD_BUDGET_MS = 60000  # the build's most, on PostgreSQL; it runs off the request
 BUILD_RETRY = 600       # seconds before a build that failed is tried again
 BUILD_IN_BACKGROUND = True  # tests build in the request, so nothing writes into another test's database
-MERGED_SHOWN = 5
+MERGED_SHOWN = 12        # with every branch githouse merged, not only pull requests (Justin, 10 Nov)
 NAMES_SHOWN = 12
 LOG_SHOWN = 15
 # Temperature: hours since the last push or mention.
@@ -111,6 +111,36 @@ def _refs(repo):
         if len(parts) == 5:
             found[parts[0]] = (parts[1], int(parts[2] or 0), parts[3], parts[4])
     return found
+
+
+def githouse_merged(repo, found, name, reach=200):
+    """The branches githouse has merged into this repository's deploy branch, newest first: [{'repo', 'branch',
+    'number': None, 'title', 'url': '', 'author', 'worked_on_by': '', 'moods': [], 'deploy': '', 'merged', 'base',
+    'head', 'merge'}]. Each is a refs/merged/<branch>, matched to the merge on the deploy branch whose second parent
+    is its head; one with no such merge in the last `reach` (merged by hand elsewhere) takes its head's time."""
+    from .githouse import _git
+    base = _base(found, '', name)
+    if not base:
+        return []
+    brought = {}
+    out = _git(repo, 'log', '--first-parent', '--merges', f'-n{reach}', '--format=%H%x00%ct%x00%P',
+               f'refs/heads/{base}')
+    for line in out.splitlines():
+        parts = line.split('\0')
+        if len(parts) == 3 and len(parts[2].split()) > 1:
+            brought.setdefault(parts[2].split()[1], (parts[0], int(parts[1] or 0)))
+    rows = []
+    for ref, (sha, unix, author, subject) in found.items():
+        if not ref.startswith('refs/merged/'):
+            continue
+        branch = ref[len('refs/merged/'):]
+        merge, when = brought.get(sha, ('', unix))
+        rows.append({'repo': name, 'number': None, 'title': subject, 'url': '', 'branch': branch,
+                     'author': branch.split('/')[0] if '/' in branch else author, 'worked_on_by': '', 'moods': [],
+                     'deploy': '', 'merged': _when(when), 'base': base, 'head': sha, 'merge': merge})
+    floor = datetime.min.replace(tzinfo=timezone.utc)
+    rows.sort(key=lambda r: r['merged'] or floor, reverse=True)
+    return rows
 
 
 def _base(refs, wanted='', repo=''):
@@ -505,6 +535,16 @@ def board(now=None, stale_ok=False):
                        'moods': [m.strip() for m in c.get('moods', '').split(',') if m.strip()],
                        'deploy': c.get('deploy', ''), 'merged': _card_time(c.get('merged')), 'base': c.get('base', ''),
                        'live_on': live_on(repo_name, head[0] if head else '', runs)})
+    # And every branch githouse merged, pull request or not (Justin, 10 Nov: "we need to list branches merged
+    # through githouse"): refs/merged/<branch>, with when and as what from the merge that brought it in.
+    carded = {(m['repo'], m['branch']) for m in merged if m['branch']}
+    for name, repo in held.items():
+        for m in githouse_merged(repo, refs.get(name, {}), name):
+            if (name, m['branch']) not in carded:
+                merged.append({**m, 'live_on': live_on(name, m['head'], runs)})
+    floor = datetime.min.replace(tzinfo=timezone.utc)
+    merged.sort(key=lambda m: m.get('merged') or floor, reverse=True)
+    merged = merged[:MERGED_SHOWN]
     names = []
     for name, found in refs.items():
         for ref, (sha, unix, author, subject) in found.items():

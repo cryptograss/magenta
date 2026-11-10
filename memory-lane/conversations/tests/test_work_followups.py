@@ -428,3 +428,49 @@ class MergeBarAndFreshRampTest(WorkRepo):
         self.assertIn("window.dispatchEvent(new CustomEvent('magentaMerged', { detail: merged }));", sheet)
         page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
         self.assertIn("window.addEventListener('magentaMerged', e => {", page)
+        # On every page (Justin, 10 Nov): a press in a section's frame writes its line in the one page's bar.
+        self.assertIn('up.magentaMerge && up.magentaMerge.barLine) return up.magentaMerge;', sheet)
+        self.assertIn('const line = (topBar() || { barLine }).barLine(', sheet)
+
+
+class GithouseMergedTest(WorkRepo):
+    """'Merged lately' lists every branch githouse merged, not only pull requests (Justin, 10 Nov)."""
+
+    def merge_by_githouse(self, branch, head):
+        from conversations.tests.test_githouse import git
+        git(self.repo.work, 'checkout', '-q', 'main')
+        git(self.repo.work, 'reset', '-q', '--hard', self.base)
+        git(self.repo.work, 'merge', '-q', '--no-ff', '-m', f'Merge magenta:{branch}', head)
+        merge = git(self.repo.work, 'rev-parse', 'HEAD')
+        self.repo.ref('refs/heads/main', merge)
+        self.repo.ref(f'refs/merged/{branch}', head)
+        git(self.repo.bare, 'update-ref', '-d', f'refs/heads/{branch}')
+        return merge
+
+    def test_a_branch_githouse_merged_is_listed_with_its_merge(self):
+        self.cards['open'] = []
+        merge = self.merge_by_githouse('re/foo', self.head)
+        cache.delete(ramp.KEY)
+        [m] = ramp.board()['merged']
+        self.assertEqual((m['repo'], m['branch'], m['number'], m['merge'], m['base'], m['title']),
+                         ('magenta', 're/foo', None, merge, 'main', 'the foo work'))
+        self.assertIsNotNone(m['merged'])
+        page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
+        merged_table = page.split('<h2>Merged lately</h2>')[1].split('</table>')[0]
+        self.assertIn('<span class="ref">magenta:re/foo</span>', merged_table)
+        self.assertIn(f'→ main as {merge[:8]}', merged_table)
+
+    def test_one_with_a_pull_request_card_is_listed_once(self):
+        self.cards['merged'] = [dict(self.cards['open'][0], merged='2026-11-09 20:00:00')]
+        self.cards['open'] = []
+        self.merge_by_githouse('re/foo', self.head)
+        cache.delete(ramp.KEY)
+        merged = ramp.board()['merged']
+        self.assertEqual([(m['branch'], m['number']) for m in merged], [('re/foo', 7)])
+
+    def test_its_page_is_found_by_branch(self):
+        from conversations.services import work_pages
+        self.as_('justin')
+        tid = self.open_().json()['id']
+        [item] = work_pages.with_merged_pages([{'repo': 'magenta', 'branch': 're/foo', 'number': None}])
+        self.assertEqual(item['page'], {'id': tid})

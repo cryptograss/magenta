@@ -215,33 +215,65 @@ window.magentaMerge = (() => {
     if (!s.el.hidden) place(s);
   }
 
-  // The bar: one line a press, placed over the top of the pane (the Mood's) or the page, just below the nav.
-  let bar = null;
+  // The bar: one line a press, just below the nav (Justin, 9 Nov), on every page (10 Nov: "if I go back to moods,
+  // I still want to see it"). It lives in the one page: a press in a section's frame writes its line there
+  // (topBar), so leaving the ramp doesn't hide it. barUnder(() => the header) says where it sits; without it,
+  // over the pane, or the top of the page.
+  let bar = null, barAnchor = null;
   function placeBar() {
     if (!bar) return;
+    const head = barAnchor && barAnchor();
+    if (head) {
+      Object.assign(bar.style, { left: '0', right: '0', width: '', top: head.getBoundingClientRect().bottom + 'px' });
+      return;
+    }
     const el = pane && pane();
     if (!el) { Object.assign(bar.style, { left: '0', right: '0', top: '0', width: '' }); return; }
     const r = el.getBoundingClientRect();
     Object.assign(bar.style, { left: r.left + 'px', right: 'auto', top: r.top + 'px', width: r.width + 'px' });
   }
   window.addEventListener('resize', placeBar);
-  function barLine(s) {
+  function barUnder(fn) { barAnchor = fn; placeBar(); }
+  // The one page's bar, if this is a section's frame inside it; else this page's own.
+  function topBar() {
+    try {
+      const up = window.parent;
+      if (up !== window && up.location.origin === location.origin && up.magentaMerge && up.magentaMerge.barLine) return up.magentaMerge;
+    } catch (e) {}
+    return null;
+  }
+  // What githouse said, in a sheet of its own on the page the bar is on: the press's own sheet may be in a
+  // frame that isn't on screen.
+  function told(info, kind, words) {
+    const el = tpl.content.firstElementChild.cloneNode(true);
+    el.querySelector('.what').textContent = info.what;
+    el.querySelector('.sub').textContent = info.sub || '';
+    el.querySelector('.say').textContent = words;
+    el.querySelector('.say').className = 'say ' + kind;
+    el.querySelector('.go').remove();
+    const gone = () => el.remove();
+    el.querySelector('.no').addEventListener('click', gone);
+    el.addEventListener('click', e => { if (e.target === el) gone(); });
+    document.body.appendChild(el);
+    el.hidden = false; el.style.inset = '0'; el.setAttribute('aria-modal', 'true');
+  }
+  function barLine(info) {
     if (!bar) { bar = document.createElement('div'); bar.className = 'mergeBar'; bar.setAttribute('role', 'status'); document.body.appendChild(bar); }
     const line = document.createElement('div');
     line.className = 'item going';
     line.innerHTML = '<span class="mark"></span><span class="words"></span><button type="button" class="x" title="Dismiss" hidden>×</button>';
-    // Clicked: its sheet again, as it stands -- what went wrong, or what was merged.
-    line.addEventListener('click', e => {
-      if (e.target.closest('.x')) return;
-      s.away = false; s.alive = true;
-      s.el.hidden = false; place(s);
+    let ended = null;
+    line.addEventListener('click', e => {  // done: the whole of what githouse said
+      if (e.target.closest('.x') || !ended) return;
+      told(info, ended.kind, ended.full);
     });
     const gone = () => { line.remove(); if (!bar.children.length) bar.hidden = true; };
     line.querySelector('.x').addEventListener('click', gone);
     bar.prepend(line); bar.hidden = false; placeBar();
     return {
       say(words) { line.querySelector('.words').textContent = words; },
-      end(kind, words) {
+      end(kind, words, full) {
+        ended = { kind, full: full || words };
         line.className = 'item ' + kind; line.querySelector('.words').textContent = words;
         line.querySelector('.x').hidden = false;
         if (kind === 'ok') setTimeout(gone, 60000);  // a green check a minute; a red x until it's dismissed
@@ -250,13 +282,13 @@ window.magentaMerge = (() => {
   }
 
   // Merge now: the sheet goes at once, and the bar says how it's going (Justin, 9 Nov). Clicking the bar's
-  // line brings the sheet back, with githouse's answer in it.
+  // line shows githouse's whole answer.
   async function press(s) {
     const seen = s.seen;
     if (!seen || s.busy) return;
     s.busy = true; s.$('.go').disabled = true; s.$('.no').disabled = true;
     const name = `${seen.repo}:${seen.branch}`;
-    const line = barLine(s);
+    const line = (topBar() || { barLine }).barLine({ what: `Merge ${name}?`, sub: s.$('.sub').textContent });
     line.say(`Merging ${name} into ${seen.into}…`);
     s.away = true; s.el.hidden = true;
     s.say('Sending to githouse…');
@@ -272,7 +304,6 @@ window.magentaMerge = (() => {
         words = status.error || ('memory-lane said ' + r.status);
       } else {
         for (let waited = 0; status.status === 'waiting' && waited < 120; waited += 3) {
-          s.say(`Waiting for githouse… ${waited ? waited + ' s' : ''}`);
           line.say(`Merging ${name} into ${seen.into}… ${waited ? waited + ' s' : ''}`);
           await new Promise(go => setTimeout(go, 3000));
           status = await (await fetch(`/api/merge-orders/${status.id}/`, { credentials: 'same-origin' })).json();
@@ -288,17 +319,15 @@ window.magentaMerge = (() => {
     } finally {
       s.busy = false; s.$('.no').disabled = false;
     }
-    s.say(words, ok ? 'ok' : 'err');
-    s.$('.go').hidden = true;  // merged, or refused for a reason a second press won't change: open it afresh
+    s.alive = false; s.away = false; s.seen = null;  // this sheet is done with; the bar holds the answer
     if (ok) {
-      line.end('ok', `${name} merged into ${seen.into}`);
-      s.alive = false; s.away = false;  // done with: a click on the line still shows it
+      line.end('ok', `${name} merged into ${seen.into}`, words);
       // Told here and to the one page, so the ramp drops it without a reload.
       const merged = { repo: seen.repo, branch: seen.branch, number: seen.number || null };
       window.dispatchEvent(new CustomEvent('magentaMerged', { detail: merged }));
       if (window.parent !== window) parent.postMessage({ magentaMerged: merged }, location.origin);
     } else {
-      line.end('err', `${name}: ${words.length > 90 ? words.slice(0, 90) + '…' : words} Click for the whole of it.`);
+      line.end('err', `${name}: ${words.length > 90 ? words.slice(0, 90) + '…' : words} Click for the whole of it.`, words);
     }
   }
 
@@ -321,6 +350,6 @@ window.magentaMerge = (() => {
     }
     return found;
   }
-  return { open, named, within, show, prefetch };
+  return { open, named, within, show, prefetch, barLine, barUnder };
 })();
 </script>

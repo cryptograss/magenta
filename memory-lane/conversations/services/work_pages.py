@@ -111,15 +111,26 @@ def with_pages(items):
 
 
 def with_merged_pages(items):
-    """The ramp's merged items (repo and number, no branch), each with 'page': {'id'} if its work had one."""
+    """The ramp's merged items, each with 'page': {'id'} if its work had one: by its pull request's number, or
+    by its branch for one githouse merged without a pull request (ramp.githouse_merged)."""
+    from django.db.models import Q
     from conversations.models import WorkTiding
     numbers = {(i.get('repo'), i.get('number')) for i in items if i.get('number')}
+    branches = {(i.get('repo'), i.get('branch')) for i in items if i.get('branch')}
     found = {}
-    if numbers:
-        for w in WorkTiding.objects.filter(repo__in={r for r, _ in numbers}, number__in={n for _, n in numbers}):
-            found[(w.repo, w.number)] = {'id': str(w.tiding_id)}
+    if numbers or branches:
+        q = Q(pk__in=[])
+        if numbers:
+            q |= Q(repo__in={r for r, _ in numbers}, number__in={n for _, n in numbers})
+        if branches:
+            q |= Q(repo__in={r for r, _ in branches}, branch__in={b for _, b in branches})
+        for w in WorkTiding.objects.filter(q):
+            if w.number:
+                found[(w.repo, 'n', w.number)] = {'id': str(w.tiding_id)}
+            found[(w.repo, 'b', w.branch)] = {'id': str(w.tiding_id)}
     for item in items:
-        item['page'] = found.get((item.get('repo'), item.get('number')))
+        item['page'] = (found.get((item.get('repo'), 'n', item.get('number'))) if item.get('number') else None) \
+            or found.get((item.get('repo'), 'b', item.get('branch')))
     return items
 
 
