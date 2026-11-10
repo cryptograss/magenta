@@ -525,6 +525,11 @@
   nav a.mood .toolsask .askdot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
   nav a.mood .toolsask .askgroup { display: inline-flex; align-items: center; gap: 1px; }
   nav a.mood .toolsask .askgroup + .askgroup { margin-left: 4px; }
+  nav a.mood .toolsask { min-width: 0; }
+  nav a.mood .toolsask .askcand { min-width: 0; gap: 2px; }
+  nav a.mood .toolsask .candname { min-width: 0; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                                   font: 500 10.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
+                                   background: var(--hover); border-radius: 4px; padding: 0 4px; }
   header .block { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
   /* Someone typing or an agent at work: their name pulses where the Mood is listed. */
   nav a.mood .toolsask { font-size: 12px; margin-left: 4px; }
@@ -2170,15 +2175,29 @@
   const ASK_EMOJI = { tools: '🔨', merge: '🪢', deploy: '🖥️' };  // Justin, 1 Nov: 🪢 a merge, 🖥️ a redeploy
   // Each kind of ask with the dots of the emergents asking it beside it (Justin, 1 Nov: "directly next to the
   // request"): 🔨●● 🪢●, not every icon, then every dot. One icon a kind, however many asks.
+  // A merge ask shows as the candidate branch it names, with a dot for each emergent asking (Justin, 9 Nov:
+  // "show the name of the candidate branch ... with the emergent color dots next to it"); one already merged, none.
   function askGroups(asked) {
-    const kinds = new Map();
+    const kinds = new Map(), works = new Map();
+    const dots = agents => agents.map(a => `<span class="askdot" style="background: ${agentColor(a)}"></span>`).join('');
     for (const t of asked) {
+      if (t.kind === 'merge' && Array.isArray(t.works)) {
+        for (const w of t.works) {
+          const ref = w.number ? `${w.repo}#${w.number}` : `${w.repo}:${w.branch}`;
+          if (!works.has(ref)) works.set(ref, { w, ref, agents: [] });
+          const got = works.get(ref);
+          if (!got.agents.includes(t.emergent)) got.agents.push(t.emergent);
+        }
+        continue;
+      }
       const icon = ASK_EMOJI[t.kind] || '🔨';
       if (!kinds.has(icon)) kinds.set(icon, []);
       kinds.get(icon).push(t.emergent);  // a dot an ask: two merges asked, two dots (Justin, 30 Oct)
     }
-    return [...kinds].map(([icon, agents]) => `<span class="askgroup">${icon}${
-      agents.map(a => `<span class="askdot" style="background: ${agentColor(a)}"></span>`).join('')}</span>`).join('');
+    return [...works.values()].map(({ w, ref, agents }) => `<span class="askgroup askcand">`
+      + `<span class="candname" title="${esc(`${ref}${w.number && w.branch ? ` (${w.branch})` : ''}: merge asked by ${agents.map(shown).join(', ')}`)}">`
+      + `${esc(w.branch || ref)}</span>${dots(agents)}</span>`).join('')
+      + [...kinds].map(([icon, agents]) => `<span class="askgroup">${icon}${dots(agents)}</span>`).join('');
   }
   const askLine = t => `${esc(shown(t.emergent))} ${t.kind === 'tools' ? `requested tools for ${esc(t.for)}`
     : t.kind === 'merge' ? `requested a merge for ${esc(t.for)}` : `requested a redeploy of ${esc(t.for)}`}`;
