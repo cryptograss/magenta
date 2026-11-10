@@ -18,6 +18,9 @@
   .mergeSheet .head { padding: 12px 14px 6px; font-weight: 600; }
   .mergeSheet .head .sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted, #6b6560);
                            font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 2px; }
+  .mergeSheet .about { padding: 0 14px 8px; font-size: 13.5px; line-height: 1.4; }
+  .mergeSheet .about .title { display: block; margin-bottom: 2px; }
+  .mergeSheet .about .words { color: var(--muted, #6b6560); }
   .mergeSheet .who { padding: 0 14px 8px; font-size: 12.5px; color: var(--muted, #6b6560); display: flex; flex-wrap: wrap; gap: 4px 14px; }
   .mergeSheet .who:empty { display: none; }
   .mergeSheet .who .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--who);
@@ -63,8 +66,8 @@
   <div class="mergeSheet" hidden role="dialog">
     <div class="box">
       <div class="head"><span class="what"></span><span class="sub"></span></div>
+      <div class="about" hidden><b class="title"></b><span class="words"></span></div>
       <div class="who"></div>
-      <pre class="log" hidden></pre>
       <pre class="stat" hidden></pre>
       <a class="full" href="#" hidden title="The candidate's page: every file's diff open, every line an address">± See the full diff</a>
       <div class="say"></div>
@@ -167,7 +170,11 @@ window.magentaMerge = (() => {
     s.seen = body;
     s.$('.sub').textContent = `${body.repo}:${body.branch} at ${body.commit.slice(0, 12)} → ${body.into} at ${body.tip.slice(0, 12)}`;
     drawWho(s, body);
-    s.$('.log').textContent = body.log.trim(); s.$('.log').hidden = false;
+    // What it is, before what it changes (Justin, 10 Nov): its title and the start of its description. Its commits
+    // are on its page.
+    s.$('.about .title').textContent = body.title || '';
+    s.$('.about .words').textContent = body.about || '';
+    s.$('.about').hidden = !(body.title || body.about);
     s.$('.stat').textContent = body.stat.trim(); s.$('.stat').hidden = false;
     // The whole diff, on the candidate's page (Justin, 9 Nov: "a link from the merge modal to see the full diff").
     const full = s.$('.full');
@@ -190,7 +197,7 @@ window.magentaMerge = (() => {
     s.$('.what').textContent = `Merge ${nameOf(work)}?`;
     s.$('.sub').textContent = '';
     s.$('.who').innerHTML = '';
-    s.$('.log').hidden = s.$('.stat').hidden = s.$('.full').hidden = true;
+    s.$('.about').hidden = s.$('.stat').hidden = s.$('.full').hidden = true;
     s.$('.go').hidden = true; s.$('.go').disabled = false;
     s.say('Looking at it in githouse’s copy…');
     reveal(s);

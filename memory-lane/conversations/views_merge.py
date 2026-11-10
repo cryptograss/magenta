@@ -57,7 +57,11 @@ def api_merge_order(request, order_id):
     """One order's status, as githouse's records say: waiting, merged, refused (and why) or expired."""
     order = get_object_or_404(MergeOrder, id=order_id)
     now = merge_orders.status(order)
-    if now.get('status') == 'merged' and order.mood == '':  # a Mood's order: announce_merged has told the ramp
+    # Merged: the ramp's kept board is marked old now, whichever page pressed it. This answer is what turns the bar
+    # ✓ and reloads the ramp behind a Mood; announce_merged would tell the ramp too, but only at githouse's next look
+    # (5 s), and a reload before that drew the old board, the branch still open, until the ramp was left and
+    # opened again (Justin, 10 Nov, #ramp: magent/mood-list-candidates, pressed in #interfaces).
+    if now.get('status') == 'merged':
         from django.core.cache import cache
         from .services import ramp
         if cache.add(f'ramp-told:{order.id}', 1, 3 * 3600):  # once, however often it's asked after
@@ -111,7 +115,10 @@ def api_merge_preview(request):
 
 def _who_wants(seen):
     """For the sheet (Justin, 9 Nov): {'asks': the open 🪢 asks naming it, a dot each ({'by', 'mood', 'id',
-    'colour'}); 'thumbs': its 👍s ({'by', 'at', 'current'}: on the commit about to merge, or an older one)}."""
+    'colour'}); 'thumbs': its 👍s ({'by', 'at', 'current'}: on the commit about to merge, or an older one);
+    'title' and 'about': what it is, its title and the start of its description (Justin, 10 Nov: "more important
+    than the commit messages"). A branch without a pull request has no description: its newest commit's message
+    stands in, as the ramp takes its title from that commit."""
     from .services import ramp, thumbs
     try:
         item = next((i for i in ramp.board(stale_ok=True).get('open', [])
@@ -121,8 +128,25 @@ def _who_wants(seen):
                  for t in thumbs.of(seen['repo'], seen['branch'], seen['commit'])]
     except Exception as e:  # noqa: BLE001 -- a nicety: the sheet merges without it
         log.warning('merge preview: asks and 👍s: %s', e)
-        return {'asks': [], 'thumbs': []}
-    return {'asks': asks, 'thumbs': liked}
+        item, asks, liked = None, [], []
+    title, about = (item or {}).get('title', ''), ramp.description_start((item or {}).get('description', ''))
+    if not (title and about):
+        subject, body = _head_message(seen)
+        title, about = title or subject, about or ramp.description_start(body)
+    return {'asks': asks, 'thumbs': liked, 'title': title, 'about': about}
+
+
+def _head_message(seen):
+    """(subject, body) of the commit about to merge, from githouse's copy; ('', '') if it can't be read."""
+    from .services import githouse
+    try:
+        held = githouse.repository(seen['repo'])
+        said = githouse._git(held, 'log', '-1', '--format=%s%x00%b', seen['commit']) if held else ''
+    except Exception as e:  # noqa: BLE001 -- a nicety, as above
+        log.warning('merge preview: head message: %s', e)
+        return '', ''
+    subject, _, body = said.partition('\0')
+    return subject.strip(), body.strip()
 
 
 @require_POST

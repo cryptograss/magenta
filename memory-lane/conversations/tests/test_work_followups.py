@@ -41,9 +41,13 @@ class WorkCommentInTheMoodTest(WorkRepo):
         self.assertNotIn('<script>', said['html'])
         self.assertTrue(event_line(self.notice().content).startswith('💬 justin commented on magenta#7'))
 
-    def test_its_work_line_says_which_work(self):
-        work = next(e for e in self.events() if e['type'] == 'work')
-        self.assertEqual(work['ref'], 'magenta#7')
+    def test_opening_a_page_says_nothing_in_the_mood(self):
+        # Justin, 10 Nov: "All I did was go to the CB page in order to look at the full diff." Its line is only what
+        # the page's Tiding hangs on: kept, with which work it is, but never drawn. A comment there still shows.
+        self.assertEqual([e for e in self.events() if e['type'] == 'work'], [])
+        self.assertEqual(self.tiding.message.content['ref'], 'magenta#7')
+        tiding_links.comment(self.tiding, self.justin, 'Should the dots be bigger?')
+        self.assertEqual([e['type'] for e in self.events()], ['tiding-comment'])
 
     def test_any_other_tidings_comment_is_still_one_line(self):
         said = Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.ramp_mood, timestamp=1,
@@ -180,6 +184,31 @@ class RampLinksAndSheetTest(WorkRepo):
         self.assertEqual(got['asks'], [{'by': 're', 'mood': 'ramp', 'id': 'x', 'colour': '#ff3c00'}])
         self.assertEqual(sorted((t['by'], t['current']) for t in got['thumbs']), [('justin', True), ('skyler', False)])
         json.dumps(got)  # as the sheet gets it
+
+
+class MergedFromAMoodTellsTheRampTest(WorkRepo):
+    """Justin, 10 Nov (#ramp): merged magent/mood-list-candidates from #interfaces' sheet, and the ramp kept showing
+    it open until he left it and came back. The ✓ reloaded the ramp before announce_merged had marked its board
+    old; now the answer that turns the bar ✓ marks it, for a Mood's order too."""
+
+    def test_a_moods_order_merged_marks_the_board_old_once(self):
+        order = MergeOrder.objects.create(repo='magenta', branch='re/foo', by='justin', mood='interfaces', order='o',
+                                          signature='s', nonce='n2', expires=int(time.time()) + 600)
+        told = []
+        with mock.patch('conversations.services.merge_orders.status', lambda o: {'status': 'merged'}), \
+             mock.patch.object(ramp, 'changed', lambda: told.append(1)):
+            for _ in range(3):   # the sheet asks every second or so
+                self.assertEqual(self.client.get(f'/api/merge-orders/{order.id}/').json()['status'], 'merged')
+        self.assertEqual(told, [1])
+
+    def test_one_still_waiting_tells_it_nothing(self):
+        order = MergeOrder.objects.create(repo='magenta', branch='re/foo', by='justin', mood='interfaces', order='o',
+                                          signature='s', nonce='n3', expires=int(time.time()) + 600)
+        told = []
+        with mock.patch('conversations.services.merge_orders.status', lambda o: {'status': 'waiting'}), \
+             mock.patch.object(ramp, 'changed', lambda: told.append(1)):
+            self.client.get(f'/api/merge-orders/{order.id}/')
+        self.assertEqual(told, [])
 
 
 class SheetFullDiffTest(WorkRepo):
@@ -474,3 +503,36 @@ class GithouseMergedTest(WorkRepo):
         tid = self.open_().json()['id']
         [item] = work_pages.with_merged_pages([{'repo': 'magenta', 'branch': 're/foo', 'number': None}])
         self.assertEqual(item['page'], {'id': tid})
+
+
+class SheetSaysWhatItIsTest(WorkRepo):
+    """Justin, 10 Nov (#ramp): "in the merge modal, show me the short description and the first ~200 characters of
+    the full description -- this is more important than the commit messages; save those for the full branch page"."""
+
+    def preview(self, branch):
+        self.as_('justin')
+        return self.client.get('/api/merge-orders/preview/', {'repo': 'magenta', 'branch': branch}).json()
+
+    def test_its_title_and_the_start_of_its_description(self):
+        self.cards['open'][0]['description'] = ('The **foo** work: ' + 'words ' * 60 + '\n\nDeploy: redeploy maybelle\n'
+                                                'Worked on by: magent, in #ramp')
+        ramp.board()
+        seen = self.preview('re/foo')
+        self.assertEqual(seen['title'], 'the re/foo work')
+        self.assertTrue(seen['about'].startswith('The foo work: words words'))   # plain words, no markup
+        self.assertLessEqual(len(seen['about']), 200)
+        self.assertTrue(seen['about'].endswith('words…'))                          # cut on a word
+        self.assertNotIn('Deploy', seen['about'])
+
+    def test_without_a_description_its_newest_commit_says(self):
+        self.cards['open'] = []   # a branch with no pull request: no description of its own
+        ramp.board()
+        seen = self.preview('re/foo')
+        self.assertEqual((seen['title'], seen['about']), ('the foo work', 'Why: because.'))
+
+    def test_the_sheet_shows_them_and_not_the_log(self):
+        from django.template.loader import render_to_string
+        sheet = render_to_string('conversations/_merge_sheet.html')
+        self.assertIn('<div class="about" hidden><b class="title"></b><span class="words"></span></div>', sheet)
+        self.assertNotIn('class="log"', sheet)
+        self.assertIn('<pre class="stat" hidden></pre>', sheet)   # what it changes, still
