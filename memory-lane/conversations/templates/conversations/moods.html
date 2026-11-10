@@ -676,7 +676,7 @@
   main { overflow-x: hidden; overflow-wrap: anywhere; }
   /* ...but not a message's heading line: there "anywhere" let a squeezed line shrink a name to one letter a line,
      "magent" down the page (Justin, 10 Nov, on a phone). Names break at spaces, as before. */
-  main .who { overflow-wrap: normal; }
+  main .who, main .ahead, main .runfold { overflow-wrap: normal; }  /* a message's, a turn's, a round's (Justin, 10 Nov: #459 missed the turn's) */
   /* --gutter: what the jump strip takes at the right (25px + margins). When the
      window leaves room beside the column the text never reaches it; when the
      column fills the width (a phone, zoomed in), its text stops short of it. */
