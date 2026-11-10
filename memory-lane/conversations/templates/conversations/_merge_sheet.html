@@ -40,6 +40,24 @@
     text-decoration: none; }
   .mergeSheet a.full:hover { background: var(--accent-soft, #fbe7f1); }
   .mergeSheet a.full[hidden] { display: none; }
+  /* The bar a press goes to (Justin, 9 Nov): just below the nav, one line a merge, ✓ or ✗ when it's done. */
+  .mergeBar { position: fixed; z-index: 1001; top: 0; left: 0; right: 0; display: flex; flex-direction: column; }
+  .mergeBar[hidden] { display: none; }
+  .mergeBar .item { display: flex; align-items: center; gap: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+                    background: var(--panel, #fff); color: var(--ink, #1f1d1a); border-bottom: 1px solid var(--line, #e6e1d8);
+                    box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .mergeBar .item .mark { width: 1.2em; text-align: center; font-weight: 700; }
+  .mergeBar .item.going .mark::before { content: '◌'; display: inline-block; animation: mergeBarSpin 1s linear infinite; }
+  .mergeBar .item.ok { background: #e8f6ee; color: #1d6b3f; }
+  .mergeBar .item.ok .mark::before { content: '✓'; }
+  .mergeBar .item.err { background: #fdecea; color: #9b2c22; }
+  .mergeBar .item.err .mark::before { content: '✗'; }
+  .mergeBar .item .x { margin-left: auto; border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; opacity: .7; }
+  @media (prefers-color-scheme: dark) {
+    .mergeBar .item.ok { background: #16321f; color: #8fd8ab; }
+    .mergeBar .item.err { background: #3a1916; color: #f2a59c; }
+  }
+  @keyframes mergeBarSpin { to { transform: rotate(360deg); } }
 </style>
 <template id="mergeSheetTpl">
   <div class="mergeSheet" hidden role="dialog">
@@ -166,9 +184,9 @@ window.magentaMerge = (() => {
 
   async function open(work, inMood) {
     const s = sheetFor(inMood || '');
-    if (s.busy) { reveal(s); return; }  // a press on its way here: its sheet, as it stands
+    if (s.busy) { s.away = false; reveal(s); return; }  // a press on its way here: its sheet, as it stands
     const mine = ++s.gen;
-    s.seen = null; s.alive = true;
+    s.seen = null; s.alive = true; s.away = false;
     s.$('.what').textContent = `Merge ${nameOf(work)}?`;
     s.$('.sub').textContent = '';
     s.$('.who').innerHTML = '';
@@ -192,16 +210,57 @@ window.magentaMerge = (() => {
 
   // Shown if its Mood is on screen (or nobody said which is); kept, out of sight, while another is.
   function reveal(s) {
-    if (!s.alive) return;
+    if (!s.alive || s.away) return;  // away: pressed, and on the bar until it's clicked
     s.el.hidden = onScreen !== undefined && onScreen !== s.mood;
     if (!s.el.hidden) place(s);
   }
 
+  // The bar: one line a press, placed over the top of the pane (the Mood's) or the page, just below the nav.
+  let bar = null;
+  function placeBar() {
+    if (!bar) return;
+    const el = pane && pane();
+    if (!el) { Object.assign(bar.style, { left: '0', right: '0', top: '0', width: '' }); return; }
+    const r = el.getBoundingClientRect();
+    Object.assign(bar.style, { left: r.left + 'px', right: 'auto', top: r.top + 'px', width: r.width + 'px' });
+  }
+  window.addEventListener('resize', placeBar);
+  function barLine(s) {
+    if (!bar) { bar = document.createElement('div'); bar.className = 'mergeBar'; bar.setAttribute('role', 'status'); document.body.appendChild(bar); }
+    const line = document.createElement('div');
+    line.className = 'item going';
+    line.innerHTML = '<span class="mark"></span><span class="words"></span><button type="button" class="x" title="Dismiss" hidden>×</button>';
+    // Clicked: its sheet again, as it stands -- what went wrong, or what was merged.
+    line.addEventListener('click', e => {
+      if (e.target.closest('.x')) return;
+      s.away = false; s.alive = true;
+      s.el.hidden = false; place(s);
+    });
+    const gone = () => { line.remove(); if (!bar.children.length) bar.hidden = true; };
+    line.querySelector('.x').addEventListener('click', gone);
+    bar.prepend(line); bar.hidden = false; placeBar();
+    return {
+      say(words) { line.querySelector('.words').textContent = words; },
+      end(kind, words) {
+        line.className = 'item ' + kind; line.querySelector('.words').textContent = words;
+        line.querySelector('.x').hidden = false;
+        if (kind === 'ok') setTimeout(gone, 60000);  // a green check a minute; a red x until it's dismissed
+      },
+    };
+  }
+
+  // Merge now: the sheet goes at once, and the bar says how it's going (Justin, 9 Nov). Clicking the bar's
+  // line brings the sheet back, with githouse's answer in it.
   async function press(s) {
     const seen = s.seen;
     if (!seen || s.busy) return;
     s.busy = true; s.$('.go').disabled = true; s.$('.no').disabled = true;
+    const name = `${seen.repo}:${seen.branch}`;
+    const line = barLine(s);
+    line.say(`Merging ${name} into ${seen.into}…`);
+    s.away = true; s.el.hidden = true;
     s.say('Sending to githouse…');
+    let ok = false, words = '';
     try {
       const r = await fetch('/api/merge-orders/press/', {
         method: 'POST', credentials: 'same-origin',
@@ -209,24 +268,45 @@ window.magentaMerge = (() => {
         body: JSON.stringify({ repo: seen.repo, branch: seen.branch, number: seen.number, commit: seen.commit,
                                into: seen.into, mood: s.mood }) });
       let status = await r.json();
-      if (!r.ok) { s.say(status.error || ('memory-lane said ' + r.status), 'err'); return; }
-      for (let waited = 0; status.status === 'waiting' && waited < 120; waited += 3) {
-        s.say(`Waiting for githouse… ${waited ? waited + ' s' : ''}`);
-        await new Promise(go => setTimeout(go, 3000));
-        status = await (await fetch(`/api/merge-orders/${status.id}/`, { credentials: 'same-origin' })).json();
+      if (!r.ok) {
+        words = status.error || ('memory-lane said ' + r.status);
+      } else {
+        for (let waited = 0; status.status === 'waiting' && waited < 120; waited += 3) {
+          s.say(`Waiting for githouse… ${waited ? waited + ' s' : ''}`);
+          line.say(`Merging ${name} into ${seen.into}… ${waited ? waited + ' s' : ''}`);
+          await new Promise(go => setTimeout(go, 3000));
+          status = await (await fetch(`/api/merge-orders/${status.id}/`, { credentials: 'same-origin' })).json();
+        }
+        if (status.status === 'merged') {
+          ok = true;
+          words = `Merged into ${seen.into} as ${String(status.merge || '').slice(0, 12)}.`;
+        } else if (status.status === 'waiting') words = 'githouse hasn’t answered in two minutes; the order is good for an hour.';
+        else words = `${status.status === 'expired' ? 'Expired' : 'Refused'}: ${status.why || ''}`;
       }
-      if (status.status === 'merged') s.say(`Merged into ${seen.into} as ${String(status.merge || '').slice(0, 12)}.`, 'ok');
-      else if (status.status === 'waiting') s.say('githouse hasn’t answered in two minutes; the order is good for an hour.', 'err');
-      else s.say(`${status.status === 'expired' ? 'Expired' : 'Refused'}: ${status.why || ''}`, 'err');
     } catch (e) {
-      s.say('Lost touch with memory-lane: ' + e.message, 'err');
+      words = 'Lost touch with memory-lane: ' + e.message;
     } finally {
       s.busy = false; s.$('.no').disabled = false;
+    }
+    s.say(words, ok ? 'ok' : 'err');
+    s.$('.go').hidden = true;  // merged, or refused for a reason a second press won't change: open it afresh
+    if (ok) {
+      line.end('ok', `${name} merged into ${seen.into}`);
+      s.alive = false; s.away = false;  // done with: a click on the line still shows it
+      // Told here and to the one page, so the ramp drops it without a reload.
+      const merged = { repo: seen.repo, branch: seen.branch, number: seen.number || null };
+      window.dispatchEvent(new CustomEvent('magentaMerged', { detail: merged }));
+      if (window.parent !== window) parent.postMessage({ magentaMerged: merged }, location.origin);
+    } else {
+      line.end('err', `${name}: ${words.length > 90 ? words.slice(0, 90) + '…' : words} Click for the whole of it.`);
     }
   }
 
   // The one page: the pane a sheet covers, and which Mood is on screen now (null: none, as in a section).
-  function within(fn) { pane = fn; placeAll(); if (window.ResizeObserver && fn && fn()) new ResizeObserver(placeAll).observe(fn()); }
+  function within(fn) {
+    pane = fn; placeAll(); placeBar();
+    if (window.ResizeObserver && fn && fn()) new ResizeObserver(() => { placeAll(); placeBar(); }).observe(fn());
+  }
   function show(slug) { onScreen = slug; sheets.forEach(reveal); }
 
   // The pieces of work a 🪢 ask names: repo#N (a bare #N takes the repo before it) and repo:branch.

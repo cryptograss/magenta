@@ -10536,6 +10536,11 @@
     e.preventDefault();
     showSection('ramp', true, to.pathname, to.hash);
   });
+  // A merge done (the merge sheet's bar, here or in a section): the ramp is drawn again behind the scenes, or when
+  // it's next left if it's open now (where its own row has said so already).
+  const rampMerged = () => { try { refreshSection('ramp'); } catch (e) {} };
+  window.addEventListener('magentaMerged', rampMerged);
+  window.addEventListener('message', e => { if (e.origin === location.origin && e.data && e.data.magentaMerged) rampMerged(); });
   // A link inside a section into magenta: opened here, without loading anything again.
   window.addEventListener('message', async e => {
     if (e.origin !== location.origin || !e.data || typeof e.data.magentaGo !== 'string') return;
