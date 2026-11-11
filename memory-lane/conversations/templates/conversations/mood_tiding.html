@@ -124,6 +124,19 @@
   /* What's been said: a tree, HN-style, each comment's score beside it (Justin, 21 Oct). */
   .comments { margin: 14px 0 0 0; }
   /* The post's own words, under who posted it: drawn as a comment's are. */
+  /* A PickiPedia page (services/wiki_lead): its picture beside its opening, as on the wiki; above it on a phone. */
+  .wikilead { margin-top: 12px; max-width: 70ch; font-size: 15.5px; line-height: 1.55; }
+  .wikilead::after { content: ""; display: block; clear: both; }
+  .wikilead p { margin: 0 0 10px; overflow-wrap: anywhere; }
+  .wikilead figure { float: right; margin: 2px 0 10px 18px; max-width: 42%; }
+  .wikilead figure.tall { max-width: 34%; }
+  .wikilead figure img { display: block; width: 100%; height: auto; border-radius: 8px; background: var(--code); }
+  .wikilead figcaption { margin-top: 4px; font-size: 12px; line-height: 1.35; color: var(--muted); }
+  .wikilead .readon { display: inline-block; margin-top: 2px; font-size: 13.5px; font-weight: 600; }
+  @media (max-width: 560px) {
+    .wikilead figure, .wikilead figure.tall { float: none; max-width: 100%; margin: 0 0 12px; }
+    .wikilead figure.tall img { max-height: 60vh; width: auto; max-width: 100%; margin: 0 auto; }
+  }
   .thelink .post { margin-top: 8px; max-width: 75ch; }
   .thelink .post .words { font-size: 15px; overflow-wrap: anywhere; }
   .thelink .post .words > :first-child { margin-top: 0; }
@@ -587,6 +600,15 @@
       <div class="post"><div class="words">{{ tiding.post|safe }}</div></div>
       {% endif %}
       {% if tiding.tags %}<div class="tags">{% for tag in tiding.tags %}<span class="chip">#{{ tag }}</span>{% endfor %}</div>{% endif %}
+      {% if tiding.wiki %}{% with w=tiding.wiki %}
+      <!-- A PickiPedia page, as an article opens (Justin, 11 Nov: "the first couple paragraphs or so ... as well
+           as a pic if there is one"): its picture, its first paragraphs (services/wiki_lead), and the way to the rest. -->
+      <article class="wikilead">
+        {% if w.picture %}<figure class="{% if w.picture.height > w.picture.width %}tall{% else %}wide{% endif %}"><a href="{{ w.picture.page|default:tiding.url }}" target="_blank" rel="noopener"><img src="{{ w.picture.src }}" alt="{{ w.picture.alt|default:w.picture.caption }}" width="{{ w.picture.width }}" height="{{ w.picture.height }}" loading="lazy"></a>{% if w.picture.caption %}<figcaption>{{ w.picture.caption }}</figcaption>{% endif %}</figure>{% endif %}
+        {% for p in w.paragraphs %}<p>{{ p|safe }}</p>{% endfor %}
+        <a class="readon" href="{{ tiding.url }}" target="_blank" rel="noopener">{% if w.more %}Read the rest on PickiPedia →{% else %}On PickiPedia →{% endif %}</a>
+      </article>
+      {% endwith %}{% endif %}
       {% if tiding.embed %}<div class="embed" id="theEmbed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>{% elif tiding.embed.kind == 'release' %}<video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
         <!-- Each comment that names a moment ("2:14 that slide!") is a mark on this line, and a link that plays from it. -->
         <div class="moments" aria-label="Moments people talked about" hidden></div>

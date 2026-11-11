@@ -866,6 +866,14 @@ def _release_of(url):
     return {**release_info(cid), 'cid': cid}
 
 
+def _wiki_of(url):
+    """A PickiPedia article's opening, its first paragraphs and picture (wiki_lead), for its page here; else None."""
+    if release_cid(url):
+        return None
+    from .wiki_lead import wiki_lead
+    return wiki_lead(url)
+
+
 def discussion(tiding_id, viewer=None):
     """One link's page: itself, then what's been said about it. Missing or deleted: Refused."""
     from conversations.models import Tiding
@@ -898,6 +906,7 @@ def discussion(tiding_id, viewer=None):
         'muted': tiding.muted_in_mood,
         'embed': embed_of(tiding.url),
         'release': _release_of(tiding.url),
+        'wiki': _wiki_of(tiding.url),
         'comments': tree_of(tiding, message.id, viewer=viewer),
     }
 
