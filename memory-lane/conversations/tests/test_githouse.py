@@ -116,18 +116,18 @@ class GithouseTest(TestCase):
         with mock.patch.object(githouse, 'commit_merged', side_effect=AssertionError('asked again')):
             self.assertIs(githouse.pull_merged('magenta', 3), True)
 
-    def test_the_todo_lists_ask_githouse_before_github(self):
-        from conversations.services.todo import _merged
+    def test_the_todo_lists_ask_githouse_and_the_ramp_never_github(self):
+        # Justin, #ramp, 11 Nov: "We're on the cusp of being rid of github altogether."
+        from conversations.services.todo import _pull_state
         repo = Repo(self.mount)
         head = repo.commit('two')
         repo.ref('refs/pull/5/head', head)
         repo.push()
-
-        class NoGitHub:
-            def get(self, *a, **k):
-                raise AssertionError('GitHub was asked')
-        self.assertIs(_merged('cryptograss', 'magenta', 5, NoGitHub()), True)
-        self.assertIs(_merged('magent-cryptograss', 'magenta', 5, NoGitHub()), True)  # the moved name is the same repo
-        # A repository githouse doesn't hold: GitHub, as before.
-        with mock.patch('conversations.services.todo._github', lambda path, http, **p: {'merged_at': 'now'}):
-            self.assertIs(_merged('cryptograss', 'blue-railroad-import', 1, NoGitHub()), True)
+        with mock.patch('requests.get', side_effect=AssertionError('GitHub was asked')), \
+                mock.patch('conversations.services.ramp.board',
+                           lambda stale_ok=False: {'built': 1, 'open': [{'repo': 'magenta', 'number': 7}]}):
+            self.assertEqual(_pull_state('cryptograss', 'magenta', 5), 'merged')         # githouse has it merged
+            self.assertEqual(_pull_state('magent-cryptograss', 'magenta', 5), 'merged')  # the moved name is the same repo
+            self.assertEqual(_pull_state('cryptograss', 'magenta', 6), 'closed')         # off the ramp's open list
+            self.assertIsNone(_pull_state('cryptograss', 'magenta', 7))                  # open on the ramp
+            self.assertIsNone(_pull_state('someone-else', 'thing', 1))                   # not ours: can't say

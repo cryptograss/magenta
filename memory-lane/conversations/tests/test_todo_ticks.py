@@ -101,7 +101,7 @@ class TickTest(TestCase):
         Mood.objects.create(slug='magenta-interface', title='magenta interface')
         page = f'<todo>\n- task: Merge it\n  link: {LINK}\n</todo>\n'
         ticks = []
-        with mock.patch.object(todo, '_raw', return_value=page), mock.patch.object(todo, '_merged', return_value=True), \
+        with mock.patch.object(todo, '_raw', return_value=page), mock.patch.object(todo, '_pull_state', return_value='merged'), \
                 mock.patch.object(todo, '_in_background', lambda fn, *args: ticks.append(args)):
             todo.for_mood(Mood.objects.get())
             todo.forget(Mood.objects.get())

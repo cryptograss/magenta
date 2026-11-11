@@ -75,7 +75,7 @@ class StatusPageTests(TestCase):
             ],
         )
         with mock.patch('conversations.services.servers.probe', return_value=(True, 4)), \
-             mock.patch('conversations.services.status._fetch_pickipedia_mcp_forge', return_value={
+             mock.patch('conversations.services.status._read_pickipedia_mcp', return_value={
                  'fork_repo': 'cryptograss/pickipedia-mcp',
                  'upstream_repo': 'ProfessionalWiki/MediaWiki-MCP-Server',
                  'head_sha': 'ef685da',
@@ -190,7 +190,7 @@ class StatusPrivacyAndLastSeenTests(TestCase):
                                   if name == 'wiki_card' else {'return_value': (True, 4)}))
             patch.start()
             self.addCleanup(patch.stop)
-        forge = mock.patch('conversations.services.status._fetch_pickipedia_mcp_forge', return_value={'head_sha': 'x'})
+        forge = mock.patch('conversations.services.status._read_pickipedia_mcp', return_value={'head_sha': 'x'})
         forge.start()
         self.addCleanup(forge.stop)
 
@@ -234,43 +234,32 @@ class StatusPrivacyAndLastSeenTests(TestCase):
 
 
 class PickipediaMcpForgeTest(TestCase):
-    """Ours isn't a GitHub fork of upstream and has none of its tags (both 404'd, 18 Oct): it's
-    compared with the commit upstream's release names, on our own default branch (master)."""
+    """Ours against the upstream release it's built on, from githouse's copy: no GitHub (Justin, #ramp, 11 Nov: "We're
+    on the cusp of being rid of github altogether"). The release's commit is pinned (status.UPSTREAM_TAG_SHA)."""
 
-    ANSWERS = {
-        'repos/cryptograss/pickipedia-mcp': {'default_branch': 'master'},
-        'repos/cryptograss/pickipedia-mcp/commits/master': {
-            'sha': 'ef685da0000', 'commit': {'committer': {'date': '2026-10-18T05:36:05Z'}, 'message': 'Merge #30\n\nmore'}},
-        'repos/ProfessionalWiki/MediaWiki-MCP-Server': {'default_branch': 'master'},
-        'repos/ProfessionalWiki/MediaWiki-MCP-Server/releases/latest': {'tag_name': 'v0.19.0'},
-        'repos/ProfessionalWiki/MediaWiki-MCP-Server/git/ref/tags/v0.19.0': {'object': {'type': 'tag', 'sha': 'tagobj'}},
-        'repos/ProfessionalWiki/MediaWiki-MCP-Server/git/tags/tagobj': {'object': {'sha': '0b5e84d0000'}},
-        'repos/cryptograss/pickipedia-mcp/compare/0b5e84d0000...master': {'ahead_by': 29, 'behind_by': 0, 'files': [{}] * 12},
-        'repos/ProfessionalWiki/MediaWiki-MCP-Server/compare/0b5e84d0000...master': {'ahead_by': 17},
-    }
-
-    def test_against_the_release_commit_and_how_far_upstream_has_gone_since(self):
-        class Answer:
-            def __init__(self, body):
-                self.body = body
-
-            def raise_for_status(self):
-                if self.body is None:
-                    raise OSError('404')
-
-            def json(self):
-                return self.body
-
-        asked = []
-
-        def fake_get(url, headers=None, timeout=None):
-            path = url.replace('https://api.github.com/', '')
-            asked.append(path)
-            return Answer(self.ANSWERS.get(path))
-
-        with mock.patch('requests.get', fake_get):
-            got = status._fetch_pickipedia_mcp_forge()
-        self.assertEqual((got['head_sha'], got['head_message']), ('ef685da', 'Merge #30'))
-        self.assertEqual((got['ahead_of_tag'], got['behind_tag'], got['changed_files']), (29, 0, 12))
-        self.assertEqual((got['upstream_tag'], got['upstream_tag_sha'], got['upstream_since_tag']), ('v0.19.0', '0b5e84d', 17))
-        self.assertEqual(len(asked), 8)
+    def test_against_the_release_commit_from_githouse(self):
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        from django.test import override_settings
+        env = {'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@t', 'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@t',
+               'GIT_CONFIG_GLOBAL': '/dev/null', 'PATH': '/usr/bin:/bin'}
+        git = lambda *a, cwd=None: subprocess.run(['git', *a], cwd=cwd, env=env, check=True, capture_output=True, text=True).stdout.strip()
+        mount = Path(tempfile.mkdtemp())
+        git('init', '--quiet', '--bare', '-b', 'master', str(mount / 'pickipedia-mcp.git'))
+        work = Path(tempfile.mkdtemp())
+        git('clone', '--quiet', str(mount / 'pickipedia-mcp.git'), str(work))
+        for i, words in enumerate(('their release', 'ours one', 'ours two', 'Merge #30\n\nmore')):
+            (work / f'{i}.txt').write_text(words)
+            git('add', '.', cwd=work)
+            git('commit', '--quiet', '-m', words, cwd=work)
+            if i == 0:
+                release = git('rev-parse', 'HEAD', cwd=work)
+        git('push', '--quiet', 'origin', 'HEAD:master', cwd=work)
+        with override_settings(GITHOUSE_DIR=str(mount)), mock.patch.object(status, 'UPSTREAM_TAG_SHA', release), \
+                mock.patch('requests.get', side_effect=AssertionError('GitHub was asked')):
+            got = status._read_pickipedia_mcp()
+        self.assertEqual(got['head_message'], 'Merge #30')
+        self.assertEqual((got['ahead_of_tag'], got['behind_tag'], got['changed_files']), (3, 0, 3))
+        self.assertEqual((got['upstream_tag'], got['upstream_tag_sha'], got['upstream_since_tag']), ('v0.19.0', release[:7], None))
+        self.assertIn('code.maybelle.cryptograss.live/pickipedia-mcp/commit/?id=', got['head_url'])

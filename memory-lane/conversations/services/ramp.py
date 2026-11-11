@@ -826,3 +826,20 @@ def candidates():
                     'who': i.get('worked_on_by') or i.get('author', ''), 'moods': i.get('moods', []),
                     'state': i.get('state', 'open')})
     return out
+
+
+def pull_done(repo, number):
+    """Whether a pull request (an ask's, a to-do item's) is done with: githouse has it merged, or the ramp
+    doesn't have it open any more (merged or closed, it's off the ramp's open list). GitHub isn't asked: it allows memory-lane 60
+    requests an hour, and its answers ran out before #rabbithole's closed #29-#33 could clear (Justin, #ramp, 11
+    Nov: "We're on the cusp of being rid of github altogether"). With no board to read, or for a repository githouse
+    doesn't hold (so the ramp doesn't follow it), it can't say: False."""
+    from . import githouse
+    if githouse.pull_merged(repo, number):
+        return True
+    if githouse.repository(repo) is None:
+        return False  # a repository the ramp doesn't follow: not on its list says nothing
+    seen = board(stale_ok=True) or {}
+    if seen.get('error') or not seen.get('built'):
+        return False
+    return not any(i.get('repo') == repo and i.get('number') == number for i in seen.get('open') or [])

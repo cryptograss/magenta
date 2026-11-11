@@ -40,8 +40,7 @@ class MergeHookTest(TestCase):
                                 HTTP_X_HUB_SIGNATURE_256=signature or good, HTTP_X_GITHUB_EVENT=event)
 
     def test_a_merge_ticks_the_list_now_and_open_pages_are_told(self):
-        open_still = mock.Mock(return_value=None)  # GitHub, asked, says nothing merged
-        with mock.patch.object(todo, '_raw', return_value=PAGE), mock.patch.object(todo, '_github', open_still):
+        with mock.patch.object(todo, '_raw', return_value=PAGE):  # nothing merged until the hook says so
             self.assertFalse(todo.for_mood(self.mood)['items'][0]['done'])
             before = self.client.get('/api/moods/magenta-interface/turns/').json()['todo_stamp']
             merged = {'action': 'closed', 'pull_request': {'number': 131, 'merged': True},
@@ -59,7 +58,7 @@ class MergeHookTest(TestCase):
                   'repository': {'full_name': 'jMyles/memory-lane'}}
         raw = urlencode({'payload': json.dumps(merged)}).encode()
         signature = 'sha256=' + hmac.new(SECRET.encode(), raw, hashlib.sha256).hexdigest()
-        with mock.patch.object(todo, '_raw', return_value=PAGE), mock.patch.object(todo, '_github', mock.Mock(return_value=None)), \
+        with mock.patch.object(todo, '_raw', return_value=PAGE), \
                 mock.patch.object(todo, '_in_background', lambda fn, *args: fn(*args)):
             answer = self.client.post('/api/github/hook/', raw, content_type='application/x-www-form-urlencoded',
                                       HTTP_X_HUB_SIGNATURE_256=signature, HTTP_X_GITHUB_EVENT='pull_request')
@@ -101,7 +100,7 @@ class MovedRepositoryTest(TestCase):
                                                        'merged_by': {'login': 'jMyles'}},
                   'repository': {'full_name': 'cryptograss/memory-lane'}}
         raw, good = signed(merged)
-        with mock.patch.object(todo, '_raw', return_value=PAGE), mock.patch.object(todo, '_github', mock.Mock(return_value=None)), \
+        with mock.patch.object(todo, '_raw', return_value=PAGE), \
                 mock.patch.object(todo, '_in_background', lambda fn, *args: fn(*args) if fn is todo.announce_merge else None):
             self.client.post('/api/github/hook/', raw, content_type='application/json',
                              HTTP_X_HUB_SIGNATURE_256=good, HTTP_X_GITHUB_EVENT='pull_request')
@@ -109,19 +108,7 @@ class MovedRepositoryTest(TestCase):
         events = [e for e in self.client.get('/api/moods/magenta-interface/turns/').json()['events'] if e['type'] == 'merged']
         self.assertEqual(len(events), 1)
 
-    def test_open_work_matches_what_was_said_before_it_moved(self):
-        from conversations.services import repos, work
+    def test_a_repository_moved_into_the_org_is_the_same_one(self):
+        from conversations.services import repos
         self.assertEqual(repos.same('jMyles/memory-lane'), 'cryptograss/memory-lane')
         self.assertEqual(repos.same('cryptograss/pickipedia'), 'cryptograss/pickipedia')
-        import requests
-        refused = requests.HTTPError(response=mock.Mock(status_code=422))
-        asked = []
-
-        def search(query):
-            asked.append(query)
-            if 'repo:jMyles' in query:
-                raise refused
-            return []
-        with mock.patch.object(work, '_search', search):
-            self.assertEqual(work._scoped('is:pr is:open'), [])
-        self.assertEqual(asked[-1], 'is:pr is:open org:cryptograss')  # the old names refused: the org alone

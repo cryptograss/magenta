@@ -27,14 +27,11 @@ A renamed Mood's list is found under its old name too, until it's moved.
 
 **Merges tick themselves.** An open item whose link is a candidate branch's page in the ramp,
 /ramp/<repo>/<branch>/, shows as done once githouse has merged that branch ('merged': true), or closed it
-unmerged ('closed': true; Justin, 10 Nov: "so that todos and asks get resolved"). So does one whose link is a GitHub pull
-request shows as done once GitHub says it was merged ('merged': true) --
-whatever the page says, so nobody has to tick a merge by hand. The page
-itself is left as it was; an agent tidies it when it next touches the list.
-GitHub is asked once per repository every few minutes (its recently closed
-pull requests), and a pull request not among them on its own, so sixty
-unsigned requests an hour go a long way; settings.GITHUB_TOKEN, if set,
-lifts that ceiling.
+unmerged ('closed': true; Justin, 10 Nov: "so that todos and asks get resolved"). So does one whose link is one
+of our pull requests: 'merged' once githouse's copy has it merged, 'closed' once the ramp no longer has it open
+(ramp.pull_done). Whatever the page says, so nobody has to tick a merge by hand. The page itself is left as it
+was; an agent tidies it when it next touches the list. GitHub isn't asked (Justin, #ramp, 11 Nov: "We're on the
+cusp of being rid of github altogether").
 """
 
 import re
@@ -230,70 +227,27 @@ def all_todos(http=None):
     return result
 
 
-# --- merges, from githouse's copy, else GitHub ------------------------------------------------------------
+# --- merges, from githouse's copy and the ramp; GitHub isn't asked ------------------------------------------
 
 _PULL = re.compile(r'^https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?:[/#?].*)?$', re.I)
-CLOSED_FOR = 300       # seconds a repository's recently closed pull requests are kept
-OPEN_FOR = 600         # seconds a pull request on its own, still open, is kept
-MERGED_FOR = 86400     # seconds one merged is kept: merged is merged
+HEARD_FOR = 86400 * 30   # seconds a merge GitHub's webhook told us of is kept: it told us; nobody asked it
 
 
-def _github(path, http, **params):
-    from django.conf import settings
-    token = getattr(settings, 'GITHUB_TOKEN', '')
-    headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'memory-lane (magenta; todo)',
-               **({'Authorization': f'Bearer {token}'} if token else {})}
-    response = http.get(f'https://api.github.com{path}', params=params, headers=headers, timeout=6)
-    return response.json() if response.status_code == 200 else None
-
-
-def _recently_closed(owner, repo, http):
-    """{number: merged} of a repository's recently closed pull requests; None if GitHub won't say. One listing,
-    cached, read by both _recently_merged and _pull_closed (re, 10 Nov: two keys fetched it twice, and memory-lane
-    asks GitHub without a token, 60 an hour)."""
-    key = f'todo:closed:{same(f"{owner}/{repo}")}'
-    found = cache.get(key)
-    if found is None:
-        listed = _github(f'/repos/{owner}/{repo}/pulls', http, state='closed', sort='updated', direction='desc',
-                         per_page=100)
-        found = {p['number']: bool(p.get('merged_at')) for p in listed} if isinstance(listed, list) else 'unknown'
-        cache.set(key, found, CLOSED_FOR)
-    return None if found == 'unknown' else found
-
-
-def _recently_merged(owner, repo, http):
-    """{number} of a repository's recently closed pull requests that were merged; None if GitHub won't say."""
-    closed = _recently_closed(owner, repo, http)
-    return None if closed is None else {n for n, merged in closed.items() if merged}
-
-
-def _pull_closed(owner, repo, number, http):
-    """Whether this pull request is closed on GitHub, merged or not (Justin, 10 Nov 23:01Z: rabbithole #29-#33,
-    closed when their work moved to magent/ branches and merged through githouse, kept their asks' pills).
-    False if GitHub won't say, so an ask stands rather than clearing on no answer."""
-    closed = _recently_closed(owner, repo, http)
-    return bool(closed) and number in closed
-
-
-def _merged(owner, repo, number, http):
-    """Whether this pull request was merged: githouse's copy says, by its head's ancestry (services/githouse.py;
-    Cryptograss:Moods/ramp/Plan, section 4), and GitHub is asked only of a repository or a pull request githouse
-    doesn't hold (False if it won't say)."""
+def _pull_state(owner, repo, number):
+    """'merged' or 'closed' for one of our pull requests that githouse has merged, or that the ramp no longer has
+    open (ramp.pull_done); None while it's open, or for a repository that isn't ours. GitHub isn't asked (Justin,
+    #ramp, 11 Nov: "We're on the cusp of being rid of github altogether")."""
     from . import githouse
-    if same(f'{owner}/{repo}').startswith('cryptograss/'):
-        said = githouse.pull_merged(same(f'{owner}/{repo}').split('/')[1], number)
-        if said is not None:
-            return said
-    recent = _recently_merged(owner, repo, http)
-    if recent and number in recent:
-        return True
-    key = f'todo:pull:{same(f"{owner}/{repo}")}#{number}'
-    found = cache.get(key)
-    if found is None:
-        pull = _github(f'/repos/{owner}/{repo}/pulls/{number}', http)
-        found = bool(pull and pull.get('merged_at'))
-        cache.set(key, found, MERGED_FOR if found else OPEN_FOR)
-    return found
+    from .ramp import pull_done
+    full = same(f'{owner}/{repo}')
+    if cache.get(f'todo:heard:{full}#{number}'):
+        return 'merged'  # GitHub's webhook said so (merged_now): told, not asked
+    if not full.startswith('cryptograss/'):
+        return None
+    name = full.split('/')[1]
+    if githouse.pull_merged(name, number):
+        return 'merged'
+    return 'closed' if pull_done(name, number) else None
 
 
 # A candidate branch's page (work_pages.address): the item is that branch, merged or closed as githouse says.
@@ -316,8 +270,9 @@ def _branch_state(link):
 
 
 def with_merges(items, http):
-    """The items, an open one linking a GitHub pull request that's been merged marked done ('merged': True); one
-    linking a candidate branch's page, done when githouse merged it ('merged') or closed it ('closed')."""
+    """The items, an open one linking one of our pull requests marked done when githouse has it merged ('merged')
+    or the ramp no longer has it open ('closed'); one linking a candidate branch's page, done when githouse merged
+    it ('merged') or closed it ('closed')."""
     out = []
     for item in items:
         if not item['done'] and _BRANCH_PAGE.match(item.get('link') or ''):
@@ -332,10 +287,11 @@ def with_merges(items, http):
         match = _PULL.match(item.get('link') or '')
         if match and not item['done']:
             try:
-                if _merged(match.group(1), match.group(2), int(match.group(3)), http):
-                    item = {**item, 'done': True, 'merged': True}
-            except Exception:  # noqa: BLE001 -- GitHub unreachable: the item stands as written
-                pass
+                state = _pull_state(match.group(1), match.group(2), int(match.group(3)))
+            except Exception:  # noqa: BLE001 -- githouse or the board unreadable: the item stands as written
+                state = None
+            if state:
+                item = {**item, 'done': True, state: True}
         out.append(item)
     return out
 
@@ -377,11 +333,7 @@ def merged_now(owner, repo, number, title='', by='', commit='', branch=''):
     """GitHub says this pull request just merged: kept as merged, every list asked again,
     and each Mood whose list links it told so, in its thread (in the background)."""
     from conversations.models import Mood
-    repository = same(f'{owner}/{repo}')  # a link to the old place is kept under the new one
-    cache.set(f'todo:pull:{repository}#{number}', True, MERGED_FOR)
-    closed = cache.get(f'todo:closed:{repository}')  # _recently_closed's listing, if it's kept: merged is closed too
-    if isinstance(closed, dict):
-        cache.set(f'todo:closed:{repository}', {**closed, number: True}, CLOSED_FOR)
+    cache.set(f"todo:heard:{same(f'{owner}/{repo}')}#{number}", True, HEARD_FOR)  # a link to the old place: the same one
     cache.delete_many([f'todo:{slug}' for slug in Mood.objects.values_list('slug', flat=True)])
     cache.delete('todo:all_moods')
     changed()

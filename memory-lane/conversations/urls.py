@@ -194,7 +194,6 @@ urlpatterns = [
     path('api/moods/live/', views_moods.api_moods_live, name='api_moods_live'),
     path('api/block/', views_moods.api_block, name='api_block'),
     path('api/search/', views_moods.api_search, name='api_search'),
-    path('api/work/', views_moods.api_work, name='api_work'),
     path('memory_lane/', views.memory_lane, name='memory_lane'),
     path('spy/', views.stream, name='spy'),
     path('api/recent_messages/', views.recent_messages, name='recent_messages'),
