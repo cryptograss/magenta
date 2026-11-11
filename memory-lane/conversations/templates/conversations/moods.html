@@ -4012,7 +4012,7 @@
       + (cont ? edited : '');
     if (t.deleted) el.classList.add('deleted');
     markEmoji(el.querySelector('.body'));
-    el._text = t.text;
+    el._text = t.text; el._at = t.created_at;
     el._links = t.links || []; el._tidings = t.tidings || [];
     el.dataset.sender = t.sender;
     // On a touch screen ▶ floats at the message's right, kept in sight while any of it is (.dock).
@@ -7197,8 +7197,9 @@
     if (!confirm('Delete this message for everyone? Its words are taken out of the record; a line says it was deleted.')) return;
     try { toldChanged(await changeMessage(id, 'delete')); await poll(false); } catch (err) { showError('delete: ' + err.message); }
   }
-  // Edit: the message's words in a box where they were; Save or Cancel (Esc).
-  function editMessage(el, id) {
+  // Edit: the message's words in a box where they were; Save (Enter, as Enter sends in the composer; Justin, 8 Nov)
+  // or Cancel (Esc). `then`: what to do once it's saved or let go (↑ from the composer goes back there).
+  function editMessage(el, id, then) {
     const body = el.querySelector('.body');
     if (!body || body.querySelector('textarea')) return;
     const before = body.innerHTML;
@@ -7207,13 +7208,36 @@
     box.value = el._text || '';
     box.style.height = Math.min(400, Math.max(60, box.scrollHeight + 4)) + 'px';
     box.focus();
-    const cancel = () => { body.innerHTML = before; };
+    const done = () => { if (then) then(); };
+    const cancel = () => { body.innerHTML = before; done(); };
     body.querySelector('.editcancel').addEventListener('click', cancel);
-    box.addEventListener('keydown', k => { if (k.key === 'Escape') { k.preventDefault(); cancel(); } });
-    body.querySelector('.editsave').addEventListener('click', async () => {
+    const save = async () => {
       if (box.value.trim() === (el._text || '').trim()) { cancel(); return; }
-      try { toldChanged(await changeMessage(id, 'edit', { text: box.value })); await poll(false); } catch (err) { showError('edit: ' + err.message); }
+      try { toldChanged(await changeMessage(id, 'edit', { text: box.value })); await poll(false); done(); }
+      catch (err) { showError('edit: ' + err.message); }
+    };
+    box.addEventListener('keydown', k => {
+      if (k.key === 'Escape') { k.preventDefault(); cancel(); return; }
+      if (k.key !== 'Enter' || k.isComposing || k.keyCode === 229) return;
+      if (k.ctrlKey || k.metaKey) {  // a new line, as in the composer
+        k.preventDefault();
+        const at = box.selectionStart;
+        box.setRangeText('\n', at, box.selectionEnd, 'end');
+        return;
+      }
+      if (k.shiftKey || k.altKey || touchScreen) return;
+      k.preventDefault(); save();
     });
+    body.querySelector('.editsave').addEventListener('click', save);
+  }
+  // ↑ in an empty composer: your newest message here that you may still edit, opened for editing (Justin, 8 Nov).
+  function editLastMine() {
+    const mine = [...document.querySelectorAll('#turns article.turn .morebtn[data-edit="1"]')].pop();
+    const el = mine && mine.closest('article.turn');
+    if (!el) return false;
+    el.scrollIntoView({ block: 'nearest' });
+    editMessage(el, mine.dataset.more, () => sayBox.focus());
+    return true;
   }
   function renderToBottom() {
     const far = main.scrollHeight - main.scrollTop - main.clientHeight > 400;
@@ -10201,6 +10225,7 @@
     const mine = id && document.getElementById('m-' + id);
     if (mine) mine.after(note); else if (turns) turns.appendChild(note);
   }
+  let sending = null;  // a send on its way: {stop, sent} (↑ stops it)
   async function say() {
     // A memo still recording or uploading: stop it, and send once it's in the box.
     if (recorder || memoSaving) {
@@ -10258,8 +10283,13 @@
     if (voicePending) { voicePending.state = 'sending'; renderVoiceMode(); }
     else { voicePending = { state: 'sending', text, who: viewer, mood: current }; renderVoiceMode(); }
     let sent = false;  // the server has it: from here, nothing goes back in the box
+    // ↑ while it's on its way stops it (Justin, 8 Nov): the words go back in the box, to edit and send again.
+    const stopper = new AbortController();
+    const sentFrom = current, startedAt = Date.now();
+    sending = { stop: () => stopper.abort(), sent: () => sent };
     try {
       const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/say/', {
+        signal: stopper.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
         body: JSON.stringify({ text: replyTo ? `↩ #m-${replyTo.id}\n${text}` : text }),
@@ -10310,8 +10340,26 @@
       if (!sayBox.value.trim()) { sayBox.value = words; fitSay(); showDiscard(); }  // not sent: the words back where they were
       if (!tray.length) { tray = sentTray; renderTray(); }                // and the pictures
       saveDraft();
-      composer.insertAdjacentHTML('beforeend', `<span class="err">${esc(e.message)}</span>`);
+      if (e.name === 'AbortError') {
+        // Stopped by ↑. The server may have had it all the same, in the moment before: if it's there, it's
+        // opened for editing instead, and the box let go, so it isn't sent twice.
+        await poll(false).catch(() => {});
+        const landed = sentFrom === current && [...document.querySelectorAll('#turns article.turn .morebtn[data-edit="1"]')]
+          .map(b => b.closest('article.turn')).filter(el => el && (el._text || '').trim() === text.trim()
+            && new Date(el._at || 0).getTime() >= startedAt - 5000).pop();
+        if (landed) {
+          sayBox.value = ''; fitSay(); showDiscard(); tray = []; renderTray(); saveDraft();
+          editMessage(landed, landed.id.replace(/^m-/, ''), () => sayBox.focus());
+        } else {
+          composer.insertAdjacentHTML('beforeend', '<span class="note">Stopped: not sent. Edit it and send again.</span>');
+          const note = composer.querySelector('.note:last-of-type');
+          setTimeout(() => note && note.remove(), 6000);
+        }
+      } else {
+        composer.insertAdjacentHTML('beforeend', `<span class="err">${esc(e.message)}</span>`);
+      }
     } finally {
+      sending = null;
       sendBtn.disabled = false;
       sayBox.focus();
     }
@@ -10344,6 +10392,24 @@
     if (at && what) at.textContent = what;
   }
   composer.addEventListener('submit', e => { e.preventDefault(); say(); });
+  // ↑ in the composer (Justin, 8 Nov), when it has nothing to move through: a send on its way is stopped and its
+  // words come back here; one waiting on a picture or a memo stops waiting; otherwise, with the box empty, your
+  // newest message here opens for editing. Suggestions open, ↑ is theirs (above).
+  sayBox.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowUp' || e.defaultPrevented || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (suggest.classList.contains('on')) return;
+    if (sending && !sending.sent()) { e.preventDefault(); sending.stop(); return; }
+    if ((picturesThenSend || memoThenSend) && sayBox.selectionStart === 0) {
+      e.preventDefault();
+      picturesThenSend = false; memoThenSend = false; renderSendWait();
+      composer.querySelectorAll('.note.picture-note').forEach(el => el.remove());
+      if (memoPending) { memoPending.remove(); memoPending = null; }
+      showNote('Not sending: it waits here for you.', 4000);
+      return;
+    }
+    if (sayBox.value.trim() || tray.length) return;  // the caret's to move, in what's typed
+    if (editLastMine()) e.preventDefault();
+  });
   // Enter sends; Ctrl+Enter (or Shift+Enter) makes a new line (Justin, 1 Oct). On a touch
   // screen there is no Ctrl, so Enter makes the new line and Send sends. Only a touch screen with
   // nothing finer: a laptop with a touch screen has a trackpad and a keyboard, and Enter sends there.
