@@ -79,6 +79,28 @@ class MoodWakeTest(TestCase):
                  'message': {'role': 'user', 'content': 'a note'}}
         self.assertTrue(json.loads(stream_line(event, '2026-10-25T12:51:00Z'))['isMeta'])
 
+    def test_a_skills_text_is_the_harness_even_when_the_stream_doesnt_say(self):
+        # blu, #connectome, 11 Nov: the dataviz skill's whole text posted as blu's reply.
+        from conversations.views_runner import stream_line
+        skill = [{'type': 'text', 'text': 'Base directory for this skill: /tmp/claude-2002/bundled-skills/x/dataviz\n\n# Data Visualization'}]
+        event = {'type': 'user', 'uuid': str(uuid.uuid4()), 'session_id': str(self.session),
+                 'message': {'role': 'user', 'content': skill}}
+        self.assertEqual(self.imp(stream_line(event, '2026-11-11T00:17:45Z')).sender_id, 'harness')
+        from conversations.services.mood_view import activity
+        self.assertNotEqual((activity(self.mood) or {}).get('agent'), 'justin')
+
+    def test_the_stream_reads_isSynthetic_as_isMeta(self):
+        from conversations.views_runner import stream_line
+        event = {'type': 'user', 'uuid': str(uuid.uuid4()), 'isSynthetic': True, 'session_id': str(self.session),
+                 'message': {'role': 'user', 'content': [{'type': 'text', 'text': 'a note'}]}}
+        raw = stream_line(event, '2026-11-11T00:17:45Z')
+        self.assertTrue(json.loads(raw)['isMeta'])
+        self.assertEqual(self.imp(raw).sender_id, 'harness')
+
+    def test_a_person_quoting_the_skill_line_midway_is_still_that_person(self):
+        said = 'look: Base directory for this skill: showed up as blu\'s reply'
+        self.assertEqual(self.imp(line(self.session, 'user', said)).sender_id, 'justin')
+
     def test_a_person_typing_the_wrapper_is_still_that_person(self):
         msg = self.imp(line(self.session, 'user', WAKE, entrypoint='cli'))
         self.assertEqual(msg.sender_id, 'justin')
