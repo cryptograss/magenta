@@ -3,7 +3,7 @@
 from django.core.management.base import BaseCommand
 
 from conversations.models import ThinkingEntity
-from conversations.services import alarms, tasks
+from conversations.services import alarms, ramp_conflicts, tasks
 
 
 class Command(BaseCommand):
@@ -18,3 +18,7 @@ class Command(BaseCommand):
         for stage, what in alarms.still_red():
             said = what if isinstance(what, str) else f"{what.content['state']} in {what.mood_slug}"
             self.stdout.write(f"alarm {stage}: {said}")
+        # A candidate branch that conflicts wakes its author in its Mood, once per head (services/ramp_conflicts.py).
+        for ref, what in ramp_conflicts.due():
+            said = what if isinstance(what, str) else f"{what.content['state']} in {what.mood_slug}"
+            self.stdout.write(f"conflict {ref}: {said}")

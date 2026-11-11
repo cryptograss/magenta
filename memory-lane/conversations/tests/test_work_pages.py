@@ -115,6 +115,22 @@ class WorkPageTest(WorkRepo):
         self.assertIn('class="thumb"', html)                  # the 👍, for a signed-in person
         self.assertNotIn('class="vote', html)                 # not Tidings' upvote: the 👍 is this page's
 
+    def test_the_page_says_if_it_conflicts_and_where(self):
+        # Skyler, 10 Nov: "that will show up in ramp when we go to look at the code?"
+        self.as_('justin')
+        tid = self.open_().json()['id']
+        self.assertNotIn('⚠ conflicts with', self.page(tid).content.decode())
+        (self.repo.work / 'app.py').write_text('one\nTWO\nthree\n')  # main changes the line re/foo changed
+        git(self.repo.work, 'commit', '-q', '-am', 'main moves')
+        self.repo.ref('refs/heads/main', git(self.repo.work, 'rev-parse', 'HEAD'))
+        cache.clear()
+        html = self.page(tid).content.decode()
+        self.assertIn('⚠ conflicts with main</span>', html)
+        self.assertIn('conflicts in: app.py', html)
+        files = html[html.index('data-path="app.py"'):html.index('data-path="new.txt"')]
+        self.assertIn('⚠ conflict</span>', files)
+        self.assertNotIn('⚠ conflict</span>', html[html.index('data-path="new.txt"'):])
+
     def test_the_diff_comes_first_with_every_diff_a_click_away(self):
         # Justin, 9 Nov: "still not obvious to me where I'm supposed to click to see the diff". The diff is
         # the page's first heading, above the commits, with one button for every file's; the ramp's

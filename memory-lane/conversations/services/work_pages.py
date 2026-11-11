@@ -263,8 +263,19 @@ def panel(work):
         if len(parts) == 5 and _SHA.fullmatch(parts[0]):
             out['commits'].append({'sha': parts[0], 'author': parts[1], 'at': ramp._when(int(parts[2] or 0)),
                                    'subject': parts[3], 'body': parts[4].strip()})
+    # Whether it conflicts (services/ramp.clashes; Skyler, 10 Nov: "that will show up in ramp when we go to look at
+    # the code?"): with its base as githouse has it now, and, from the board, with other open candidates.
+    if state in ('open', 'pushed') and refs.get(f'refs/heads/{base}'):
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix='ramp-merge-') as scratch:
+            out['conflicts'] = ramp._merge_tree(held, refs[f'refs/heads/{base}'][0], head, scratch)
+        own = set(out['conflicts'] or [])
+        out['clashes'] = [c for c in (item or {}).get('clashes') or [] if set(c['files']) - own]
     if out.get('merge_base'):
         out['files'] = changed_files(held, out['merge_base'], head)
+        clashing = set(out.get('conflicts') or []) | {f for c in out.get('clashes') or [] for f in c['files']}
+        for f in out['files']:
+            f['conflict'] = f['path'] in clashing
         out['size'] = {'commits': len(out['commits']), 'files': len(out['files']),
                        'added': sum(f['added'] or 0 for f in out['files']),
                        'removed': sum(f['removed'] or 0 for f in out['files'])}
