@@ -109,6 +109,23 @@ class AskTest(TestCase):
         words, asks = trailing_asks('A.\n<deploy to="hunter"/>\nB.\n<merge to="#310"/>')
         self.assertEqual((words, [a['type'] for a in asks]), ('A.\nB.', ['deploy', 'merge']))
 
+    def test_a_long_merge_ask_is_an_ask_and_names_every_branch(self):
+        # Justin, 11 Nov (#ramp): "Why don't I see magenta:magent/ask-repo-space right here in this mood?" The ask
+        # ran to 212 characters, over the old 200, and went out as text; and a merge ask kept only its first 10 words.
+        from unittest import mock
+        to = ('magenta:magent/ask-repo-space, magenta:magent/promote-button-2, maybelle-config:magent/githouse-promote-2, '
+              'maybelle-config:magent/githouse-people and maybelle-config:magent/scan-faster, then one maybelle redeploy')
+        self.assertEqual(len(to), 212)
+        self.say('re', f'All five are ready.\n\n<merge to="{to}"/>', 1)
+        with mock.patch('conversations.services.githouse.branch_merged', return_value=False), \
+                mock.patch('conversations.services.githouse.branch_closed', return_value=False), \
+                mock.patch('conversations.services.githouse.repository', return_value=None):
+            asked = self.asked()
+        self.assertEqual([a['kind'] for a in asked], ['merge'])
+        self.assertEqual([w['branch'] for w in asked[0]['works']],
+                         ['magent/ask-repo-space', 'magent/promote-button-2', 'magent/githouse-promote-2',
+                          'magent/githouse-people', 'magent/scan-faster'])
+
     def test_a_tag_shown_in_a_code_block_is_not_an_ask(self):
         from conversations.services.mood_view import trailing_asks
         text = 'Write it like this:\n\n```\n<merge to="magenta:re/foo"/>\n```\n\nand it posts a line.'
