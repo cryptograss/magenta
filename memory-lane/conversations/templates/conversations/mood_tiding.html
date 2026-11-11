@@ -676,7 +676,10 @@
     async function attach() {
       const plain = () => { if (v._hls) { v._hls.destroy(); v._hls = null; } v.src = v.dataset.src; };
       const native = v.canPlayType('application/vnd.apple.mpegurl') !== '';
-      const mse = 'MediaSource' in window || 'ManagedMediaSource' in window;
+      // Classic Media Source only. An iPhone has had ManagedMediaSource since iOS 17.1, and hls.js drives it, but
+      // there it played the sound over a black picture or failed outright (Skyler, iPhone 17, 8 Nov): Safari's
+      // own HLS plays these streams, as this was always meant to.
+      const mse = 'MediaSource' in window;
       if (!mse && native) { v.src = v.dataset.hls; return; }  // iOS: the browser's own, which picks the quality
       let Hls = null;
       try { Hls = await loadHls(); } catch (e) { Hls = null; }

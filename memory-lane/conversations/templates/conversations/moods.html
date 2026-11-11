@@ -3518,7 +3518,9 @@
     }
     addSpeeds(v);
     v.addEventListener('play', () => { v._started = true; }, { once: true });
-    const mse = 'MediaSource' in window || 'ManagedMediaSource' in window;
+    // Classic Media Source only: an iPhone's ManagedMediaSource (iOS 17.1+) gave sound over a black picture, or
+    // "can't play", through hls.js (Skyler, iPhone 17, 8 Nov). Safari's own HLS plays these streams.
+    const mse = 'MediaSource' in window;
     if (!mse && nativeHls(v)) { v.src = v.dataset.hls; return; }  // iOS: the browser's own (it picks the quality)
     let Hls;
     try { Hls = await loadHls(); } catch (e) { Hls = null; }
