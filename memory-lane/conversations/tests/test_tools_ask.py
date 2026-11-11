@@ -242,6 +242,22 @@ class AskTest(TestCase):
                     mock.patch('conversations.services.tools_ask.named_branches', lambda purpose: [('magenta', 're/one')]):
                 self.assertEqual([t['for'] for t in self.asked()], ['magenta:re/one'])
 
+    def test_a_pull_request_closed_unmerged_answers_its_ask(self):
+        # Justin, 10 Nov 23:01Z: rabbithole #29-#33 were closed when their work moved to magent/ branches and
+        # merged through githouse; asks naming them stood as pills, a merge that will never come.
+        from unittest import mock
+        self.say('re', '<merge to="rabbithole#29 and rabbithole#33"/>', 1)
+        closed = set()
+        with mock.patch('conversations.services.todo._merged', lambda o, r, n, http: False), \
+                mock.patch('conversations.services.todo._pull_closed', lambda o, r, n, http: n in closed):
+            self.assertEqual([w.get('number') for t in self.asked() for w in t.get('works', [])], [29, 33])
+            closed.add(29)
+            cache.clear()
+            self.assertEqual([w.get('number') for t in self.asked() for w in t.get('works', [])], [33])
+            closed.add(33)
+            cache.clear()
+            self.assertEqual(self.asked(), [])
+
     def test_a_newer_ask_replaces_an_older_ask_of_the_same_kind(self):
         self.say('re', '<tools to="push the fix"/>', 1, session=self.sid)
         self.say('re', '<tools to="rebase first, then push"/>', 2, session=self.sid)
