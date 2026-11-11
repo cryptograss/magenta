@@ -256,6 +256,15 @@ def extract_timestamp(event):
     return None
 
 MOOD_WAKE_PREFIX = '<mood-wake'
+# The text Claude Code feeds an agent when it loads a skill: the harness's, like any isMeta line.
+# The transcript marks it isMeta; a turn's stream doesn't always say so, and with the watcher retired
+# the stream is all the record gets, so the text itself says whose it is (blu, #connectome, 11 Nov:
+# the whole dataviz skill posted as blu's reply; magent, #interfaces, 5 Nov).
+SKILL_TEXT_PREFIX = 'Base directory for this skill:'
+
+
+def is_harness_note(text, event):
+    return bool(event.get('isMeta')) or text.lstrip().startswith(SKILL_TEXT_PREFIX)
 
 
 def poller_or(user, content, event):
@@ -280,7 +289,7 @@ def poller_or(user, content, event):
     # conversation: ...", a skill's text, a command's caveat): the harness said it. Filed as the user's,
     # in a runner's session that user is the agent, and the Mood showed it as the agent's words. Kept,
     # as the harness's, and shown as a note in the agent's turn (mood_view.HARNESS).
-    if event.get('isMeta'):
+    if is_harness_note(text, event):
         return get_or_create_participant('harness', 'system')
     return user
 
@@ -589,7 +598,7 @@ def import_line_from_claude_code_v2(line, era, filename, username='justin', keep
             )
             # The runner's stream may have filed a harness note first, as the agent's; the transcript line
             # says isMeta, and that settles whose it is.
-            if not created and event.get('isMeta') and message.sender_id != sender.pk:
+            if not created and sender.pk == 'harness' and message.sender_id != sender.pk:
                 Message.objects.filter(pk=message.pk).update(sender=sender)
 
             # Add recipient
