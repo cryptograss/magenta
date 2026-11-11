@@ -308,7 +308,7 @@
   function renderPickipediaMcp(p) {
     if (!p) return '—';
     const head = p.head_sha
-      ? `<a href="https://github.com/${esc(p.fork_repo)}/commit/${esc(p.head_sha)}" target="_blank" rel="noopener"><code>${esc(p.head_sha)}</code></a>`
+      ? `<a href="${esc(p.head_url || ('https://github.com/' + p.fork_repo + '/commit/' + p.head_sha))}" target="_blank" rel="noopener"><code>${esc(p.head_sha)}</code></a>`
         + (p.head_at ? ` (${esc(ago(p.head_at))})` : '')
         + (p.head_message ? ` — ${esc(p.head_message)}` : '')
       : `<span class="meta">${esc(p.error || 'unknown')}</span>`;

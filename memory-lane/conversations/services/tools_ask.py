@@ -141,25 +141,12 @@ def named_branches(purpose):
     return found
 
 
-def _pull_done(repo, number):
-    """Whether a pull request an ask names is done with: githouse has it merged, or the ramp doesn't have it open
-    any more (merged or closed, it's off the ramp's open list). GitHub isn't asked: it allows memory-lane 60
-    requests an hour, and its answers ran out before #rabbithole's closed #29-#33 could clear (Justin, #ramp, 11
-    Nov: "We're on the cusp of being rid of github altogether"). With no board to read, it can't say: False."""
-    from . import githouse, ramp
-    if githouse.pull_merged(repo, number):
-        return True
-    board = ramp.board(stale_ok=True) or {}
-    if board.get('error') or not board.get('built'):
-        return False
-    return not any(i.get('repo') == repo and i.get('number') == number for i in board.get('open') or [])
-
-
 def _merged_elsewhere(purpose):
     """Whether everything the ask names is merged: each pull request by githouse's copy, else GitHub (Justin,
     31 Oct: "a dumb way to resolve a merge request"; the same check the to-do lists tick themselves by), each
     mergeable by its name having moved to refs/merged/. Naming nothing, only the Mood's merged event answers."""
     from . import githouse
+    from .ramp import pull_done
     pulls, branches = named_pulls(purpose), named_branches(purpose)
     if pulls is None or branches is None or not (pulls or branches):
         # None: a name in a repository we can't say about (re, 7 Nov: never clear on the known half alone);
@@ -167,7 +154,7 @@ def _merged_elsewhere(purpose):
         return False
     try:
         # A branch or a pull request closed unmerged answers it too: there's nothing left to merge (Justin, 10 Nov).
-        return (all(_pull_done(repo, number) for _, repo, number in pulls)
+        return (all(pull_done(repo, number) for _, repo, number in pulls)
                 and all(githouse.branch_merged(repo, branch) or githouse.branch_closed(repo, branch)
                         for repo, branch in branches))
     except Exception:  # noqa: BLE001 -- githouse or the board unreadable: the ask stands until its event lands
@@ -181,14 +168,14 @@ def unmerged(purpose):
     the Mood list shows each by its branch's name (Justin, 9 Nov), a pull request's as the ramp last had it (''
     if it hasn't). One it can't say about counts as not merged."""
     from . import githouse
-    from .ramp import branch_of
+    from .ramp import branch_of, pull_done
     out, seen = [], set()
     for _, repo, number in named_pulls(purpose) or []:
         if (repo, number) in seen:
             continue
         seen.add((repo, number))
         try:
-            done = _pull_done(repo, number)
+            done = pull_done(repo, number)
         except Exception:  # noqa: BLE001 -- githouse or the board unreadable: shown as still wanted
             done = False
         if not done:

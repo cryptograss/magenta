@@ -38,7 +38,13 @@ DEFAULT_BACKUP_DIR = '/mnt/persist/magenta/backups'
 _DUMP_BLOCK = re.compile(r'magenta_memory_(\d+)\.(?:dump|sql\.gz)$')
 FORK_REPO = 'cryptograss/pickipedia-mcp'
 UPSTREAM_REPO = 'ProfessionalWiki/MediaWiki-MCP-Server'
-MCP_CACHE_SECONDS = 1800  # eight GitHub calls; unauthenticated, maybelle has 60 an hour
+MCP_CACHE_SECONDS = 300   # read from githouse's copy: cheap
+# The upstream release ours is built on, and its commit, which our history holds (258e9b4 merged it in). Pinned
+# here, not asked of GitHub (Justin, #ramp, 11 Nov: "We're on the cusp of being rid of github altogether"); when
+# ours is rebased onto a newer release, these two change with it. Upstream had v0.21.0 out by 11 Nov.
+UPSTREAM_TAG = 'v0.19.0'
+UPSTREAM_TAG_SHA = '0b5e84db9df5d149b30c45f08c2592705e303174'
+MCP_BRANCH = 'master'
 
 
 def local_uptime_seconds(proc_path='/proc/uptime'):
@@ -247,46 +253,33 @@ def magenta_version():
     }
 
 
-def _fetch_pickipedia_mcp_forge():
-    """Query GitHub for cryptograss/pickipedia-mcp vs ProfessionalWiki/MediaWiki-MCP-Server.
-
-    Ours isn't a GitHub fork of theirs (no shared network: no cross-repository compare) and
-    carries none of their tags, so it's compared with the commit their latest release names,
-    which is in ours too (we rebased onto it); and their own default branch with that same
-    commit says how far they've gone on since. Eight calls, kept MCP_CACHE_SECONDS."""
-    import requests
-    headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'magenta'}
-    token = getattr(settings, 'GITHUB_TOKEN', '')
-    if token:
-        headers['Authorization'] = f'Bearer {token}'
-
-    def get(path):
-        r = requests.get(f'https://api.github.com/{path}', headers=headers, timeout=5)
-        r.raise_for_status()
-        return r.json()
-
-    ours = get(f'repos/{FORK_REPO}')['default_branch']  # master
-    head = get(f'repos/{FORK_REPO}/commits/{ours}')
-    commit = head.get('commit') or {}
-    theirs = get(f'repos/{UPSTREAM_REPO}')['default_branch']
-    tag = get(f'repos/{UPSTREAM_REPO}/releases/latest')['tag_name']
-    ref = get(f'repos/{UPSTREAM_REPO}/git/ref/tags/{tag}')['object']
-    released = get(f"repos/{UPSTREAM_REPO}/git/tags/{ref['sha']}")['object']['sha'] if ref['type'] == 'tag' else ref['sha']
-    mine = get(f'repos/{FORK_REPO}/compare/{released}...{ours}')
-    since = get(f'repos/{UPSTREAM_REPO}/compare/{released}...{theirs}')
+def _read_pickipedia_mcp():
+    """cryptograss/pickipedia-mcp as githouse's copy has it: its head, and how far it is from the upstream release it's
+    built on (UPSTREAM_TAG, whose commit our history holds). No GitHub."""
+    from . import githouse
+    held = githouse.repository('pickipedia-mcp')
+    if held is None:
+        raise LookupError('githouse holds no pickipedia-mcp here')
+    sha, at, message = (githouse._git(held, 'log', '-1', '--format=%H%x00%cI%x00%s', MCP_BRANCH).strip().split('\0')
+                        + ['', '', ''])[:3]
+    if not sha:
+        raise LookupError(f'githouse has no pickipedia-mcp {MCP_BRANCH}')
+    count = lambda revs: int(githouse._git(held, 'rev-list', '--count', revs).strip() or 0)
+    has_tag = bool(githouse._sha(held, UPSTREAM_TAG_SHA))
     return {
         'fork_repo': FORK_REPO,
         'upstream_repo': UPSTREAM_REPO,
-        'head_sha': (head.get('sha') or '')[:7],
-        'head_at': (commit.get('committer') or {}).get('date'),
-        'head_message': ((commit.get('message') or '').splitlines() or [''])[0],
-        'upstream_tag': tag,
-        'upstream_tag_sha': released[:7],
-        'ahead_of_tag': mine.get('ahead_by'),
-        'behind_tag': mine.get('behind_by'),
-        'changed_files': len(mine.get('files') or []),
-        'upstream_branch': theirs,
-        'upstream_since_tag': since.get('ahead_by'),  # their commits since the release, not in ours
+        'head_sha': sha[:7],
+        'head_url': f'https://code.maybelle.cryptograss.live/pickipedia-mcp/commit/?id={sha}',
+        'head_at': at or None,
+        'head_message': message or None,
+        'upstream_tag': UPSTREAM_TAG,
+        'upstream_tag_sha': UPSTREAM_TAG_SHA[:7],
+        'ahead_of_tag': count(f'{UPSTREAM_TAG_SHA}..{sha}') if has_tag else None,
+        'behind_tag': count(f'{sha}..{UPSTREAM_TAG_SHA}') if has_tag else None,
+        'changed_files': len(githouse._git(held, 'diff', '--name-only', UPSTREAM_TAG_SHA, sha).split()) if has_tag else None,
+        'upstream_branch': None,
+        'upstream_since_tag': None,  # how far upstream has gone on: theirs to say, and GitHub isn't asked
     }
 
 
@@ -295,7 +288,7 @@ def pickipedia_mcp_status():
     cached = cache.get('status:pickipedia-mcp')
     if cached is None:
         try:
-            cached = _fetch_pickipedia_mcp_forge()
+            cached = _read_pickipedia_mcp()
         except Exception as e:
             cached = {
                 'fork_repo': FORK_REPO,
@@ -303,11 +296,11 @@ def pickipedia_mcp_status():
                 'head_sha': None,
                 'head_at': None,
                 'head_message': None,
-                'upstream_tag': 'v0.19.0',
+                'upstream_tag': UPSTREAM_TAG,
                 'ahead_of_tag': None,
                 'behind_tag': None,
                 'changed_files': None,
-                'error': f'could not query GitHub: {type(e).__name__}',
+                'error': f'could not read githouse\'s copy: {e}',
             }
         cache.set('status:pickipedia-mcp', cached, MCP_CACHE_SECONDS if cached.get('head_sha') else 600)
     return cached

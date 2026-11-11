@@ -106,17 +106,25 @@ class ForMoodTest(TestCase):
         self.assertIn('problem', broken['error'])
 
     def test_a_merged_pull_request_ticks_itself(self):
-        page = PAGE.replace('<pre>', '<pre>\n- task: Merge maybelle-config#167\n  link: https://github.com/cryptograss/maybelle-config/pull/167')
-        wiki = FakeWiki({'Cryptograss:Moods/magenta-interface/todo': page},
-                        closed={113: True, 99: False}, single={167: True})
-        items = {i['task']: i for i in todo.for_mood(self.mood, http=wiki)['items']}
-        self.assertEqual((items['Merge memory-lane#113']['done'], items['Merge memory-lane#113']['merged']), (True, True))
-        self.assertTrue(items['Merge maybelle-config#167']['merged'])  # not among the recent: asked on its own
-        self.assertNotIn('merged', items['Redeploy maybelle'])  # done by hand, as written
-        asked = len(wiki.github)
-        cache.delete('todo:magenta-interface')
-        todo.for_mood(self.mood, http=wiki)
-        self.assertEqual(len(wiki.github), asked)  # kept: GitHub isn't asked again for a while
+        # From githouse's copy and the ramp, never GitHub (Justin, #ramp, 11 Nov: "We're on the cusp of being rid of
+        # github altogether"): merged if githouse has it merged, closed once it's off the ramp's open list.
+        from unittest import mock
+        page = PAGE.replace('<pre>', '<pre>\n- task: Merge maybelle-config#167\n  link: https://github.com/cryptograss/maybelle-config/pull/167'
+                                     '\n- task: Merge maybelle-config#168\n  link: https://github.com/cryptograss/maybelle-config/pull/168'
+                                     '\n- task: Merge maybelle-config#169\n  link: https://github.com/cryptograss/maybelle-config/pull/169')
+        wiki = FakeWiki({'Cryptograss:Moods/magenta-interface/todo': page})
+        board = {'built': 1, 'open': [{'repo': 'maybelle-config', 'number': 169}, {'repo': 'magenta', 'number': 113}]}
+        held = {'maybelle-config', 'magenta'}   # githouse holds these; memory-lane, which #113 is in, it doesn't
+        with mock.patch('conversations.services.githouse.pull_merged', lambda name, n: n == 167), \
+                mock.patch('conversations.services.githouse.repository', lambda name: name if name in held else None), \
+                mock.patch('conversations.services.ramp.board', lambda stale_ok=False: board):
+            items = {i['task']: i for i in todo.for_mood(self.mood, http=wiki)['items']}
+        self.assertEqual((items['Merge maybelle-config#167']['done'], items['Merge maybelle-config#167'].get('merged')), (True, True))
+        self.assertEqual((items['Merge maybelle-config#168']['done'], items['Merge maybelle-config#168'].get('closed')), (True, True))
+        self.assertFalse(items['Merge maybelle-config#169']['done'])   # open on the ramp
+        self.assertFalse(items['Merge memory-lane#113']['done'])       # not a repository githouse holds: can't say
+        self.assertNotIn('merged', items['Redeploy maybelle'])          # done by hand, as written
+        self.assertEqual(wiki.github, [])                               # GitHub wasn't asked
 
     def test_an_open_one_stays_open_and_github_down_changes_nothing(self):
         wiki = FakeWiki({'Cryptograss:Moods/magenta-interface/todo': PAGE}, closed={})

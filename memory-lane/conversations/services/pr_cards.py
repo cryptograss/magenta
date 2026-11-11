@@ -37,6 +37,16 @@ _FOOT_DEPLOY = re.compile(r'^\W*deploy(?:ment)?\W*:\s*(.+?)\s*$', re.I | re.M)
 _FOOT_WORKED = re.compile(r'^\W*worked on by\W*:\s*(.+?)\s*$', re.I | re.M)
 
 
+
+def _github(path, http, **params):
+    from django.conf import settings
+    token = getattr(settings, 'GITHUB_TOKEN', '')
+    headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'memory-lane (magenta; pr cards)',
+               **({'Authorization': f'Bearer {token}'} if token else {})}
+    response = http.get(f'https://api.github.com{path}', params=params, headers=headers, timeout=6)
+    return response.json() if response.status_code == 200 else None
+
+
 def title(owner, repo, number):
     """The card's page: the org's repositories by name alone, anyone else's with its owner."""
     where = repo if owner.lower() == ORG else f'{owner}/{repo}'
@@ -107,7 +117,6 @@ def card(pull, pushed=''):
 
 def _pushed(owner, repo, pull, http):
     """When the pull request's head commit was made: its last push, near enough. Kept by commit."""
-    from .todo import _github
     sha = (pull.get('head') or {}).get('sha', '')
     if not sha:
         return ''
@@ -123,7 +132,6 @@ def _pushed(owner, repo, pull, http):
 
 def repositories(http, now):
     """The org's repositories pushed to lately, and any others named in settings.PR_CARD_REPOS."""
-    from .todo import _github
     since = now - timedelta(days=PUSHED_WITHIN)
     listed = _github(f'/orgs/{ORG}/repos', http, sort='pushed', direction='desc', per_page=100) or []
     names = [r['full_name'] for r in listed if isinstance(r, dict) and not r.get('archived')
@@ -133,7 +141,6 @@ def repositories(http, now):
 
 def pulls(full_name, http, now):
     """A repository's pull requests worth a card: every open one, and those closed in CLOSED_WITHIN days."""
-    from .todo import _github
     since = (now - timedelta(days=CLOSED_WITHIN)).strftime('%Y-%m-%dT%H:%M:%SZ')
     listed = _github(f'/repos/{full_name}/pulls', http, state='all', sort='updated', direction='desc',
                      per_page=50) or []
@@ -168,7 +175,6 @@ def look(http=None, wiki=None, now=None):
 def one(owner, repo, number, http=None, wiki=None):
     """Write one pull request's card now (GitHub's webhook heard of it): the outcome, or None."""
     import requests
-    from .todo import _github
     from .todo_ticks import Bot
     http = http or requests.Session()
     pull = _github(f'/repos/{owner}/{repo}/pulls/{number}', http)

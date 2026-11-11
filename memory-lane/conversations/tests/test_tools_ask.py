@@ -153,7 +153,7 @@ class AskTest(TestCase):
         self.assertEqual(named_pulls('someone-else #4'), [('cryptograss', 'magenta', 4)])  # a word, not a repository
         self.say('re', '<merge to="#316 and maybelle#231"/>', 1)
         merged = {316: True, 231: False}
-        with mock.patch('conversations.services.tools_ask._pull_done', lambda r, n: merged[n]):
+        with mock.patch('conversations.services.ramp.pull_done', lambda r, n: merged[n]):
             self.assertEqual([t['kind'] for t in self.asked()], ['merge'])  # one of two merged: still open
             cache.clear()
             merged[231] = True
@@ -200,7 +200,7 @@ class AskTest(TestCase):
             self.assertFalse(_merged_elsewhere('#408 and someone-else#4'))
             self.say('re', '<merge to="magenta#408 and nonesuch:re/foo"/>', 1)
             with mock.patch('conversations.services.githouse.branch_merged', lambda repo, branch: True):
-                with mock.patch('conversations.services.tools_ask._pull_done', lambda r, n: True):
+                with mock.patch('conversations.services.ramp.pull_done', lambda r, n: True):
                     self.assertEqual([t['kind'] for t in self.asked()], ['merge'])  # both true: still open
             self.say('re', '<merge to="magenta#408 and someone-else#4"/>', 2)
             self.assertEqual([t['kind'] for t in self.asked()], ['merge'])
@@ -274,7 +274,7 @@ class AskTest(TestCase):
         from unittest import mock
         self.say('re', '<merge to="rabbithole#29 and rabbithole#33"/>', 1)
         closed = set()
-        with mock.patch('conversations.services.tools_ask._pull_done', lambda r, n: n in closed):
+        with mock.patch('conversations.services.ramp.pull_done', lambda r, n: n in closed):
             self.assertEqual([w.get('number') for t in self.asked() for w in t.get('works', [])], [29, 33])
             closed.add(29)
             cache.clear()
@@ -287,15 +287,18 @@ class AskTest(TestCase):
         # Justin, 11 Nov: "We're on the cusp of being rid of github altogether." GitHub's 60 an hour ran out, and
         # #rabbithole's closed #29-#33 couldn't clear. Now githouse and the ramp's board say; GitHub isn't asked.
         from unittest import mock
-        from conversations.services.tools_ask import _pull_done
+        from conversations.services.ramp import pull_done as _pull_done
         board = {'built': 1, 'open': [{'repo': 'rabbithole', 'number': 36}, {'repo': 'magenta', 'number': 29}]}
         with mock.patch('conversations.services.githouse.pull_merged', lambda r, n: n == 5), \
+                mock.patch('conversations.services.githouse.repository', lambda r: r if r != 'elsewhere' else None), \
                 mock.patch('conversations.services.ramp.board', lambda stale_ok=False: board), \
                 mock.patch('requests.get', side_effect=AssertionError('GitHub asked')):
             self.assertTrue(_pull_done('rabbithole', 5))      # merged, by githouse's copy
             self.assertTrue(_pull_done('rabbithole', 29))     # not open on the ramp: closed (magenta#29 is another)
             self.assertFalse(_pull_done('rabbithole', 36))    # open on the ramp
+            self.assertFalse(_pull_done('elsewhere', 1))      # a repository githouse doesn't hold: can't say
         with mock.patch('conversations.services.githouse.pull_merged', lambda r, n: None), \
+                mock.patch('conversations.services.githouse.repository', lambda r: r), \
                 mock.patch('conversations.services.ramp.board', lambda stale_ok=False: {'error': 'no cards', 'open': []}):
             self.assertFalse(_pull_done('rabbithole', 29))    # no board to read: can't say, so it stands
 
