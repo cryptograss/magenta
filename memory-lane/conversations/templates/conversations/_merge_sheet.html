@@ -352,12 +352,19 @@ window.magentaMerge = (() => {
   }
   function show(slug) { onScreen = slug; sheets.forEach(reveal); }
 
-  // The pieces of work a 🪢 ask names: repo#N (a bare #N takes the repo before it) and repo:branch.
+  // The pieces of work a 🪢 ask names: repo#N or "repo #N" (a bare #N takes the repo before it) and repo:branch.
+  // With a space, only a repository's own name counts: "merge #316" is magenta's (tools_ask.named_pulls; Justin,
+  // 11 Nov: "rabbithole #29" was taken for magenta's).
+  const REPOS = { magenta: 'magenta', pr: 'magenta', maybelle: 'maybelle-config', 'maybelle-config': 'maybelle-config',
+                  pickipedia: 'pickipedia', 'pickipedia-mcp': 'pickipedia-mcp', arthel: 'arthel', rabbithole: 'rabbithole' };
   function named(text) {
     const found = [], key = new Set();
     let last = '';
-    for (const m of String(text || '').matchAll(/\b([a-z][a-z0-9-]*)?#(\d+)\b|\b([a-z][a-z0-9-]*):([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+)/g)) {
-      const w = m[2] ? { repo: m[1] || last, number: Number(m[2]) } : { repo: m[3], branch: m[4] };
+    for (const m of String(text || '').matchAll(/(?:\b([A-Za-z][A-Za-z0-9-]*)( ?))?#(\d+)\b|\b([a-z][a-z0-9-]*):([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+)/g)) {
+      let word = m[1] || '';
+      if (word && m[2] && !REPOS[word.toLowerCase()]) word = '';
+      if (word) last = REPOS[word.toLowerCase()] || word;
+      const w = m[3] ? { repo: last, number: Number(m[3]) } : { repo: m[4], branch: m[5] };
       last = w.repo || last;
       const k = w.repo + (w.number ? '#' + w.number : ':' + w.branch);
       if (w.repo && !key.has(k)) { key.add(k); found.push(w); }

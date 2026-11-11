@@ -142,6 +142,15 @@ class AskTest(TestCase):
                          [('cryptograss', 'magenta', 295), ('cryptograss', 'maybelle-config', 231)])
         self.assertEqual(named_pulls('the polls PR'), [])
         self.assertEqual(named_pulls('someone-else#4'), None)  # a repository not known here: can't say
+        # A repository's name, a space, then the number (Justin, 11 Nov: #rabbithole showed these as magenta's).
+        self.assertEqual(named_pulls('rabbithole #5 (it includes #4)'),
+                         [('cryptograss', 'rabbithole', 5), ('cryptograss', 'rabbithole', 4)])
+        self.assertEqual(named_pulls('maybelle-config #281 then rabbithole #18'),
+                         [('cryptograss', 'maybelle-config', 281), ('cryptograss', 'rabbithole', 18)])
+        self.assertEqual(named_pulls('rabbithole #23, #24, then #26 once Skyler saves Silver'),
+                         [('cryptograss', 'rabbithole', n) for n in (23, 24, 26)])
+        self.assertEqual(named_pulls('merge #316, then #317'), [('cryptograss', 'magenta', 316), ('cryptograss', 'magenta', 317)])
+        self.assertEqual(named_pulls('someone-else #4'), [('cryptograss', 'magenta', 4)])  # a word, not a repository
         self.say('re', '<merge to="#316 and maybelle#231"/>', 1)
         merged = {316: True, 231: False}
         with mock.patch('conversations.services.todo._merged', lambda o, r, n, http: merged[n]):

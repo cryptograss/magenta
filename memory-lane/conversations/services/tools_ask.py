@@ -101,8 +101,11 @@ def _by_kind(asks):
     return found
 
 
-# A pull request a merge ask names: "#316", "PR #295", "magenta#295", "maybelle-config#231". Bare, it's magenta's.
-_NAMED_PULL = re.compile(r'(?:\b([A-Za-z][\w.-]*))?#(\d+)\b')
+# A pull request a merge ask names: "#316", "PR #295", "magenta#295", "maybelle-config#231", "rabbithole #29".
+# A repository's name with a space before the # counts only if it is one ("merge #316" is magenta's); a bare number
+# after one is that repository's ("rabbithole #7, #8, #9"); bare before any, magenta's. Justin, 11 Nov: #rabbithole
+# showed "rabbithole #5" ... "#33" as magenta's pull requests, which don't belong there.
+_NAMED_PULL = re.compile(r'(?:\b([A-Za-z][\w.-]*)( ?))?#(\d+)\b')
 # A mergeable it names, <repo>:<branch> (Cryptograss:Moods/ramp/Plan, section 1): "magenta:re/foo". The branch
 # has a slash, its owner's prefix, so "note: this" and a URL's "https://" name nothing.
 _NAMED_BRANCH = re.compile(r'\b([A-Za-z][\w.-]*):([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+)')
@@ -113,12 +116,15 @@ _REPOS = {'magenta': 'magenta', 'pr': 'magenta', 'maybelle': 'maybelle-config', 
 def named_pulls(purpose):
     """[(owner, repo, number)] a merge ask's words name; None if any of them is in a repository not known
     here (the ask stands: whether it merged can't be said), [] if nothing is named."""
-    found = []
-    for repo, number in _NAMED_PULL.findall(purpose or ''):
-        repo = _REPOS.get((repo or 'magenta').lower())
-        if repo is None:
-            return None
-        found.append(('cryptograss', repo, int(number)))
+    found, last = [], 'magenta'
+    for word, space, number in _NAMED_PULL.findall(purpose or ''):
+        if word and space and word.lower() not in _REPOS:
+            word = ''  # a word, then " #12": not a repository's name ("merge #316", "then #26")
+        if word:
+            last = _REPOS.get(word.lower())
+            if last is None:
+                return None
+        found.append(('cryptograss', last, int(number)))
     return found
 
 
