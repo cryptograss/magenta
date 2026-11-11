@@ -874,6 +874,39 @@ def _wiki_of(url):
     return wiki_lead(url)
 
 
+def card(tiding_id):
+    """What a link's page shows when its address is shared (Telegram, Signal, Mastodon, Slack...: the Open Graph
+    tags they read): {'title', 'description', 'image'}, or None for no link. Justin, 11 Nov: "what will it take
+    for that link to have a special card on telegram, social media, etc?" A PickiPedia article gives its opening
+    and its picture (wiki_lead); a release its description and still; anything else what was said with it."""
+    import html as html_lib
+    from conversations.models import Tiding
+    from .mood_view import snippet_of
+    from .retract import DELETED
+    tiding = Tiding.objects.select_related('message').filter(id=tiding_id).first()
+    if tiding is None or tiding.message.mood_id is None:
+        return None
+    text = said_of(tiding.message) or ''
+    if text == DELETED:
+        return None
+    description, image = '', ''
+    cid = release_cid(tiding.url)
+    if cid:
+        description = (_release_of(tiding.url) or {}).get('description') or ''
+        image = release_embed(cid)['poster']
+    else:
+        lead = _wiki_of(tiding.url)
+        if lead:
+            words = ' '.join(html_lib.unescape(re.sub(r'<[^>]+>', '', p)) for p in lead['paragraphs'])
+            description, image = words, (lead.get('picture') or {}).get('src') or ''
+    if not description and tiding.message.source_file != RELEASE_LINE:
+        description = post_text(text, tiding.url) or ''
+    description = re.sub(r'\s+', ' ', snippet_of(description) if description else '').strip()
+    if len(description) > 300:
+        description = description[:297].rsplit(' ', 1)[0] + '…'
+    return {'title': tiding.title or tiding.url, 'description': description, 'image': image}
+
+
 def discussion(tiding_id, viewer=None):
     """One link's page: itself, then what's been said about it. Missing or deleted: Refused."""
     from conversations.models import Tiding

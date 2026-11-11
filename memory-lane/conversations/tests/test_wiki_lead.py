@@ -131,3 +131,36 @@ class PageTest(TestCase):
             html = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
         self.assertEqual(got.call_count, 0)
         self.assertNotIn('<article class="wikilead">', html)
+
+
+@override_settings(PICKIPEDIA_URL=BASE)
+class CardTest(PageTest):
+    """Justin, 11 Nov: "what will it take for that link to have a special card on telegram, social media, etc?"
+    The link's own address (no ?embed) carries the Open Graph tags a sharing app reads, before any script."""
+
+    def test_a_wiki_pages_card_is_its_opening_and_its_picture(self):
+        with self.wiki():
+            html = self.client.get(f'/tidings/{self.tiding.id}/').content.decode()
+        self.assertIn("<title>Kuba&#x27;s Last Merged Commits: the story of arthel159 · magenta</title>", html)
+        self.assertIn('<meta property="og:title" content="Kuba&#x27;s Last Merged Commits: the story of arthel159">', html)
+        self.assertIn('<meta property="og:description" content="11 Nov 2026 Today, we merge the last open commits of Kuba Hejhal,', html)
+        self.assertIn(f'<meta property="og:image" content="{BASE}/images/thumb/b/b5/Kuba.jpeg/400px-Kuba.jpeg">', html)
+        self.assertIn('<meta name="twitter:card" content="summary_large_image">', html)
+        self.assertIn(f'<meta property="og:url" content="http://testserver/tidings/{self.tiding.id}/">', html)
+        description = html.split('og:description" content="')[1].split('"')[0]
+        self.assertLessEqual(len(description), 300)
+        self.assertTrue(description.endswith('…'))
+
+    def test_another_link_says_what_was_said_with_it_and_shows_magenta(self):
+        Tiding.objects.filter(id=self.tiding.id).update(url='https://example.com/a')
+        Message.objects.filter(id=self.tiding.message_id).update(content='https://example.com/a what a find')
+        with self.wiki() as got:
+            html = self.client.get(f'/tidings/{self.tiding.id}/').content.decode()
+        self.assertEqual(got.call_count, 0)
+        self.assertIn('<meta property="og:description" content="what a find">', html)
+        self.assertIn('<meta property="og:image" content="http://testserver/moods/icon-512.png">', html)
+        self.assertIn('<meta name="twitter:card" content="summary">', html)
+
+    def test_the_moods_and_a_missing_link_have_no_card(self):
+        self.assertNotIn('og:title', self.client.get(f'/tidings/{uuid.uuid4()}/').content.decode())
+        self.assertNotIn('og:title', self.client.get('/tidings/').content.decode())

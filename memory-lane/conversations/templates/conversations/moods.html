@@ -5,7 +5,16 @@
 <!-- interactive-widget: a phone's keyboard shrinks the page, rather than sliding it up under the top bar and leaving it
      there, out of reach (Justin, 30 Oct: the ☰ "stuck" above the screen) -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
-<title>magenta</title>
+{% if card %}<title>{{ card.title }} · magenta</title>
+<meta property="og:site_name" content="magenta">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ card.title }}">
+<meta property="og:url" content="{{ card_url }}">
+{% if card.description %}<meta property="og:description" content="{{ card.description }}">
+<meta name="description" content="{{ card.description }}">{% endif %}
+<meta property="og:image" content="{{ card.image|default:card_icon }}">
+<meta name="twitter:card" content="{% if card.image %}summary_large_image{% else %}summary{% endif %}">
+{% else %}<title>magenta</title>{% endif %}
 <link rel="manifest" href="/moods/manifest.webmanifest">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#b8106b" media="(prefers-color-scheme: light)">
