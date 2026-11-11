@@ -169,6 +169,20 @@ class MergeButtonTest(TestCase):
         self.assertEqual((seen['branch'], seen['commit'], seen['into'], seen['number']), ('re/foo', self.head, 'main', 7))
 
 
+    def test_one_stacked_on_a_branch_that_merged_says_to_rebase(self):
+        # Justin, 10 Nov: #453 was built on #451's branch; once #451 merged, the sheet said only
+        # "magenta has no magent/candidates here".
+        from unittest import mock
+        bare = str(self.githouse / 'magenta.git')
+        git('update-ref', 'refs/merged/re/under', self.head, cwd=bare)
+        self.addCleanup(git, 'update-ref', '-d', 'refs/merged/re/under', cwd=bare)
+        card = {'repo': 'magenta', 'number': 8, 'branch': 're/foo', 'base': 're/under'}
+        self.as_('justin')
+        with mock.patch('conversations.services.ramp.board', return_value={'open': [card]}):
+            said = self.preview(branch='', number='8').json()['error']
+        self.assertEqual(said, 'magenta#8 is built on re/under, which has merged since, so there is nothing to merge it '
+                               'into. Its author rebases it onto main and points its pull request at main; then it can merge.')
+
     def test_the_pages_offer_it_only_to_a_merger(self):
         from unittest import mock
         card = {'repo': 'magenta', 'number': 7, 'branch': 're/foo', 'base': 'main', 'state': 'open', 'title': 'x',
