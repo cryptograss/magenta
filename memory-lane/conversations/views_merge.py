@@ -120,9 +120,11 @@ def _promoting(seen):
         about = (f"main moves up to production: {seen['behind']} commits, a fast-forward. main becomes exactly "
                  f"production at {seen['commit'][:12]}.")
     else:
-        about = (f"main has {seen['own']} commits of its own that production hasn't. githouse merges production in, "
-                 f"keeping those in main's history (never forced), and main's files become production's: "
-                 f"{seen['behind']} commits' worth.")
+        own = f"{seen['own']} commit{'s' if seen['own'] != 1 else ''}"
+        about = (f"main has {own} of its own that production hasn't. production takes them into its history first, "
+                 f"with none of its files changed, so nothing deploys differently; then main fast-forwards to it "
+                 f"({seen['behind']} commits). From then on, main and production are the same commit, and the next "
+                 f"promotion is a fast-forward.")
     return {'asks': [], 'thumbs': [], 'title': f"Promote {seen['repo']}: main up to production", 'about': about}
 
 

@@ -304,7 +304,8 @@ class PromoteButtonTest(TestCase):
         self.as_('justin')
         seen = self.preview().json()
         self.assertEqual((seen['own'], seen['how']), (1, 'merge'))
-        self.assertIn('1 commits of its own', seen['about'])
+        self.assertIn('main has 1 commit of its own', seen['about'])
+        self.assertIn('none of its files changed', seen['about'])
 
     def test_level_is_nothing_to_promote(self):
         git('update-ref', 'refs/heads/main', self.production, cwd=str(self.bare))
