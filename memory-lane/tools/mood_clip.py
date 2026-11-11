@@ -84,17 +84,19 @@ def cut(path, start, length, caption, out, tmp, height=480, crf=27):
     """The clip, cut and encoded to `out`: H.264 and AAC in an MP4 that starts playing at once. The subtitle burned
     in with libass if ffmpeg has it, else drawn with drawtext, else (said so) left off -- it's still the clip's caption."""
     scale = f"scale=-2:'2*trunc(min({height},ih)/2)'"
+    # Big, heavy and in capitals, with a thick black edge: as Yarn's (Justin, 8 Nov: "bigger, bublier, and all-caps").
+    caption = caption.upper() if caption else caption
     burns = []
     if caption and has_filter('subtitles'):
         srt = os.path.join(tmp, 'caption.srt')
         with open(srt, 'w', encoding='utf-8') as f:
             f.write(f'1\n{stamp(0)} --> {stamp(length + 1)}\n{caption}\n')
-        burns.append(f"subtitles={srt}:force_style='FontSize=22,Outline=2,Shadow=0,MarginV=16'")
+        burns.append(f"subtitles={srt}:force_style='FontName=Arial Black,Bold=1,FontSize=30,Outline=3,Shadow=1,MarginV=14'")
     if caption and has_filter('drawtext'):
         text = os.path.join(tmp, 'caption.txt')
         with open(text, 'w', encoding='utf-8') as f:
             f.write(caption)
-        burns.append(f'drawtext=textfile={text}:fontcolor=white:fontsize=h/16:borderw=2:bordercolor=black'
+        burns.append(f'drawtext=textfile={text}:fontcolor=white:fontsize=h/11:borderw=4:bordercolor=black'
                      ':x=(w-text_w)/2:y=h-text_h-h/18')
     burns.append(None)
     for burn in burns:
