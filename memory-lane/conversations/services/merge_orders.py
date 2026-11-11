@@ -39,6 +39,9 @@ FOR_FIELD = 'for'
 # table, standard library only). Not guessed from which branches exist: magenta's production is long dead.
 DEPLOYS_FROM = {'magenta': 'main', 'maybelle-config': 'production', 'pickipedia': 'production',
                 'arthel': 'production', 'rabbithole': 'main', 'pickipedia-mcp': 'master'}
+# Promotion (Justin, #ramp, 11 Nov): machines run production; main is the primary branch, never forced, brought
+# up to production by a person when things are stable. githouse.PROMOTES: the one deploy branch merged into another.
+PROMOTES = {'production': 'main'}
 _BRANCH = re.compile(r'[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*')
 _FORMS = {'repo': r'[a-z0-9._-]{1,64}', 'branch': r'[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*', 'commit': r'[0-9a-f]{40}',
           'into': r'[A-Za-z0-9._/-]{1,100}', 'by': r'[a-z][a-z0-9-]{0,31}', 'nonce': r'[0-9a-f]{32,64}',
@@ -176,6 +179,8 @@ def preview(repo, branch='', number=None):
         if card is None:
             raise Invalid(f'{repo}#{number} is not an open pull request here')
         branch, base = branch or card.get('branch', ''), card.get('base', '')
+    if branch in PROMOTES and not number:
+        return _promotion(held, repo, branch)
     if not _BRANCH.fullmatch(branch or '') or branch in ('main', 'master', 'production'):
         raise Invalid('which branch? (not one that is merged into)')
     if not number and not _sha(held, f'refs/heads/{branch}'):
@@ -202,6 +207,51 @@ def preview(repo, branch='', number=None):
             'into': into, 'tip': tip,
             'log': _git(held, 'log', '--no-decorate', '--format=%h %an: %s', f'{tip}..{commit}'),
             'stat': _git(held, 'diff', '--stat', f'{tip}...{commit}')}
+
+
+def _promotion(held, repo, branch):
+    """The sheet for a promotion: main brought up to production (githouse.promote). What main gains is
+    production's tree, so the stat is main's files against production's (two dots), not since they parted."""
+    from .githouse import _git, _sha
+    into = PROMOTES[branch]
+    if DEPLOYS_FROM.get(repo) != branch:
+        raise Invalid(f'{repo} deploys from {DEPLOYS_FROM.get(repo) or "elsewhere"}, not {branch}: nothing to promote')
+    commit, tip = _sha(held, f'refs/heads/{branch}'), _sha(held, f'refs/heads/{into}')
+    if not commit or not tip:
+        raise Invalid(f'{repo} has no {branch if not commit else into} here')
+    if _git(held, 'rev-list', '--count', f'{tip}..{commit}').strip() == '0':
+        raise Invalid(f'{repo}: {into} has {branch} already ({commit[:8]})')
+    return {'repo': repo, 'branch': branch, 'number': None, 'commit': commit, 'into': into, 'tip': tip,
+            'promote': True, **promotion_of(held, branch, into, commit, tip),
+            'log': _git(held, 'log', '--no-decorate', '--first-parent', '-n', '40', '--format=%h %an: %s', f'{tip}..{commit}'),
+            'stat': _git(held, 'diff', '--shortstat', tip, commit)}
+
+
+def promotion_of(held, branch, into, commit, tip):
+    """{'behind': commits production has that main hasn't, 'own': main's that production hasn't, 'how'}."""
+    from .githouse import _git
+    behind = int(_git(held, 'rev-list', '--count', f'{tip}..{commit}').strip() or 0)
+    own = int(_git(held, 'rev-list', '--count', f'{commit}..{tip}').strip() or 0)
+    return {'behind': behind, 'own': own, 'how': 'merge' if own else 'fast-forward'}
+
+
+def promotions():
+    """For the ramp: each repository that deploys from production, its main against it. [{'repo', 'main', 'production',
+    'behind', 'own', 'how', 'main_at'}], those behind first."""
+    from .githouse import _git, _sha, repository
+    found = []
+    for repo, branch in sorted(DEPLOYS_FROM.items()):
+        held = repository(repo) if branch in PROMOTES else None
+        into = PROMOTES.get(branch)
+        commit, tip = (_sha(held, f'refs/heads/{branch}'), _sha(held, f'refs/heads/{into}')) if held else (None, None)
+        if not commit or not tip:
+            continue
+        from datetime import datetime
+        at = _git(held, 'log', '-1', '--format=%cI', tip).strip()
+        at = datetime.fromisoformat(at) if at else None
+        found.append({'repo': repo, 'production': commit, 'main': tip, 'main_at': at,
+                      **promotion_of(held, branch, into, commit, tip)})
+    return sorted(found, key=lambda p: (not p['behind'], p['repo']))
 
 
 def press(person, repo, branch, commit, into, mood='', now=None):
