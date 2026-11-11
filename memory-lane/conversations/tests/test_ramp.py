@@ -237,13 +237,25 @@ class AskDotsTest(RampTest):
         cache.delete_many([tools_ask.KEY, tools_ask.SCAN_KEY])  # drawing it asked for the asks: none, then
         self.say('re', '<merge to="magenta#7 and magenta:magent/bar"/>')
         [ask] = tools_ask.open_requests()['jams']
-        self.assertEqual(ask['works'], [{'repo': 'magenta', 'number': 7, 'branch': 're/foo'},
-                                        {'repo': 'magenta', 'branch': 'magent/bar'}])
+        self.assertEqual(ask['works'], [{'repo': 'magenta', 'number': 7, 'branch': 're/foo', 'thumbs': []},
+                                        {'repo': 'magenta', 'branch': 'magent/bar', 'thumbs': []}])
         git(self.repo.work, 'merge', '-q', '--no-ff', '-m', 'Merge pull request #7', 're/foo')
         self.repo.push()
         cache.clear()
         [ask] = tools_ask.open_requests()['jams']
-        self.assertEqual(ask['works'], [{'repo': 'magenta', 'branch': 'magent/bar'}])
+        self.assertEqual(ask['works'], [{'repo': 'magenta', 'branch': 'magent/bar', 'thumbs': []}])
+
+    def test_an_ask_carries_the_thumbs_on_what_it_names(self):
+        # Justin, 10 Nov: people's 👍s in the Mood, beside the emergents' dots.
+        from conversations.models import Thumb
+        from conversations.services import tools_ask
+        Thumb.objects.create(repo='magenta', branch='magent/bar', commit='0' * 40, by='skyler')   # an older commit
+        Thumb.objects.create(repo='magenta', branch='magent/bar', commit=self.bar, by='justin')  # its head
+        self.say('re', '<merge to="magenta:magent/bar"/>')
+        [ask] = tools_ask.open_requests()['jams']
+        [work] = ask['works']
+        self.assertEqual([(t['by'], t['current']) for t in work['thumbs']], [('skyler', False), ('justin', True)])
+        self.assertTrue(work['thumbs'][0]['at'].startswith('20'))
 
     def test_the_live_poll_carries_the_asks(self):
         self.say('re', '<merge to="magenta#7"/>')
@@ -393,3 +405,15 @@ class ClashTest(TestCase):
         self.assertIn('conflicts in: a.txt', page)
         self.assertIn('⇄ magenta#7</span>', page)
         self.assertIn('would conflict with this in: b.txt', page)
+
+
+class RampMoodFilterTest(TestCase):
+    """Justin, 10 Nov: a Mood's name on the ramp filters the list to that Mood's candidates, open and merged."""
+
+    def test_mood_names_filter_rather_than_go(self):
+        from pathlib import Path
+        page = (Path(__file__).resolve().parent.parent / 'templates' / 'conversations' / 'mood_pulls.html').read_text()
+        self.assertIn('data-moods="{{ i.where|join:\' \' }}"', page)
+        self.assertIn('<tr data-moods="{{ m.moods|join:\' \' }}">', page)
+        self.assertEqual(page.count('data-filter-mood="'), 2)  # open and merged
+        self.assertIn('class="moodfilter" hidden', page)

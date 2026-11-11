@@ -186,7 +186,29 @@ def unmerged(purpose):
         seen.add((repo, branch))
         if not (githouse.branch_merged(repo, branch) or githouse.branch_closed(repo, branch)):
             out.append({'repo': repo, 'branch': branch})
-    return out
+    return with_thumbs(out)
+
+
+def with_thumbs(works):
+    """Each work with 'thumbs': [{'by', 'at', 'current'}], each person's newest 👍 on its branch, oldest first;
+    'current' if on its head as githouse has it. Shown in the Mood beside the asking emergents' dots (Justin, 10
+    Nov: "any 👍's on CB's show right in the mood, next to the emergent color dots")."""
+    from conversations.models import Thumb
+    from . import githouse
+    from .thumbs import _newest
+    branches = {(w['repo'], w['branch']) for w in works if w.get('branch')}
+    found = {}
+    if branches:
+        for t in Thumb.objects.filter(repo__in={r for r, _ in branches}, branch__in={b for _, b in branches}):
+            found.setdefault((t.repo, t.branch), []).append(t)
+    for w in works:
+        rows = found.get((w['repo'], w.get('branch')), [])
+        head = None
+        if rows:
+            held = githouse.repository(w['repo'])
+            head = githouse._sha(held, f"refs/heads/{w['branch']}") if held is not None else None
+        w['thumbs'] = [{'by': t['by'], 'at': t['at'].isoformat(), 'current': t['current']} for t in _newest(rows, head)]
+    return works
 
 
 def named_servers(purpose):

@@ -369,7 +369,7 @@ class RampWhoAndWhereTest(WorkRepo):
         ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False})
         cache.delete(ramp.KEY)
         page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
-        self.assertIn('data-mood="ramp" data-people="magent re"', page)
+        self.assertRegex(page, r'data-mood="ramp" data-moods="ramp[^"]*" data-people="magent re"')
         self.assertIn('<button type="button" data-person="magent" data-state=""><span class="dot" style="--who: #ff67fd">'
                       '</span>magent<small>1</small></button>', page)
         self.assertIn('<button type="button" data-person="re" data-state=""><span class="dot" style="--who: #ff3c00"></span>'
