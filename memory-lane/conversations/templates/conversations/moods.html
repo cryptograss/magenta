@@ -10584,7 +10584,30 @@
     let there = null;
     try { there = frame.contentWindow.location.pathname; } catch (e) {}
     if (there === path && !hash) return;  // there already
+    if (candidateAt(path) && there !== path) rampWaiting(frame, path);
     try { frame.contentWindow.location.replace(want); } catch (e) { frame.src = want; }
+  }
+  // A frame that's moved keeps its old page on screen until the new one is in: the ramp's list, while a
+  // candidate's page is made. Its first opening can wait on a fresh board (12 s on 11 Nov), and with the list
+  // sitting there it looked like nothing had happened (Justin, 11 Nov: "I just sit on the ramp page and wait,
+  // nothing appears"). So: a spinner over it, naming what's coming, until it's there.
+  function rampWaiting(frame, path) {
+    let veil = sectionFrames.querySelector('.loading.moving[data-section="ramp"]');
+    if (!veil) {
+      veil = document.createElement('div');
+      veil.className = 'loading moving';
+      veil.dataset.section = 'ramp';
+      veil.setAttribute('role', 'status');
+      sectionFrames.append(veil);
+    }
+    const [repo, ...branch] = path.split('/').filter(Boolean).slice(1).map(decodeURIComponent);
+    veil.dataset.for = path;
+    veil.innerHTML = `<div><span class="spin"></span><p>Opening ${esc(repo)}:${esc(branch.join('/'))}…</p></div>`;
+    veil.hidden = false;  // showSection hides it with the rest of the ramp when another section's shown
+    frame.addEventListener('load', function arrived() {
+      frame.removeEventListener('load', arrived);
+      if (veil.dataset.for === path) veil.remove();
+    });
   }
   function showSection(name, push, at, hash) {
     if (name === 'ramp') rampFrameTo(at || '/ramp/', hash);
