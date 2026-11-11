@@ -230,3 +230,98 @@ class MergeButtonTest(TestCase):
             {'outcome': 'merged', 'merge': 'd' * 40, 'order': quiet.order, 'signature': quiet.signature}))
         self.client.get('/api/merge-orders/pending/')
         self.assertFalse(Message.objects.filter(source_file='merged').exists())
+
+
+@skipUnless(HAS_SSH_KEYGEN, 'needs ssh-keygen')
+class PromoteButtonTest(TestCase):
+    """The promote button (Justin, #ramp, 11 Nov): main brought up to production, from the ramp; githouse.promote
+    carries the signed order out."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.dir = Path(tempfile.mkdtemp())
+        cls.githouse = cls.dir / 'srv'
+        cls.bare = cls.githouse / 'pickipedia.git'
+        git('init', '--quiet', '--bare', '-b', 'main', str(cls.bare))
+        work = cls.work = cls.dir / 'work'
+        git('clone', '--quiet', str(cls.bare), str(work))
+        (work / 'a.txt').write_text('one\n')
+        git('add', '.', cwd=work)
+        git('commit', '--quiet', '-m', 'one', cwd=work)
+        git('push', '--quiet', 'origin', 'HEAD:main', 'HEAD:production', cwd=work)
+        cls.main = git('rev-parse', 'HEAD', cwd=work)
+        for words in ('two', 'three'):
+            (work / f'{words}.txt').write_text(words)
+            git('add', '.', cwd=work)
+            git('commit', '--quiet', '-m', words, cwd=work)
+        git('push', '--quiet', 'origin', 'HEAD:production', cwd=work)
+        cls.production = git('rev-parse', 'HEAD', cwd=work)
+        cls.key = cls.dir / 'memory-lane-merge'
+        subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'memory-lane-merge', '-f', str(cls.key)],
+                       check=True)
+        cls.key.chmod(0o400)
+
+    setUp = MergeButtonTest.setUp
+    as_ = MergeButtonTest.as_
+
+    def preview(self, repo='pickipedia'):
+        return self.client.get('/api/merge-orders/preview/', {'repo': repo, 'branch': 'production'})
+
+    def test_the_sheet_is_a_promotion(self):
+        self.as_('justin')
+        seen = self.preview().json()
+        self.assertEqual((seen['commit'], seen['into'], seen['tip'], seen['can']), (self.production, 'main', self.main, True))
+        self.assertEqual((seen['promote'], seen['behind'], seen['own'], seen['how']), (True, 2, 0, 'fast-forward'))
+        self.assertEqual(seen['title'], 'Promote pickipedia: main up to production')
+        self.assertIn('a fast-forward', seen['about'])
+        self.assertIn('2 files changed', seen['stat'])
+
+    def test_a_press_is_an_order_for_production_into_main(self):
+        self.as_('justin')
+        said = self.client.post('/api/merge-orders/press/', json.dumps(
+            {'repo': 'pickipedia', 'branch': 'production', 'commit': self.production, 'into': 'main', 'mood': 'ramp'}),
+            content_type='application/json')
+        self.assertEqual(said.status_code, 201, said.content)
+        order = merge_orders.parse(MergeOrder.objects.get().order)
+        self.assertEqual((order['branch'], order['into'], order['commit'], order['for']),
+                         ('production', 'main', self.production, 'justin'))
+
+    def test_not_where_production_isn_t_what_deploys(self):
+        # magenta deploys from main (its production is long dead): nothing to promote there.
+        git('init', '--quiet', '--bare', '-b', 'main', str(self.githouse / 'magenta.git'))
+        self.as_('justin')
+        self.assertIn('deploys from main, not production', self.preview('magenta').json()['error'])
+
+    def test_main_s_own_commits_are_said(self):
+        git('fetch', '--quiet', 'origin', cwd=self.work)
+        git('checkout', '--quiet', '-B', 'm', self.main, cwd=self.work)
+        (self.work / 'own.txt').write_text('own')
+        git('add', '.', cwd=self.work)
+        git('commit', '--quiet', '-m', 'main only', cwd=self.work)
+        git('push', '--quiet', 'origin', 'HEAD:main', cwd=self.work)
+        self.addCleanup(git, 'update-ref', 'refs/heads/main', self.main, cwd=str(self.bare))
+        self.as_('justin')
+        seen = self.preview().json()
+        self.assertEqual((seen['own'], seen['how']), (1, 'merge'))
+        self.assertIn('1 commits of its own', seen['about'])
+
+    def test_level_is_nothing_to_promote(self):
+        git('update-ref', 'refs/heads/main', self.production, cwd=str(self.bare))
+        self.addCleanup(git, 'update-ref', 'refs/heads/main', self.main, cwd=str(self.bare))
+        self.as_('justin')
+        self.assertIn('main has production already', self.preview().json()['error'])
+
+    def test_the_ramp_lists_it_with_a_button_for_a_merger(self):
+        from unittest import mock
+        with override_settings(GITHOUSE_DIR=str(self.githouse)):
+            found = merge_orders.promotions()
+        self.assertEqual([(p['repo'], p['behind'], p['how']) for p in found], [('pickipedia', 2, 'fast-forward')])
+        self.as_('justin')
+        with mock.patch('conversations.services.ramp.board', return_value={'open': [], 'merged': [], 'names': [], 'log': [], 'repos': []}):
+            page = self.client.get('/ramp/', {'embed': '1'}).content.decode()
+            self.as_('rj')   # signed in, but not with a key: the table, no button
+            theirs = self.client.get('/ramp/', {'embed': '1'}).content.decode()
+        self.assertIn('class="merge promote" data-repo="pickipedia" data-branch="production"', page)
+        self.assertIn('main and production', theirs)
+        self.assertNotIn('class="merge promote"', theirs)

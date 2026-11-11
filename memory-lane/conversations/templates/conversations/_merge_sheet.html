@@ -147,6 +147,8 @@ window.magentaMerge = (() => {
   const KEPT_MS = 45000;
   const kept = new Map();   // 'repo#n' or 'repo:branch' -> {at, got: Promise<{ok, status, body}>}
   const nameOf = work => work.number ? `${work.repo}#${work.number}` : `${work.repo}:${work.branch}`;
+  // A promotion (Justin, 11 Nov): production into main, the one deploy branch merged into another (githouse.PROMOTES).
+  const isPromotion = work => !work.number && work.branch === 'production';
   function ask(work) {
     const q = new URLSearchParams({ repo: work.repo, branch: work.branch || '' });
     if (work.number) q.set('number', work.number);
@@ -179,8 +181,11 @@ window.magentaMerge = (() => {
     // The whole diff, on the candidate's page (Justin, 9 Nov: "a link from the merge modal to see the full diff").
     const full = s.$('.full');
     if (body.branch) full.href = `/ramp/${encodeURIComponent(body.repo)}/${body.branch.split('/').map(encodeURIComponent).join('/')}/#diff`;
-    full.hidden = !body.branch;
-    if (body.can) {
+    full.hidden = !body.branch || !!body.promote;  // production has no candidate's page
+    if (body.can && body.promote) {
+      s.$('.go').hidden = false;
+      s.say(`Signed by memory-lane on your press; githouse checks it again and promotes, never forcing: main ends at exactly this production.`);
+    } else if (body.can) {
       s.$('.go').hidden = false;
       s.say(`Signed by memory-lane on your press; githouse checks it again and merges --no-ff, exactly this commit.`);
     } else {
@@ -194,7 +199,7 @@ window.magentaMerge = (() => {
     if (s.busy) { s.away = false; reveal(s); return; }  // a press on its way here: its sheet, as it stands
     const mine = ++s.gen;
     s.seen = null; s.alive = true; s.away = false;
-    s.$('.what').textContent = `Merge ${nameOf(work)}?`;
+    s.$('.what').textContent = isPromotion(work) ? `Promote ${work.repo}: main up to production?` : `Merge ${nameOf(work)}?`;
     s.$('.sub').textContent = '';
     s.$('.who').innerHTML = '';
     s.$('.about').hidden = s.$('.stat').hidden = s.$('.full').hidden = true;
@@ -294,9 +299,10 @@ window.magentaMerge = (() => {
     const seen = s.seen;
     if (!seen || s.busy) return;
     s.busy = true; s.$('.go').disabled = true; s.$('.no').disabled = true;
-    const name = `${seen.repo}:${seen.branch}`;
-    const line = (topBar() || { barLine }).barLine({ what: `Merge ${name}?`, sub: s.$('.sub').textContent });
-    line.say(`Merging ${name} into ${seen.into}…`);
+    const name = seen.promote ? `${seen.repo}: main up to production` : `${seen.repo}:${seen.branch}`;
+    const doing = seen.promote ? 'Promoting' : 'Merging';
+    const line = (topBar() || { barLine }).barLine({ what: seen.promote ? `Promote ${name}?` : `Merge ${name}?`, sub: s.$('.sub').textContent });
+    line.say(seen.promote ? `Promoting ${name}…` : `Merging ${name} into ${seen.into}…`);
     s.away = true; s.el.hidden = true;
     s.say('Sending to githouse…');
     let ok = false, words = '';
@@ -311,13 +317,14 @@ window.magentaMerge = (() => {
         words = status.error || ('memory-lane said ' + r.status);
       } else {
         for (let waited = 0; status.status === 'waiting' && waited < 120; waited += 3) {
-          line.say(`Merging ${name} into ${seen.into}… ${waited ? waited + ' s' : ''}`);
+          line.say(`${doing} ${name}${seen.promote ? '' : ' into ' + seen.into}… ${waited ? waited + ' s' : ''}`);
           await new Promise(go => setTimeout(go, 3000));
           status = await (await fetch(`/api/merge-orders/${status.id}/`, { credentials: 'same-origin' })).json();
         }
         if (status.status === 'merged') {
           ok = true;
-          words = `Merged into ${seen.into} as ${String(status.merge || '').slice(0, 12)}.`;
+          words = seen.promote ? `main is production now, at ${String(status.merge || '').slice(0, 12)}.`
+            : `Merged into ${seen.into} as ${String(status.merge || '').slice(0, 12)}.`;
         } else if (status.status === 'waiting') words = 'githouse hasn’t answered in two minutes; the order is good for an hour.';
         else words = `${status.status === 'expired' ? 'Expired' : 'Refused'}: ${status.why || ''}`;
       }
@@ -328,7 +335,7 @@ window.magentaMerge = (() => {
     }
     s.alive = false; s.away = false; s.seen = null;  // this sheet is done with; the bar holds the answer
     if (ok) {
-      line.end('ok', `${name} merged into ${seen.into}`, words);
+      line.end('ok', seen.promote ? `${seen.repo}: main promoted to production` : `${name} merged into ${seen.into}`, words);
       // Told here and to the one page, so the ramp drops it without a reload.
       const merged = { repo: seen.repo, branch: seen.branch, number: seen.number || null };
       window.dispatchEvent(new CustomEvent('magentaMerged', { detail: merged }));

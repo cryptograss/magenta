@@ -201,6 +201,23 @@
     </tbody>
   </table>
 
+  {% if promotions %}
+  <h2 id="promote">main and production</h2>
+  <p class="lede">Machines run <code>production</code>; <code>main</code> is the primary branch, never force-pushed, brought up to <code>production</code> by a person when things are stable (Justin, 11 Nov). Promoting is a fast-forward, or, where <code>main</code> has commits of its own, a merge that keeps them in its history and takes <code>production</code>'s files.</p>
+  <table id="promotions">
+    <tr><th>repository</th><th>production</th><th>main</th><th>main is behind</th><th></th></tr>
+    {% for p in promotions %}
+    <tr data-repo="{{ p.repo }}">
+      <td class="ref">{{ p.repo }}</td>
+      <td class="ref" title="{{ p.production }}">{{ p.production|slice:':8' }}</td>
+      <td class="ref" title="{{ p.main }}">{{ p.main|slice:':8' }}{% if p.main_at %} <span class="why">{{ p.main_at|date:"j M Y" }}</span>{% endif %}</td>
+      <td class="num">{% if p.behind %}{{ p.behind }} commit{{ p.behind|pluralize }}{% if p.own %} <span class="why" title="main's own commits, which production hasn't: kept in main's history by the promotion">(+{{ p.own }} its own)</span>{% endif %}{% else %}<span class="state merged">level</span>{% endif %}</td>
+      <td>{% if can_merge and p.behind %}<button type="button" class="merge promote" data-repo="{{ p.repo }}" data-branch="production" title="Bring main up to production at {{ p.production|slice:':12' }}: a signed order githouse carries out">Promote…</button>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
   <h2>Merged lately</h2>
   <table id="merged">
     <tr><th>candidate</th><th>who</th><th>where</th><th>merged</th><th>deploy</th><th>live on</th></tr>
@@ -266,6 +283,12 @@
   // waiting for the board to be built again (Justin, 9 Nov: "still shows that CB in the list as unmerged").
   window.addEventListener('magentaMerged', e => {
     const { repo, branch } = e.detail || {};
+    if (branch === 'production') {  // a promotion: its row says level, its button gone
+      const row = document.querySelector(`#promotions tr[data-repo="${CSS.escape(repo || '')}"]`);
+      if (row) { row.querySelectorAll('button.promote').forEach(b => b.remove());
+                 row.querySelector('td.num').innerHTML = '<span class="state merged" title="promoted just now, from here">promoted ✓</span>'; }
+      return;
+    }
     body.querySelectorAll('tr[data-active]').forEach(r => {
       const it = r.querySelector('[data-repo][data-branch]');
       if (!it || it.dataset.repo !== repo || it.dataset.branch !== branch) return;

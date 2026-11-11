@@ -206,6 +206,8 @@ def ramp_page(request):
                    # Who's on each, for the buttons that show or hide them (Justin, 9 Nov, #ramp).
                    'everyone': ramp.everyone(open_),
                    'embed': True, 'can_merge': can_merge,
+                   # main against production, with a Promote… button (Justin, #ramp, 11 Nov).
+                   'promotions': merge_orders.promotions(),
                    # The 👍 (Plan, section 8): any signed-in person, at either tier.
                    'can_thumb': bool(device) and device.entity.is_biological_human,
                    'me': device.entity_id if device else ''})

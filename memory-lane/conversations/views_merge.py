@@ -109,8 +109,21 @@ def api_merge_preview(request):
         return JsonResponse({'error': 'number: a pull request number'}, status=400)
     except merge_orders.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
+    who = _promoting(seen) if seen.get('promote') else _who_wants(seen)
     return JsonResponse({**seen, 'can': device.tier == 'key' and merge_orders.can_press(device.entity_id),
-                         'mergers': list(merge_orders.mergers()), **_who_wants(seen)})
+                         'mergers': list(merge_orders.mergers()), **who})
+
+
+def _promoting(seen):
+    """A promotion's sheet (Justin, #ramp, 11 Nov): what it is, said plainly; no asks or 👍s, which are a branch's."""
+    if seen['how'] == 'fast-forward':
+        about = (f"main moves up to production: {seen['behind']} commits, a fast-forward. main becomes exactly "
+                 f"production at {seen['commit'][:12]}.")
+    else:
+        about = (f"main has {seen['own']} commits of its own that production hasn't. githouse merges production in, "
+                 f"keeping those in main's history (never forced), and main's files become production's: "
+                 f"{seen['behind']} commits' worth.")
+    return {'asks': [], 'thumbs': [], 'title': f"Promote {seen['repo']}: main up to production", 'about': about}
 
 
 def _who_wants(seen):
