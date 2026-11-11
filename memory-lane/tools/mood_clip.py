@@ -11,10 +11,12 @@
 Times are seconds, or m:ss, or h:mm:ss, with decimals if you like. The clip is cut here, by ffmpeg, at
 up to 480 lines, with the subtitle burned in along the bottom as Yarn's are; a still from its middle
 is its card's picture. Then it's signed with your SSH key (who you are, as `magenta.sh login`) and
-sent to memory-lane, which keeps it and posts "/clips save <name> <its link>" as you, in #general
-unless --mood says otherwise. From then on /clips <name> plays it, for people and agents alike.
+sent to memory-lane, which keeps it and saves it as "/clips save <name> <its link>" from you: said in
+no Mood, unless --mood names one to say it in (Justin, 7 Nov: no need to announce it in #general).
+From then on /clips <name> plays it, for people and agents alike.
 
-Its name, unless --name gives one: the subtitle's first words ("thats-the-whole-point").
+Its name, unless --name gives one: the subtitle's words, whole, up to 80 characters
+("thats-the-whole-point-man").
 
 Needs ffmpeg and OpenSSH; otherwise only Python's standard library.
 """
@@ -55,7 +57,13 @@ def name_from(caption, path):
     """A clip's name from its subtitle's first words, else from the file's."""
     for source in (caption, os.path.splitext(os.path.basename(path))[0]):
         words = re.findall(r'[a-z0-9]+', source.lower().replace("'", ''))
-        name = '-'.join(words[:5])[:35].strip('-')
+        name = ''
+        for word in words:  # whole words, up to the server's 80 (Justin, 7 Nov: it was cut at 35)
+            longer = f'{name}-{word}' if name else word
+            if len(longer) > 80:
+                break
+            name = longer
+        name = name or (words[0][:80] if words else '')
         if name and NAME.match(name) and name not in RESERVED:
             return name
     return 'clip'
@@ -171,7 +179,7 @@ def main():
     parser.add_argument('end', help='seconds, m:ss or h:mm:ss')
     parser.add_argument('subtitle', nargs='+', help='the words, burned in along the bottom; quote them')
     parser.add_argument('--name', help="what /clips calls it (default: the subtitle's first words)")
-    parser.add_argument('--mood', default='general', help='the Mood the save is posted in (default: general)')
+    parser.add_argument('--mood', help='a Mood to say the save in (default: none; it is saved quietly)')
     parser.add_argument('--preview', action='store_true',
                         help='watch it first (ffplay, or your system player), then save it, play it again or retime it')
     parser.add_argument('--out', help='only cut it, to this file, to look at first: nothing is sent')
@@ -234,10 +242,11 @@ def main():
     except subprocess.CalledProcessError:
         sys.exit('ssh-keygen could not sign with that key.')
     result = call(f'{base}/api/clips/make/', {
-        'challenge': challenge, 'signature': signature, 'name': name, 'caption': caption, 'mood': args.mood,
+        'challenge': challenge, 'signature': signature, 'name': name, 'caption': caption, **({'mood': args.mood} if args.mood else {}),
         'video': base64.b64encode(data).decode(), **({'still': base64.b64encode(picture).decode()} if picture else {})})
-    print(f'\nSaved "{result["name"]}" ({len(data) / 1024:.0f} KB) in #{result["mood"]}: /clips {result["name"]} plays it.'
-          f'\n{result["url"]}\n')
+    where = f' in #{result["mood"]}' if result.get('mood') else ''
+    print(f'\nSaved "{result["name"]}" ({len(data) / 1024:.0f} KB){where}: /clips {result["name"]} plays it.'
+          + (f'\n{result["url"]}' if result.get('url') else '') + '\n')
 
 
 if __name__ == '__main__':

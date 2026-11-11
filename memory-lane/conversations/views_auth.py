@@ -837,7 +837,7 @@ def api_clip_make(request):
     (tools/mood_clip.py does the cutting, with ffmpeg, where the file is).
 
     Body: {"challenge", "signature", "name", "caption", "video" (base64 MP4), "still"? (base64 picture),
-    "mood"? (default general)}; the signature is over clip_message(challenge, origin, name, sha256 of the
+    "mood"? (where to say the save; none: it is saved in no Mood, said nowhere)}; the signature is over clip_message(challenge, origin, name, sha256 of the
     video, caption). Kept as a YarnClip of its own (made_by: the signer), linked as /clips/<id>, and saved
     under its name by a post of theirs, as if they'd typed /clips save: the library is read from posts.
     """
@@ -882,10 +882,11 @@ def api_clip_make(request):
     owner = clips.library().get(name, {}).get('by')
     if owner and owner != signer:
         return JsonResponse({'error': f'"{name}" is {owner}\'s clip; pick another name (--name)'}, status=409)
-    slug = str(body.get('mood') or GENERAL)
-    mood = (Mood.objects.get_or_create(slug=GENERAL, defaults={'title': '#general'})[0] if slug == GENERAL
-            else Mood.objects.filter(slug=slug).first())
-    if mood is None:
+    # Said in a Mood only if asked (Justin, 7 Nov: "No need to announce in #general when someone saves a clip").
+    # The library reads saves from posts wherever they are (clips.library), so a post in no Mood still saves it.
+    slug = str(body.get('mood') or '')
+    mood = Mood.objects.filter(slug=slug).first() if slug else None
+    if slug and mood is None:
         return JsonResponse({'error': f'no Mood "{slug}"'}, status=404)
     kept, _ = Media.objects.get_or_create(sha256=sha, defaults={'mime': 'video/mp4', 'data': video, 'size': len(video),
                                                                  'added_by': entity, 'license': ''})
@@ -896,8 +897,9 @@ def api_clip_make(request):
                                    timestamp=int(time.time() * 1000), source_file=WEB_SOURCE,
                                    client_version='magenta-cli/clips')
     clips.forget_cached()
-    return JsonResponse({'name': name, 'link': link, 'mood': mood.slug,
-                         'url': request.build_absolute_uri(f'/moods/{mood.slug}/#m-{saved.id}')}, status=201)
+    return JsonResponse({'name': name, 'link': link, 'mood': mood.slug if mood else None,
+                         'url': request.build_absolute_uri(f'/moods/{mood.slug}/#m-{saved.id}') if mood else None},
+                        status=201)
 
 
 @require_GET
