@@ -341,7 +341,10 @@ def tiding_page(request, tiding_id):
             from django.shortcuts import redirect
             return redirect(work.address(page.repo, page.branch))
         from .views_moods import moods_page
-        return moods_page(request, section='tidings')
+        from .services import tiding_links
+        # Shared somewhere, its card: what the link is, not "magenta" (tiding_links.card).
+        found = tiding_links.card(_uuid_or_none(tiding_id)) if _uuid_or_none(tiding_id) else None
+        return moods_page(request, section='tidings', card=found)
     whole = _opened_on_its_own(request)
     if whole:
         return whole

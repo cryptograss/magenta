@@ -34,7 +34,7 @@ from .services.mood_view import (
 
 @ensure_csrf_cookie
 @require_GET
-def moods_page(request, slug=None, section=''):
+def moods_page(request, slug=None, section='', card=None):
     """The one page: the Moods, and tidings, prompts, status and settings beside them (`section`: which
     shows first). Each section is its own page, loaded once into it (?embed=1) and kept, so going back
     and forth loads nothing again (Justin, 21 Oct)."""
@@ -45,6 +45,9 @@ def moods_page(request, slug=None, section=''):
             return redirect(f'/moods/{found.slug}/', permanent=False)
     device = mood_auth.device_for(request)
     return render(request, 'conversations/moods.html', {
+        # A link's card where its address is shared (tiding_links.card): Open Graph tags, read before any script.
+        'card': card, 'card_url': request.build_absolute_uri() if card else '',
+        'card_icon': request.build_absolute_uri('/moods/icon-512.png') if card else '',
         'banner': banner_context(),
         'initial_slug': slug or '',
         'initial_section': section,
