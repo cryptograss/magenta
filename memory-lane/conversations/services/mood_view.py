@@ -88,16 +88,18 @@ _WAIT = re.compile(r'^\s*<wait\s+for="([\w.,\s-]{1,100})"(?:\s+to="([^"<>]{0,200
 _TAKE = re.compile(r'^\s*<take\s+to="([^"<>]{1,200})"\s*/>\s*$')
 # A look-only turn asking for its full tools (Justin, 28 Oct: "{emergent} requested tools for {purpose}"): a line in
 # the Mood, and 🔨 by its title in the Moods list until a full-tools turn of that emergent there (services/tools_ask.py).
-_TOOLS = re.compile(r'^\s*<tools\s+to="([^"<>]{1,200})"\s*/>\s*$')
+# An ask's to="…" is up to 600 characters (Justin, 11 Nov: a merge ask naming five branches ran to 212 and, over the
+# old 200, stayed as plain text: no ask, no pills).
+_TOOLS = re.compile(r'^\s*<tools\s+to="([^"<>]{1,600})"\s*/>\s*$')
 # The same shape, other asks (Justin, 29 Oct): <merge to="…"/> -> a merge asked of a person (🪢),
 # <deploy to="…"/> -> a redeploy (🖥️). Both posted as a line in the Mood and an icon by its title,
 # as the tools ask is, until the event lands (a full-tools wake, a merged event, a deploy event).
-_MERGE = re.compile(r'^\s*<merge\s+to="([^"<>]{1,200})"\s*/>\s*$')
-_DEPLOY = re.compile(r'^\s*<deploy\s+to="([^"<>]{1,200})"\s*/>\s*$')
+_MERGE = re.compile(r'^\s*<merge\s+to="([^"<>]{1,600})"\s*/>\s*$')
+_DEPLOY = re.compile(r'^\s*<deploy\s+to="([^"<>]{1,600})"\s*/>\s*$')
 # The same asks after words, one or several at the very end (Justin, 31 Oct, #interfaces: every merge and redeploy
 # ask that night went out as text, since each came with a sentence saying what it was for). The words are said,
 # and each ask stands as it would alone; only the tags are taken out of the words.
-_ASK_TAIL = re.compile(r'\s*<(tools|merge|deploy)\s+to="([^"<>]{1,200})"\s*/>\s*$')
+_ASK_TAIL = re.compile(r'\s*<(tools|merge|deploy)\s+to="([^"<>]{1,600})"\s*/>\s*$')
 ASK_EMOJI = {'tools': '🔨', 'merge': '🪢', 'deploy': '🖥️'}  # Justin, 1 Nov
 
 
@@ -107,13 +109,15 @@ def _ask_reason(kind, to):
     if kind == 'deploy':
         return 'requested a redeploy of ' + ' '.join((to[1:] if to and to[0].lower() in ('to', 'of', 'for') else to)[:10])
     lead = 'requested tools for ' if kind == 'tools' else 'requested a merge for '
-    return lead + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:10])
+    # A merge ask whole: its words are where the pills come from (tools_ask.unmerged), and the eleventh word
+    # can be a branch.
+    return lead + ' '.join((to[1:] if to and to[0].lower() in ('to', 'for') else to)[:None if kind == 'merge' else 10])
 
 
 # Or on a line of its own anywhere, words after it too (Justin, 10 Nov: "I see <merge to=…/> instead of getting the
 # merge ask" -- magent had closed with a goodnight under it). Not in a fenced code block: a tag shown there is an
 # example. A tag inside a sentence, or in backticks, is still words.
-_ASK_LINE = re.compile(r'^[ \t]*<(tools|merge|deploy)\s+to="([^"<>]{1,200})"\s*/>[ \t]*$', re.M)
+_ASK_LINE = re.compile(r'^[ \t]*<(tools|merge|deploy)\s+to="([^"<>]{1,600})"\s*/>[ \t]*$', re.M)
 _FENCED = re.compile(r'```.*?(?:```|\Z)', re.S)
 
 

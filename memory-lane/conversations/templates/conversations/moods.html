@@ -8152,7 +8152,7 @@
     // and not ~/ (a home path).
     m = upto.match(/(^|[\s(`])~(?!\/)([\w.\/:-]*)$/);
     if (m) {
-      if (!mergeables.asked) loadMergeables();
+      if (mergeablesStale()) loadMergeables();
       return { kind: 'mergeable', start: upto.length - m[2].length - 1, repo: '', prefix: m[2], anywhere: true };
     }
     // A mergeable, <repo>:<branch>: after a repository's name and a colon, or an owner's name and a
@@ -8163,7 +8163,7 @@
       return { kind: 'mergeable', start: upto.length - m[2].length - 1 - m[4].length,
                repo: m[3] === ':' ? m[2] : '', prefix: m[3] === ':' ? m[4] : m[2] + '/' + m[4] };
     }
-    if (m && !mergeables.asked) loadMergeables();
+    if (m && mergeablesStale()) loadMergeables();
     // `:` starting a word -- so 10:30 doesn't open it.
     m = upto.match(/(^|[\s(]):([a-z0-9_+-]{0,30})$/);
     if (m) return { kind: 'emoji', start: upto.length - m[2].length - 1, prefix: m[2] };
@@ -8174,20 +8174,27 @@
   // one is still worth naming.
   const GITHOUSE_BRANCHES = '/api/branches/';
   const OWNED_BRANCH = /^(main|master|production|release\/.*)$/;
-  const mergeables = { asked: false, repos: new Set(), owners: new Set(), list: [] };
+  // Asked again once what it has is a minute old (Justin, 11 Nov: a branch pushed since the page opened, at night,
+  // wasn't offered in the morning: the list was asked for once, at load). The server's copy is a minute fresh too.
+  const MERGEABLES_FRESH_MS = 60000;
+  const mergeables = { asked: false, at: 0, repos: new Set(), owners: new Set(), list: [] };
+  const mergeablesStale = () => !mergeables.asked || Date.now() - mergeables.at > MERGEABLES_FRESH_MS;
   function loadMergeables() {
-    mergeables.asked = true;
+    mergeables.asked = true; mergeables.at = Date.now();  // one ask at a time: the next a minute on
     return fetch(GITHOUSE_BRANCHES, { signal: AbortSignal.timeout(5000) }).then(r => r.ok ? r.json() : {}).then(d => {
+      const repos = new Set(), owners = new Set(), list = [];
       for (const [repo, kinds] of Object.entries(d || {})) {
-        mergeables.repos.add(repo);
+        repos.add(repo);
         for (const [state, branches] of [['live', kinds.live], ['merged', kinds.merged], ['closed', kinds.closed]]) {
           for (const branch of Object.keys(branches || {})) {
             if (OWNED_BRANCH.test(branch) || !branch.includes('/')) continue;
-            mergeables.owners.add(branch.split('/')[0]);
-            mergeables.list.push({ repo, branch, state });
+            owners.add(branch.split('/')[0]);
+            list.push({ repo, branch, state });
           }
         }
       }
+      if (!repos.size && mergeables.list.length) return;  // an empty answer doesn't empty what was there
+      Object.assign(mergeables, { repos, owners, list });
       const at = wordAtCaret();
       if (at && at.kind === 'mergeable') showSuggest();
     }).catch(() => {});
