@@ -38,9 +38,9 @@
   .enter:hover { background: rgba(239, 90, 166, .14); text-decoration: none; }
   /* A message across the top (settings: banner): a warning amber; its own colours, given inline. */
   .banner { padding: 8px 22px; font-size: 13px; line-height: 1.35; text-align: center; background: #f0b13f; color: #2b1400; }
-  .now { display: grid; grid-template-columns: 1.4fr 1fr; gap: 26px; }
+  .now { display: grid; grid-template-columns: 1fr 1.4fr; gap: 26px; }
   @media (max-width: 680px) { .now { grid-template-columns: 1fr; } h1 { font-size: 38px; } .mark { width: 132px; height: 132px; } }
-  /* "latest" over both, then each column's own: tidings, moods (Justin, 23 Oct). */
+  /* "latest" over both, then each column's own: moods left, tidings right (Justin, 23 Oct; swapped 12 Nov). */
   h2.latest { font-size: 13px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); font-weight: 600;
               text-align: center; margin: 8vh 0 14px; }
   h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); font-weight: 600;
@@ -84,14 +84,32 @@
     <!-- Two doors, one welcome (Justin, 29 Oct: most people missed the Moods behind a door to Tidings). -->
     <div class="doors">
       <span class="come">come in</span>
-      <a class="enter" href="/tidings/">tidings<i>→</i><small>(link share)</small></a>
       <a class="enter" href="/moods/">moods<i>→</i><small>(chat)</small></a>
+      <a class="enter" href="/tidings/">tidings<i>→</i><small>(link share)</small></a>
     </div>
     <p class="helpline"><a href="https://pickipedia.xyz/wiki/Magenta:Help" title="How magenta works: Magenta:Help on PickiPedia">new here? help</a> · <a href="/moods/?tour=1" title="A walk round the Moods page, on the page itself">take the tour</a></p>
   </section>
 
   <h2 class="latest">latest</h2>
   <div class="now">
+    <section class="lately">
+      <h3><a href="/moods/">moods</a></h3>
+      {% if front.lately %}
+      <ul>
+        {% for said in front.lately %}
+        <li><a href="/moods/{{ said.mood }}/">
+          <span class="who">{{ said.name|safe }}</span>
+          <span class="in">in <span class="where">#{{ said.title }}</span></span>
+          <span class="when" title="{{ said.at|date:'M j, H:i' }} UTC">{{ said.ago }} ago</span>
+          {% if said.said %}<span class="said">{{ said.said }}</span>{% endif %}
+        </a></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="none">Quiet, for now.</p>
+      {% endif %}
+    </section>
+
     <section class="tidings">
       <h3><a href="/tidings/">tidings</a></h3>
       {% if front.tidings %}
@@ -108,24 +126,6 @@
       </ol>
       {% else %}
       <p class="none">Nothing on Tidings yet.</p>
-      {% endif %}
-    </section>
-
-    <section class="lately">
-      <h3><a href="/moods/">moods</a></h3>
-      {% if front.lately %}
-      <ul>
-        {% for said in front.lately %}
-        <li><a href="/moods/{{ said.mood }}/">
-          <span class="who">{{ said.name|safe }}</span>
-          <span class="in">in <span class="where">#{{ said.title }}</span></span>
-          <span class="when" title="{{ said.at|date:'M j, H:i' }} UTC">{{ said.ago }} ago</span>
-          {% if said.said %}<span class="said">{{ said.said }}</span>{% endif %}
-        </a></li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p class="none">Quiet, for now.</p>
       {% endif %}
     </section>
   </div>

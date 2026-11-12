@@ -45,6 +45,11 @@ class FrontPageTest(FrontBase):
         self.assertIn('/moods/mark-192.png', html)
         self.assertIn('href="/moods/"', html)
 
+    def test_moods_left_and_tidings_right(self):
+        html = self.client.get('/').content.decode()
+        self.assertLess(html.index('class="enter" href="/moods/"'), html.index('class="enter" href="/tidings/"'))
+        self.assertLess(html.index('<section class="lately">'), html.index('<section class="tidings">'))
+
     def test_its_own_address_as_a_qr_code_at_the_foot(self):
         # Justin, 23 Oct: held up for a phone across the table. The address is whatever served it.
         html = self.client.get('/', secure=True).content.decode()
