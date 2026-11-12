@@ -132,6 +132,13 @@
   .wikilead figure.tall { max-width: 34%; }
   .wikilead figure img { display: block; width: 100%; height: auto; border-radius: 8px; background: var(--code); }
   .wikilead figcaption { margin-top: 4px; font-size: 12px; line-height: 1.35; color: var(--muted); }
+  /* Its links as the wiki draws them (Justin, 12 Nov): blue for a page, red for one not written yet. */
+  .wikilead a.wiki { color: #3366cc; }
+  .wikilead a.wiki.new { color: #d73333; }
+  @media (prefers-color-scheme: dark) {
+    .wikilead a.wiki { color: #88a3e8; }
+    .wikilead a.wiki.new { color: #fd7865; }
+  }
   .wikilead .readon { display: inline-block; margin-top: 2px; font-size: 13.5px; font-weight: 600; }
   @media (max-width: 560px) {
     .wikilead figure, .wikilead figure.tall { float: none; max-width: 100%; margin: 0 0 12px; }
