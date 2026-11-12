@@ -21,7 +21,10 @@ from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
-from .services import delivery_kid, faces, front_page, pr_cards, push, servers, wiki_auth, wiki_changes, wiki_feed, wiki_hooks, wiki_ledger, wiki_upload
+from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_changes, wiki_feed, wiki_hooks, wiki_ledger, wiki_upload
+# PickiPedia's front-page feeds, as `front_feeds`: `front_page` is this module's view of magenta's own front page
+# (below), and the view's def replaced the module, so the pulse's front_page.nudge() raised AttributeError.
+from .services import front_page as front_feeds
 from .services import emergent_commands, merge_orders, mood_auth
 from .services.mood_view import agent_names, bundle_marks, turn_tools, turn_wakes  # which tools and instructions a turn had
 from .services.tiding_links import said_html  # a comment on a work's page, as the Mood shows it
@@ -780,7 +783,7 @@ def api_pulse(request):
     push.nudge()       # and the push clock: notices to send to closed pages (at most every 10 s)
     wiki_ledger.nudge()  # and the Moods' links, written to PickiPedia (at most every 30 s)
     pr_cards.nudge()     # and the pull requests' cards, VersionControl:PRs/... (at most every 10 min)
-    front_page.nudge()   # and the front page's feeds on PickiPedia, Template:Magenta tidings and latest (every 10 min)
+    front_feeds.nudge()  # and the front page's feeds on PickiPedia, Template:Magenta tidings and latest (every 10 min)
     moods = []
     for mood in Mood.objects.all():
         said = mood.messages.filter(is_sidechain=False).exclude(sender_id__in=MACHINERY_SENDERS)
