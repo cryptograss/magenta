@@ -67,7 +67,8 @@ def makers_offered():
 
 RECENT_BUNDLES = 8  # the newest bundles made, shown atop the instructions bundles section
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'traffic',
+            'settings')
 
 
 def _opened_on_its_own(request):
@@ -220,6 +221,24 @@ def hooks_page(request):
     """
     from .services import wiki_hooks
     return render(request, 'conversations/mood_hooks.html', {'state': wiki_hooks.state(), 'embed': True})
+
+
+# The traffic dashboards: GoAccess over each site's Caddy access log (maybelle-config, roles/goaccess), public.
+# Caddy answers /stats/ itself on magenta's name, so this section is /traffic/ (Justin, 12 Nov).
+TRAFFIC = (
+    {'name': 'magenta', 'host': 'magenta.cryptograss.live',
+     'what': 'This site: the Moods, Tidings, the ramp, and every poll the open tabs make.'},
+    {'name': 'PickiPedia', 'host': 'pickipedia.xyz',
+     'what': 'The wiki, and Rabbithole beside it.'},
+)
+
+
+@section('traffic')
+def traffic_page(request):
+    """Links to the traffic dashboards, with a few live numbers from each (Justin, #performance, 12 Nov: "a stats
+    page in the chevron menu, from which those are linked"). The numbers come to the reader's browser straight
+    from each dashboard's own WebSocket; nothing here is asked of the server."""
+    return render(request, 'conversations/mood_traffic.html', {'sites': TRAFFIC, 'embed': True})
 
 
 @section('verify')
