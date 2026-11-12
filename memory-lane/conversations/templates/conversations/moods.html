@@ -2083,7 +2083,10 @@
 {{ wiki_names|json_script:"wiki-names" }}
 <script>
 (function () {
-  const POLL_MS = 4000;
+  const POLL_MS = 4000;  // a signed-in tab asks for new turns this often
+  // A tab with no device (a visitor from a link: HN, reddit) asks a quarter as often: it reads, it doesn't
+  // talk, and each such tab costs the server a poll and a live-bar look per tick (#performance, 12 Nov).
+  const VISITOR_POLL_MS = 15000;
   const initialSlug = "{{ initial_slug|escapejs }}" || null;
   const initialSection = "{{ initial_section|escapejs }}" || 'moods';
   const nav = document.getElementById('nav');
@@ -2662,7 +2665,7 @@
     }
     readNext();
   }
-  setInterval(refreshLive, 5000);
+  setInterval(refreshLive, viewer ? 5000 : VISITOR_POLL_MS);
   refreshLive();
 
   // --- the Mood's to-do list: kept on PickiPedia (services/todo.py), shown at the right ---
@@ -10843,7 +10846,7 @@
     if (linked) await openAndReveal(slug, linked[1], false);
     else await open(slug, false);
     if (sharing_) { history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/'); offerShare(); }
-    setInterval(() => { poll(false); fetchBadges(); }, POLL_MS);
+    setInterval(() => { poll(false); fetchBadges(); }, viewer ? POLL_MS : VISITOR_POLL_MS);
     if (new URLSearchParams(location.search).has('tour')) startTour();
   })();
 
