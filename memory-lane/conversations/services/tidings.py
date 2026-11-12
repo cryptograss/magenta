@@ -241,20 +241,18 @@ PROMPTS_KEPT = 30
 
 
 def pictures_changed():
-    """What Tidings' pictures show has changed: their kept copy goes, and the next look reads afresh."""
-    from django.core.cache import cache
-    cache.delete_many([f'tidings:pictures:{limit}' for limit in (PICTURES, PICTURES * 2, 60, 120)])
+    """What Tidings' pictures show has changed: the kept copies are old. Still shown; each rebuilt on its next ask."""
+    from conversations.services import mood_cache
+    for limit in (PICTURES, PICTURES * 2, 60, 120):
+        mood_cache.stale(f'tidings:pictures:{limit}')
 
 
 def picture_tidings(limit=PICTURES):
-    """picture_scan, kept until pictures_changed (or PICTURES_KEPT)."""
-    from django.core.cache import cache
-    key = f'tidings:pictures:{limit}'
-    found = cache.get(key)
-    if found is None:
-        found = picture_scan(limit)
-        cache.set(key, found, PICTURES_KEPT)
-    return found
+    """picture_scan, kept and shown as it is while one thread rebuilds it: past PICTURES_KEPT, or once
+    pictures_changed (mood_cache.kept). The scan reads the newest posts showing pictures, 10-30 s on
+    maybelle (hug-watch, 11 Nov): a visitor every five minutes used to wait for it."""
+    from conversations.services import mood_cache
+    return mood_cache.kept(f'tidings:pictures:{limit}', lambda: picture_scan(limit), PICTURES_KEPT)
 
 
 def picture_scan(limit=PICTURES):
@@ -346,22 +344,23 @@ RELEASE_GATEWAY = 'https://ipfs.delivery-kid.cryptograss.live/ipfs'
 NOT_NEWS = {'track'}
 
 
+RELEASES_KEY = 'tidings:releases'
+
+
 def releases_changed():
-    from django.core.cache import cache
-    cache.delete('tidings:releases')
+    """A Release page was made or changed: the kept list is old. Still shown; rebuilt on the next ask."""
+    from conversations.services import mood_cache
+    mood_cache.stale(RELEASES_KEY)
 
 
 def release_tidings(limit=RELEASES, http=None):
-    """release_scan, kept RELEASES_KEPT (RELEASES_MISS if the wiki didn't answer)."""
-    from django.core.cache import cache
-    found = cache.get('tidings:releases')
-    if found is None:
-        try:
-            found = release_scan(limit, http=http)
-            cache.set('tidings:releases', found, RELEASES_KEPT)
-        except Exception:
-            found = []
-            cache.set('tidings:releases', found, RELEASES_MISS)
+    """release_scan, kept and shown as it is while one thread rebuilds it past RELEASES_KEPT (mood_cache.kept):
+    the scan asks the wiki, and the wait for it (4-30 s on maybelle, hug-watch, 11 Nov) was every visitor's
+    once every ten minutes. A wiki that didn't answer, with nothing kept: no releases, and not asked again
+    for RELEASES_MISS."""
+    from conversations.services import mood_cache
+    found = mood_cache.kept(RELEASES_KEY, lambda: release_scan(limit, http=http), RELEASES_KEPT,
+                            on_error=list, miss_fresh=RELEASES_MISS)
     return found[:limit]
 
 

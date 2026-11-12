@@ -8,7 +8,9 @@ from datetime import timedelta
 from django.utils import timezone
 
 from conversations.models import FaceLook, FaceName, Media, Message
-from conversations.services import tidings
+from unittest import mock
+
+from conversations.services import mood_cache, tidings
 from conversations.tests.tidings_helpers import TidingsTests, fake_sha
 
 
@@ -157,7 +159,8 @@ class TidingsPageTests(TidingsTests):
 
 class KeptTest(TidingsTests):
     """Tidings' pictures and Prompts are kept a while, not read afresh at every look (Justin, 21 Oct: 1.5-2.6 s);
-    the pictures' copy goes the moment a picture is stored or posted, a face named, a post edited or deleted."""
+    the pictures' copy is marked old the moment a picture is stored or posted, a face named, a post edited or
+    deleted: still shown, while one thread reads afresh (mood_cache.kept, #performance, 12 Nov)."""
 
     def setUp(self):
         from django.core.cache import cache
@@ -178,4 +181,14 @@ class KeptTest(TidingsTests):
         media = Media.objects.create(sha256='a' * 64, mime='image/png', data=png, size=len(png), added_by=justin)
         Message.objects.create(id=_uuid.uuid4(), sender=justin, mood=mood, timestamp=1, source_file='mood-web',
                                content=f'look ![x]({media.url})')
-        self.assertEqual([p['sha256'] for p in tidings.picture_tidings()], ['a' * 64])  # posted: read afresh
+        # Posted: the kept list is old. The next ask still gets it, and one thread reads afresh (mood_cache.kept);
+        # the ask after that has the picture.
+        spawned = []
+        with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: spawned.append((fn, a))):
+            self.assertEqual(tidings.picture_tidings(), [])
+        self.assertEqual(len(spawned), 1)
+        fn, args = spawned[0]
+        fn(*args)
+        with CaptureQueriesContext(connection) as asked:
+            self.assertEqual([p['sha256'] for p in tidings.picture_tidings()], ['a' * 64])
+        self.assertEqual(len(asked), 0)  # kept again
