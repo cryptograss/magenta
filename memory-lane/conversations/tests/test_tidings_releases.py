@@ -86,25 +86,34 @@ class ReleaseScanTests(TidingsTests):
         self.assertEqual(tidings.release_tidings(http=broken), [])
         self.assertEqual(broken.get.call_count, 1)
 
-    def test_kept_until_a_new_release_marks_it_old_and_then_rebuilt_in_the_background(self):
+    def test_a_new_release_rebuilds_the_list_at_once_on_a_thread_and_no_visitor_waits(self):
         cache.delete('tidings:releases')
         fake = wiki()
         tidings.release_tidings(http=fake)
         tidings.release_tidings(http=fake)
         self.assertEqual(len(fake.asked), 2)  # one scan
-        tidings.releases_changed()
         spawned = []
         with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: spawned.append((fn, a))):
-            shown = tidings.release_tidings(http=fake)
-        self.assertEqual(len(fake.asked), 2)  # the old list, at once...
-        self.assertEqual(len(shown), 2)
-        self.assertEqual(len(spawned), 1)  # ...while one thread scans again
-        fn, args = spawned[0]
-        fn(*args)
-        self.assertEqual(len(fake.asked), 4)
+            tidings.releases_changed()
+            self.assertEqual(len(spawned), 1)  # the change itself starts the rebuild...
+            self.assertEqual(len(tidings.release_tidings(http=fake)), 2)  # ...the old list meanwhile
+            self.assertEqual(len(spawned), 1)  # and the ask starts no second one (the lock)
+        self.assertEqual(len(fake.asked), 2)
+        scan = tidings.release_scan
+        with mock.patch.object(tidings, 'release_scan', lambda limit, http=None: scan(limit, http=fake)):
+            fn, args = spawned[0]  # the thread's work, run here: it asks the wiki (the fake one)
+            fn(*args)
+        self.assertEqual(len(fake.asked), 4)  # rebuilt
         with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: spawned.append((fn, a))):
             tidings.release_tidings(http=fake)
-        self.assertEqual(len(spawned), 1)  # rebuilt: fresh again, nobody scans
+        self.assertEqual(len(spawned), 1)  # fresh again: nobody scans
+
+    def test_nothing_kept_a_change_leaves_the_first_ask_to_build(self):
+        cache.delete('tidings:releases')
+        spawned = []
+        with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: spawned.append((fn, a))):
+            tidings.releases_changed()
+        self.assertEqual(spawned, [])
 
     def test_past_its_keep_everyone_gets_the_old_list_and_one_thread_rebuilds(self):
         cache.delete('tidings:releases')

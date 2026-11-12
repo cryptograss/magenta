@@ -178,17 +178,17 @@ class KeptTest(TidingsTests):
             self.assertEqual(tidings.picture_tidings(), [])
         self.assertEqual(len(asked), 0)  # kept
         png = b'\x89PNG\r\n\x1a\n' + b'\x00' * 32
-        media = Media.objects.create(sha256='a' * 64, mime='image/png', data=png, size=len(png), added_by=justin)
-        Message.objects.create(id=_uuid.uuid4(), sender=justin, mood=mood, timestamp=1, source_file='mood-web',
-                               content=f'look ![x]({media.url})')
-        # Posted: the kept list is old. The next ask still gets it, and one thread reads afresh (mood_cache.kept);
-        # the ask after that has the picture.
+        # The picture stored, then posted: each change itself rebuilds the kept list on a thread (mood_cache.changed,
+        # run in line here); the kept list serves meanwhile. No visitor rebuilds it.
         spawned = []
-        with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: spawned.append((fn, a))):
-            self.assertEqual(tidings.picture_tidings(), [])
-        self.assertEqual(len(spawned), 1)
-        fn, args = spawned[0]
-        fn(*args)
+        def in_line(fn, *a):
+            spawned.append(fn)
+            fn(*a)
+        with mock.patch.object(mood_cache, 'spawn', in_line):
+            media = Media.objects.create(sha256='a' * 64, mime='image/png', data=png, size=len(png), added_by=justin)
+            Message.objects.create(id=_uuid.uuid4(), sender=justin, mood=mood, timestamp=1, source_file='mood-web',
+                                   content=f'look ![x]({media.url})')
+        self.assertEqual(len(spawned), 2)  # one rebuild per change, of the one list kept so far
         with CaptureQueriesContext(connection) as asked:
             self.assertEqual([p['sha256'] for p in tidings.picture_tidings()], ['a' * 64])
         self.assertEqual(len(asked), 0)  # kept again

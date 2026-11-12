@@ -236,21 +236,23 @@ def prompt_scan(per_human=PROMPTS_PER_HUMAN):
 # picture scan reads every message for "/media/", and the prompts read every Mood. The pictures' copy goes the
 # moment what they show changes (pictures_changed: a picture stored or posted, a face looked at or named, an
 # upload to PickiPedia, a post edited or deleted) and after PICTURES_KEPT regardless; the prompts' after PROMPTS_KEPT.
-PICTURES_KEPT = 300  # seconds
+PICTURES_KEPT = 3600  # seconds: a net; pictures_changed rebuilds at once
 PROMPTS_KEPT = 30
 
 
 def pictures_changed():
-    """What Tidings' pictures show has changed: the kept copies are old. Still shown; each rebuilt on its next ask."""
+    """What Tidings' pictures show has changed: each kept copy is rebuilt now, on a thread, and shown as it was
+    until then. No visitor rebuilds it."""
     from conversations.services import mood_cache
     for limit in (PICTURES, PICTURES * 2, 60, 120):
-        mood_cache.stale(f'tidings:pictures:{limit}')
+        mood_cache.changed(f'tidings:pictures:{limit}', lambda limit=limit: picture_scan(limit))
 
 
 def picture_tidings(limit=PICTURES):
-    """picture_scan, kept and shown as it is while one thread rebuilds it: past PICTURES_KEPT, or once
-    pictures_changed (mood_cache.kept). The scan reads the newest posts showing pictures, 10-30 s on
-    maybelle (hug-watch, 11 Nov): a visitor every five minutes used to wait for it."""
+    """picture_scan, kept and shown as it is (mood_cache.kept). Every change to what it shows reaches
+    pictures_changed, which rebuilds at once on a thread, so PICTURES_KEPT is only a net under a missed one.
+    The scan reads the newest posts showing pictures, 10-30 s on maybelle (hug-watch, 11 Nov): a visitor
+    every five minutes used to wait for it."""
     from conversations.services import mood_cache
     return mood_cache.kept(f'tidings:pictures:{limit}', lambda: picture_scan(limit), PICTURES_KEPT)
 
@@ -338,7 +340,7 @@ def picture_scan(limit=PICTURES):
 # page, and isn't asked again for RELEASES_MISS.
 
 RELEASES = 12
-RELEASES_KEPT = 600   # seconds
+RELEASES_KEPT = 3600  # seconds: a net; releases_changed rebuilds at once
 RELEASES_MISS = 60
 RELEASE_GATEWAY = 'https://ipfs.delivery-kid.cryptograss.live/ipfs'
 NOT_NEWS = {'track'}
@@ -348,16 +350,18 @@ RELEASES_KEY = 'tidings:releases'
 
 
 def releases_changed():
-    """A Release page was made or changed: the kept list is old. Still shown; rebuilt on the next ask."""
+    """A Release page was made or changed (wiki_hooks, wiki_changes, wiki_feed): the kept list is rebuilt now,
+    on a thread, and shown as it was until then. No visitor rebuilds it."""
     from conversations.services import mood_cache
-    mood_cache.stale(RELEASES_KEY)
+    mood_cache.changed(RELEASES_KEY, lambda: release_scan(RELEASES))
 
 
 def release_tidings(limit=RELEASES, http=None):
     """release_scan, kept and shown as it is while one thread rebuilds it past RELEASES_KEPT (mood_cache.kept):
     the scan asks the wiki, and the wait for it (4-30 s on maybelle, hug-watch, 11 Nov) was every visitor's
-    once every ten minutes. A wiki that didn't answer, with nothing kept: no releases, and not asked again
-    for RELEASES_MISS."""
+    once every ten minutes. Every change to a Release page reaches releases_changed, which rebuilds at once,
+    so RELEASES_KEPT is only a net under a missed one. A wiki that didn't answer, with nothing kept: no
+    releases, and not asked again for RELEASES_MISS."""
     from conversations.services import mood_cache
     found = mood_cache.kept(RELEASES_KEY, lambda: release_scan(limit, http=http), RELEASES_KEPT,
                             on_error=list, miss_fresh=RELEASES_MISS)

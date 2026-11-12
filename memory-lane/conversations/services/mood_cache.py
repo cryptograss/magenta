@@ -88,6 +88,18 @@ def stale(key):
         cache.set(key, {'value': entry['value'], 'at': 0}, None)
 
 
+def changed(key, build):
+    """What's kept under `key` is out of date, and we know it now: still served, and rebuilt now, on a thread,
+    by whoever saw the change (Justin, #performance, 12 Nov: where every change is known, no visitor need ever
+    rebuild). Marked old first, so if the lock refuses (a rebuild under way) the next ask rebuilds again.
+    Nothing kept: nothing to do, the first ask builds."""
+    if cache.get(key) is None:
+        return
+    stale(key)
+    if cache.add(key + ':building', 1, BUILD_LOCK_TTL):
+        spawn(_rebuild, key, build)
+
+
 def _rebuild(key, build):
     from django.db import connection
     try:
