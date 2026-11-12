@@ -30,6 +30,9 @@ SHORT = 40           # fewer characters than this: a dateline or a byline, not o
 PICTURE_MIN = 120    # the file's width in pixels, at least
 PICTURE_RATIO = 3.0  # longer side over shorter, at most
 KEPT, MISS = 600, 60  # seconds: an edit shows within ten minutes; a wiki that didn't answer is asked again soon
+# Bump when lead_of reads a page differently: its key changes, so a deploy shows the new reading at once,
+# not after an opening the old code kept runs out (Justin, 12 Nov: merged and redeployed, "why no refreshed?").
+SHAPE = 2
 NOT_ARTICLES = ('special', 'file', 'image', 'release', 'media')  # a Release has its own page (tiding_links._release_of)
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'}
@@ -265,7 +268,7 @@ def wiki_lead(url, http=None):
     title = title_of(url, base)
     if not title:
         return None
-    key = 'tidings:wiki:' + hashlib.sha1(title.encode()).hexdigest()
+    key = f'tidings:wiki:{SHAPE}:' + hashlib.sha1(title.encode()).hexdigest()
     found = cache.get(key)
     if found is not None:
         return found or None
