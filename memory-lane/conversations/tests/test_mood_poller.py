@@ -800,6 +800,27 @@ class RealProcessTest(TestCase):
         self.assertEqual(seen[2], {'type': 'usage', 'uuids': ['a1', 'a2'], 'session_id': 's-new',
                                    'usage': {'output_tokens': 210, 'input_tokens': 3}})
 
+    def screenshots(self, answers):
+        """A turn that takes a screenshot per answer: each call alike, each answer as given."""
+        stream = []
+        for i, answer in enumerate(answers):
+            stream.append({'type': 'assistant', 'message': {'content': [
+                {'type': 'tool_use', 'id': f't{i}', 'name': 'mcp__playwright__browser_take_screenshot', 'input': {}}]}})
+            stream.append({'type': 'user', 'message': {'content': [
+                {'type': 'tool_result', 'tool_use_id': f't{i}', 'content': [{'type': 'text', 'text': answer}]}]}})
+        stream.append({'type': 'result', 'subtype': 'success', 'result': 'looked', 'total_cost_usd': 0.02})
+        return ''.join(f"echo '{json.dumps(e)}'\n" for e in stream)
+
+    def test_a_screenshot_after_each_change_is_not_a_loop(self):
+        # 8 Nov, #rabbithole 03:30Z: five screenshots, four different pages, ended as a "loop".
+        _, reply = self.waker(self.screenshots([f'page {i}' for i in range(6)])).wake(
+            's-old', 'prompt', new_session_id='s-new')
+        self.assertEqual(reply, 'looked')
+
+    def test_the_same_call_with_the_same_answer_still_ends_the_turn(self):
+        with self.assertRaisesRegex(RuntimeError, 'tool loop: mcp__playwright__browser_take_screenshot called 3'):
+            self.waker(self.screenshots(['same page'] * 6)).wake('s-old', 'prompt', new_session_id='s-new')
+
     def test_wakes_ask_for_partial_messages_and_helpers_words(self):
         cmd = ClaudeCodeWaker(projects_dir=self.projects).command('s-old', 's-new', 'prompt')
         self.assertIn('--include-partial-messages', cmd)
@@ -838,8 +859,11 @@ class RealProcessTest(TestCase):
         use = {'type': 'assistant', 'message': {'content': [
             {'type': 'text', 'text': 'Let me check that file again.'},
             {'type': 'tool_use', 'id': 't1', 'name': 'grep', 'input': {'path': 'x'}}]}}
+        answer = {'type': 'user', 'message': {'content': [
+            {'type': 'tool_result', 'tool_use_id': 't1', 'content': 'the same lines'}]}}  # judged with its answer
         result = {'type': 'result', 'subtype': 'success', 'result': 'done', 'total_cost_usd': 0.1}
-        body = ''.join(f"echo '{json.dumps(use)}'; sleep 1\n" for _ in range(3)) + f"echo '{json.dumps(result)}'\n"
+        body = ''.join(f"echo '{json.dumps(use)}'; echo '{json.dumps(answer)}'; sleep 1\n" for _ in range(3)) \
+            + f"echo '{json.dumps(result)}'\n"
         start = time.time()
         waker = self.waker(body)
         with self.assertRaises(RuntimeError) as ctx:

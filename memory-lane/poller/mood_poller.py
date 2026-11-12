@@ -768,6 +768,7 @@ class ClaudeCodeWaker:
         # per-turn ceiling is a 150-call budget that still ends the turn -- Claude Code's `-p`
         # has no stdin, so unlike pi there is no mid-turn warning here (pi_harness, 31 Oct).
         guard, killed = LoopGuard(), None
+        asked = {}  # tool_use id -> (name, input): judged when its result comes back (LoopGuard.see)
         final = FinalUsage()
         try:
             for raw in proc.stdout:
@@ -790,17 +791,24 @@ class ClaudeCodeWaker:
                     # Same tripwire as pi_harness's LoopGuard: a machine attractor repeats the exact
                     # same call, and text between the repeats does not break the streak (28 Oct
                     # specimen); only a different call does. By the third identical one, end the turn.
-                    if not killed:
-                        for block in blocks:
-                            if isinstance(block, dict) and block.get('type') == 'tool_use':
-                                killed = guard.see(block.get('name'), block.get('input'))
-                                if killed:
-                                    logger.warning(f'ending turn for {new_session_id}: {killed}')
-                                    end_process_group(proc)
+                    # A call is judged with its answer (the user event below), so a screenshot
+                    # that shows a new page each time isn't a repeat (#rabbithole, 8 Nov).
+                    for block in blocks:
+                        if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('id'):
+                            asked[block['id']] = (block.get('name'), block.get('input'))
                     if not killed:
                         texts = [b.get('text', '') for b in blocks if isinstance(b, dict) and b.get('type') == 'text']
                         if any(t.strip() for t in texts):
                             said = '\n'.join(t for t in texts if t.strip())
+                if event.get('type') == 'user' and not event.get('parent_tool_use_id') and not killed:
+                    for block in (event.get('message') or {}).get('content') or []:
+                        if isinstance(block, dict) and block.get('type') == 'tool_result' and block.get('tool_use_id') in asked:
+                            name, args = asked.pop(block['tool_use_id'])
+                            killed = guard.see(name, args, result=block.get('content'))
+                            if killed:
+                                logger.warning(f'ending turn for {new_session_id}: {killed}')
+                                end_process_group(proc)
+                                break
                 if killed:
                     break
                 if event.get('type') == 'result':
