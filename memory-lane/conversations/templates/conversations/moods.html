@@ -5972,6 +5972,7 @@
     if (!r.ok) throw new Error('moods ' + r.status);
     const body = await r.json();
     moods = body.moods;
+    moods.forEach(m => { m.asked = withoutMerged(m.asked); });
     people = body.people || [];
     groups = body.groups || [];
     people.forEach(p => { if (p.for) powers[p.name] = { for: p.for, short: p.for_short || p.for };
@@ -7805,13 +7806,27 @@
     if (window.magentaMerge) box.querySelectorAll('button.askmerge').forEach(b =>
       magentaMerge.prefetch({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }));
   }
+  // A merge ask without what was merged from this page (the merge sheet's word, kept ten minutes): its pill goes
+  // the moment githouse says merged, and a poll still a few seconds behind doesn't bring it back (Justin, 12 Nov).
+  // An ask whose every piece of work merged goes with them.
+  function withoutMerged(asked) {
+    if (!asked || !window.magentaMerge) return asked;
+    const kept = [];
+    for (const t of asked) {
+      if (t.kind !== 'merge' || !Array.isArray(t.works) || !t.works.length) { kept.push(t); continue; }
+      const works = t.works.filter(w => !magentaMerge.isMerged(w));
+      if (works.length === t.works.length) kept.push(t);
+      else if (works.length) kept.push({ ...t, works });
+    }
+    return kept.length ? kept : undefined;
+  }
   // The asks as the live poll has them now: one answered (merged, redeployed, woken) goes at once.
   function freshAsks(live) {
     let changed = false;
     for (const m of moods) {
       const d = live[m.slug];
       if (!d || !('asked' in d)) continue;
-      const now = d.asked && d.asked.length ? d.asked : undefined;
+      const now = withoutMerged(d.asked && d.asked.length ? d.asked : undefined);
       if (JSON.stringify(now || null) !== JSON.stringify(m.asked || null)) { m.asked = now; changed = true; }
     }
     if (changed) { renderAsksOpen(); renderNav(); }
@@ -10750,11 +10765,20 @@
     e.preventDefault();
     showSection('ramp', true, to.pathname, to.hash);
   });
-  // A merge done (the merge sheet's bar, here or in a section): the ramp is drawn again behind the scenes, or when
-  // it's next left if it's open now (where its own row has said so already).
-  const rampMerged = () => { try { refreshSection('ramp'); } catch (e) {} };
-  window.addEventListener('magentaMerged', rampMerged);
-  window.addEventListener('message', e => { if (e.origin === location.origin && e.data && e.data.magentaMerged) rampMerged(); });
+  // A merge done (the merge sheet's bar, here or in a section): its pills go from every Mood now, and the ramp is
+  // drawn again behind the scenes, or when it's next left if it's open now (where its own row has said so already).
+  const rampMerged = work => {
+    if (work && window.magentaMerge) magentaMerge.noteMerged(work);  // a section's press: this page's sheets learn it too
+    let changed = false;
+    for (const m of moods) {
+      const now = withoutMerged(m.asked);
+      if (JSON.stringify(now || null) !== JSON.stringify(m.asked || null)) { m.asked = now; changed = true; }
+    }
+    if (changed) { renderAsksOpen(); renderNav(); }
+    try { refreshSection('ramp'); } catch (e) {}
+  };
+  window.addEventListener('magentaMerged', e => rampMerged(e.detail));
+  window.addEventListener('message', e => { if (e.origin === location.origin && e.data && e.data.magentaMerged) rampMerged(e.data.magentaMerged); });
   // A link inside a section into magenta: opened here, without loading anything again.
   window.addEventListener('message', async e => {
     if (e.origin !== location.origin || !e.data || typeof e.data.magentaGo !== 'string') return;

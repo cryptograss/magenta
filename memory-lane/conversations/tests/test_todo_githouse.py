@@ -112,11 +112,18 @@ class TodoTicksByBranchTest(GithouseRefsTest):
         # ... and memory-lane announces it: the list is asked again at once.
         MergeOrder.objects.create(repo='magenta', branch='re/live-one', by='justin', mood='ramp', order='o',
                                   signature='s', nonce='n1', expires=int(time.time()) + 600)
+        # The 🪢 asks and the live poll, as kept a moment before: the pill would outlast the merge by them.
+        from django.core.cache import cache
+        from conversations.services import tools_ask
+        cache.set(tools_ask.KEY, {'ramp': [{'kind': 'merge', 'for': 'magenta:re/live-one'}]}, 60)
+        cache.set('moods-live', {'ramp': {}}, 60)
         with mock.patch.object(merge_orders, 'outcome', lambda o: {'status': 'merged', 'merge': 'a' * 40}), \
              mock.patch.object(merge_orders, 'parse', lambda text: {'into': 'main'}), \
              mock.patch('conversations.services.ramp.changed', lambda: None):
             self.assertEqual(merge_orders.announce_merged(), 1)
         self.assertTrue(self.items()['Merge magenta:re/live-one']['merged'])
+        self.assertIsNone(cache.get(tools_ask.KEY))   # asked again at the next poll: the pill goes then
+        self.assertIsNone(cache.get('moods-live'))
 
 
 class AskClosedTest(GithouseRefsTest):

@@ -101,9 +101,9 @@ window.magentaMerge = (() => {
     document.body.appendChild(el);
     // gen: which open() is current. A preview that answers after another was opened is dropped, so the sheet
     // never names one piece of work while holding another's commit for the press (re, 8 Nov).
-    const s = { el, mood, seen: null, busy: false, gen: 0, alive: false, $: q => el.querySelector(q) };
+    const s = { el, mood, seen: null, gen: 0, alive: false, $: q => el.querySelector(q) };
     s.say = (text, kind) => { const t = s.$('.say'); t.textContent = text; t.className = 'say' + (kind ? ' ' + kind : ''); };
-    s.shut = () => { if (s.busy) return; el.hidden = true; s.alive = false; s.gen++; s.seen = null; };
+    s.shut = () => { el.hidden = true; s.alive = false; s.gen++; s.seen = null; };
     s.$('.no').addEventListener('click', s.shut);
     el.addEventListener('click', e => { if (e.target === el) s.shut(); });
     s.$('.go').addEventListener('click', () => press(s));
@@ -194,35 +194,48 @@ window.magentaMerge = (() => {
     }
   }
 
+  // What's been pressed here: on its way to githouse, or merged. By both its names, repo#N and repo:branch, since
+  // a pill may name it by either.
+  const going = new Set();
+  const done = new Map();          // name -> when githouse said merged
+  const DONE_MS = 10 * 60 * 1000;  // by then every list memory-lane serves has it merged
+  const namesOf = w => [w.number ? `${w.repo}#${w.number}` : '', w.branch ? `${w.repo}:${w.branch}` : ''].filter(Boolean);
+  function noteMerged(w) { if (w && w.repo) namesOf(w).forEach(n => done.set(n, Date.now())); }
+  function isMerged(w) { return !!w && namesOf(w).some(n => Date.now() - (done.get(n) || 0) < DONE_MS); }
+
+  // One sheet a Mood, free again the moment Merge now is pressed: the press goes on in the bar, so another pill
+  // opens its own work, not the one still merging (Justin, 12 Nov).
   async function open(work, inMood) {
     const s = sheetFor(inMood || '');
-    if (s.busy) { s.away = false; reveal(s); return; }  // a press on its way here: its sheet, as it stands
     const mine = ++s.gen;
-    s.seen = null; s.alive = true; s.away = false;
+    s.seen = null; s.alive = true;
     s.$('.what').textContent = isPromotion(work) ? `Promote ${work.repo}: main up to production?` : `Merge ${nameOf(work)}?`;
     s.$('.sub').textContent = '';
     s.$('.who').innerHTML = '';
     s.$('.about').hidden = s.$('.stat').hidden = s.$('.full').hidden = true;
     s.$('.go').hidden = true; s.$('.go').disabled = false;
+    // Pressed already: nothing to press twice. githouse would only refuse it ("in main already").
+    if (namesOf(work).some(n => going.has(n))) { s.say('Already on its way to githouse: the bar at the top says how it’s going.'); reveal(s); return; }
+    if (isMerged(work)) { s.say('Merged just now, from here.', 'ok'); reveal(s); return; }
     s.say('Looking at it in githouse’s copy…');
     reveal(s);
     const had = kept.get(nameOf(work));
     if (had) {  // drawn from what was fetched before the press, then asked again behind it
       const first = await had.got;
-      if (mine !== s.gen || !s.alive || s.busy) return;
+      if (mine !== s.gen || !s.alive) return;
       if (first.ok) draw(s, first);
       if (first.ok && Date.now() - had.at < 3000) return;  // asked just now: asking again says the same
       kept.delete(nameOf(work));
     }
     const now = await prefetch(work);
-    if (mine !== s.gen || !s.alive || s.busy) return;
+    if (mine !== s.gen || !s.alive) return;
     if (!s.seen || !now.ok || now.body.commit !== s.seen.commit || now.body.tip !== s.seen.tip
         || JSON.stringify([now.body.asks, now.body.thumbs]) !== JSON.stringify([s.seen.asks, s.seen.thumbs])) draw(s, now);
   }
 
   // Shown if its Mood is on screen (or nobody said which is); kept, out of sight, while another is.
   function reveal(s) {
-    if (!s.alive || s.away) return;  // away: pressed, and on the bar until it's clicked
+    if (!s.alive) return;
     s.el.hidden = onScreen !== undefined && onScreen !== s.mood;
     if (!s.el.hidden) place(s);
   }
@@ -294,24 +307,26 @@ window.magentaMerge = (() => {
   }
 
   // Merge now: the sheet goes at once, and the bar says how it's going (Justin, 9 Nov). Clicking the bar's
-  // line shows githouse's whole answer.
+  // line shows githouse's whole answer. Another press meanwhile is its own line: githouse takes orders one at a
+  // time, each onto the branch as the last left it, and refuses one that conflicts, saying so (12 Nov).
   async function press(s) {
     const seen = s.seen;
-    if (!seen || s.busy) return;
-    s.busy = true; s.$('.go').disabled = true; s.$('.no').disabled = true;
+    if (!seen) return;
+    const mood = s.mood, sub = s.$('.sub').textContent;
+    s.shut();  // free for the next pill now, not when githouse answers
+    const names = namesOf(seen);
+    names.forEach(n => going.add(n));
     const name = seen.promote ? `${seen.repo}: main up to production` : `${seen.repo}:${seen.branch}`;
     const doing = seen.promote ? 'Promoting' : 'Merging';
-    const line = (topBar() || { barLine }).barLine({ what: seen.promote ? `Promote ${name}?` : `Merge ${name}?`, sub: s.$('.sub').textContent });
+    const line = (topBar() || { barLine }).barLine({ what: seen.promote ? `Promote ${name}?` : `Merge ${name}?`, sub });
     line.say(seen.promote ? `Promoting ${name}…` : `Merging ${name} into ${seen.into}…`);
-    s.away = true; s.el.hidden = true;
-    s.say('Sending to githouse…');
     let ok = false, words = '';
     try {
       const r = await fetch('/api/merge-orders/press/', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
         body: JSON.stringify({ repo: seen.repo, branch: seen.branch, number: seen.number, commit: seen.commit,
-                               into: seen.into, mood: s.mood }) });
+                               into: seen.into, mood }) });
       let status = await r.json();
       if (!r.ok) {
         words = status.error || ('memory-lane said ' + r.status);
@@ -331,13 +346,13 @@ window.magentaMerge = (() => {
     } catch (e) {
       words = 'Lost touch with memory-lane: ' + e.message;
     } finally {
-      s.busy = false; s.$('.no').disabled = false;
+      names.forEach(n => going.delete(n));
     }
-    s.alive = false; s.away = false; s.seen = null;  // this sheet is done with; the bar holds the answer
     if (ok) {
       line.end('ok', seen.promote ? `${seen.repo}: main promoted to production` : `${name} merged into ${seen.into}`, words);
-      // Told here and to the one page, so the ramp drops it without a reload.
+      // Told here and to the one page, so the ramp and the Mood's pills drop it without a reload.
       const merged = { repo: seen.repo, branch: seen.branch, number: seen.number || null };
+      noteMerged(merged);
       window.dispatchEvent(new CustomEvent('magentaMerged', { detail: merged }));
       if (window.parent !== window) parent.postMessage({ magentaMerged: merged }, location.origin);
     } else {
@@ -371,6 +386,6 @@ window.magentaMerge = (() => {
     }
     return found;
   }
-  return { open, named, within, show, prefetch, barLine, barUnder };
+  return { open, named, within, show, prefetch, barLine, barUnder, noteMerged, isMerged };
 })();
 </script>

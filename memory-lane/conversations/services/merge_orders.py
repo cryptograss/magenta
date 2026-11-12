@@ -373,7 +373,11 @@ def announce_merged(now=None):
         cache.delete_many([f'githouse:branch:{order.repo}:{order.branch}', f'githouse:closed:{order.repo}:{order.branch}'])
         said += 1
     if said:
-        from . import ramp, todo
+        from django.core.cache import cache
+        from . import ramp, todo, tools_ask
         ramp.changed()  # the ramp drops what merged
         todo.forget_all()  # and a to-do item linking its page ticks now, not in a minute
+        # And its 🪢 pill goes at the next live poll, not when the asks' 15 s and the poll's 3 s run out (Justin,
+        # 12 Nov: a merged pill stayed until he did something else).
+        cache.delete_many([tools_ask.KEY, 'moods-live'])
     return said
