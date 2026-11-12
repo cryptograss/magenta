@@ -8126,17 +8126,21 @@
       const r = await fetch(`${WIKI}/api.php?action=query&list=prefixsearch&pslimit=8&format=json&origin=*&pssearch=${encodeURIComponent(q)}`);
       return ((await r.json()).query || {}).prefixsearch || [];
     };
+    // Anywhere in a title first; the wiki's prefixsearch only if that's short of a full list, for a page
+    // written since the list was made, or one in a namespace it doesn't hold (File:…).
+    const titles = wikiMatch(await wikiTitleList(), prefix);
     let hits = [];
-    try {
+    if (titles.length < 8) try {
       hits = await ask(prefix);
       // Titles are case-sensitive after the first letter: 'tony r' finds
       // nothing, 'Tony R' finds Tony Rice.
       if (!hits.length && titleCase(prefix) !== prefix) hits = await ask(titleCase(prefix));
     } catch (e) { hits = []; }
-    const titles = hits.map(h => h.title);
+    for (const h of hits) if (titles.length < 8 && !titles.includes(h.title)) titles.push(h.title);
     wikiCache.set(prefix, titles);
     return titles;
   }
+{% include "conversations/wiki_titles_js.html" %}
 
   // '#t-' and words: links on Tidings whose title or address has them (api/tidings/find), newest first.
   const tidingCache = new Map();
