@@ -409,14 +409,17 @@
         const r = await fetch(`${WIKI}/api.php?action=query&list=prefixsearch&pslimit=8&format=json&origin=*&pssearch=${encodeURIComponent(q)}`);
         return ((await r.json()).query || {}).prefixsearch || [];
       };
+      const titles = wikiMatch(await wikiTitleList(), prefix);  // anywhere in a title (wiki_titles_js.html)
       let hits = [];
-      try {
+      if (titles.length < 8) try {
         hits = await ask(prefix);
         if (!hits.length && titleCase(prefix) !== prefix) hits = await ask(titleCase(prefix));
       } catch (e) { hits = []; }
-      wikiCache.set(prefix, hits.map(h => h.title));
-      return wikiCache.get(prefix);
+      for (const h of hits) if (titles.length < 8 && !titles.includes(h.title)) titles.push(h.title);
+      wikiCache.set(prefix, titles);
+      return titles;
     }
+{% include "conversations/wiki_titles_js.html" %}
 
     function localMessages() {
       const msgs = [];

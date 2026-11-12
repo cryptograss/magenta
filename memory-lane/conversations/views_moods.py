@@ -1362,6 +1362,16 @@ def api_wiki_exists(request):
 
 
 @require_GET
+def api_wiki_titles(request):
+    """{"titles": [...]}: every page a [[link]] names, for the composer to match anywhere in a title
+    (services/wiki_titles.py). Kept five minutes by the browser too."""
+    from .services import wiki_titles
+    answer = JsonResponse({'titles': wiki_titles.titles()})
+    answer['Cache-Control'] = 'private, max-age=300'
+    return answer
+
+
+@require_GET
 def api_wiki_preview(request):
     """?title=: a PickiPedia page in brief, for the card shown on a link to it (services/wiki_preview.py).
     {'title', 'url', 'summary', 'facts', 'art', 'image'}; 404 if there's no such page."""

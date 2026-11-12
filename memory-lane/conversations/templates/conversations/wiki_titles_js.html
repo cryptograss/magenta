@@ -1,0 +1,24 @@
+  // [[ suggestions that match anywhere in a title, not only its start (Justin, 12 Nov): every title a link
+  // names, once a page, from /api/wiki/titles/ (services/wiki_titles.py), matched here as you type.
+  // Each word typed must be in the title; a title that starts with what's typed comes first, then one with a
+  // word that does, then the rest; shorter first within each.
+  let everyWikiTitle = null;
+  function wikiTitleList() {
+    return everyWikiTitle ??= fetch('/api/wiki/titles/').then(r => r.json()).then(d => d.titles || [])
+      .catch(() => { everyWikiTitle = null; return []; });
+  }
+  function wikiMatch(all, typed, most = 8) {
+    const q = (typed || '').toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!q) return [];
+    const words = q.split(' ');
+    const found = [];
+    for (const t of all) {
+      const l = t.toLowerCase();
+      if (!words.every(w => l.includes(w))) continue;
+      const at = l.indexOf(q);
+      const rank = at === 0 ? 0 : at > 0 && /[\s:(\/-]/.test(l[at - 1]) ? 1 : at > 0 ? 2 : 3;
+      found.push([rank, t.length, t]);
+    }
+    found.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2].localeCompare(b[2]));
+    return found.slice(0, most).map(f => f[2]);
+  }
