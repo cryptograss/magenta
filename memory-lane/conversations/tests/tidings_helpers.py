@@ -8,6 +8,8 @@ import uuid
 from datetime import timedelta
 
 from django.core.cache import cache
+
+from conversations.services import mood_cache
 from django.test import TestCase
 from django.utils import timezone
 
@@ -23,7 +25,7 @@ class TidingsTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        cache.set('tidings:releases', [], 600)  # no wiki in tests: the releases are asked for nowhere (test_tidings_releases)
+        mood_cache.keep('tidings:releases', [])  # no wiki in tests: the releases are asked for nowhere (test_tidings_releases)
         self.magent, _ = ThinkingEntity.objects.get_or_create(name='magent', defaults={'is_biological_human': False})
         self.re, _ = ThinkingEntity.objects.get_or_create(name='re', defaults={'is_biological_human': False})
         self.justin, _ = ThinkingEntity.objects.get_or_create(name='justin', defaults={'is_biological_human': True})

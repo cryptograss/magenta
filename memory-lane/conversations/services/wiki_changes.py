@@ -139,7 +139,8 @@ def forget(title, user=''):
         cache.delete('embeds:file:' + re.sub(r'\s+', '_', title[5:].lower())[:200])
     if title.startswith('Release:'):
         cache.delete('embeds:releases')
-        cache.delete('tidings:releases')
+        from .tidings import releases_changed
+        releases_changed()
     if _MOOD_DOC.match(title):
         from .mood_doc import KEY
         cache.delete(KEY)

@@ -162,7 +162,8 @@ def _file(title, _user):
 
 def _release(_title, _user):
     cache.delete('embeds:releases')
-    cache.delete('tidings:releases')
+    from .tidings import releases_changed
+    releases_changed()
     return 'release lists forgotten'
 
 

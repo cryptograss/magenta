@@ -7,6 +7,7 @@ API_MOODS_CACHE_TTL it is still served, and one thread, holding a lock, builds t
 cache (a fresh container, or a Mood created, renamed, archived...) makes anyone wait, and then one request
 builds while the others wait for it."""
 
+import logging
 import threading
 import time
 
@@ -47,6 +48,68 @@ def moods_list(build):
         return _store(build), 'built'
     finally:
         cache.delete(BUILDING_KEY)
+
+
+def kept(key, build, fresh, lock_ttl=BUILD_LOCK_TTL, on_error=None, miss_fresh=0):
+    """The value under `key`, built by `build()` and served however old it is: past `fresh` seconds one
+    thread (the lock) builds the next in the background while everyone keeps getting this one. Only an
+    empty cache builds in line, so a slow build lands on a thread, not on whoever asks (the Tidings
+    release and picture scans: 5-30 s on maybelle, hug-watch, 11 Nov). A build that raises with nothing
+    kept raises too, unless `on_error()` gives what to keep instead, counted fresh for `miss_fresh`
+    seconds so a broken source isn't asked again at once; one that raises in the background keeps the
+    old value and logs. `stale(key)` says the value is old without dropping it."""
+    entry = cache.get(key)
+    now = time.time()
+    if entry is not None:
+        if now - entry['at'] >= fresh and cache.add(key + ':building', 1, lock_ttl):
+            spawn(_rebuild, key, build)
+        return entry['value']
+    try:
+        value = build()
+    except Exception:
+        if on_error is None:
+            raise
+        value = on_error()
+        keep(key, value, at=now - fresh + miss_fresh)
+        return value
+    keep(key, value)
+    return value
+
+
+def keep(key, value, at=None):
+    """`value` under `key`, counted fresh from `at` (now)."""
+    cache.set(key, {'value': value, 'at': time.time() if at is None else at}, None)
+
+
+def stale(key):
+    """What's kept under `key` is old: still served, and rebuilt on the next ask. Nothing kept: nothing to do."""
+    entry = cache.get(key)
+    if entry is not None:
+        cache.set(key, {'value': entry['value'], 'at': 0}, None)
+
+
+def changed(key, build):
+    """What's kept under `key` is out of date, and we know it now: still served, and rebuilt now, on a thread,
+    by whoever saw the change (Justin, #performance, 12 Nov: where every change is known, no visitor need ever
+    rebuild). Marked old first, so if the lock refuses (a rebuild under way) the next ask rebuilds again.
+    Nothing kept: nothing to do, the first ask builds."""
+    if cache.get(key) is None:
+        return
+    stale(key)
+    if cache.add(key + ':building', 1, BUILD_LOCK_TTL):
+        spawn(_rebuild, key, build)
+
+
+def _rebuild(key, build):
+    from django.db import connection
+    try:
+        keep(key, build())
+    except Exception:
+        logging.getLogger(__name__).exception('%s: background build failed; the old one stays', key)
+    finally:
+        cache.delete(key + ':building')
+        if threading.current_thread() is not threading.main_thread():
+            connection.close()  # this thread's own connection (the tests run it in line, on theirs)
 
 
 def spawn(fn, *args):

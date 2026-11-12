@@ -2,14 +2,20 @@
 Release pages' YAML say, newest first; a track, a deleted or an unpinned release left out; a wiki that doesn't
 answer is no releases, never a broken page; and the page shows the two as one stream."""
 
+import time
 from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
 from django.utils import timezone
 
-from conversations.services import tidings
+from conversations.services import mood_cache, tidings
 from conversations.tests.tidings_helpers import TidingsTests
+
+
+def release(title, at, poster='https://gw/ipfs/QmX/poster.jpg'):
+    return {'cid': 'QmX', 'title': title, 'kind': 'video', 'video': bool(poster), 'by': 'SkymanJenkins', 'at': at,
+            'page': 'https://pickipedia.xyz/wiki/Release:QmX', 'poster': poster}
 
 
 class FakeAnswer:
@@ -80,22 +86,63 @@ class ReleaseScanTests(TidingsTests):
         self.assertEqual(tidings.release_tidings(http=broken), [])
         self.assertEqual(broken.get.call_count, 1)
 
-    def test_kept_until_a_new_release_clears_it(self):
+    def test_a_new_release_rebuilds_the_list_at_once_on_a_thread_and_no_visitor_waits(self):
         cache.delete('tidings:releases')
         fake = wiki()
         tidings.release_tidings(http=fake)
         tidings.release_tidings(http=fake)
         self.assertEqual(len(fake.asked), 2)  # one scan
-        tidings.releases_changed()
-        tidings.release_tidings(http=fake)
-        self.assertEqual(len(fake.asked), 4)
+        spawned = []
+        with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: spawned.append((fn, a))):
+            tidings.releases_changed()
+            self.assertEqual(len(spawned), 1)  # the change itself starts the rebuild...
+            self.assertEqual(len(tidings.release_tidings(http=fake)), 2)  # ...the old list meanwhile
+            self.assertEqual(len(spawned), 1)  # and the ask starts no second one (the lock)
+        self.assertEqual(len(fake.asked), 2)
+        scan = tidings.release_scan
+        with mock.patch.object(tidings, 'release_scan', lambda limit, http=None: scan(limit, http=fake)):
+            fn, args = spawned[0]  # the thread's work, run here: it asks the wiki (the fake one)
+            fn(*args)
+        self.assertEqual(len(fake.asked), 4)  # rebuilt
+        with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: spawned.append((fn, a))):
+            tidings.release_tidings(http=fake)
+        self.assertEqual(len(spawned), 1)  # fresh again: nobody scans
+
+    def test_nothing_kept_a_change_leaves_the_first_ask_to_build(self):
+        cache.delete('tidings:releases')
+        spawned = []
+        with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: spawned.append((fn, a))):
+            tidings.releases_changed()
+        self.assertEqual(spawned, [])
+
+    def test_past_its_keep_everyone_gets_the_old_list_and_one_thread_rebuilds(self):
+        cache.delete('tidings:releases')
+        fake = wiki()
+        mood_cache.keep('tidings:releases', [release('Old', timezone.now())], at=time.time() - tidings.RELEASES_KEPT - 1)
+        spawned = []
+        with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: spawned.append((fn, a))):
+            first = tidings.release_tidings(http=fake)
+            second = tidings.release_tidings(http=fake)
+        self.assertEqual([r['title'] for r in first], ['Old'])
+        self.assertEqual([r['title'] for r in second], ['Old'])
+        self.assertEqual(len(spawned), 1)  # the lock: one rebuild, not one per ask
+        self.assertEqual(len(fake.asked), 0)  # and none of it on the asker
+
+    def test_a_wiki_that_fails_in_the_background_keeps_the_old_list(self):
+        cache.delete('tidings:releases')
+        mood_cache.keep('tidings:releases', [release('Old', timezone.now())], at=0)
+        broken = mock.Mock()
+        broken.get.side_effect = TimeoutError('slow wiki')
+        with mock.patch.object(mood_cache, 'spawn', lambda fn, *a: fn(*a)), self.assertLogs('conversations.services.mood_cache', level='ERROR'):
+            shown = tidings.release_tidings(http=broken)
+        self.assertEqual([r['title'] for r in shown], ['Old'])
+        self.assertEqual([r['title'] for r in tidings.release_tidings(http=broken)], ['Old'])
 
 
 class ReleaseStreamTests(TidingsTests):
 
     def release(self, title, at, poster='https://gw/ipfs/QmX/poster.jpg'):
-        return {'cid': 'QmX', 'title': title, 'kind': 'video', 'video': bool(poster), 'by': 'SkymanJenkins', 'at': at,
-                'page': 'https://pickipedia.xyz/wiki/Release:QmX', 'poster': poster}
+        return release(title, at, poster)
 
     def test_pictures_and_releases_interleave_by_time(self):
         now = timezone.now()
@@ -106,7 +153,7 @@ class ReleaseStreamTests(TidingsTests):
 
     def test_the_page_shows_a_release_tile_among_the_pictures(self):
         self.image(1, added_by=self.justin)
-        cache.set('tidings:releases', [self.release('Upright and Down Low', timezone.now() + timedelta(minutes=5))], 600)
+        mood_cache.keep('tidings:releases', [self.release('Upright and Down Low', timezone.now() + timedelta(minutes=5))])
         html = self.client.get('/tidings/?embed=1').content.decode()
         self.assertIn('Pictures and releases', html)
         self.assertIn('class="pic release"', html)
@@ -116,6 +163,6 @@ class ReleaseStreamTests(TidingsTests):
         self.assertLess(html.index('Upright and Down Low'), html.index('data-sha='))  # newer: first
 
     def test_api_tidings_carries_the_releases(self):
-        cache.set('tidings:releases', [self.release('Upright and Down Low', timezone.now())], 600)
+        mood_cache.keep('tidings:releases', [self.release('Upright and Down Low', timezone.now())])
         body = self.client.get('/api/tidings/').json()
         self.assertEqual([r['title'] for r in body['releases']], ['Upright and Down Low'])
