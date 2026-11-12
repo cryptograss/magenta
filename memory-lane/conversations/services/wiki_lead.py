@@ -9,6 +9,13 @@ page's own paragraphs, before its first heading once there's something: not its 
 picture is the first on the page big enough to look at and not a banner or a strip (a graph 1376x212 isn't
 the page's face). The words are rebuilt here from the wiki's HTML, text escaped and only links, bold and
 italics kept, so nothing of the page's markup reaches magenta's.
+
+Nothing unverified (Justin, 12 Nov: "not to show unverified content at all"): what a bot proposed and no person
+has verified yet (PickiPediaVerification's <proposed> and Bot_proposes, drawn pv-proposed, bot-proposal,
+claim-unverified) is left out, words and pictures; a proposal to remove something leaves it in, as it reads now,
+without the proposal's badge. And the page's "Listen in Rabbithole" (Template:Listen in Rabbithole, drawn
+pp-listen-stack) is taken out of the words and drawn as a button above them ("a fully rendered button to play on
+rabbithole, as the first bit of content here"): `listen`, {'play': {href, text}, 'trail': {...}}.
 """
 
 import hashlib
@@ -27,6 +34,12 @@ NOT_ARTICLES = ('special', 'file', 'image', 'release', 'media')  # a Release has
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'}
 KEPT_TAGS = {'b': 'b', 'strong': 'b', 'i': 'i', 'em': 'i'}
+UNVERIFIED = {'bot-proposal', 'claim-unverified', 'pv-proposed__badge', 'pv-proposed__byline', 'pv-verify-all'}
+
+
+def unverified(classes):
+    """Whether an element is what a bot proposed and nobody has verified: its words aren't the page's yet."""
+    return bool(UNVERIFIED.intersection(classes)) or ('pv-proposed' in classes and 'pv-proposed--removal' not in classes)
 
 
 def title_of(url, base):
@@ -63,6 +76,10 @@ class _Lead(HTMLParser):
         self.figure_at = None
         self.caption_at = None
         self.caption = []
+        self.listen = {}        # the page's first Listen in Rabbithole: {'play': {...}, 'trail': {...}}
+        self.listen_at = None   # depth of the listen stack being read
+        self.listen_kind = None  # ('play' or 'trail', the depth of its pill)
+        self.listen_link = None  # (kind, href, [words], depth) of the link being read in it
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
@@ -74,8 +91,19 @@ class _Lead(HTMLParser):
                 self.para.append(' ')
             return
         self.depth += 1
-        if self.skip_at is None and (tag in ('style', 'script') or 'reference' in classes or 'mw-editsection' in classes):
+        if self.skip_at is None and (tag in ('style', 'script') or 'reference' in classes or 'mw-editsection' in classes
+                                     or unverified(classes)):
             self.skip_at = self.depth
+        # The page's Listen in Rabbithole: a button of its own, above the words; not words in a paragraph.
+        if self.skip_at is None and self.listen_at is None and 'pp-listen-stack' in classes and not self.listen:
+            self.listen_at = self.skip_at = self.depth
+        if self.listen_at is not None:
+            if 'pp-listen-rh' in classes:
+                self.listen_kind = ('play', self.depth)
+            elif 'pp-trail-rh' in classes:
+                self.listen_kind = ('trail', self.depth)
+            elif tag == 'a' and self.listen_kind and self.listen_link is None:
+                self.listen_link = (self.listen_kind[0], a.get('href') or '', [], self.depth)
         if tag == 'figure':
             self.figure_at, self.file_href = self.depth, None
         elif tag == 'figcaption' and self.figure_at is not None:
@@ -134,11 +162,23 @@ class _Lead(HTMLParser):
             self.caption_at = None
         if self.figure_at == self.depth:
             self.figure_at = None
+        if self.listen_link and self.listen_link[3] == self.depth:
+            kind, href, words, _ = self.listen_link
+            text = re.sub(r'^[\s▶🐇]+', '', re.sub(r'\s+', ' ', ''.join(words).replace('\xa0', ' '))).strip()
+            if href.startswith('https://') and text and kind not in self.listen:
+                self.listen[kind] = {'href': href, 'text': text[:120]}
+            self.listen_link = None
+        if self.listen_kind and self.listen_kind[1] == self.depth:
+            self.listen_kind = None
+        if self.listen_at == self.depth:
+            self.listen_at = None
         if self.skip_at == self.depth:
             self.skip_at = None
         self.depth -= 1
 
     def handle_data(self, data):
+        if self.listen_link:
+            self.listen_link[2].append(data)
         if self.skip_at is not None:
             return
         if self.caption_at is not None:
@@ -168,7 +208,7 @@ class _Lead(HTMLParser):
         return '', ''  # a fragment, a protocol we don't follow: the words stay, the link doesn't
 
     def _img(self, a, classes):
-        if self.picture is not None or 'mw-file-element' not in classes:
+        if self.picture is not None or 'mw-file-element' not in classes or self.skip_at is not None:
             return
         try:
             w, h = int(a.get('data-file-width') or 0), int(a.get('data-file-height') or 0)
@@ -212,7 +252,8 @@ def lead_of(html, base):
         picture = {k: v for k, v in picture.items() if not k.startswith('_')}
     if not counted:
         paragraphs = []  # only a dateline: nothing to read here
-    return {'paragraphs': paragraphs, 'more': more, 'picture': picture}
+    listen = reader.listen if 'play' in reader.listen else None  # a trail alone isn't the button
+    return {'paragraphs': paragraphs, 'more': more, 'picture': picture, 'listen': listen}
 
 
 def wiki_lead(url, http=None):
@@ -247,6 +288,6 @@ def _fetch(title, base, http=None):
     if not html:
         return None
     lead = lead_of(html, base)
-    if not lead['paragraphs'] and not lead['picture']:
+    if not lead['paragraphs'] and not lead['picture'] and not lead['listen']:
         return None
     return lead

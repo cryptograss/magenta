@@ -96,6 +96,58 @@ class LeadTest(TestCase):
         self.assertEqual(lead_of('<div class="mw-parser-output"><p><i>11 Nov</i></p></div>', BASE)['paragraphs'], [])
 
 
+# Justin, 12 Nov: "not to show unverified content at all", and "a fully rendered button to play on rabbithole, as
+# the first bit of content here". As the wiki renders {{Listen in Rabbithole}}, <proposed> and Bot_proposes.
+LISTEN = ('<span class="pp-listen-stack plainlinks" style="float:right"><span class="pp-listen-rh" style="background:#4a7c59">'
+          '<a rel="nofollow" class="external text" href="https://pickipedia.xyz/rabbithole/?track=QmTrack">'
+          '<span style="color:#fff">▶&#160;Hear Kuba on Reuben\'s Train</span></a><span class="pp-listen-chase">'
+          '<span class="pp-rabbit">🐰</span><span class="pp-carrot">🥕</span></span></span><span class="pp-trail-rh">'
+          '<a rel="nofollow" class="external text" href="https://pickipedia.xyz/rabbithole/?track=QmTrack&amp;action=trail">'
+          '<span>🐇&#160;find a trail here</span></a></span></span>')
+CHECKED = ('<div class="mw-parser-output"><p>' + LISTEN + '<i>11 Nov 2026</i></p>'
+           '<p>Kuba played with <span class="pv-proposed pv-proposed--inline" title="proposed by Blu">Billy Strings '
+           '<sup class="pv-proposed__badge">[bot]</sup></span>everyone, a fiddler from Roudnice who never stopped playing.</p>'
+           '<div class="pv-proposed pv-proposed--block"><p>A whole proposed paragraph.</p>'
+           '<figure><img src="/images/Proposed.jpg" class="mw-file-element" data-file-width="800" data-file-height="600"></figure></div>'
+           '<p><span class="bot-proposal">A claim nobody checked.</span></p>'
+           '<p>He toured Europe in 2024 <span class="pv-proposed pv-proposed--inline pv-proposed--removal">with the band'
+           '<sup class="pv-proposed__badge">[remove?]</sup></span>, and it was legendary.</p>'
+           '<figure><img src="/images/Real.jpg" class="mw-file-element" data-file-width="800" data-file-height="600"></figure></div>')
+
+
+class VerifiedAndListenTest(TestCase):
+
+    def setUp(self):
+        self.lead = lead_of(CHECKED, BASE)
+        self.words = ' '.join(self.lead['paragraphs'])
+
+    def test_nothing_unverified(self):
+        for proposed in ('Billy Strings', '[bot]', 'A whole proposed paragraph', 'A claim nobody checked', 'Proposed.jpg'):
+            self.assertNotIn(proposed, self.words + str(self.lead['picture']))
+        self.assertIn('Kuba played with everyone, a fiddler from Roudnice', self.words)
+        self.assertEqual(self.lead['picture']['src'], f'{BASE}/images/Real.jpg')
+
+    def test_a_proposed_removal_reads_as_the_page_does_now(self):
+        self.assertIn('He toured Europe in 2024 with the band, and it was legendary.', self.words)
+        self.assertNotIn('remove?', self.words)
+
+    def test_the_listen_button_is_its_own_not_words(self):
+        self.assertEqual(self.lead['listen'], {
+            'play': {'href': 'https://pickipedia.xyz/rabbithole/?track=QmTrack', 'text': "Hear Kuba on Reuben's Train"},
+            'trail': {'href': 'https://pickipedia.xyz/rabbithole/?track=QmTrack&action=trail', 'text': 'find a trail here'}})
+        self.assertNotIn('Reuben', self.words)
+        self.assertNotIn('🐰', self.words)
+        self.assertEqual(self.lead['paragraphs'][0], '<i>11 Nov 2026</i>')
+
+    def test_a_listen_button_in_unverified_words_is_left_out_too(self):
+        lead = lead_of('<div class="mw-parser-output"><p><span class="bot-proposal">' + LISTEN + '</span>'
+                       'An opening long enough to be counted as a paragraph of the page.</p></div>', BASE)
+        self.assertIsNone(lead['listen'])
+
+    def test_no_listen_on_a_page_without_one(self):
+        self.assertIsNone(lead_of(PAGE, BASE)['listen'])
+
+
 @override_settings(PICKIPEDIA_URL=BASE)
 class PageTest(TestCase):
 
@@ -123,6 +175,16 @@ class PageTest(TestCase):
         self.assertIn('<figcaption>Kuba Hejhal 1997-2024</figcaption>', html)
         self.assertIn('Read the rest on PickiPedia →', html)
         self.assertNotIn('Further down', html)
+
+    def test_the_listen_button_comes_first(self):
+        with self.wiki(CHECKED):
+            html = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        article = html[html.index('<article class="wikilead">'):]
+        self.assertLess(article.index('class="play"'), article.index('<p>'))
+        self.assertIn('<a class="play" href="https://pickipedia.xyz/rabbithole/?track=QmTrack" target="_blank" rel="noopener">'
+                      '<span class="tri" aria-hidden="true">▶</span><span class="words">Hear Kuba on Reuben&#x27;s Train</span>', html)
+        self.assertIn('🐇 find a trail here</a>', html)
+        self.assertNotIn('Billy Strings', html)
 
     def test_kept_a_while_and_a_silent_wiki_is_no_lead(self):
         with self.wiki() as got:
