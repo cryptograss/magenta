@@ -53,4 +53,6 @@ class OnePageTest(TestCase):
         html = self.client.get('/ramp/').content.decode()
         self.assertIn('<div id="sectionActivity" role="status" aria-label="Emergents at work" hidden></div>', html)
         self.assertIn("const ACTIVITY_SECTIONS = new Set(['tidings', 'ramp']);", html)
-        self.assertLess(html.index('id="sectionActivity"'), html.index('id="sectionFrames"'))  # above the section
+        # Under the section, not over it (Justin, 12 Nov): at the bottom of the page, its line on top.
+        self.assertLess(html.index('id="sectionFrames"'), html.index('id="sectionActivity"'))
+        self.assertIn('font-size: 12px; color: var(--muted); flex: none; border-top: 1px solid var(--line);', html)
