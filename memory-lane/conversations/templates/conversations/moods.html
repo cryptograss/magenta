@@ -1789,6 +1789,11 @@
     /* No grip: a finger finds it by accident. The box grows with its text instead (fitSay). */
     #composer .field textarea { min-height: 38px; padding: 8px 4px; }
     #composer textarea::placeholder { white-space: nowrap; overflow: hidden; }
+    /* Once there are words, the field is theirs (Skyler, 12 Nov: "still really large on mobile"): ? and 🎙 step
+       aside, as Signal's mic gives way to Send, so a line holds a line's worth and the box needn't grow to fit.
+       A memo under way keeps its button. */
+    #composer .field:has(textarea:not(:placeholder-shown)) #sayHelp,
+    #composer .field:has(textarea:not(:placeholder-shown)) #memoBtn:not(.recording):not(.busy) { display: none; }
     /* Send: a round button beside the field. The agents' settings are the one line above it (▸ opens them). */
     #composer #send { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; }
     #send .label { display: none; }
@@ -8427,20 +8432,27 @@
   window.visualViewport?.addEventListener('resize', unslide);
   // And if it was left slid anyway, the next touch on the thread puts it back: no hunting for the bar's last pixel.
   document.querySelector('main')?.addEventListener('touchstart', unslide, {passive: true});
-  // On a phone: one line until there's more to say, growing with the text (to 40% of the screen).
+  // On a phone: one line until there's more to say, growing with the text to a quarter of what's on screen,
+  // then scrolling. What's on screen is the visual viewport: with the keyboard up, an iPhone's vh is still the
+  // whole screen, so 40vh was most of what's left above the keys (Skyler, 8 and 12 Nov).
   const phone = matchMedia(PHONE).matches;
+  const SAY_SHARE = 0.25;
   function fitSay() {
     if (!phone || document.body.classList.contains('say-expanded')) return;
     // Empty, it's one line again: an empty textarea's scrollHeight counts its
     // placeholder, wrapped to the box's width, so measuring it then made the
     // box as tall as the placeholder written a word per line.
-    if (!sayBox.value) { sayBox.style.height = ''; return; }
+    if (!sayBox.value) { sayBox.style.height = ''; sayBox.style.maxHeight = ''; return; }
+    const seen = window.visualViewport?.height || innerHeight;
+    const most = Math.max(80, Math.round(seen * SAY_SHARE));  // never under about three lines
+    sayBox.style.maxHeight = most + 'px';
     sayBox.style.height = 'auto';
-    sayBox.style.height = sayBox.scrollHeight + 2 + 'px';
+    sayBox.style.height = Math.min(sayBox.scrollHeight + 2, most) + 'px';
   }
   // Short: a phone's box is narrow, and a placeholder can't wrap or end in an ellipsis there.
   sayBox.addEventListener('input', fitSay);
   addEventListener('resize', fitSay);  // turning the phone rewraps what's typed
+  window.visualViewport?.addEventListener('resize', fitSay);  // the keyboard coming and going
 
   // The chevron at the box's top centre: pull it up to a long box, and back to the size it was (Justin, 27 Oct).
   const expandBtn = document.getElementById('expandComposer');
@@ -8448,7 +8460,9 @@
     const was = expandSay.height ?? '';
     if (on) expandSay.height = sayBox.style.height;  // whatever it was: a drag, or fitSay's
     sayBox.style.height = on ? Math.round(innerHeight * 0.6) + 'px' : was;
+    sayBox.style.maxHeight = '';  // pulled up, the stylesheet's 85vh holds, not fitSay's quarter
     document.body.classList.toggle('say-expanded', on);
+    if (!on) fitSay();  // back down: to the words' height, within the quarter
     expandBtn.textContent = on ? '▾' : '▴';
     expandBtn.title = on ? 'Collapse the box' : 'Expand the box to write at length';
     expandBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
