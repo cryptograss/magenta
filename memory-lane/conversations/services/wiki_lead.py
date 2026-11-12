@@ -92,9 +92,9 @@ class _Lead(HTMLParser):
             self.links.append(self.depth)
         if self.para is not None and self.skip_at is None:
             if tag == 'a':
-                href = self._href(a.get('href') or '')
+                href, kind = self._href(a.get('href') or '', classes)
                 if href:
-                    self.para.append(f'<a href="{escape(href)}" target="_blank" rel="noopener">')
+                    self.para.append(f'<a class="{kind}" href="{escape(href)}" target="_blank" rel="noopener">')
                     self.open.append('</a>')
                     return
             if tag in KEPT_TAGS:
@@ -148,16 +148,24 @@ class _Lead(HTMLParser):
             if not self.links:
                 self.bare += len(data.strip())
 
-    def _href(self, href):
-        if href.startswith('/wiki/'):
-            return self.base + href
+    def _href(self, href, classes=()):
+        """Where a link in the opening goes, and what it is: 'wiki' (a page on PickiPedia, drawn blue), 'wiki new'
+        (one not written yet, drawn red, as the wiki draws it: Justin, 12 Nov), 'ext' (elsewhere); ('', '') to keep
+        only its words (an edit link, a fragment)."""
+        from urllib.parse import parse_qs, quote, urlsplit
+        if href.startswith('/'):
+            href = self.base + href
         if href.startswith(self.base + '/wiki/'):
-            return href
+            return href, 'wiki new' if 'new' in classes else 'wiki'
         if href.startswith(self.base):
-            return ''  # the wiki's index.php: an edit link, a red link
+            query = parse_qs(urlsplit(href).query)
+            title = (query.get('title') or [''])[0]
+            if title and query.get('redlink') == ['1']:  # a page not written yet: to where it would be
+                return f"{self.base}/wiki/{quote(title.replace(' ', '_'), safe=':/()_,-.')}", 'wiki new'
+            return '', ''  # the wiki's index.php otherwise: an edit link
         if href.startswith(('https://', 'http://')):
-            return href
-        return ''  # a red link (index.php?...&action=edit), a fragment: the words stay, the link doesn't
+            return href, 'ext'
+        return '', ''  # a fragment, a protocol we don't follow: the words stay, the link doesn't
 
     def _img(self, a, classes):
         if self.picture is not None or 'mw-file-element' not in classes:

@@ -59,14 +59,24 @@ class LeadTest(TestCase):
 
     def test_only_links_bold_and_italics_and_the_rest_escaped(self):
         words = ' '.join(self.lead['paragraphs'])
-        self.assertIn('<a href="https://pickipedia.xyz/wiki/Kuba_Hejhal" target="_blank" rel="noopener">Kuba Hejhal</a>', words)
+        self.assertIn('<a class="wiki" href="https://pickipedia.xyz/wiki/Kuba_Hejhal" target="_blank" rel="noopener">Kuba Hejhal</a>', words)
         self.assertIn('<b>well-kept open secret</b>', words)
         self.assertIn('&lt;script&gt;', words)
         self.assertNotIn('<script', words)
         self.assertNotIn('javascript:', words)
         self.assertIn(' not a link ', words)
-        self.assertIn(' a red link.', words)
         self.assertNotIn('redlink', words)
+
+    def test_blue_for_a_page_red_for_one_not_written(self):
+        # Justin, 12 Nov: "let's show them as blue or red in the tidings preview".
+        words = ' '.join(self.lead['paragraphs'])
+        self.assertIn('<a class="wiki" href="https://pickipedia.xyz/wiki/Kuba_Hejhal"', words)
+        self.assertIn('<a class="wiki new" href="https://pickipedia.xyz/wiki/Nope" target="_blank" rel="noopener">a red link</a>.', words)
+        lead = lead_of('<div class="mw-parser-output"><p>An opening that names <a href="/wiki/Bill_Monroe" class="new" '
+                       'title="Bill Monroe (page does not exist)">Bill Monroe</a> and <a class="external text" '
+                       'href="https://example.com/x">elsewhere</a>, long enough to be counted.</p></div>', BASE)
+        self.assertIn('<a class="wiki new" href="https://pickipedia.xyz/wiki/Bill_Monroe"', lead['paragraphs'][0])
+        self.assertIn('<a class="ext" href="https://example.com/x"', lead['paragraphs'][0])
 
     def test_its_picture_not_its_banner(self):
         picture = self.lead['picture']
