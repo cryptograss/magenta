@@ -259,6 +259,18 @@ def lead_of(html, base):
     return {'paragraphs': paragraphs, 'more': more, 'picture': picture, 'listen': listen}
 
 
+def _key(title):
+    return f'tidings:wiki:{SHAPE}:' + hashlib.sha1(title.encode()).hexdigest()
+
+
+def forget(title):
+    """Drop a page's kept opening, so its tiding reads the edit at once (services/wiki_changes.py)."""
+    from django.core.cache import cache
+    title = re.sub(r'\s+', ' ', (title or '').replace('_', ' ')).strip()
+    if title:
+        cache.delete(_key(title))
+
+
 def wiki_lead(url, http=None):
     """A PickiPedia article's opening for its page on Tidings, or None (not an article, or nothing to show).
     Kept KEPT seconds; if the wiki doesn't answer, None, kept MISS."""
@@ -268,7 +280,7 @@ def wiki_lead(url, http=None):
     title = title_of(url, base)
     if not title:
         return None
-    key = f'tidings:wiki:{SHAPE}:' + hashlib.sha1(title.encode()).hexdigest()
+    key = _key(title)
     found = cache.get(key)
     if found is not None:
         return found or None
