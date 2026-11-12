@@ -197,6 +197,14 @@ class PageTest(TestCase):
         self.assertNotIn('<article class="wikilead">', html)
         self.assertIn("Kuba&#x27;s Last Merged Commits", html)  # the link's page, as before
 
+    def test_an_edit_on_the_wiki_shows_at_once(self):
+        from conversations.services import wiki_changes
+        with self.wiki() as got:
+            self.client.get(f'/tidings/{self.tiding.id}/?embed=1')
+            wiki_changes.forget("Kuba's_Last_Merged_Commits:_the_story_of_arthel159")
+            self.client.get(f'/tidings/{self.tiding.id}/?embed=1')
+        self.assertEqual(got.call_count, 2)
+
     def test_another_sites_link_asks_the_wiki_nothing(self):
         Tiding.objects.filter(id=self.tiding.id).update(url='https://example.com/a')
         with self.wiki() as got:

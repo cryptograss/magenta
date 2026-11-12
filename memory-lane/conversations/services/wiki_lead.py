@@ -30,6 +30,9 @@ SHORT = 40           # fewer characters than this: a dateline or a byline, not o
 PICTURE_MIN = 120    # the file's width in pixels, at least
 PICTURE_RATIO = 3.0  # longer side over shorter, at most
 KEPT, MISS = 600, 60  # seconds: an edit shows within ten minutes; a wiki that didn't answer is asked again soon
+# Bump when lead_of reads a page differently: its key changes, so a deploy shows the new reading at once,
+# not after an opening the old code kept runs out (Justin, 12 Nov: merged and redeployed, "why no refreshed?").
+SHAPE = 2
 NOT_ARTICLES = ('special', 'file', 'image', 'release', 'media')  # a Release has its own page (tiding_links._release_of)
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'}
@@ -256,6 +259,18 @@ def lead_of(html, base):
     return {'paragraphs': paragraphs, 'more': more, 'picture': picture, 'listen': listen}
 
 
+def _key(title):
+    return f'tidings:wiki:{SHAPE}:' + hashlib.sha1(title.encode()).hexdigest()
+
+
+def forget(title):
+    """Drop a page's kept opening, so its tiding reads the edit at once (services/wiki_changes.py)."""
+    from django.core.cache import cache
+    title = re.sub(r'\s+', ' ', (title or '').replace('_', ' ')).strip()
+    if title:
+        cache.delete(_key(title))
+
+
 def wiki_lead(url, http=None):
     """A PickiPedia article's opening for its page on Tidings, or None (not an article, or nothing to show).
     Kept KEPT seconds; if the wiki doesn't answer, None, kept MISS."""
@@ -265,7 +280,7 @@ def wiki_lead(url, http=None):
     title = title_of(url, base)
     if not title:
         return None
-    key = 'tidings:wiki:' + hashlib.sha1(title.encode()).hexdigest()
+    key = _key(title)
     found = cache.get(key)
     if found is not None:
         return found or None
