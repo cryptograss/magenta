@@ -77,12 +77,20 @@
   header .sections a { color: var(--muted); text-decoration: none; }
   header .sections a:hover { color: var(--ink); }
   header .sections a[aria-current], header .crumb.moods[aria-current] { color: var(--ink); font-weight: 700; }
-  header .sections .morewrap { position: relative; display: inline-flex; align-items: center; }
+  /* The header's menus are popovers: the browser shows one at a time, closes it on a click elsewhere or on Esc, and
+     draws it above everything else (the top layer), so none carries a z-index or listens for clicks outside it.
+     Each hangs under the button that opens it (popovertarget makes that button its anchor), right edges together.
+     Where that runs off the left of a narrow screen, it hangs 10px in from the left instead: on a phone the
+     servers' dots sit mid-header (Skyler, 8 Nov: "I can only see a cut off right side of it"). */
+  header [popover] { inset: auto; margin: 6px 0 0; width: min-content; overflow: visible; color: inherit;
+                     position-area: bottom span-left; position-try-fallbacks: --from-the-left; }
+  @position-try --from-the-left { position-area: bottom span-all; justify-self: start; margin-left: 10px; }
+  header .sections .morewrap { display: inline-flex; align-items: center; }
   header .sections .morebtn { border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted); cursor: pointer; padding: 2px 4px; line-height: 1; border-radius: 4px; }
   header .sections .morebtn:hover, header .sections .morebtn.active { color: var(--ink); font-weight: 700; }
-  header .sections .moremenu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 35; min-width: 120px; background: var(--panel);
+  header .sections .moremenu { position-area: bottom span-right; min-width: 120px; background: var(--panel);
                                border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.2); padding: 4px 0; display: flex; flex-direction: column; font-size: 13.5px; }
-  header .sections .moremenu[hidden] { display: none; }
+  header .sections .moremenu:not(:popover-open) { display: none; }
   header .sections .moremenu a { padding: 6px 14px; color: var(--ink); text-decoration: none; }
   header .sections .moremenu a:hover { background: var(--hover, rgba(128,128,128,.1)); color: var(--accent); }
   header .sections .moremenu a[aria-current] { font-weight: 700; color: var(--accent); }
@@ -135,29 +143,25 @@
   #reloadNudge { white-space: nowrap; }
   header .grow { flex: 1; }
   header select { font: inherit; font-size: 13px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); }
-  header .statuswrap { position: relative; display: inline-flex; align-items: center; }
+  header .statuswrap { display: inline-flex; align-items: center; }
   header button.status { border: 0; background: none; font-size: 0; padding: 2px 4px; cursor: pointer; line-height: 1; border-radius: 4px; }
   header button.status:hover { background: var(--hover, rgba(128,128,128,.1)); }
   header .status::before { content: "●"; font-size: 11px; color: var(--muted); }
   header .status.live::before { color: #2e9e5b; }
   header .status.stale::before { color: #d08b00; }
-  #statusPop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 35; background: var(--panel);
+  #statusPop { background: var(--panel);
                border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.25);
                white-space: nowrap; font-size: 12px; }
-  #statusPop[hidden] { display: none; }
   #statusPop .statusrow { display: flex; align-items: center; gap: 8px; }
   #statusPop code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); padding: 1px 5px; border-radius: 4px; }
   #statusPop button { font: inherit; font-size: 11.5px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); cursor: pointer; }
   #statusPop button:hover { border-color: var(--accent); color: var(--accent); }
-  header .account { position: relative; }
-  header .bellwrap { position: relative; }
   #bellBtn { position: relative; border: 0; background: none; font-size: 16px; padding: 2px 4px; cursor: pointer; line-height: 1; }
   #bellBtn.off .ring { opacity: .45; }
   #bellBtn .badge { position: absolute; top: -5px; right: -7px; min-width: 15px; padding: 0 4px; font-size: 10px; line-height: 15px; }
   #bellBtn .badge.bot { top: auto; bottom: -6px; background: var(--panel); }
-  #bellMenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 230px; max-width: 320px; background: var(--panel);
+  #bellMenu { min-width: 230px; max-width: 320px; background: var(--panel);
               border: 1px solid var(--line); border-radius: 10px; padding: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 13.5px; }
-  #bellMenu[hidden] { display: none; }
   #bellList a { display: flex; justify-content: space-between; gap: 10px; padding: 5px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; }
   #bellList a:hover { background: var(--hover); }
   #bellList .none { color: var(--muted); padding: 4px 6px; }
@@ -180,10 +184,10 @@
   #userBtn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 14px; padding: 1px 10px;
              font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
   #userBtn:hover { border-color: var(--accent); }
-  #userMenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 220px; background: var(--panel);
+  #userMenu { min-width: 220px; background: var(--panel);
               border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.14); padding: 6px 0;
               display: flex; flex-direction: column; font-size: 13px; }
-  #userMenu[hidden] { display: none; }
+  #userMenu:not(:popover-open) { display: none; }
   #userMenu > a.phone { display: none; }  /* the header's ▾ has them, but a phone hides it */
   #userMenu > * { padding: 6px 14px; color: var(--ink); text-decoration: none; text-align: left; }
   #userMenu > a:hover, #userMenu > button:hover { background: var(--hover); }
@@ -214,24 +218,23 @@
   #bellMenu #alerts select { font: inherit; margin-left: auto; }  /* chosen, but nothing tells until the bell's on */
   #bellMenu #alerts label[hidden] { display: none; }
   /* The block, the servers and the bloom: one button, its menu under it (Justin, 3 Nov). */
-  header .statewrap { position: relative; display: inline-flex; align-items: center; }
+  header .statewrap { display: inline-flex; align-items: center; }
   #stateBtn { border: 1px solid var(--line); border-radius: 10px; background: none; padding: 2px 6px; cursor: pointer; display: inline-flex;
               align-items: center; gap: 4px; color: var(--muted); font: inherit; font-size: 11px; }
   #stateBtn:hover { border-color: var(--accent); color: var(--ink); }
-  #stateMenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 380px; max-width: calc(100vw - 20px); background: var(--panel);
+  #stateMenu { width: 380px; max-width: calc(100vw - 20px); background: var(--panel);
                border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 13px; }
-  #stateMenu[hidden] { display: none; }
   /* The help menu: a question mark beside the state chevron, for whoever is new here (Justin, 7 Nov: "a big
      question mark, with a dropdown"). Docs, the tour, about, humans, emergents, the FAQ: every answer's own home. */
-  header .helpwrap { position: relative; display: inline-flex; align-items: center; }
+  header .helpwrap { display: inline-flex; align-items: center; }
   #helpBtn { border: 1px solid var(--line); border-radius: 50%; background: none; color: var(--muted); width: 26px; height: 26px;
              padding: 0; cursor: pointer; font: inherit; font-size: 17px; font-weight: 700; line-height: 1;
              display: inline-flex; align-items: center; justify-content: center; }
-  #helpBtn:hover, #helpBtn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
-  #helpMenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 300px; max-width: calc(100vw - 20px); background: var(--panel);
+  #helpBtn:hover, #helpBtn:has(+ :popover-open) { border-color: var(--accent); color: var(--accent); }
+  #helpMenu { min-width: 300px; max-width: calc(100vw - 20px); background: var(--panel);
               border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 6px 0;
               display: flex; flex-direction: column; font-size: 13px; }
-  #helpMenu[hidden] { display: none; }
+  #helpMenu:not(:popover-open) { display: none; }
   #helpMenu a { padding: 7px 14px; color: var(--ink); text-decoration: none; display: flex; flex-direction: column; gap: 1px; }
   #helpMenu a:hover { background: var(--hover); }
   #helpMenu a:hover b { color: var(--accent); }
@@ -240,8 +243,8 @@
   #helpMenu a.soon { opacity: .55; cursor: default; }
   #helpMenu a.soon:hover { background: none; }
   #helpMenu a.soon:hover b { color: var(--ink); }
-  /* A phone: the menu hangs under the whole header, not off the left edge of a 390px screen. */
-  @media (max-width: 640px) { #helpMenu { position: fixed; left: 10px; right: 10px; top: 46px; min-width: 0; max-width: none; } }
+  /* A phone: the menu is as wide as the screen, less 10px each side, under the header. */
+  @media (max-width: 640px) { #helpMenu { min-width: calc(100vw - 20px); } }
   #stateMenu .block, #stateMenu .bloom { padding: 2px 0 6px; color: var(--ink); }
   #stateMenu .bloom[hidden] { display: none; }
   #stateMenu .bloom a { color: var(--accent); }
@@ -936,10 +939,21 @@
   .turn.driver-active-element .replybtn, .turn.driver-active-element .addreact, .turn.driver-active-element .morebtn,
   .turn .morebtn.driver-active-element { opacity: 1; }
   .driver-popover.magenta-tour { max-width: 340px; }
+  /* A step inside a menu: the menu is above the tour's dimming (it's in the top layer), so it dims its other lines itself. */
+  [popover]:has(> .driver-active-element) > :not(.driver-active-element) { opacity: .3; }
   .driver-popover.magenta-tour .driver-popover-description a { color: inherit; text-decoration: underline; }
-  #msgMenu { position: fixed; z-index: 50; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: var(--panel);
+  /* The floating menus that many buttons share (a message's ⋯, the reactions, every emoji, read from here) are
+     popovers too, each opened by the button pressed (popovertarget), which is its anchor; each menu's rule says
+     which side of that button to sit on. With no room there the browser tries the other sides, then the screen's
+     whole width, 8px in from its edge: no script measures anything, or listens for a click elsewhere.
+     position-visibility: a message's buttons hide when the pointer leaves it for the menu; the menu stays. */
+  #msgMenu, #reactPicker, #emojiPicker, #readFromMenu {
+    inset: auto; margin: 4px 0; overflow: visible; color: inherit; position-visibility: always;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline, --inside, --inside flip-block; }
+  @position-try --inside { position-area: top span-all; justify-self: end; margin-inline: 8px; }
+  #msgMenu { position-area: bottom span-left; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: var(--panel);
              border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
-  #msgMenu[hidden] { display: none; }
+  #msgMenu:not(:popover-open) { display: none; }
   #msgMenu button { font: inherit; font-size: 14px; text-align: left; border: 0; background: none; color: var(--ink); cursor: pointer;
                     padding: 8px 10px; border-radius: 6px; }
   #msgMenu button:hover, #msgMenu button:focus { background: var(--code); }
@@ -968,7 +982,8 @@
   #composer .note.memo-note.quiet { color: var(--ink); }
   #composer .note.memo-note.quiet .again { display: inline; min-width: 0; height: auto; border-radius: 0; font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
   .turn .editbox { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
-                   background: var(--panel); color: var(--ink); resize: vertical; }
+                   background: var(--panel); color: var(--ink); resize: vertical;
+                   field-sizing: content; min-height: 60px; max-height: 400px; }
   .turn .editbar { margin-top: 4px; }
   .turn .editbar button { font: inherit; font-size: 12.5px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 5px;
                           background: var(--panel); color: var(--ink); cursor: pointer; }
@@ -1154,17 +1169,17 @@
                         border-radius: 12px; background: var(--panel); color: var(--ink); cursor: pointer; }
   .turn .reacts .chip span { font-size: 11.5px; color: var(--muted); }
   .turn .reacts .chip.mine { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
-  #reactPicker { position: fixed; z-index: 50; display: flex; gap: 2px; padding: 4px; background: var(--panel);
+  #reactPicker { position-area: top span-right; margin: 6px 0; display: flex; gap: 2px; padding: 4px; background: var(--panel);
                  border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
-  #reactPicker[hidden] { display: none; }
+  #reactPicker:not(:popover-open) { display: none; }
   #reactPicker button { font-size: 18px; border: 0; background: none; cursor: pointer; padding: 2px 4px; border-radius: 6px; }
   #reactPicker button:hover { background: var(--code); }
   #reactPicker button.more { font-size: 15px; color: var(--muted); }
   /* Every emoji (tools/emoji_data.py): searched by name, by Unicode's groups, in your skin tone. */
-  #emojiPicker { position: fixed; z-index: 60; width: min(360px, calc(100vw - 16px)); height: min(400px, calc(100vh - 16px));
+  #emojiPicker { position-area: top span-right; margin: 6px 0; width: min(360px, calc(100vw - 16px)); height: min(400px, calc(100vh - 16px));
                  display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
                  border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.22); overflow: hidden; }
-  #emojiPicker[hidden] { display: none; }
+  #emojiPicker:not(:popover-open) { display: none; }
   #emojiPicker .ep-top { display: flex; gap: 6px; align-items: center; padding: 7px 8px 5px; }
   #emojiPicker .ep-top input { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid var(--line);
                                border-radius: 6px; background: var(--bg); color: var(--ink); }
@@ -1199,7 +1214,8 @@
   #activity, #catchup, #composer { max-width: 760px; margin: 0 auto; }  /* the reading column's width */
   #composer { display: none; position: relative; padding: 10px 16px 14px; }
   body.writer #composer { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
-  #composer textarea { flex: 1; font-family: inherit; line-height: inherit; min-height: 44px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+  /* field-sizing: the box is as tall as its words, from one line to max-height, then it scrolls. */
+  #composer textarea { flex: 1; font-family: inherit; line-height: inherit; field-sizing: content; min-height: 44px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
   #composer button { font: inherit; padding: 8px 14px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
   #composer button:disabled { opacity: .5; cursor: default; }
   /* A tiny chevron at the top centre: pull the box up to write at length, and back down (Justin, 27 Oct).
@@ -1210,7 +1226,7 @@
     background: var(--panel); color: var(--muted); font-size: 9px; line-height: 11px; text-align: center;
     cursor: pointer; z-index: 2; }
   #composer .expand:hover { color: var(--accent); border-color: var(--accent); }
-  body.say-expanded #composer textarea { max-height: 85vh; }
+  body.say-expanded #composer textarea { height: 60dvh; max-height: 85vh; }
   /* A word from the page (an error, a note) goes on its own line under the box: beside it, a
      long one squeezed the box to a sliver on a phone, and you couldn't type to clear it. */
   #composer textarea { min-width: 0; }
@@ -1564,14 +1580,20 @@
       margin: 2px 0 4px 6px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg);
       box-shadow: 0 1px 6px rgba(0,0,0,.12); }
   }
-  #readFromMenu { position: fixed; z-index: 60; background: var(--bg, #fff); border: 1px solid var(--line); border-radius: 8px;
+  #readFromMenu { position-area: bottom span-left; background: var(--bg, #fff); border: 1px solid var(--line); border-radius: 8px;
                   box-shadow: 0 4px 16px rgba(0,0,0,.15); padding: 4px; display: flex; flex-direction: column; min-width: 150px; }
-  #readFromMenu[hidden] { display: none; }
+  #readFromMenu:not(:popover-open) { display: none; }
   #readFromMenu .head { font-size: 11px; color: var(--muted); padding: 2px 8px; }
   #readFromMenu button { font: inherit; font-size: 14px; text-align: left; border: 0; background: none; color: var(--ink); padding: 6px 8px; border-radius: 6px; cursor: pointer; }
   #readFromMenu button:hover { background: var(--code); }
   #readFromMenu button.on { color: var(--accent); }
   #readFromMenu button.on::after { content: ' ✓'; }
+  /* A browser that can't hang one thing from another (no position-area: Safari before 26, Firefox before 147)
+     opens every menu mid-screen, where a popover goes when nothing places it; without this, the four above
+     opened at the foot of the page, out of sight. After all their rules, so that it wins. */
+  @supports not (position-area: top) {
+    header [popover], #msgMenu, #reactPicker, #emojiPicker, #readFromMenu { inset: 0; margin: auto; }
+  }
   .turn .voices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .turn .voices .speak { font-size: 12px; padding: 3px 9px; }
   .turn .speak.busy { cursor: progress; opacity: .6; }
@@ -1779,8 +1801,11 @@
     #jump { right: 3px; }
     :root { --text-base: 16.5px; }
     #composer { padding: 6px 8px 8px; gap: 6px; }
-    /* No grip: a finger finds it by accident. The box grows with its text instead (fitSay). */
-    #composer .field textarea { min-height: 38px; padding: 8px 4px; }
+    /* No grip: a finger finds it by accident. The box grows with its words to a quarter of what's on screen,
+       never under about three lines. --seen is the visual viewport's height, set by the script: with the keyboard
+       up an iPhone's vh and dvh are still the whole screen, so 40vh was most of what's left above the keys
+       (Skyler, 8 and 12 Nov). */
+    #composer .field textarea { min-height: 38px; padding: 8px 4px; max-height: max(80px, calc(var(--seen, 100dvh) * .25)); }
     #composer textarea::placeholder { white-space: nowrap; overflow: hidden; }
     /* Once there are words, the field is theirs (Skyler, 12 Nov: "still really large on mobile"): ? and 🎙 step
        aside, as Signal's mic gives way to Send, so a line holds a line's worth and the box needn't grow to fit.
@@ -1819,13 +1844,13 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/ramp/" data-section="ramp" title="The ramp: every open candidate branch, the last few merged">ramp</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/prompts/" data-section="prompts">prompts</a><a href="/status/" data-section="status">status</a><a href="/todo/" data-section="todo">todo</a><a href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a><a href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a><a href="/traffic/" data-section="traffic" title="Traffic: who comes to magenta and PickiPedia, and from where (public dashboards, no addresses)">stats</a></div></span></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/ramp/" data-section="ramp" title="The ramp: every open candidate branch, the last few merged">ramp</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" popovertarget="sectionsMoreMenu" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" popover><a href="/prompts/" data-section="prompts">prompts</a><a href="/status/" data-section="status">status</a><a href="/todo/" data-section="todo">todo</a><a href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a><a href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a><a href="/traffic/" data-section="traffic" title="Traffic: who comes to magenta and PickiPedia, and from where (public dashboards, no addresses)">stats</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <!-- The block, the servers and the bloom, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
   <span class="statewrap">
-    <button type="button" id="stateBtn" aria-haspopup="true" aria-expanded="false" title="The block, the servers and the bloom"><span class="servers" id="servers"></span><span class="caret">▾</span></button>
-    <div id="stateMenu" hidden>
+    <button type="button" id="stateBtn" popovertarget="stateMenu" title="The block, the servers and the bloom"><span class="servers" id="servers"></span><span class="caret">▾</span></button>
+    <div id="stateMenu" popover>
       <div class="block" id="block" title="Ethereum mainnet's block height"></div>
       <div class="bloom" id="bloomLine" hidden></div>
     </div>
@@ -1834,8 +1859,8 @@
        runs on this page (the guided tour, services/tour.py); it reads "coming soon" until Magenta:Tour has a
        trusted revision, which /api/tour/ says. -->
   <span class="helpwrap">
-    <button type="button" id="helpBtn" aria-haspopup="true" aria-expanded="false" aria-label="Help" title="New here? Docs, the tour, who's who">?</button>
-    <div id="helpMenu" data-tour-open="helpBtn" hidden>
+    <button type="button" id="helpBtn" popovertarget="helpMenu" aria-label="Help" title="New here? Docs, the tour, who's who">?</button>
+    <div id="helpMenu" popover data-tour-open="helpBtn">
       <a href="https://pickipedia.xyz/wiki/Magenta:Help" target="_blank" rel="noopener" data-tour="help"><b>docs</b><small>how magenta works, and your first ten minutes</small></a>
       <a href="#" id="tourLink"><b>tour</b><small id="tourNote">a walk round this page, on the page itself</small></a>
       <a href="https://pickipedia.xyz/wiki/Magenta" target="_blank" rel="noopener"><b>about</b><small>what magenta is, and who makes it</small></a>
@@ -1848,15 +1873,15 @@
   <button id="searchBtn" data-tour="search" type="button" title="Search what was said (/)">⌕</button>
   <button id="goBtn" type="button" hidden title="Go to a Mood by voice: tap, then say “go to” and its name" aria-label="Go to a Mood by voice">🧭</button>
   <span class="statuswrap">
-    <button type="button" class="status" id="status" title="connecting…" aria-label="Status: online. Click for version"></button>
-    <div id="statusPop" class="statuspop" hidden>
+    <button type="button" class="status" id="status" popovertarget="statusPop" title="connecting…" aria-label="Status: online. Click for version"></button>
+    <div id="statusPop" class="statuspop" popover>
       <div class="statusrow"><code>{{ git_commit }}</code> <button type="button" id="copyVersion" title="Copy version">copy</button></div>
     </div>
   </span>
   <!-- The bell, out front with what's waiting for you (Justin, 29 Oct): mentions of you and answers to you, by Mood. -->
   <span class="bellwrap" id="bellWrap" hidden>
-    <button id="bellBtn" data-tour="bell" type="button" aria-haspopup="true" aria-expanded="false" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span><span class="badge bot" id="bellCountBot" hidden></span></button>
-    <div id="bellMenu" hidden>
+    <button id="bellBtn" data-tour="bell" type="button" popovertarget="bellMenu" title="For you: mentions and answers"><span class="ring">🔔</span><span class="badge" id="bellCount" hidden></span><span class="badge bot" id="bellCountBot" hidden></span></button>
+    <div id="bellMenu" popover>
       <div class="belltabs" role="tablist"><button type="button" role="tab" data-tab="for" aria-selected="true">For you</button><button type="button" role="tab" data-tab="set" aria-selected="false">Settings</button></div>
       <div class="bellpane" data-pane="for"><label class="replies"><input type="checkbox" id="bellReplies"> include replies</label><div id="bellList"></div></div>
       <div class="bellpane" data-pane="set" hidden><div class="belltoggle"><button id="notify" type="button" hidden aria-label="Notifications"></button></div>
@@ -1872,8 +1897,8 @@
       </div></div></div>
   </span>
   <span class="account">
-    <button id="userBtn" data-tour="user-menu" type="button" aria-haspopup="true" aria-expanded="false"></button>
-    <div id="userMenu" data-tour-open="userBtn" hidden>
+    <button id="userBtn" data-tour="user-menu" type="button" popovertarget="userMenu"></button>
+    <div id="userMenu" popover data-tour-open="userBtn">
       <div class="auth" id="auth" data-tour="sign-in"></div>
       <label class="me">viewing as <select id="me"><option value="">nobody</option></select></label>
       <label class="only"><input type="checkbox" id="onlyMine"> only mentions of me</label>
@@ -2050,7 +2075,7 @@
         <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
         <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
         <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; repo: or re/ names a mergeable (repo:branch); / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
-        <button type="button" id="emojiBtn" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
+        <button type="button" id="emojiBtn" popovertarget="emojiPicker" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <!-- ✕: throw away what's under way -- a recording, unsent; the words typed (Skyler, 31 Oct: "an x in the right corner to quick delete"). -->
         <button type="button" id="discardBtn" title="Discard: stops a recording without sending it, and clears the box" aria-label="Discard what you're writing or recording" hidden>✕</button>
         <button type="button" id="memoBtn" data-tour="memo" title="Record a voice memo: tap to start, tap again to stop and add words, or press Send while it records to send it as it is. Its words are written in on the server." aria-label="Record a voice memo" hidden>🎙</button>
@@ -2122,6 +2147,9 @@
   // filter is not a permission. Everything here stays readable to anyone.
   const PHONE = '(max-width: 720px), (pointer: coarse) and (max-height: 520px)';  // as the stylesheet's phone layout
   const COARSE = matchMedia('(pointer: coarse)').matches;  // a finger, not a mouse
+  // Mid-composition (an IME: Japanese, Chinese, Korean), Enter picks the candidate; it isn't ours to act on.
+  // Safari has already ended the composition by that keydown, and says so only by keyCode 229.
+  const composing = e => e.isComposing || e.keyCode === 229;
   const store = {
     get(k, d) { try { const v = localStorage.getItem('moods.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('moods.' + k, JSON.stringify(v)); } catch (e) {} },
@@ -2998,7 +3026,7 @@
     const title = memo ? 'Play the voice memo' : t.voiced ? 'Read aloud, as its writer directed' : 'Read aloud';
     return `<button type="button" class="speak${mini ? ' mini' : ''}${t.voiced && !memo ? ' directed' : ''}" data-id="${esc(t.id)}"`
       + ` title="${title}" aria-label="${title}">▶</button>`
-      + `<button type="button" class="readfrom${mini ? ' mini' : ''}" data-id="${esc(t.id)}" title="Read from here on: this and everything after it"`
+      + `<button type="button" class="readfrom${mini ? ' mini' : ''}" popovertarget="readFromMenu" data-id="${esc(t.id)}" title="Read from here on: this and everything after it"`
       + ` aria-label="Read from here on" aria-haspopup="menu">⏩</button>`;
   }
   let speaking = null;  // {audio, button}
@@ -3336,7 +3364,7 @@
         try { await nameFace(f, input.value.trim()); } catch (err) { tag.textContent = err.message; }
       };
       input.addEventListener('keydown', ev => {
-        if (ev.key === 'Enter') { ev.preventDefault(); go(); }
+        if (ev.key === 'Enter' && !composing(ev)) { ev.preventDefault(); go(); }
         if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); whoIsIn(lightbox.querySelector('img').src); }
       });
       tag.querySelector('.ok').addEventListener('click', ev => { ev.stopPropagation(); go(); });
@@ -4024,10 +4052,10 @@
     // 📌 to the Mood's top (services/pins.py): anyone signed in with a key.
     const mayPin = keyHolder && !t.deleted;
     const moreBtn = mayEdit || mayDelete || mayPromote || mayNote || mayPin
-      ? `<button type="button" class="morebtn" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
+      ? `<button type="button" class="morebtn" popovertarget="msgMenu" data-more="${esc(t.id)}" data-edit="${mayEdit ? 1 : ''}" data-delete="${mayDelete ? 1 : ''}" `
         + `data-promote="${mayPromote ? 1 : ''}" data-note="${mayNote ? 1 : ''}" data-pin="${mayPin ? 1 : ''}" data-tour="more-menu" title="More" aria-label="More" aria-haspopup="menu">⋯</button>` : '';
     const onTidings = onTidingsMark(t.tidings || []);
-    const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" title="React" aria-label="React">🙂</button>' : '';
+    const reactBtn = viewer && !t.deleted ? '<button type="button" class="addreact" popovertarget="reactPicker" title="React" aria-label="React">🙂</button>' : '';
     // For an admin, each mark opens what it said before (the recovery key, in this tab only, below).
     const versions = viewerAdmin ? ` data-versions="${esc(t.id)}" role="button" tabindex="0"` : '';
     const seeThem = viewerAdmin ? ': click for what it said before (needs the recovery key)' : '';
@@ -4196,19 +4224,23 @@
     return (b.key.startsWith(p) - a.key.startsWith(p)) || (byName(b) - byName(a)) || a.key.length - b.key.length;
   };
   const TONE_DOTS = ['#ffcc22', '#f7dece', '#f3d2a2', '#d5ab88', '#af7e57', '#7c533e'];
+  // A menu open on one message, when another message's button for it is pressed: it moves there. Any of its buttons
+  // toggles it, so the browser alone would only close it; it's closed here first, and the press then opens it. Its
+  // width is read so that Firefox (159) forgets where it hung: closed and opened in one breath, it stayed put.
+  const unhang = menu => { menu.hidePopover(); menu.offsetWidth; };
   const emojiPicker = document.createElement('div');
   emojiPicker.id = 'emojiPicker';
-  emojiPicker.hidden = true;
+  emojiPicker.popover = 'auto';
   emojiPicker.setAttribute('role', 'dialog');
   emojiPicker.setAttribute('aria-label', 'Emoji');
-  emojiPicker.innerHTML = '<div class="ep-top"><input type="search" placeholder="Search emoji" aria-label="Search emoji" autocomplete="off">'
+  emojiPicker.innerHTML = `<div class="ep-top"><input type="search" placeholder="Search emoji" aria-label="Search emoji" autocomplete="off"${COARSE ? '' : ' autofocus'}>`
     + '<span class="ep-tones" role="radiogroup" aria-label="Skin tone">' + TONE_DOTS.map((c, i) =>
       `<button type="button" data-tone="${i}" style="background: ${c}" title="${i ? 'skin tone ' + i : 'no skin tone'}" aria-label="${i ? 'skin tone ' + i : 'no skin tone'}"></button>`).join('')
     + '</span></div><div class="ep-tabs"></div><div class="ep-grid"></div><div class="ep-name"></div>';
   document.body.appendChild(emojiPicker);
   const epSearch = emojiPicker.querySelector('input'), epGrid = emojiPicker.querySelector('.ep-grid'),
         epTabs = emojiPicker.querySelector('.ep-tabs'), epName = emojiPicker.querySelector('.ep-name');
-  let emojiPick = null, emojiOpener = null;
+  let emojiPick = null;
   const toned = item => { const t = store.get('emojiTone', 0); return t && item.tones ? item.tones[t - 1] : item.e; };
   const cellsHtml = items => '<div class="ep-cells">' + items.map(item =>
     `<button type="button" data-e="${esc(toned(item))}" title="${esc(item.name)}">${esc(toned(item))}</button>`).join('') + '</div>';
@@ -4230,21 +4262,16 @@
       `<button type="button" data-section="${i}" title="${esc(group)}">${group === 'Lately' ? '🕘' : esc(items[0].e)}</button>`).join('');
     epGrid.innerHTML = sections.map(([group, items], i) => `<h4 data-section="${i}">${esc(group)}</h4>${cellsHtml(items)}`).join('');
   }
-  function openEmojiPicker(anchor, onPick) {
+  // What a pick does is set before the picker shows: by the composer's 🙂 (its popovertarget shows it), or by a
+  // message's reactions, which show it from their own button.
+  function readyEmojiPicker(onPick) {
     emojiPick = onPick;
-    emojiOpener = anchor;
     epSearch.value = '';
-    emojiPicker.hidden = false;
-    const box = anchor.getBoundingClientRect(), w = emojiPicker.offsetWidth, h = emojiPicker.offsetHeight;
-    emojiPicker.style.left = Math.max(8, Math.min(box.left, innerWidth - w - 8)) + 'px';
-    emojiPicker.style.top = (box.top - h - 6 >= 8 ? box.top - h - 6 : Math.min(box.bottom + 6, innerHeight - h - 8)) + 'px';
     drawEmoji().then(() => { epGrid.scrollTop = 0; });
-    if (!COARSE) epSearch.focus();
   }
-  const closeEmojiPicker = () => { emojiPicker.hidden = true; emojiPick = null; };
   epSearch.addEventListener('input', drawEmoji);
   epSearch.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); epGrid.querySelector('button[data-e]')?.click(); }
+    if (e.key === 'Enter' && !composing(e)) { e.preventDefault(); epGrid.querySelector('button[data-e]')?.click(); }
   });
   emojiPicker.addEventListener('click', e => {
     const cell = e.target.closest('button[data-e]');
@@ -4255,7 +4282,7 @@
         const item = d.list.find(i => i.name === base);
         store.set('emojiRecent', [item ? item.e : chosen, ...store.get('emojiRecent', []).filter(x => x !== (item ? item.e : chosen))].slice(0, 32));
       });
-      closeEmojiPicker();
+      emojiPicker.hidePopover();
       if (pick) pick(chosen);
       return;
     }
@@ -4268,17 +4295,12 @@
     const cell = e.target.closest('button[data-e]');
     epName.textContent = cell ? cell.dataset.e + '  ' + cell.title : '';
   });
-  document.addEventListener('pointerdown', e => {
-    if (!emojiPicker.hidden && !emojiPicker.contains(e.target) && !(emojiOpener && emojiOpener.contains(e.target))
-        && !e.target.closest('#reactPicker')) closeEmojiPicker();
-  });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !emojiPicker.hidden) closeEmojiPicker(); });
   // In the composer: put where the cursor was, as if typed.
   const emojiBtn = document.getElementById('emojiBtn');
   emojiBtn.addEventListener('click', () => {
-    if (!emojiPicker.hidden) { closeEmojiPicker(); return; }
+    if (emojiPicker.matches(':popover-open')) return;  // pressed again: it closes
     const at = sayBox.selectionStart ?? sayBox.value.length, to = sayBox.selectionEnd ?? at;
-    openEmojiPicker(emojiBtn, emoji => {
+    readyEmojiPicker(emoji => {
       sayBox.value = sayBox.value.slice(0, at) + emoji + sayBox.value.slice(to);
       sayBox.focus();
       sayBox.setSelectionRange(at + emoji.length, at + emoji.length);
@@ -4317,7 +4339,7 @@
   }
   const picker = document.createElement('div');
   picker.id = 'reactPicker';
-  picker.hidden = true;
+  picker.popover = 'auto';
   picker.innerHTML = PALETTE.map(e => `<button type="button" data-emoji="${e}">${e}</button>`).join('')
     + '<button type="button" class="more" title="Every emoji" aria-label="Every emoji">＋</button>';
   document.body.appendChild(picker);
@@ -4325,12 +4347,9 @@
     const chip = e.target.closest('.reacts .chip[data-emoji]');
     if (chip) { react(chip.closest('.turn'), chip.dataset.emoji); return; }
     const add = e.target.closest('.turn .addreact');
-    if (add) {
-      const box = add.getBoundingClientRect();
+    if (add) {  // its popovertarget shows the picker
+      if (picker._for !== add.closest('.turn')) unhang(picker);
       picker._for = add.closest('.turn');
-      picker.hidden = false;
-      picker.style.left = Math.max(8, Math.min(box.left, innerWidth - picker.offsetWidth - 8)) + 'px';
-      picker.style.top = Math.max(8, box.top - picker.offsetHeight - 6) + 'px';
       return;
     }
     const pick = e.target.closest('#reactPicker button[data-emoji]');
@@ -4338,11 +4357,11 @@
     const more = e.target.closest('#reactPicker .more');
     if (more && picker._for) {
       const turn = picker._for;
-      openEmojiPicker(turn.querySelector('.addreact') || more, emoji => react(turn, emoji));
+      readyEmojiPicker(emoji => react(turn, emoji));
+      emojiPicker.showPopover({ source: turn.querySelector('.addreact') || more });  // where the reactions were
     }
-    picker.hidden = true;
+    if (pick) picker.hidePopover();
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') picker.hidden = true; });
 
   // --- tool steps: grouped into one collapsed line per run of work ----------
   function workEl(s, container) {
@@ -5048,24 +5067,6 @@
     }).join('');
   }
   serverPop.hidden = false;
-  stateBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    stateMenu.hidden = !stateMenu.hidden;
-    stateBtn.setAttribute('aria-expanded', String(!stateMenu.hidden));
-    if (!stateMenu.hidden) keepOnScreen(stateMenu);
-  });
-  // A menu hung from a button's right edge, kept inside the screen: on a phone the servers' dots sit mid-header,
-  // and hung from there the menu ran off the left (Skyler, 8 Nov: "I can only see a cut off right side of it").
-  function keepOnScreen(menu, margin = 10) {
-    menu.style.right = '';
-    const r = menu.getBoundingClientRect();
-    const shift = r.left < margin ? margin - r.left : r.right > innerWidth - margin ? (innerWidth - margin) - r.right : 0;
-    if (shift) menu.style.right = (parseFloat(getComputedStyle(menu).right) || 0) - shift + 'px';
-  }
-  addEventListener('resize', () => { if (!stateMenu.hidden) keepOnScreen(stateMenu); });
-  document.addEventListener('click', e => {
-    if (!stateMenu.hidden && !e.target.closest('#stateMenu')) { stateMenu.hidden = true; stateBtn.setAttribute('aria-expanded', 'false'); }
-  });
   setInterval(() => refreshServers(false), 60000);
   refreshServers(true);
 
@@ -6021,7 +6022,7 @@
       + (by.agent ? `<span class="badge bot" title="${by.agent} from emergents">${by.agent}</span>` : '');
   }
   // The bell's number: everything waiting for you, every Mood; its menu, which Moods.
-  const bellBtn = document.getElementById('bellBtn'), bellMenu = document.getElementById('bellMenu');
+  const bellMenu = document.getElementById('bellMenu');
   function renderBellCount() {  // called early (renderBell, at load): its elements by id, not the consts below
     const bellBtn = document.getElementById('bellBtn'), bellMenu = document.getElementById('bellMenu');
     document.getElementById('bellWrap').hidden = !me;
@@ -6032,7 +6033,7 @@
     countBot.hidden = !bots; countBot.textContent = bots > 99 ? '99+' : bots;
     bellBtn.classList.toggle('off', typeof notifying === 'function' && !notifying());
     bellBtn.title = total ? `For you: ${people} from people, ${bots} from emergents` : 'Nothing new for you';
-    if (!bellMenu.hidden) renderBellList();
+    if (bellMenu.matches(':popover-open')) renderBellList();
   }
   // People's first, then emergents' (with replies, if asked for, among them by time); then the latest you've
   // already seen, so there are never fewer than BELL_ROWS.
@@ -6065,7 +6066,7 @@
       const r = await fetch('/api/notices/' + encodeURIComponent(me) + '/?since=' + encodeURIComponent(since));
       if (!r.ok) return;
       for (const n of (await r.json()).notices) if (n.kind !== 'said' && !known.has(n.turn.id)) known.set(n.turn.id, n);
-      if (!bellMenu.hidden) renderBellList();
+      if (bellMenu.matches(':popover-open')) renderBellList();
     } catch (e) {}
   }
   document.getElementById('bellReplies').checked = withReplies;
@@ -6076,22 +6077,14 @@
   document.querySelector('#bellMenu .belltabs').addEventListener('click', e => {
     const b = e.target.closest('button[data-tab]');
     if (!b) return;
-    e.stopPropagation();
     bellMenu.querySelectorAll('.belltabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
     bellMenu.querySelectorAll('.bellpane').forEach(p => { p.hidden = p.dataset.pane !== b.dataset.tab; });
   });
-  bellBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    bellMenu.hidden = !bellMenu.hidden;
-    bellBtn.setAttribute('aria-expanded', String(!bellMenu.hidden));
-    if (!bellMenu.hidden) { renderBellList(); bellBackfill(); keepOnScreen(bellMenu); }
-  });
-  addEventListener('resize', () => { if (!bellMenu.hidden) keepOnScreen(bellMenu); });
+  bellMenu.addEventListener('beforetoggle', e => { if (e.newState === 'open') { renderBellList(); bellBackfill(); } });
   bellMenu.addEventListener('click', e => {
     const a = e.target.closest('a[data-mood]');
-    if (a) { e.preventDefault(); bellMenu.hidden = true; a.dataset.id ? openAndReveal(a.dataset.mood, a.dataset.id) : open(a.dataset.mood, true); }
+    if (a) { e.preventDefault(); bellMenu.hidePopover(); a.dataset.id ? openAndReveal(a.dataset.mood, a.dataset.id) : open(a.dataset.mood, true); }
   });
-  document.addEventListener('click', e => { if (!bellMenu.hidden && !e.target.closest('#bellWrap')) bellMenu.hidden = true; });
   async function refreshBadges(force) {
     if (!me) { badges = {}; renderNav(); setTitle(); return; }
     // Asked for sooner while a sound or the bell waits on every message: 15 s late is too late to chime.
@@ -7058,14 +7051,13 @@
   // week, or anyone's as an admin), as services/retract.py allows.
   const msgMenu = document.createElement('div');
   msgMenu.id = 'msgMenu';
-  msgMenu.hidden = true;
+  msgMenu.popover = 'auto';
   msgMenu.setAttribute('role', 'menu');
   document.body.appendChild(msgMenu);
-  function closeMsgMenu() { msgMenu.hidden = true; msgMenu._for = null; }
   document.addEventListener('click', e => {
     const more = e.target.closest('.turn .morebtn[data-more]');
-    if (more) {
-      if (msgMenu._for === more) { closeMsgMenu(); return; }
+    if (more) {  // its popovertarget shows the menu, and closes it when pressed again
+      if (msgMenu._for !== more) unhang(msgMenu);
       msgMenu.innerHTML = (more.dataset.pin ? `<button type="button" role="menuitem" data-act="pin">${pinsNow.some(p => p.id === more.dataset.more) ? '📌 Unpin' : '📌 Pin to the top'}</button>` : '')
         + (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
         + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my bloom notes</button>'
@@ -7076,19 +7068,13 @@
         + (more.dataset.edit && more.dataset.delete ? '<hr>' : '')
         + (more.dataset.delete ? '<button type="button" role="menuitem" data-act="delete" class="danger">🗑 Delete…</button>' : '');
       msgMenu._for = more;
-      msgMenu.hidden = false;
-      const box = more.getBoundingClientRect();
-      msgMenu.style.left = Math.max(8, Math.min(box.right - msgMenu.offsetWidth, innerWidth - msgMenu.offsetWidth - 8)) + 'px';
-      const below = box.bottom + 4;
-      msgMenu.style.top = (below + msgMenu.offsetHeight > innerHeight - 8 ? Math.max(8, box.top - msgMenu.offsetHeight - 4) : below) + 'px';
-      msgMenu.querySelector('button').focus();
+      msgMenu.querySelector('button').autofocus = true;
       return;
     }
     const act = e.target.closest('#msgMenu button[data-act]');
     const from = msgMenu._for;
-    if (!msgMenu.hidden && !act) { closeMsgMenu(); return; }
     if (!act || !from) return;
-    closeMsgMenu();
+    msgMenu.hidePopover();
     const el = from.closest('.turn');
     if (act.dataset.act === 'edit') editMessage(el, from.dataset.more);
     else if (act.dataset.act === 'promote') promoteMessage(el, from);
@@ -7098,8 +7084,7 @@
     else if (act.dataset.act === 'wiki-inline') copyForWiki(from.dataset.more, true);
     else deleteMessage(from.dataset.more);
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !msgMenu.hidden) closeMsgMenu(); });
-  main.addEventListener('scroll', () => { if (!msgMenu.hidden) closeMsgMenu(); }, { passive: true });
+  main.addEventListener('scroll', () => msgMenu.hidePopover(), { passive: true });
   // --- pinned (services/pins.py): the newest pin's line at the top, the rest a click away; a pinned message
   // wears 📌 by its name. Each look brings them; pinning or unpinning answers with them as they now stand.
   let pinsNow = [];
@@ -7246,10 +7231,9 @@
     const body = el.querySelector('.body');
     if (!body || body.querySelector('textarea')) return;
     const before = body.innerHTML;
-    body.innerHTML = '<textarea class="editbox" rows="3"></textarea><div class="editbar"><button type="button" class="editsave">Save</button> <button type="button" class="editcancel">Cancel</button></div>';
+    body.innerHTML = '<textarea class="editbox"></textarea><div class="editbar"><button type="button" class="editsave">Save</button> <button type="button" class="editcancel">Cancel</button></div>';
     const box = body.querySelector('textarea');
     box.value = el._text || '';
-    box.style.height = Math.min(400, Math.max(60, box.scrollHeight + 4)) + 'px';
     box.focus();
     const done = () => { if (then) then(); };
     const cancel = () => { body.innerHTML = before; done(); };
@@ -7261,7 +7245,7 @@
     };
     box.addEventListener('keydown', k => {
       if (k.key === 'Escape') { k.preventDefault(); cancel(); return; }
-      if (k.key !== 'Enter' || k.isComposing || k.keyCode === 229) return;
+      if (k.key !== 'Enter' || composing(k)) return;
       if (k.ctrlKey || k.metaKey) {  // a new line, as in the composer
         k.preventDefault();
         const at = box.selectionStart;
@@ -8376,7 +8360,7 @@
   }
   sayBox.addEventListener('input', () => { chosen = 0; showSuggest(); });
   sayBox.addEventListener('keydown', e => {
-    if (!suggest.classList.contains('on')) return;
+    if (!suggest.classList.contains('on') || composing(e)) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault(); chosen = (chosen + (e.key === 'ArrowDown' ? 1 : choices.length - 1)) % choices.length; showSuggest();
     } else if ((e.key === 'Enter' && !e.ctrlKey && !e.metaKey) || e.key === 'Tab') {
@@ -8410,7 +8394,6 @@
   document.querySelector('#userMenu .textsize').addEventListener('click', e => {
     const b = e.target.closest('button[data-step]');
     if (!b) return;
-    e.stopPropagation();  // the menu stays open while you try sizes
     const at = Math.max(0, TEXT_SIZES.indexOf(store.get('textScale', 1)));
     const scale = TEXT_SIZES[Math.max(0, Math.min(TEXT_SIZES.length - 1, at + Number(b.dataset.step)))];
     store.set('textScale', scale);
@@ -8442,37 +8425,15 @@
   window.visualViewport?.addEventListener('resize', unslide);
   // And if it was left slid anyway, the next touch on the thread puts it back: no hunting for the bar's last pixel.
   document.querySelector('main')?.addEventListener('touchstart', unslide, {passive: true});
-  // On a phone: one line until there's more to say, growing with the text to a quarter of what's on screen,
-  // then scrolling. What's on screen is the visual viewport: with the keyboard up, an iPhone's vh is still the
-  // whole screen, so 40vh was most of what's left above the keys (Skyler, 8 and 12 Nov).
-  const phone = matchMedia(PHONE).matches;
-  const SAY_SHARE = 0.25;
-  function fitSay() {
-    if (!phone || document.body.classList.contains('say-expanded')) return;
-    // Empty, it's one line again: an empty textarea's scrollHeight counts its
-    // placeholder, wrapped to the box's width, so measuring it then made the
-    // box as tall as the placeholder written a word per line.
-    if (!sayBox.value) { sayBox.style.height = ''; sayBox.style.maxHeight = ''; return; }
-    const seen = window.visualViewport?.height || innerHeight;
-    const most = Math.max(80, Math.round(seen * SAY_SHARE));  // never under about three lines
-    sayBox.style.maxHeight = most + 'px';
-    sayBox.style.height = 'auto';
-    sayBox.style.height = Math.min(sayBox.scrollHeight + 2, most) + 'px';
-  }
-  // Short: a phone's box is narrow, and a placeholder can't wrap or end in an ellipsis there.
-  sayBox.addEventListener('input', fitSay);
-  addEventListener('resize', fitSay);  // turning the phone rewraps what's typed
-  window.visualViewport?.addEventListener('resize', fitSay);  // the keyboard coming and going
+  // On a phone the box stops growing at a quarter of what's on screen (the stylesheet's --seen). What's on screen
+  // is the visual viewport, which only the script can read: no CSS unit shrinks for an iPhone's keyboard.
+  const onScreen = () => document.documentElement.style.setProperty('--seen', window.visualViewport.height + 'px');
+  if (window.visualViewport) { onScreen(); window.visualViewport.addEventListener('resize', onScreen); }  // the keyboard coming and going
 
   // The chevron at the box's top centre: pull it up to a long box, and back to the size it was (Justin, 27 Oct).
   const expandBtn = document.getElementById('expandComposer');
   const expandSay = on => {
-    const was = expandSay.height ?? '';
-    if (on) expandSay.height = sayBox.style.height;  // whatever it was: a drag, or fitSay's
-    sayBox.style.height = on ? Math.round(innerHeight * 0.6) + 'px' : was;
-    sayBox.style.maxHeight = '';  // pulled up, the stylesheet's 85vh holds, not fitSay's quarter
-    document.body.classList.toggle('say-expanded', on);
-    if (!on) fitSay();  // back down: to the words' height, within the quarter
+    document.body.classList.toggle('say-expanded', on);  // the stylesheet's height; back down, the words' own
     expandBtn.textContent = on ? '▾' : '▴';
     expandBtn.title = on ? 'Collapse the box' : 'Expand the box to write at length';
     expandBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
@@ -9251,7 +9212,7 @@
   if (voiceOn && viewer) document.getElementById('voicesLink').hidden = false;
   document.getElementById('voicesLink').addEventListener('click', e => {
     e.preventDefault();
-    userMenu.hidden = true;
+    userMenu.hidePopover();
     showSection('settings', true);
     const frame = sectionFrames.querySelector('iframe[data-section="settings"]:not([data-fresh])');
     if (frame) frame.src = '/settings/?embed=1#voices';
@@ -9379,7 +9340,7 @@
     readPoll();
   }
   const readFromMenu = document.createElement('div');
-  readFromMenu.id = 'readFromMenu'; readFromMenu.hidden = true; readFromMenu.setAttribute('role', 'menu');
+  readFromMenu.id = 'readFromMenu'; readFromMenu.popover = 'auto'; readFromMenu.setAttribute('role', 'menu');
   readFromMenu.innerHTML = '<div class="head">Reading from here on</div>'
     + '<button type="button" role="menuitem" data-where="here">in this Mood</button>'
     + '<button type="button" role="menuitem" data-where="everywhere">in every Mood</button>';
@@ -9389,23 +9350,20 @@
     const open = e.target.closest('.turn .readfrom');
     const pick = e.target.closest('#readFromMenu button');
     if (pick) {
-      readFromMenu.hidden = true;
+      readFromMenu.hidePopover();
       if (!pick.classList.contains('on')) readFrom(readFromMenu.dataset.id, pick.dataset.where === 'everywhere');  // the other way
       return;
     }
-    if (!open) { readFromMenu.hidden = true; return; }
+    if (!open) return;
     // One tap reads, at once (Justin, 22 Oct: pressed without looking, it has to do something): here, or
     // everywhere if that's how they're listening already. The menu, a moment, to read the other way instead.
     const everywhere = readMode === 'everywhere';
     readFrom(open.dataset.id, everywhere);
     readFromMenu.querySelectorAll('button').forEach(b => b.classList.toggle('on', (b.dataset.where === 'everywhere') === everywhere));
-    const box = open.getBoundingClientRect();
-    readFromMenu.dataset.id = open.dataset.id;
-    readFromMenu.hidden = false;
+    if (readFromMenu.dataset.id !== open.dataset.id) unhang(readFromMenu);
+    readFromMenu.dataset.id = open.dataset.id;  // its popovertarget shows the menu
     const shown = ++readFromMenuFor;
-    setTimeout(() => { if (readFromMenuFor === shown) readFromMenu.hidden = true; }, 6000);
-    readFromMenu.style.top = Math.min(box.bottom + 4, innerHeight - readFromMenu.offsetHeight - 8) + 'px';
-    readFromMenu.style.left = Math.max(8, Math.min(box.right - readFromMenu.offsetWidth, innerWidth - readFromMenu.offsetWidth - 8)) + 'px';
+    setTimeout(() => { if (readFromMenuFor === shown) readFromMenu.hidePopover(); }, 6000);
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) readPoll(); });  // looked at: anything new, now
 
@@ -9812,7 +9770,7 @@
   // signing someone else out is magenta.sh kick, signed with a key.
   let devicesAll = false;
   async function showDevices() {
-    userMenu.hidden = true;
+    userMenu.hidePopover();
     devicesBox.hidden = false;
     const list = document.getElementById('devicesList');
     list.textContent = 'Loading…';
@@ -10125,7 +10083,7 @@
   }
   const TOOK = { edited: 'edited', deleted: 'deleted', replaced: 'put back an earlier version' };
   async function showVersions(id) {
-    userMenu.hidden = true;
+    userMenu.hidePopover();
     sealsBox.hidden = false;
     seals.showing = () => showVersions(id);
     const el = document.getElementById('m-' + id);
@@ -10172,7 +10130,7 @@
   }
   // Everything taken back in this Mood, newest first: who, whose, when (no key needed to see that much).
   async function showTakenBack() {
-    userMenu.hidden = true;
+    userMenu.hidePopover();
     sealsBox.hidden = false;
     seals.showing = showTakenBack;
     document.getElementById('sealsTitle').textContent = `Taken back in #${current}`;
@@ -10197,15 +10155,6 @@
   document.addEventListener('keydown', e => {
     const v = viewerAdmin && (e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.turn [data-versions]');
     if (v) { e.preventDefault(); showVersions(v.dataset.versions); }
-  });
-
-  userBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    userMenu.hidden = !userMenu.hidden;
-    userBtn.setAttribute('aria-expanded', !userMenu.hidden);
-  });
-  document.addEventListener('click', e => {
-    if (!userMenu.hidden && !e.target.closest('.account')) { userMenu.hidden = true; userBtn.setAttribute('aria-expanded', false); }
   });
 
   // Signed in with PickiPedia, agents can't be addressed: said before sending,
@@ -10255,7 +10204,6 @@
     const d = current && store.get('draft:' + current, null);
     const fresh = d && Date.now() - (d.at || 0) < DRAFT_DAYS * 86400e3;
     sayBox.value = fresh ? d.text || '' : ''; showDiscard();
-    fitSay();
     if (fresh && d.reply && d.reply.id) showReply(d.reply);
     // Its pictures: those kept with the draft, and any still going up for it.
     tray = [...(fresh && d.tray || []).map(a => ({ ...a, pct: 100 })), ...[...flying].filter(a => a.mood === current)];
@@ -10342,7 +10290,7 @@
           : 'Merging from here is for the mergers, signed in with their SSH key'}</span>`);
         return;
       }
-      sayBox.value = ''; fitSay(); saveDraft();
+      sayBox.value = ''; saveDraft();
       magentaMerge.open(work, current);
       return;
     }
@@ -10361,7 +10309,7 @@
     memoPending = null;
     if (pending) pendingSays(pending, 'sending…');
     composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());  // the thread says how it's going now
-    sayBox.value = ''; fitSay(); showDiscard();
+    sayBox.value = ''; showDiscard();
     tray = []; renderTray(); saveDraft();
     if (voicePending) { voicePending.state = 'sending'; renderVoiceMode(); }
     else { voicePending = { state: 'sending', text, who: viewer, mood: current }; renderVoiceMode(); }
@@ -10420,7 +10368,7 @@
         return;
       }
       if (pending) pending.remove();
-      if (!sayBox.value.trim()) { sayBox.value = words; fitSay(); showDiscard(); }  // not sent: the words back where they were
+      if (!sayBox.value.trim()) { sayBox.value = words; showDiscard(); }  // not sent: the words back where they were
       if (!tray.length) { tray = sentTray; renderTray(); }                // and the pictures
       saveDraft();
       if (e.name === 'AbortError') {
@@ -10431,7 +10379,7 @@
           .map(b => b.closest('article.turn')).filter(el => el && (el._text || '').trim() === text.trim()
             && new Date(el._at || 0).getTime() >= startedAt - 5000).pop();
         if (landed) {
-          sayBox.value = ''; fitSay(); showDiscard(); tray = []; renderTray(); saveDraft();
+          sayBox.value = ''; showDiscard(); tray = []; renderTray(); saveDraft();
           editMessage(landed, landed.id.replace(/^m-/, ''), () => sayBox.focus());
         } else {
           composer.insertAdjacentHTML('beforeend', '<span class="note">Stopped: not sent. Edit it and send again.</span>');
@@ -10498,7 +10446,7 @@
   // nothing finer: a laptop with a touch screen has a trackpad and a keyboard, and Enter sends there.
   const touchScreen = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
   sayBox.addEventListener('keydown', e => {
-    if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;  // mid-composition (IME)
+    if (e.key !== 'Enter' || composing(e)) return;
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault(); insertAtCaret('\n'); sayBox.dispatchEvent(new Event('input')); return;
     }
@@ -10711,54 +10659,22 @@
     const a = e.target.closest('header a[data-section], #userMenu a[data-section]');
     if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
     e.preventDefault();
-    if (!userMenu.hidden) userBtn.click();  // from the account menu: it closes
-    const mm = document.getElementById('sectionsMoreMenu');
-    if (mm) { mm.hidden = true; const mb = document.getElementById('sectionsMoreBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
+    a.closest('[popover]')?.hidePopover();  // from the account menu or ▾: it closes
     showSection(a.dataset.section, true);
   });
 
-  const statusPop = document.getElementById('statusPop');
   const copyVersion = document.getElementById('copyVersion');
-  if (statusEl && statusPop) {
-    statusEl.addEventListener('click', e => {
-      e.stopPropagation();
-      statusPop.hidden = !statusPop.hidden;
-    });
-    if (copyVersion) {
-      copyVersion.addEventListener('click', async e => {
-        e.stopPropagation();
-        const code = statusPop.querySelector('code');
-        const txt = code ? code.textContent.trim() : '';
-        if (!txt) return;
-        try {
-          await navigator.clipboard.writeText(txt);
-          copyVersion.textContent = 'copied!';
-          setTimeout(() => { copyVersion.textContent = 'copy'; }, 1500);
-        } catch (err) {
-          prompt('Copy version:', txt);
-        }
-      });
+  copyVersion.addEventListener('click', async () => {
+    const txt = document.querySelector('#statusPop code').textContent.trim();
+    if (!txt) return;
+    try {
+      await navigator.clipboard.writeText(txt);
+      copyVersion.textContent = 'copied!';
+      setTimeout(() => { copyVersion.textContent = 'copy'; }, 1500);
+    } catch (err) {
+      prompt('Copy version:', txt);
     }
-    document.addEventListener('click', e => {
-      if (!e.target.closest('.statuswrap')) statusPop.hidden = true;
-    });
-  }
-
-  const moreBtn = document.getElementById('sectionsMoreBtn');
-  const moreMenu = document.getElementById('sectionsMoreMenu');
-  if (moreBtn && moreMenu) {
-    moreBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      moreMenu.hidden = !moreMenu.hidden;
-      moreBtn.setAttribute('aria-expanded', String(!moreMenu.hidden));
-    });
-    document.addEventListener('click', e => {
-      if (!e.target.closest('.morewrap')) {
-        moreMenu.hidden = true;
-        moreBtn.setAttribute('aria-expanded', 'false');
-      }
-    });
-  }
+  });
   // A picture on Tidings: opened here, in the lightbox, and sent to PickiPedia from here (mood_tiding_tools.html).
   window.addEventListener('message', e => {
     if (e.origin !== location.origin || !e.data) return;
@@ -10926,12 +10842,13 @@
     const shown = all.filter(el => tourShown(el) || (el.closest('[data-tour-open]') && !(el.hidden && !el.dataset.tourOpen)));
     return shown.length ? shown[shown.length - 1] : null;
   }
-  // What the tour opened, closed again once a step points elsewhere (driver.js keeps its clicks to itself, so
-  // a menu's own click-outside never hears them).
+  // What the tour opened, closed again once a step points elsewhere. A menu that is a popover is held open
+  // meanwhile (manual): a press on the tour's Next is a click elsewhere, which would close it.
   let tourOpened = null;
   function tourClose(keepFor) {
     if (!tourOpened || (keepFor && tourOpened.holder.contains(keepFor))) return;
     if (tourShown(tourOpened.holder)) tourOpened.opener.click();
+    if (tourOpened.holder.popover) tourOpened.holder.popover = 'auto';
     tourOpened = null;
   }
   function tourReveal(el) {
@@ -10939,7 +10856,10 @@
     if (!tourShown(el)) {
       const holder = el.closest('[data-tour-open]');
       const opener = holder && document.getElementById(holder.dataset.tourOpen);
-      if (opener && tourShown(opener)) { opener.click(); tourOpened = { holder, opener }; }
+      if (opener && tourShown(opener)) {
+        if (holder.popover) holder.popover = 'manual';
+        opener.click(); tourOpened = { holder, opener };
+      }
     }
     if (tourShown(el)) el.scrollIntoView({ block: 'nearest' });
     return el;
@@ -10961,6 +10881,8 @@
       onNextClick: () => later(() => tour.moveNext()),
       onPrevClick: () => later(() => tour.movePrevious()),
       onDestroyed: () => { document.removeEventListener('scroll', follow, true); tourClose(null); },
+      // The tour's card is a popover too, shown last: above a menu it points into, not behind it.
+      onPopoverRender: card => { card.wrapper.popover = 'manual'; card.wrapper.showPopover(); },
       steps: steps.map(s => ({
         element: () => tourReveal(tourAnchor(s.at) || document.body),
         popover: { description: s.text },
@@ -10972,13 +10894,12 @@
     document.addEventListener('scroll', follow, true);
     tour.drive();
   }
-  // The help menu (Justin, 7 Nov): toggles like the state menu, closes on a click elsewhere or Esc. Its tour
-  // line says "coming soon" while /api/tour/ has no steps (no trusted revision of Magenta:Tour yet), looked
-  // up once per page the first time the menu opens, so the label is true when it is read.
-  const helpBtn = document.getElementById('helpBtn'), helpMenu = document.getElementById('helpMenu');
+  // The help menu (Justin, 7 Nov): a popover, like the header's others. Its tour line says "coming soon" while
+  // /api/tour/ has no steps (no trusted revision of Magenta:Tour yet), looked up once per page the first time
+  // the menu opens, so the label is true when it is read.
+  const helpMenu = document.getElementById('helpMenu');
   const tourLink = document.getElementById('tourLink'), tourNote = document.getElementById('tourNote');
   let tourAsked = false, tourReady = null;
-  function closeHelp() { helpMenu.hidden = true; helpBtn.setAttribute('aria-expanded', 'false'); }
   async function askTour() {
     if (tourAsked) return;
     tourAsked = true;
@@ -10990,18 +10911,11 @@
     tourLink.setAttribute('aria-disabled', String(!tourReady));
     tourNote.textContent = tourReady ? 'a walk round this page, on the page itself' : 'coming soon';
   }
-  helpBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    helpMenu.hidden = !helpMenu.hidden;
-    helpBtn.setAttribute('aria-expanded', String(!helpMenu.hidden));
-    if (!helpMenu.hidden) askTour();
-  });
-  document.addEventListener('click', e => { if (!helpMenu.hidden && !e.target.closest('#helpMenu')) closeHelp(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !helpMenu.hidden) closeHelp(); });
+  helpMenu.addEventListener('beforetoggle', e => { if (e.newState === 'open') askTour(); });
   tourLink.addEventListener('click', e => {
     e.preventDefault();
     if (tourReady === false) return;  // coming soon: the line says so, and there is nothing to start
-    closeHelp();
+    helpMenu.hidePopover();
     startTour();
   });
 
