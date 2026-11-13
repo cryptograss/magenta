@@ -1,4 +1,7 @@
-"""Saved clips: the team's library of quotes, kept in the record itself.
+"""Saved clips: the team's library of quotes. Magenta:Clips on PickiPedia is canonical (Justin, 13 Nov):
+what plays is the page's rows (every(), page()). Saving and forgetting here are posts in the record, as below,
+and each one also writes its row onto the page, or takes it off (write_page). The record says who saved a
+name first. It plays a clip itself only when the page can't be read or written.
 
     /clips save <name> <yarn link>   saves a clip under a name (or one of our own clips' links)
     /clips <name>                    posts the saved clip (lines after it: words of yours, under it)
@@ -207,8 +210,16 @@ def page_rows(wikitext):
     return rows
 
 
+def bot_name():
+    """The wiki bot's name as its revisions show it (a bot password signs in as User@label), or ''."""
+    from django.conf import settings
+    return (getattr(settings, 'PICKIPEDIA_TODO_BOT_USER', '') or '').split('@')[0].replace('_', ' ').lower()
+
+
 def page(get=None):
-    """The clips page's rows, at its newest trusted revision; kept a while, and the last read stands if it fails."""
+    """The clips page's rows: {name: {'link', 'for'}}. Its links as of its newest revision by a trusted editor or by
+    the wiki bot (which writes only the rows of saves made here: write_page); what each is for as of its newest
+    revision by a trusted editor alone. Kept a while, and the last read stands if it fails."""
     kept = cache.get(USES_KEY)
     if kept is not None and get is None:
         return kept
@@ -218,9 +229,12 @@ def page(get=None):
         except ImportError:
             from wiki_rules import EDITORS, WikiTexts
         trusted = {e.lower().replace('_', ' ') for e in EDITORS}
-        history = (get or WikiTexts().get)(PAGE)
-        text = next((w for _, editor, w in history if (editor or '').lower().replace('_', ' ') in trusted), '')
-        found = page_rows(text)
+        bot = bot_name()
+        history = [(w, (editor or '').lower().replace('_', ' ')) for _, editor, w in (get or WikiTexts().get)(PAGE)]
+        said = page_rows(next((w for w, editor in history if editor in trusted), ''))
+        found = page_rows(next((w for w, editor in history if editor in trusted or (bot and editor == bot)), ''))
+        for name, row in found.items():
+            row['for'] = (said.get(name) or {}).get('for', '')
         cache.set(USES_KEY, found, USES_FOR)
         cache.set(USES_KEY + ':last', found, None)
     except Exception:
@@ -229,18 +243,121 @@ def page(get=None):
     return found
 
 
+# A save puts its row on the page, and a forget takes it off (Justin, 13 Nov: "I thought clips were supposed to
+# land here?"). The row's use is left for a person to write: the bot's revision isn't a trusted one, so the page
+# as the emergents are told it changes when someone who is trusted writes what the clip is for.
+def page_with(text, name, link):
+    """The page's text with `name`'s row linking `link`: its link changed if it has a row (its use kept), else a
+    new row with no use yet, last in the table. None if there's no table to put it in."""
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        m = _ROW.match(line.strip())
+        if m and name_of(m[1].strip('`<>[] ')) == name:
+            if m[2].strip('[]') == link:
+                return text
+            lines[i] = f'| {name} || {link} || {m[3]}'.rstrip()
+            return '\n'.join(lines)
+    end = max((i for i, line in enumerate(lines) if line.strip() == '|}'), default=None)
+    if end is None:
+        return None
+    return '\n'.join(lines[:end] + ['|-', f'| {name} || {link} || '] + lines[end:])
+
+
+def page_without(text, name):
+    """The page's text with `name`'s row (and the |- above it) taken out; the text as it was if it has none."""
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        m = _ROW.match(line.strip())
+        if m and name_of(m[1].strip('`<>[] ')) == name:
+            start = i - 1 if i and lines[i - 1].strip() == '|-' else i
+            return '\n'.join(lines[:start] + lines[i + 1:])
+    return text
+
+
+def write_page(name, link=None, by='', bot=None):
+    """Put `name`'s row on the page linking `link`, or take it off (link None): 'written', 'same' or 'refused'.
+    Signed in as the wiki bot (todo_ticks.Bot); an edit made meanwhile is read again, up to three times."""
+    from . import todo_ticks
+    if bot is None and not todo_ticks.enabled():
+        return 'refused'
+    bot = bot or todo_ticks.Bot(purpose='the clips page')
+    if not bot.login():
+        return 'refused'
+    for _ in range(3):
+        revision, text = playing(bot)
+        if revision is None or text is None:
+            return 'refused'
+        new = page_with(text, name, link) if link else page_without(text, name)
+        if new is None:
+            return 'refused'
+        if new == text:
+            return 'same'
+        said = f'{by} saved "{name}"' if link else f'{by} forgot "{name}"'
+        done = bot.edit(PAGE, new, f'{said}, by magenta: what it is for is a person\'s to write', revision)
+        if (done.get('edit') or {}).get('result') == 'Success':
+            cache.delete(USES_KEY)  # read again at once: the page is what plays
+            return 'written'
+        if (done.get('error') or {}).get('code') != 'editconflict':
+            return 'refused'
+    return 'refused'
+
+
+def playing(bot):
+    """(the page's newest revision, the text of its newest by a trusted editor or the bot): the page as it plays
+    (page()), so the bot never passes on, as its own, an edit by someone else (re, 13 Nov). Built on that text and
+    saved over the newest revision, a save's row undoes such an edit, which never played anyway.
+    (None, None) if there's no page; (revision, None) if none of its recent revisions counts."""
+    try:
+        from poller.wiki_rules import EDITORS
+    except ImportError:
+        from wiki_rules import EDITORS
+    counts = {e.lower().replace('_', ' ') for e in EDITORS} | ({bot_name()} - {''})
+    found = bot.http.get(bot.api, params={'action': 'query', 'prop': 'revisions', 'titles': PAGE, 'rvslots': 'main',
+                                          'rvprop': 'content|ids|timestamp|user', 'rvlimit': 20,
+                                          'formatversion': 2, 'format': 'json'}, timeout=10).json()['query']['pages'][0]
+    revisions = [] if found.get('missing') else found.get('revisions') or []
+    if not revisions:
+        return None, None
+    text = next((r['slots']['main']['content'] for r in revisions
+                 if (r.get('user') or '').lower().replace('_', ' ') in counts), None)
+    return revisions[0], text
+
+
+def page_later(posted, by):
+    """After a post that saves or forgets a clip: its row put on the page, or taken off, on a thread of its own."""
+    from .mood_cache import spawn
+    saved, forgotten = SAVED.match(posted or ''), FORGOTTEN.match(posted or '')
+    if saved:
+        spawn(_page_quietly, saved[1], saved[2], by)
+    elif forgotten:
+        spawn(_page_quietly, forgotten[1], None, by)
+
+
+def _page_quietly(name, link, by):
+    import logging
+    try:
+        logging.getLogger(__name__).info('clips page, %s: %s', name, write_page(name, link, by))
+    except Exception:
+        logging.getLogger(__name__).exception('clips page: %s not written', name)
+
+
 def uses():
     """{name: what it's for}, as the clips page says."""
     return {name: row['for'] for name, row in page().items() if row['for']}
 
 
 def every():
-    """The library with the page's rows that aren't saved here yet: name -> {'clip', 'by', ...}."""
-    found = dict(library())
-    for name, row in page().items():
-        if name in found:
-            continue
+    """What plays: name -> {'clip', 'by', ...}. The clips page is canonical (Justin, 13 Nov: "I want that to be
+    canonical"): its rows, and only its rows, play -- a row taken off the page stops playing, and a link changed
+    there plays the new one. A save made here reaches the page by write_page, seconds later. Only while the page
+    has never been read (the wiki down since this started, or no bot to write to it) does the record's library
+    stand in, with the page's rows over it."""
+    from . import todo_ticks
+    rows, saved = page(), library()
+    found = {} if rows and todo_ticks.enabled() else dict(saved)
+    for name, row in rows.items():
         clip, own = yarn_clip(row['link']), own_clip(row['link'])
         if clip or own:
-            found[name] = {'clip': clip or own, 'by': 'the clips page', **({'link': row['link']} if own else {})}
+            found[name] = {'clip': clip or own, 'by': (saved.get(name) or {}).get('by', 'the clips page'),
+                           **({'link': row['link']} if own else {})}
     return found
