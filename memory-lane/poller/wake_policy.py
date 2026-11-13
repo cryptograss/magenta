@@ -57,4 +57,9 @@ TOOL_LOOP_KILL = 3
 TOOL_LOOP_WINDOW = 10
 TOOL_LOOP_WINDOW_KILL = 5
 TOOL_LOOP_MAX_CALLS = int(os.environ.get('TOOL_LOOP_MAX_CALLS', '150'))
+# Claude Code turns have no ceiling (Justin, #interfaces, 13 Nov 2026: "I wonder if the 150 tool-use limit is
+# doing more harm than good; Fable 5.2 in particular tends to use a lot of tools in long rounds"). It had never
+# caught a loop -- the repeat detectors above do that -- and with no stdin to warn through, it only ended long,
+# productive turns unanswered: four on 13 Nov alone. 0 is none; CLAUDE_TOOL_MAX_CALLS sets one again.
+CLAUDE_TOOL_MAX_CALLS = int(os.environ.get('CLAUDE_TOOL_MAX_CALLS', '0'))
 

@@ -738,8 +738,10 @@ class ClaudeCodeWaker:
         result event: its cost, its duration, how it ended."""
         try:  # lazy, matching how this module loads the Pi harness elsewhere
             from poller.pi_harness import LoopGuard
+            from poller.wake_policy import CLAUDE_TOOL_MAX_CALLS
         except ImportError:  # running outside the repo's layout (tests import it directly)
             from pi_harness import LoopGuard
+            from wake_policy import CLAUDE_TOOL_MAX_CALLS
         if session_id is None:  # a new session: in its Mood's directory (`cwd`), else where new ones start
             cwd = cwd or str(Path(self.new_cwd).expanduser())
             spent_before = 0.0
@@ -764,10 +766,10 @@ class ClaudeCodeWaker:
         watchdog.start()
         result = None
         said = ''  # the last text the agent itself wrote (not a helper's)
-        # The tool-loop tripwire (pi_harness.LoopGuard): the attractor detectors kill, and the
-        # per-turn ceiling is a 150-call budget that still ends the turn -- Claude Code's `-p`
-        # has no stdin, so unlike pi there is no mid-turn warning here (pi_harness, 31 Oct).
-        guard, killed = LoopGuard(), None
+        # The tool-loop tripwire (pi_harness.LoopGuard): the attractor detectors kill. No ceiling on how
+        # many calls a turn makes (wake_policy.CLAUDE_TOOL_MAX_CALLS, 13 Nov): Claude Code's `-p` has no
+        # stdin to warn through, so a ceiling here only ended long turns unanswered.
+        guard, killed = LoopGuard(max_calls=CLAUDE_TOOL_MAX_CALLS), None
         asked = {}  # tool_use id -> (name, input): judged when its result comes back (LoopGuard.see)
         final = FinalUsage()
         try:
