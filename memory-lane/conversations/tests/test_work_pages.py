@@ -293,3 +293,47 @@ class AwkwardFilesTest(WorkRepo):
         png = png[:png.index('</li>')]
         self.assertIn('binary', png)
         self.assertNotIn('class="whole"', png)
+
+
+class MergedWorkTest(WorkRepo):
+    """After a merge, the page still shows what the work changed (Justin, 13 Nov: "after something is merged, I can't
+    see the diff anymore"): against main as it stood just before the merge, not main now, which holds it."""
+
+    def merge(self, retire=True):
+        # main moves on first, then githouse merges re/foo --no-ff and moves its name to refs/merged/.
+        (self.repo.work / 'other.txt').write_text('meanwhile\n')
+        git(self.repo.work, 'add', '.')
+        git(self.repo.work, 'commit', '-q', '-m', 'meanwhile on main')
+        git(self.repo.work, 'merge', '-q', '--no-ff', '-m', 'Merge magenta:re/foo', self.head)
+        self.repo.ref('refs/heads/main', git(self.repo.work, 'rev-parse', 'HEAD'))
+        if retire:
+            git(self.repo.bare, 'update-ref', '-d', 'refs/heads/re/foo')
+            self.repo.ref('refs/merged/re/foo', self.head)
+        self.cards = {'open': [], 'merged': []}
+        ramp.changed()
+        cache.clear()
+
+    def test_a_merged_page_keeps_its_commits_and_files(self):
+        self.as_('justin')
+        tid = self.open_().json()['id']
+        self.merge()
+        panel = work.panel(WorkTiding.objects.get(tiding_id=tid))
+        self.assertEqual(panel['state'], 'merged')
+        self.assertEqual(panel['merge_base'], self.base)
+        self.assertEqual([c['subject'] for c in panel['commits']], ['the foo work'])
+        self.assertEqual(sorted(f['path'] for f in panel['files']), ['app.py', 'new.txt'])  # not other.txt
+        self.assertIn('2', json.dumps(work.diff_of('magenta', panel['merge_base'], self.head, 'app.py')))  # its diff, drawn
+
+    def test_a_merged_work_never_opened_can_have_its_page_opened(self):
+        self.merge()
+        self.as_('justin')
+        r = self.open_()
+        self.assertEqual(r.status_code, 200)
+        panel = work.panel(WorkTiding.objects.get(tiding_id=r.json()['id']))
+        self.assertEqual((panel['state'], panel['merge_base']), ('merged', self.base))
+        self.assertEqual(sorted(f['path'] for f in panel['files']), ['app.py', 'new.txt'])
+        self.assertEqual(Tiding.objects.get().message.mood.slug, 'ramp')
+
+    def test_a_fast_forward_has_no_merge_to_find(self):
+        git(self.repo.bare, 'update-ref', 'refs/heads/main', self.head)
+        self.assertIsNone(work.before_merge(self.repo.bare, 'main', self.head))

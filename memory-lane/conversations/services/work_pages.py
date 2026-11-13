@@ -176,6 +176,22 @@ def with_merged_pages(items):
     return items
 
 
+def _retired(repo, branch):
+    """An item for work githouse merged or closed (refs/merged/, refs/closed/) that never had a page, so its page
+    can open after the fact, diff and all (Justin, 13 Nov). Its title: its head commit's subject."""
+    from .githouse import _sha, repository
+    held = repository(repo)
+    if held is None:
+        return None
+    for kind in ('merged', 'closed'):
+        head = _sha(held, f'refs/{kind}/{branch}')
+        if head:
+            subject = _read(held, 'log', '-1', '--format=%s', head).strip()
+            return {'repo': repo, 'branch': branch, 'number': None, 'title': subject, 'moods': [], 'url': '',
+                    'state': kind, 'head': head}
+    return None
+
+
 def open_page(by, repo, branch):
     """The Tiding for this work, made now if it has none: a 'work' line in its Mood, and the Tiding on it.
     `by` is the person (ThinkingEntity) opening it. Invalid if the ramp doesn't have this work open."""
@@ -185,9 +201,9 @@ def open_page(by, repo, branch):
     have = page_of(repo, branch)
     if have is not None:
         return have.tiding
-    item = find(repo, branch, fresh_if_missing=True)
+    item = find(repo, branch, fresh_if_missing=True) or _retired(repo, branch)
     if item is None:
-        raise Invalid(f'{repo}:{branch} is not open on the ramp', 404)
+        raise Invalid(f'{repo}:{branch} is not open on the ramp, nor merged or closed in githouse', 404)
     mood = None
     for slug in list(item.get('moods') or []) + [HOME_MOOD]:
         mood = Mood.objects.filter(slug=slug).first()
@@ -255,9 +271,13 @@ def panel(work):
     out.update(head=head, base=base, description=(item or {}).get('description', ''))
     if not base:
         return out
-    out['merge_base'] = _git(held, 'merge-base', f'refs/heads/{base}', head).strip()
+    # Merged: what it changed is against its base as it stood just before the merge, not now (Justin, 13 Nov:
+    # "after something is merged, I can't see the diff anymore"). Now, base holds it, so base..head is nothing.
+    before = before_merge(held, base, head) if state == 'merged' else None
+    upto = before or f'refs/heads/{base}'
+    out['merge_base'] = _git(held, 'merge-base', upto, head).strip()
     log = _read(held, 'log', f'--max-count={MAX_COMMITS}', '--format=%H%x00%an%x00%ct%x00%s%x00%b%x1e',
-               f'refs/heads/{base}..{head}')
+               f'{upto}..{head}')
     for entry in log.split('\x1e'):
         parts = entry.strip('\n').split('\0')
         if len(parts) == 5 and _SHA.fullmatch(parts[0]):
@@ -280,6 +300,26 @@ def panel(work):
                        'added': sum(f['added'] or 0 for f in out['files']),
                        'removed': sum(f['removed'] or 0 for f in out['files'])}
     return out
+
+
+def _merge_commit(held, base, head):
+    """The commit on base's own line (first parents) that brought head in: the oldest of them holding it. None if
+    base doesn't hold it, or head is on that line itself (a fast-forward: nothing to tell it from)."""
+    line = _read(held, 'rev-list', '--first-parent', '--ancestry-path', f'{head}..refs/heads/{base}').split()
+    if not line:
+        return None
+    merge = line[-1]
+    parents = _read(held, 'rev-list', '--parents', '-n', '1', merge).split()[1:]
+    return merge if len(parents) > 1 and head not in parents[:1] else None
+
+
+def before_merge(held, base, head):
+    """Base as it stood just before head was merged into it: the merge's first parent, or None."""
+    merge = _merge_commit(held, base, head)
+    if not merge:
+        return None
+    first = _read(held, 'rev-parse', f'{merge}^1').strip()
+    return first if _SHA.fullmatch(first) else None
 
 
 def ramp_merged(repo, head):
