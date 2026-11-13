@@ -270,3 +270,11 @@ class PreviewerCardTest(PageTest):
         with self.wiki():
             self.assertEqual(self.client.head(f'/tidings/{self.tiding.id}/').status_code, 200)
         self.assertEqual(self.client.head('/').status_code, 200)
+
+    def test_a_previewer_given_the_frames_address_is_sent_to_the_card(self):
+        # Justin, 13 Nov: a link pasted with ?embed=1 showed no card in Telegram.
+        got = self.client.get(f'/tidings/{self.tiding.id}/?embed=1', HTTP_USER_AGENT='TelegramBot (like TwitterBot)')
+        self.assertEqual((got.status_code, got['Location']), (302, f'/tidings/{self.tiding.id}/'))
+        with self.wiki():
+            framed = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        self.assertIn('<article class="wikilead">', framed)  # the one page's frame still gets its page

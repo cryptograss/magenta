@@ -75,8 +75,11 @@ def _opened_on_its_own(request):
     """A frame's own address (?embed=1) opened as a whole page -- a link in it opened in a new tab, or its
     address copied and pasted (Justin, 4 Nov: no bar, and leaving it loaded everything again): sent to
     the same place without ?embed, which is the one page showing it. The browser says what it's loading
-    for (Sec-Fetch-Dest); one that doesn't say gets the frame's page, as before."""
-    if request.headers.get('Sec-Fetch-Dest') != 'document':
+    for (Sec-Fetch-Dest); one that doesn't say gets the frame's page, as before. A link previewer doesn't say,
+    and is sent on too, to the address with the card (Justin, 13 Nov: a link pasted into Telegram with
+    ?embed=1 showed no card)."""
+    from .views_moods import PREVIEWER
+    if request.headers.get('Sec-Fetch-Dest') != 'document' and not PREVIEWER.search(request.headers.get('User-Agent', '')):
         return None
     from django.http import QueryDict
     from django.shortcuts import redirect
