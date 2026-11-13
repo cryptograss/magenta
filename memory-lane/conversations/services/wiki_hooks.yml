@@ -41,10 +41,10 @@
   about: The eras, read again now
   run: eras
 
-- name: sprint
-  pages: [Magenta:Current sprint]
-  about: Which sprint is current, read again now
-  run: sprint
+- name: bloom
+  pages: [Magenta:Current bloom, Magenta:Current sprint]
+  about: Which bloom is current, read again now
+  run: bloom
 
 - name: card
   pages: ["User:*"]
