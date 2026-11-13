@@ -33,7 +33,7 @@ INTERRUPT_SOURCE = 'interrupt'
 NEW_MOOD_SOURCE = 'mood-new'
 WORK_SOURCE = 'work'  # services/work_pages.SOURCE: the line a work's page hangs on, never drawn
 EVENT_SOURCES = ('deploy', INTERRUPT_SOURCE, NEW_MOOD_SOURCE, 'wiki', 'release', 'access', 'wiki-upload', 'handoff',
-                 'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task', 'instructions', 'sprint-note',
+                 'merged', 'release-draft', 'tiding-comment', 'agent-settings', 'task', 'instructions', 'sprint-note', 'bloom-note',
                  'helper', 'alarm', 'wiki-missed', 'wiki-hook', 'work')  # work: services/work_pages.py, a work's page opened  # wiki-missed: services/wiki_changes.py; wiki-hook: services/wiki_hooks.py  # helper: a helper its run stopped before it reported (views_runner.finish_turn); alarm: services/alarms.py  # wiki: services/wiki_feed.py; access: services/access.py; wiki-upload: services/wiki_upload.py; handoff: services/handoff.py; merged: services/todo.py; release-draft: services/delivery_kid.py
 # Words posted into a Mood directly, not typed into a session: from the
 # composer, or attested with a key (magenta.sh attest).

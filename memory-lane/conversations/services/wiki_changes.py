@@ -163,9 +163,9 @@ def forget(title, user=''):
 def _pages():
     from . import clips, eras, faq, tour, voice_words
     from .front import SLOGANS_PAGE
-    from .sprint_notes import POINTER
+    from .bloom_notes import OLD_POINTER, POINTER
     return {faq.PAGE: faq.KEY, clips.PAGE: clips.USES_KEY, voice_words.PAGE: 'voice-words', tour.PAGE: tour.KEY,
-            SLOGANS_PAGE: 'front:slogans', eras.PAGE: eras.CACHE_KEY, POINTER: 'current-sprint'}
+            SLOGANS_PAGE: 'front:slogans', eras.PAGE: eras.CACHE_KEY, POINTER: 'current-bloom', OLD_POINTER: 'current-bloom'}
 
 
 class _Pages(dict):

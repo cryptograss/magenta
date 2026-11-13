@@ -213,7 +213,7 @@
   #bellMenu #alerts.bell-off [data-tell] { opacity: .5; }
   #bellMenu #alerts select { font: inherit; margin-left: auto; }  /* chosen, but nothing tells until the bell's on */
   #bellMenu #alerts label[hidden] { display: none; }
-  /* The block, the servers and the sprint: one button, its menu under it (Justin, 3 Nov). */
+  /* The block, the servers and the bloom: one button, its menu under it (Justin, 3 Nov). */
   header .statewrap { position: relative; display: inline-flex; align-items: center; }
   #stateBtn { border: 1px solid var(--line); border-radius: 10px; background: none; padding: 2px 6px; cursor: pointer; display: inline-flex;
               align-items: center; gap: 4px; color: var(--muted); font: inherit; font-size: 11px; }
@@ -242,9 +242,9 @@
   #helpMenu a.soon:hover b { color: var(--ink); }
   /* A phone: the menu hangs under the whole header, not off the left edge of a 390px screen. */
   @media (max-width: 640px) { #helpMenu { position: fixed; left: 10px; right: 10px; top: 46px; min-width: 0; max-width: none; } }
-  #stateMenu .block, #stateMenu .sprint { padding: 2px 0 6px; color: var(--ink); }
-  #stateMenu .sprint[hidden] { display: none; }
-  #stateMenu .sprint a { color: var(--accent); }
+  #stateMenu .block, #stateMenu .bloom { padding: 2px 0 6px; color: var(--ink); }
+  #stateMenu .bloom[hidden] { display: none; }
+  #stateMenu .bloom a { color: var(--accent); }
   #stateMenu #serverPop { position: static; min-width: 0; border: 0; box-shadow: none; padding: 0; background: none; border-top: 1px solid var(--line); }
   /* The servers: four dots, pulsing while one is being redeployed. */
   .servers { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
@@ -1822,12 +1822,12 @@
   <span class="sections" role="navigation" aria-label="Sections"><a href="/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/ramp/" data-section="ramp" title="The ramp: every open candidate branch, the last few merged">ramp</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" aria-haspopup="true" aria-expanded="false" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" hidden><a href="/prompts/" data-section="prompts">prompts</a><a href="/status/" data-section="status">status</a><a href="/todo/" data-section="todo">todo</a><a href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a><a href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a><a href="/traffic/" data-section="traffic" title="Traffic: who comes to magenta and PickiPedia, and from where (public dashboards, no addresses)">stats</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
-  <!-- The block, the servers and the sprint, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
+  <!-- The block, the servers and the bloom, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
   <span class="statewrap">
-    <button type="button" id="stateBtn" aria-haspopup="true" aria-expanded="false" title="The block, the servers and the sprint"><span class="servers" id="servers"></span><span class="caret">▾</span></button>
+    <button type="button" id="stateBtn" aria-haspopup="true" aria-expanded="false" title="The block, the servers and the bloom"><span class="servers" id="servers"></span><span class="caret">▾</span></button>
     <div id="stateMenu" hidden>
       <div class="block" id="block" title="Ethereum mainnet's block height"></div>
-      <div class="sprint" id="sprintLine" hidden></div>
+      <div class="bloom" id="bloomLine" hidden></div>
     </div>
   </span>
   <!-- Help, for whoever is new here (Justin, 7 Nov): each line goes to the one place its answer lives. The tour
@@ -4019,7 +4019,7 @@
     // ★ a message's link onto Tidings (services/tiding_links.py): anyone signed in, once.
     const promoted = new Set((t.tidings || []).map(x => x.url));
     const mayPromote = viewer && !t.deleted && (t.links || []).some(u => !promoted.has(u));
-    // 📝 into your notes for the current sprint (services/sprint_notes.py): a person's, any message.
+    // 📝 into your notes for the current bloom (services/bloom_notes.py): a person's, any message.
     const mayNote = viewer && human[viewer] !== false && !t.deleted;
     // 📌 to the Mood's top (services/pins.py): anyone signed in with a key.
     const mayPin = keyHolder && !t.deleted;
@@ -4632,8 +4632,8 @@
       prev = null;
       return;
     }
-    if (e.type === 'sprint-note') {  // a message added to sprint notes (services/sprint_notes.py; Justin, 30 Oct)
-      el.className = 'event sprint-note';
+    if (e.type === 'bloom-note' || e.type === 'sprint-note') {  // a message added to bloom notes (services/bloom_notes.py; Justin, 30 Oct; sprint-note: before 13 Nov)
+      el.className = 'event bloom-note';
       const who = `<b>${esc(shown(e.by || 'someone'))}</b>`;
       const isHere = !e.mood || e.mood === current;
       const msgLink = e.message
@@ -4641,8 +4641,8 @@
         : 'a message';
       const author = e.message_by && e.message_by !== e.by ? ` by <b>${esc(shown(e.message_by))}</b>` : '';
       const notes = e.url
-        ? `<a href="${esc(e.url)}" target="_blank" rel="noopener"><b>${esc(e.sprint || 'sprint')} notes</b></a>`
-        : `<b>${esc(e.sprint || 'sprint')} notes</b>`;
+        ? `<a href="${esc(e.url)}" target="_blank" rel="noopener"><b>${esc(e.bloom || e.sprint || 'bloom')} notes</b></a>`
+        : `<b>${esc(e.bloom || e.sprint || 'bloom')} notes</b>`;
       el.innerHTML = `📝 ${who} added ${msgLink}${author} to their ${notes} · ${esc(stamp(e.created_at))}`;
       container.appendChild(el);
       prev = null;
@@ -4984,7 +4984,7 @@
   const serverPop = document.createElement('div');
   serverPop.id = 'serverPop'; serverPop.hidden = true;
   const stateMenu = document.getElementById('stateMenu'), stateBtn = document.getElementById('stateBtn');
-  const sprintLine = document.getElementById('sprintLine');
+  const bloomLine = document.getElementById('bloomLine');
   stateMenu.appendChild(serverPop);
   let serversAt = 0, serverList = [];
   const PAGE_VERSION = "{{ page_version|escapejs }}";
@@ -5012,9 +5012,9 @@
     const worst = states.includes('down') ? 'down' : states.includes('deploying') ? 'deploying' : 'up';
     serversEl.innerHTML = serverList.length ? `<span class="srv ${worst}"></span>` : '';
     stateBtn.title = serverList.map((sv, i) => `${sv.name}: ${states[i] === 'deploying' ? 'redeploying' : states[i] === 'up' ? 'up' : 'not answering'}`).join('\n')
-      + (got.sprint ? `\nsprint: ${got.sprint.name}` : '');
-    sprintLine.hidden = !got.sprint;
-    if (got.sprint) sprintLine.innerHTML = `sprint: <a href="${esc(got.sprint.url)}" target="_blank" rel="noopener"><b>${esc(got.sprint.name)}</b></a>`;
+      + (got.bloom ? `\nbloom: ${got.bloom.name}` : '');
+    bloomLine.hidden = !got.bloom;
+    if (got.bloom) bloomLine.innerHTML = `bloom: <a href="${esc(got.bloom.url)}" target="_blank" rel="noopener"><b>${esc(got.bloom.name)}</b></a>`;
     renderServerPop();
   }
   // A server's portrait, light and dark where its page has both. The light one as it always was
@@ -7068,7 +7068,7 @@
       if (msgMenu._for === more) { closeMsgMenu(); return; }
       msgMenu.innerHTML = (more.dataset.pin ? `<button type="button" role="menuitem" data-act="pin">${pinsNow.some(p => p.id === more.dataset.more) ? '📌 Unpin' : '📌 Pin to the top'}</button>` : '')
         + (more.dataset.promote ? '<button type="button" role="menuitem" data-act="promote">★ Promote to Tidings</button>' : '')
-        + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my sprint notes</button>'
+        + (more.dataset.note ? '<button type="button" role="menuitem" data-act="note">📝 Add to my bloom notes</button>'
           + '<button type="button" role="menuitem" data-act="wiki">⧉ Copy for PickiPedia</button>'
           + '<button type="button" role="menuitem" data-act="wiki-inline">⧉ Copy as a PickiPedia citation</button>' : '')
         + ((more.dataset.promote || more.dataset.note) && (more.dataset.edit || more.dataset.delete) ? '<hr>' : '')
@@ -7144,12 +7144,12 @@
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify(body || {}) })
       .then(async r => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.error || r.status); return b; });
   }
-  // Into your notes for the current sprint, on PickiPedia: said where, with the page a click away.
+  // Into your notes for the current bloom, on PickiPedia: said where, with the page a click away.
   async function noteMessage(id) {
-    showNote('Adding it to your sprint notes…', 4000);
+    showNote('Adding it to your bloom notes…', 4000);
     try {
-      const done = await changeMessage(id, 'sprint-note');
-      showNote(`${done.already ? 'Already in' : 'Added to'} your ${esc(done.sprint)} notes: `
+      const done = await changeMessage(id, 'bloom-note');
+      showNote(`${done.already ? 'Already in' : 'Added to'} your ${esc(done.bloom)} notes: `
         + `<a href="${esc(done.url)}" target="_blank" rel="noopener">${esc(done.page)}</a>`, 9000, true);
     } catch (err) { showNote(`Not added: ${err.message}`, 9000); }
   }

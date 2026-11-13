@@ -63,8 +63,9 @@ urlpatterns = [
     path('api/moods/<slug:slug>/say/', views_auth.api_say, name='api_mood_say'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/edit/', views_auth.api_message_edit, name='api_message_edit'),
     path('api/moods/<slug:slug>/messages/<str:message_id>/promote/', views_auth.api_message_promote, name='api_message_promote'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/sprint-note/', views_auth.api_message_sprint_note,
-         name='api_message_sprint_note'),
+    path('api/moods/<slug:slug>/messages/<str:message_id>/bloom-note/', views_auth.api_message_bloom_note,
+         name='api_message_bloom_note'),
+    path('api/moods/<slug:slug>/messages/<str:message_id>/sprint-note/', views_auth.api_message_bloom_note),  # a page loaded before 13 Nov
     path('api/tidings/badges/', views_settings.api_tidings_badges, name='api_tidings_badges'),
     path('api/tidings/find/', views_settings.api_tidings_find, name='api_tidings_find'),
     path('api/tidings/release/', views_auth.api_tiding_release, name='api_tiding_release'),

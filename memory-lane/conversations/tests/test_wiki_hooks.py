@@ -24,7 +24,7 @@ class RegistryTest(TestCase):
         for title, names in (('Magenta:Interface', ['words']), ('Magenta:System_Messages', ['words']),
                              ('Magenta:FAQ', ['faq']), ('Magenta:Clips', ['clips']), ('Magenta:Voice', ['voice']),
                              ('Magenta:Tour', ['tour']), ('Magenta:Slogans', ['slogans']), ('Cryptograss:Eras', ['eras']),
-                             ('Magenta:Current sprint', ['sprint']), ('User:Slvrbckt', ['card']),
+                             ('Magenta:Current bloom', ['bloom']), ('User:Slvrbckt', ['card']),
                              ('User:Slvrbckt/sandbox', []), ('Cryptograss:Emergents/Magent/Instructions', ['emergent']),
                              ('Cryptograss:Moods/interfaces/Instructions', ['mood-doc']),
                              ('Cryptograss:Moods/interfaces/todo', ['todo']), ('File:August-notification.flac', ['file']),

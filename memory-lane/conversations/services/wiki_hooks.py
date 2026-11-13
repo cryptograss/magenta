@@ -97,11 +97,11 @@ def _eras(_title, _user):
     return f'{len(eras.eras())} eras read again'
 
 
-def _sprint(_title, _user):
-    from . import sprint_notes
-    cache.delete('current-sprint')
-    name, _ = sprint_notes.current()
-    return f'current sprint: {name}'
+def _bloom(_title, _user):
+    from . import bloom_notes
+    cache.delete('current-bloom')
+    name, _ = bloom_notes.current()
+    return f'current bloom: {name}'
 
 
 def _card(title, _user):

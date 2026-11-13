@@ -310,10 +310,10 @@ def api_message_edit(request, slug, message_id):
 
 
 @require_POST
-def api_message_sprint_note(request, slug, message_id):
-    """Add a message to your own notes for the current sprint, on PickiPedia (services/sprint_notes.py). A person's."""
+def api_message_bloom_note(request, slug, message_id):
+    """Add a message to your own notes for the current bloom, on PickiPedia (services/bloom_notes.py). A person's."""
     from .models import MessageChange
-    from .services import sprint_notes
+    from .services import bloom_notes
     from .views_admin import locked_response
     if locked_response():
         return locked_response()
@@ -325,11 +325,11 @@ def api_message_sprint_note(request, slug, message_id):
         return JsonResponse({'error': 'no such message in this Mood'}, status=404)
     if MessageChange.objects.filter(message_id=message.id, kind='deleted').exists():
         return JsonResponse({'error': 'that message was deleted'}, status=410)
-    if not _under_limit(f'sprint-note:{device.pk}', 10):
+    if not _under_limit(f'bloom-note:{device.pk}', 10):
         return JsonResponse({'error': 'slow down'}, status=429)
     try:
-        return JsonResponse(sprint_notes.add(message, device.entity_id))
-    except sprint_notes.Refused as e:
+        return JsonResponse(bloom_notes.add(message, device.entity_id))
+    except bloom_notes.Refused as e:
         return JsonResponse({'error': str(e)}, status=e.status)
 
 
