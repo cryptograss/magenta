@@ -64,6 +64,8 @@ DEFAULTS = {
     'move-inform': 'This thread moved from {from} to {to}, and belongs to {to} now. Its worktrees go under {dir}',
     'move-inform-ask': "Tell the thread: a line here, from you, that its emergents read at their next wake",
     'move-button': 'Move the thread',
+    # On PickiPedia, not here: the box atop a page that is a tiding (Justin, 13 Nov), linking to it.
+    'wiki-tiding-banner': 'This article has been shared as a tiding on magenta.  See the discussion there as well.',
 }
 
 # The team's defaults for the bell's sounds and notifications, for a browser whose person hasn't chosen (Justin,

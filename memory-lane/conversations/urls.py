@@ -181,6 +181,7 @@ urlpatterns = [
     path('api/mentions/<slug:name>/', views_moods.api_mentions, name='api_mentions'),
     path('api/wiki/preview/', views_moods.api_wiki_preview, name='api_wiki_preview'),
     path('api/wiki/exists/', views_moods.api_wiki_exists, name='api_wiki_exists'),
+    path('api/wiki/tiding/', views_moods.api_wiki_tiding, name='api_wiki_tiding'),
     path('api/wiki/titles/', views_moods.api_wiki_titles, name='api_wiki_titles'),
     path('api/people/<str:name>/card/', views_moods.api_person_card, name='api_person_card'),
     path('api/people/<str:name>/feed/', views_moods.api_person_feed, name='api_person_feed'),

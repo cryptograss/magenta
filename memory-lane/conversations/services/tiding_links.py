@@ -228,6 +228,52 @@ def by_message():
 
 def _changed():
     cache.delete(_BY_MESSAGE)
+    cache.delete(_ON_WIKI)
+
+
+# A PickiPedia page that is a tiding says so, in a banner on the page (Justin, #interfaces, 13 Nov 2026): the
+# wiki asks api/wiki/tiding/ with its title, and draws what this answers.
+_ON_WIKI = 'tidings:on-wiki'
+ON_WIKI_KEPT = 300  # seconds; promoting or withdrawing one drops it at once (_changed)
+
+
+def wiki_title(url):
+    """The PickiPedia page a link names, as the wiki titles it, or None: not a page of its as it reads."""
+    from urllib.parse import unquote
+    from .mood_view import pickipedia_url
+    parts = urlsplit(url or '')
+    wiki = urlsplit(pickipedia_url())
+    host = (parts.hostname or '').lower().removeprefix('www.')
+    if host != (wiki.hostname or '').lower().removeprefix('www.') or not parts.path.startswith('/wiki/') or parts.query:
+        return None
+    return wiki_page(unquote(parts.path[len('/wiki/'):]))
+
+
+def wiki_page(title):
+    """A title as the wiki has it: spaces, not underscores; its first letter (after a namespace) a capital."""
+    title = re.sub(r'\s+', ' ', (title or '').replace('_', ' ')).strip()
+    space, colon, rest = title.partition(':')
+    if colon and rest and re.fullmatch(r'[A-Za-z]+', space):
+        rest = rest.strip()
+        return f'{space[:1].upper()}{space[1:]}:{rest[:1].upper()}{rest[1:]}'
+    return title[:1].upper() + title[1:] if title else None
+
+
+def on_wiki(title):
+    """The Tiding a PickiPedia page is, if it's on Tidings: the first promoted, its message not taken back."""
+    from conversations.models import Tiding
+    from .retract import DELETED
+    index = cache.get(_ON_WIKI)
+    if index is None:
+        index = {}
+        for tiding in Tiding.objects.select_related('message').filter(
+                work__isnull=True, url__contains='/wiki/').order_by('at'):
+            page = wiki_title(tiding.url)
+            if page and page not in index and tiding.message.mood_id is not None \
+                    and (said_of(tiding.message) or '') != DELETED:
+                index[page] = str(tiding.id)
+        cache.set(_ON_WIKI, index, ON_WIKI_KEPT)
+    return index.get(wiki_page(title) or '')
 
 
 def promote_many(message, by, urls, http=None, title=None, tags=None):
