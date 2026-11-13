@@ -43,12 +43,31 @@ class PageRows(SimpleTestCase):
 
 
 class WritePage(SimpleTestCase):
-    def bot(self, text=PAGE, result='Success'):
+    def bot(self, text=PAGE, result='Success', history=None):
         bot = mock.Mock()
         bot.login.return_value = True
-        bot.read.return_value = {'revid': 7, 'timestamp': 't', 'slots': {'main': {'content': text}}}
+        revisions = history or [('JMyles', text)]
+        bot.http.get.return_value.json.return_value = {'query': {'pages': [{'revisions': [
+            {'revid': 9 - i, 'timestamp': 't', 'user': user, 'slots': {'main': {'content': t}}}
+            for i, (user, t) in enumerate(revisions)]}]}}
         bot.edit.return_value = {'edit': {'result': result}}
         return bot
+
+    def test_a_strangers_edit_on_top_is_not_passed_on(self):
+        # re, 13 Nov: built on the page as it plays, not on whatever is newest.
+        bot = self.bot(history=[('Stranger', PAGE.replace('huh || https://www.yarn.co/yarn-clip/ffb40a1a', 'huh || https://www.yarn.co/yarn-clip/deadbeef')),
+                                ('JMyles', PAGE)])
+        with self.settings(PICKIPEDIA_TODO_BOT_USER='DrivingThatTrain@x'):
+            self.assertEqual(clips.write_page('all-individuals', 'https://magenta.cryptograss.live/clips/33333333-3333-4333-8333-333333333333', 'justin', bot=bot), 'written')
+        title, text, summary, revision = bot.edit.call_args.args
+        self.assertIn('yarn-clip/ffb40a1a', text)
+        self.assertNotIn('deadbeef', text)
+        self.assertEqual(revision['revid'], 9)  # saved over the newest, so no conflict
+
+    def test_no_revision_that_counts_no_edit(self):
+        bot = self.bot(history=[('Stranger', PAGE)])
+        self.assertEqual(clips.write_page('roger', None, 'justin', bot=bot), 'refused')
+        bot.edit.assert_not_called()
 
     def test_a_save_writes_its_row(self):
         bot = self.bot()

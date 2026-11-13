@@ -284,10 +284,9 @@ def write_page(name, link=None, by='', bot=None):
     if not bot.login():
         return 'refused'
     for _ in range(3):
-        revision = bot.read(PAGE)
-        if revision is None:
+        revision, text = playing(bot)
+        if revision is None or text is None:
             return 'refused'
-        text = revision['slots']['main']['content']
         new = page_with(text, name, link) if link else page_without(text, name)
         if new is None:
             return 'refused'
@@ -301,6 +300,27 @@ def write_page(name, link=None, by='', bot=None):
         if (done.get('error') or {}).get('code') != 'editconflict':
             return 'refused'
     return 'refused'
+
+
+def playing(bot):
+    """(the page's newest revision, the text of its newest by a trusted editor or the bot): the page as it plays
+    (page()), so the bot never passes on, as its own, an edit by someone else (re, 13 Nov). Built on that text and
+    saved over the newest revision, a save's row undoes such an edit, which never played anyway.
+    (None, None) if there's no page; (revision, None) if none of its recent revisions counts."""
+    try:
+        from poller.wiki_rules import EDITORS
+    except ImportError:
+        from wiki_rules import EDITORS
+    counts = {e.lower().replace('_', ' ') for e in EDITORS} | ({bot_name()} - {''})
+    found = bot.http.get(bot.api, params={'action': 'query', 'prop': 'revisions', 'titles': PAGE, 'rvslots': 'main',
+                                          'rvprop': 'content|ids|timestamp|user', 'rvlimit': 20,
+                                          'formatversion': 2, 'format': 'json'}, timeout=10).json()['query']['pages'][0]
+    revisions = [] if found.get('missing') else found.get('revisions') or []
+    if not revisions:
+        return None, None
+    text = next((r['slots']['main']['content'] for r in revisions
+                 if (r.get('user') or '').lower().replace('_', ' ') in counts), None)
+    return revisions[0], text
 
 
 def page_later(posted, by):
