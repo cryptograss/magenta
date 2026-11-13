@@ -15,27 +15,17 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/moods/mark-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/moods/mark-192.png">
 <link rel="apple-touch-icon" href="/moods/icon-180.png">
+{% include "conversations/_theme.html" %}
 <style>
+  /* This page's own colours, after the shared ones (_theme.html): the shared --hover and --err, solid here. */
   :root {
-    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
-    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1;
-    --human: #2a5d9f; --agent: #b8106b; --code: #f3efe8; --mention: #fff3c4; --for-me: #d9a400;
-    --hover: #f6f3ee; --warn-ink: #7a4b00; --warn-bg: #ffe9b0; --dot-edge: #d6cfc2; --err: #b3261e;
-    --wl-blue: #3b6fb6; --wl-red: #b5574d;  /* wiki links: a page that exists, one that doesn't yet */
-    --heat-1: #5a9a6e; --heat-2: #2f8a55;  /* a Mood's warmth: sage, then a deeper green (moodWarmth; Justin, 5 Nov: amber and red felt urgent) */
-    --spoke-h-ink: #fff; --spoke-h: #4f9466;  /* a person spoke lately: a soft green (moodWarmth; Justin, 5 Nov: orange felt urgent; 1 Nov: #2e7d32 was "too much") */
-  }
-  /* Dark, when the system is: the same tokens, night colours. */
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
-      --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b;
-      --human: #86b4f0; --agent: #ef5aa6; --code: #29252c; --mention: #4a3f12; --for-me: #c99a1e;
-      --hover: #262228; --warn-ink: #ffd27a; --warn-bg: #3b2c08; --dot-edge: #4d4652; --err: #ff8a80;
-      --wl-blue: #8fb4ea; --wl-red: #e2918a;
-      --heat-1: #8fc4a0; --heat-2: #7dd49c;
-      --spoke-h: #93c9a4; --spoke-h-ink: #161417;
-    }
+    --hover: light-dark(#f6f3ee, #262228); --err: light-dark(#b3261e, #ff8a80);
+    --human: light-dark(#2a5d9f, #86b4f0); --agent: light-dark(#b8106b, #ef5aa6);
+    --mention: light-dark(#fff3c4, #4a3f12); --for-me: light-dark(#d9a400, #c99a1e);
+    --warn-ink: light-dark(#7a4b00, #ffd27a); --warn-bg: light-dark(#ffe9b0, #3b2c08); --dot-edge: light-dark(#d6cfc2, #4d4652);
+    --wl-blue: light-dark(#3b6fb6, #8fb4ea); --wl-red: light-dark(#b5574d, #e2918a);  /* wiki links: a page that exists, one that doesn't yet */
+    --heat-1: light-dark(#5a9a6e, #8fc4a0); --heat-2: light-dark(#2f8a55, #7dd49c);  /* a Mood's warmth: sage, then a deeper green (moodWarmth; Justin, 5 Nov: amber and red felt urgent) */
+    --spoke-h-ink: light-dark(#fff, #161417); --spoke-h: light-dark(#4f9466, #93c9a4);  /* a person spoke lately: a soft green (moodWarmth; Justin, 5 Nov: orange felt urgent; 1 Nov: #2e7d32 was "too much") */
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -9991,7 +9981,11 @@
     lookBox.querySelector('.artname').textContent = shown(viewer);
     lookCodes = cellsOf(mine.colours || '');
     lookBacks = cellsOf(mine.backs || '');
-    lookColour.value = mine.colour || getComputedStyle(document.body).getPropertyValue('--human').trim() || '#2a5d9f';
+    // --human is light-dark(day, night), which reads back as just that; what it paints now is a colour, as rgb().
+    lookColour.style.color = 'var(--human)';
+    const human = '#' + (getComputedStyle(lookColour).color.match(/\d+/g) || []).slice(0, 3)
+      .map(n => (+n).toString(16).padStart(2, '0')).join('');
+    lookColour.value = mine.colour || (human.length === 7 ? human : '#2a5d9f');
     previewLook();
     lookBox.showModal();
   });

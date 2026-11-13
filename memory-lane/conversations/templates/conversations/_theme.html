@@ -1,0 +1,17 @@
+{% comment %}
+The colours every magenta page shares, light and dark: one place, so the pages can't drift apart. Each value is
+light-dark(the day's, the night's); color-scheme says the page takes both, as the system is. A page's own colours
+(a person's --who, the wiki's blue) stay in its own :root, after this, and may redefine one of these.
+Included at the top of each page's <head>, before its own <style>.
+{% endcomment %}
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#fbfaf7, #161417); --panel: light-dark(#ffffff, #1f1c20);
+    --ink: light-dark(#1f1d1a, #ece7e1); --muted: light-dark(#6b6560, #a39b93);
+    --line: light-dark(#e6e1d8, #36313a); --accent: light-dark(#b8106b, #ef5aa6);
+    --accent-soft: light-dark(#fbe7f1, #3a1a2b); --code: light-dark(#f3efe8, #29252c);
+    --hover: light-dark(rgba(0,0,0,.04), rgba(255,255,255,.05));
+    --ok: #2e9e5b; --warn: #d48806; --err: #c0392b;  /* the same by day and night, as they were */
+  }
+</style>
