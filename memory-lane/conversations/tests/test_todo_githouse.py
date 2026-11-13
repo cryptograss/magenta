@@ -82,6 +82,11 @@ class BranchGoneTest(GithouseRefsTest):
         self.assertIs(githouse.branch_gone('magenta', 're/closed-one'), False)
         self.assertIsNone(githouse.branch_gone('arthel', 're/x'))            # a repository githouse doesn't hold
 
+    def test_a_branch_fetched_from_github_is_not_gone(self):
+        # githouse keeps GitHub's branches as refs/remotes/github/<branch>, not refs/heads/.
+        self.repo.ref('refs/remotes/github/magent/github-only', self.repo.commit('more'))
+        self.assertIs(githouse.branch_gone('magenta', 'magent/github-only'), False)
+
     def test_a_merge_ask_for_a_gone_branch_is_answered(self):
         from conversations.services.tools_ask import unmerged
         works = unmerged('magenta:magent/front-page-feeds and magenta:re/live-one')
