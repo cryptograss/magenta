@@ -4911,7 +4911,7 @@
     const run = line.closest('.deployrun');
     if (run) sayRun(run);
     prev = null;
-    refreshServers(true);  // the dots, now
+    serversSoon();  // the dots, now
     return started ? null : line;
   }
   // Redeploys in a row, nothing said between them, fold into one line: how many times each server
@@ -4996,6 +4996,12 @@
   const PAGE_VERSION = "{{ page_version|escapejs }}";
   const reloadNudge = document.getElementById('reloadNudge');
   reloadNudge.addEventListener('click', () => location.reload());
+  // A deploy line drawn: the dots asked again, once for however many lines are drawn together. Asked per line, a
+  // Mood's history of thirty redeploys asked /api/servers/ thirty times on opening (12 Nov).
+  let serversSoonT = null;
+  function serversSoon() {
+    if (!serversSoonT) serversSoonT = setTimeout(() => { serversSoonT = null; refreshServers(true); }, 200);
+  }
   async function refreshServers(force) {
     if (!force && Date.now() - serversAt < 60000) return;
     serversAt = Date.now();
