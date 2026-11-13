@@ -968,7 +968,8 @@
   #composer .note.memo-note.quiet { color: var(--ink); }
   #composer .note.memo-note.quiet .again { display: inline; min-width: 0; height: auto; border-radius: 0; font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
   .turn .editbox { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
-                   background: var(--panel); color: var(--ink); resize: vertical; }
+                   background: var(--panel); color: var(--ink); resize: vertical;
+                   field-sizing: content; min-height: 60px; max-height: 400px; }
   .turn .editbar { margin-top: 4px; }
   .turn .editbar button { font: inherit; font-size: 12.5px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 5px;
                           background: var(--panel); color: var(--ink); cursor: pointer; }
@@ -1199,7 +1200,8 @@
   #activity, #catchup, #composer { max-width: 760px; margin: 0 auto; }  /* the reading column's width */
   #composer { display: none; position: relative; padding: 10px 16px 14px; }
   body.writer #composer { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
-  #composer textarea { flex: 1; font-family: inherit; line-height: inherit; min-height: 44px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+  /* field-sizing: the box is as tall as its words, from one line to max-height, then it scrolls. */
+  #composer textarea { flex: 1; font-family: inherit; line-height: inherit; field-sizing: content; min-height: 44px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
   #composer button { font: inherit; padding: 8px 14px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
   #composer button:disabled { opacity: .5; cursor: default; }
   /* A tiny chevron at the top centre: pull the box up to write at length, and back down (Justin, 27 Oct).
@@ -1210,7 +1212,7 @@
     background: var(--panel); color: var(--muted); font-size: 9px; line-height: 11px; text-align: center;
     cursor: pointer; z-index: 2; }
   #composer .expand:hover { color: var(--accent); border-color: var(--accent); }
-  body.say-expanded #composer textarea { max-height: 85vh; }
+  body.say-expanded #composer textarea { height: 60dvh; max-height: 85vh; }
   /* A word from the page (an error, a note) goes on its own line under the box: beside it, a
      long one squeezed the box to a sliver on a phone, and you couldn't type to clear it. */
   #composer textarea { min-width: 0; }
@@ -1779,8 +1781,11 @@
     #jump { right: 3px; }
     :root { --text-base: 16.5px; }
     #composer { padding: 6px 8px 8px; gap: 6px; }
-    /* No grip: a finger finds it by accident. The box grows with its text instead (fitSay). */
-    #composer .field textarea { min-height: 38px; padding: 8px 4px; }
+    /* No grip: a finger finds it by accident. The box grows with its words to a quarter of what's on screen,
+       never under about three lines. --seen is the visual viewport's height, set by the script: with the keyboard
+       up an iPhone's vh and dvh are still the whole screen, so 40vh was most of what's left above the keys
+       (Skyler, 8 and 12 Nov). */
+    #composer .field textarea { min-height: 38px; padding: 8px 4px; max-height: max(80px, calc(var(--seen, 100dvh) * .25)); }
     #composer textarea::placeholder { white-space: nowrap; overflow: hidden; }
     /* Once there are words, the field is theirs (Skyler, 12 Nov: "still really large on mobile"): ? and 🎙 step
        aside, as Signal's mic gives way to Send, so a line holds a line's worth and the box needn't grow to fit.
@@ -2122,6 +2127,9 @@
   // filter is not a permission. Everything here stays readable to anyone.
   const PHONE = '(max-width: 720px), (pointer: coarse) and (max-height: 520px)';  // as the stylesheet's phone layout
   const COARSE = matchMedia('(pointer: coarse)').matches;  // a finger, not a mouse
+  // Mid-composition (an IME: Japanese, Chinese, Korean), Enter picks the candidate; it isn't ours to act on.
+  // Safari has already ended the composition by that keydown, and says so only by keyCode 229.
+  const composing = e => e.isComposing || e.keyCode === 229;
   const store = {
     get(k, d) { try { const v = localStorage.getItem('moods.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('moods.' + k, JSON.stringify(v)); } catch (e) {} },
@@ -3336,7 +3344,7 @@
         try { await nameFace(f, input.value.trim()); } catch (err) { tag.textContent = err.message; }
       };
       input.addEventListener('keydown', ev => {
-        if (ev.key === 'Enter') { ev.preventDefault(); go(); }
+        if (ev.key === 'Enter' && !composing(ev)) { ev.preventDefault(); go(); }
         if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); whoIsIn(lightbox.querySelector('img').src); }
       });
       tag.querySelector('.ok').addEventListener('click', ev => { ev.stopPropagation(); go(); });
@@ -4244,7 +4252,7 @@
   const closeEmojiPicker = () => { emojiPicker.hidden = true; emojiPick = null; };
   epSearch.addEventListener('input', drawEmoji);
   epSearch.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); epGrid.querySelector('button[data-e]')?.click(); }
+    if (e.key === 'Enter' && !composing(e)) { e.preventDefault(); epGrid.querySelector('button[data-e]')?.click(); }
   });
   emojiPicker.addEventListener('click', e => {
     const cell = e.target.closest('button[data-e]');
@@ -7246,10 +7254,9 @@
     const body = el.querySelector('.body');
     if (!body || body.querySelector('textarea')) return;
     const before = body.innerHTML;
-    body.innerHTML = '<textarea class="editbox" rows="3"></textarea><div class="editbar"><button type="button" class="editsave">Save</button> <button type="button" class="editcancel">Cancel</button></div>';
+    body.innerHTML = '<textarea class="editbox"></textarea><div class="editbar"><button type="button" class="editsave">Save</button> <button type="button" class="editcancel">Cancel</button></div>';
     const box = body.querySelector('textarea');
     box.value = el._text || '';
-    box.style.height = Math.min(400, Math.max(60, box.scrollHeight + 4)) + 'px';
     box.focus();
     const done = () => { if (then) then(); };
     const cancel = () => { body.innerHTML = before; done(); };
@@ -7261,7 +7268,7 @@
     };
     box.addEventListener('keydown', k => {
       if (k.key === 'Escape') { k.preventDefault(); cancel(); return; }
-      if (k.key !== 'Enter' || k.isComposing || k.keyCode === 229) return;
+      if (k.key !== 'Enter' || composing(k)) return;
       if (k.ctrlKey || k.metaKey) {  // a new line, as in the composer
         k.preventDefault();
         const at = box.selectionStart;
@@ -8376,7 +8383,7 @@
   }
   sayBox.addEventListener('input', () => { chosen = 0; showSuggest(); });
   sayBox.addEventListener('keydown', e => {
-    if (!suggest.classList.contains('on')) return;
+    if (!suggest.classList.contains('on') || composing(e)) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault(); chosen = (chosen + (e.key === 'ArrowDown' ? 1 : choices.length - 1)) % choices.length; showSuggest();
     } else if ((e.key === 'Enter' && !e.ctrlKey && !e.metaKey) || e.key === 'Tab') {
@@ -8442,37 +8449,15 @@
   window.visualViewport?.addEventListener('resize', unslide);
   // And if it was left slid anyway, the next touch on the thread puts it back: no hunting for the bar's last pixel.
   document.querySelector('main')?.addEventListener('touchstart', unslide, {passive: true});
-  // On a phone: one line until there's more to say, growing with the text to a quarter of what's on screen,
-  // then scrolling. What's on screen is the visual viewport: with the keyboard up, an iPhone's vh is still the
-  // whole screen, so 40vh was most of what's left above the keys (Skyler, 8 and 12 Nov).
-  const phone = matchMedia(PHONE).matches;
-  const SAY_SHARE = 0.25;
-  function fitSay() {
-    if (!phone || document.body.classList.contains('say-expanded')) return;
-    // Empty, it's one line again: an empty textarea's scrollHeight counts its
-    // placeholder, wrapped to the box's width, so measuring it then made the
-    // box as tall as the placeholder written a word per line.
-    if (!sayBox.value) { sayBox.style.height = ''; sayBox.style.maxHeight = ''; return; }
-    const seen = window.visualViewport?.height || innerHeight;
-    const most = Math.max(80, Math.round(seen * SAY_SHARE));  // never under about three lines
-    sayBox.style.maxHeight = most + 'px';
-    sayBox.style.height = 'auto';
-    sayBox.style.height = Math.min(sayBox.scrollHeight + 2, most) + 'px';
-  }
-  // Short: a phone's box is narrow, and a placeholder can't wrap or end in an ellipsis there.
-  sayBox.addEventListener('input', fitSay);
-  addEventListener('resize', fitSay);  // turning the phone rewraps what's typed
-  window.visualViewport?.addEventListener('resize', fitSay);  // the keyboard coming and going
+  // On a phone the box stops growing at a quarter of what's on screen (the stylesheet's --seen). What's on screen
+  // is the visual viewport, which only the script can read: no CSS unit shrinks for an iPhone's keyboard.
+  const onScreen = () => document.documentElement.style.setProperty('--seen', window.visualViewport.height + 'px');
+  if (window.visualViewport) { onScreen(); window.visualViewport.addEventListener('resize', onScreen); }  // the keyboard coming and going
 
   // The chevron at the box's top centre: pull it up to a long box, and back to the size it was (Justin, 27 Oct).
   const expandBtn = document.getElementById('expandComposer');
   const expandSay = on => {
-    const was = expandSay.height ?? '';
-    if (on) expandSay.height = sayBox.style.height;  // whatever it was: a drag, or fitSay's
-    sayBox.style.height = on ? Math.round(innerHeight * 0.6) + 'px' : was;
-    sayBox.style.maxHeight = '';  // pulled up, the stylesheet's 85vh holds, not fitSay's quarter
-    document.body.classList.toggle('say-expanded', on);
-    if (!on) fitSay();  // back down: to the words' height, within the quarter
+    document.body.classList.toggle('say-expanded', on);  // the stylesheet's height; back down, the words' own
     expandBtn.textContent = on ? '▾' : '▴';
     expandBtn.title = on ? 'Collapse the box' : 'Expand the box to write at length';
     expandBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
@@ -10255,7 +10240,6 @@
     const d = current && store.get('draft:' + current, null);
     const fresh = d && Date.now() - (d.at || 0) < DRAFT_DAYS * 86400e3;
     sayBox.value = fresh ? d.text || '' : ''; showDiscard();
-    fitSay();
     if (fresh && d.reply && d.reply.id) showReply(d.reply);
     // Its pictures: those kept with the draft, and any still going up for it.
     tray = [...(fresh && d.tray || []).map(a => ({ ...a, pct: 100 })), ...[...flying].filter(a => a.mood === current)];
@@ -10342,7 +10326,7 @@
           : 'Merging from here is for the mergers, signed in with their SSH key'}</span>`);
         return;
       }
-      sayBox.value = ''; fitSay(); saveDraft();
+      sayBox.value = ''; saveDraft();
       magentaMerge.open(work, current);
       return;
     }
@@ -10361,7 +10345,7 @@
     memoPending = null;
     if (pending) pendingSays(pending, 'sending…');
     composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());  // the thread says how it's going now
-    sayBox.value = ''; fitSay(); showDiscard();
+    sayBox.value = ''; showDiscard();
     tray = []; renderTray(); saveDraft();
     if (voicePending) { voicePending.state = 'sending'; renderVoiceMode(); }
     else { voicePending = { state: 'sending', text, who: viewer, mood: current }; renderVoiceMode(); }
@@ -10420,7 +10404,7 @@
         return;
       }
       if (pending) pending.remove();
-      if (!sayBox.value.trim()) { sayBox.value = words; fitSay(); showDiscard(); }  // not sent: the words back where they were
+      if (!sayBox.value.trim()) { sayBox.value = words; showDiscard(); }  // not sent: the words back where they were
       if (!tray.length) { tray = sentTray; renderTray(); }                // and the pictures
       saveDraft();
       if (e.name === 'AbortError') {
@@ -10431,7 +10415,7 @@
           .map(b => b.closest('article.turn')).filter(el => el && (el._text || '').trim() === text.trim()
             && new Date(el._at || 0).getTime() >= startedAt - 5000).pop();
         if (landed) {
-          sayBox.value = ''; fitSay(); showDiscard(); tray = []; renderTray(); saveDraft();
+          sayBox.value = ''; showDiscard(); tray = []; renderTray(); saveDraft();
           editMessage(landed, landed.id.replace(/^m-/, ''), () => sayBox.focus());
         } else {
           composer.insertAdjacentHTML('beforeend', '<span class="note">Stopped: not sent. Edit it and send again.</span>');
@@ -10498,7 +10482,7 @@
   // nothing finer: a laptop with a touch screen has a trackpad and a keyboard, and Enter sends there.
   const touchScreen = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
   sayBox.addEventListener('keydown', e => {
-    if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;  // mid-composition (IME)
+    if (e.key !== 'Enter' || composing(e)) return;
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault(); insertAtCaret('\n'); sayBox.dispatchEvent(new Event('input')); return;
     }
