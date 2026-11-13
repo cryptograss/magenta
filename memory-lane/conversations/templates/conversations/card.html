@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- A link's card alone, for the bots that draw previews where it's shared (Telegram, Slack, Discord...):
+     the whole page is most of a megabyte, and a previewer that gives up partway shows nothing (Justin, 13 Nov). -->
+<title>{{ card.title }} · magenta</title>
+{% include "conversations/card_tags.html" %}
+<link rel="icon" type="image/png" sizes="32x32" href="/moods/mark-32.png">
+</head>
+<body>
+<h1><a href="{{ card_url }}">{{ card.title }}</a></h1>
+{% if card.description %}<p>{{ card.description }}</p>{% endif %}
+</body>
+</html>

@@ -244,3 +244,44 @@ class CardTest(PageTest):
     def test_the_moods_and_a_missing_link_have_no_card(self):
         self.assertNotIn('og:title', self.client.get(f'/tidings/{uuid.uuid4()}/').content.decode())
         self.assertNotIn('og:title', self.client.get('/tidings/').content.decode())
+
+
+@override_settings(PICKIPEDIA_URL=BASE)
+class PreviewerCardTest(PageTest):
+    """Justin, 13 Nov: Telegram drew PickiPedia's cards but not magenta's. A previewer is sent the card alone,
+    not the whole page (most of a megabyte), and may ask HEAD first."""
+
+    def test_a_previewer_gets_the_card_alone(self):
+        with self.wiki():
+            got = self.client.get(f'/tidings/{self.tiding.id}/', HTTP_USER_AGENT='TelegramBot (like TwitterBot)')
+        html = got.content.decode()
+        self.assertIn('<meta property="og:title" content="Kuba&#x27;s Last Merged Commits: the story of arthel159">', html)
+        self.assertIn(f'<meta property="og:image" content="{BASE}/images/thumb/b/b5/Kuba.jpeg/400px-Kuba.jpeg">', html)
+        self.assertLess(len(html), 4000)
+        self.assertNotIn('<script', html)
+
+    def test_a_person_gets_the_page(self):
+        with self.wiki():
+            html = self.client.get(f'/tidings/{self.tiding.id}/', HTTP_USER_AGENT='Mozilla/5.0').content.decode()
+        self.assertIn('og:title', html)
+        self.assertGreater(len(html), 50000)
+
+    def test_head_is_answered(self):
+        with self.wiki():
+            self.assertEqual(self.client.head(f'/tidings/{self.tiding.id}/').status_code, 200)
+        self.assertEqual(self.client.head('/').status_code, 200)
+
+    def test_a_previewer_given_the_frames_address_is_sent_to_the_card(self):
+        # Justin, 13 Nov: a link pasted with ?embed=1 showed no card in Telegram.
+        got = self.client.get(f'/tidings/{self.tiding.id}/?embed=1', HTTP_USER_AGENT='TelegramBot (like TwitterBot)')
+        self.assertEqual((got.status_code, got['Location']), (302, f'/tidings/{self.tiding.id}/'))
+        with self.wiki():
+            framed = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        self.assertIn('<article class="wikilead">', framed)  # the one page's frame still gets its page
+
+    def test_its_page_offers_its_own_address_to_share(self):
+        # Justin, 13 Nov: "an easier way to harvest the permalink without the ?embed=1".
+        with self.wiki():
+            framed = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        self.assertIn(f'<a class="share" href="/tidings/{self.tiding.id}/" target="_top"', framed)
+        self.assertIn("navigator.clipboard.writeText(url)", framed)

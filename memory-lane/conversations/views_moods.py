@@ -18,7 +18,7 @@ from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.core.exceptions import ValidationError
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_safe
 
 from .models import Message, Mood, MoodSession, ThinkingEntity, mood_slug
 from .services import delivery_kid, faces, pr_cards, push, servers, wiki_auth, wiki_changes, wiki_feed, wiki_hooks, wiki_ledger, wiki_upload
@@ -35,8 +35,16 @@ from .services.mood_view import (
 )
 
 
+# The bots that draw a link's preview where it's shared. Each is sent its card alone (card.html), not the whole
+# page: most of a megabyte, which a previewer may give up on before it finds the tags (Justin, 13 Nov: Telegram
+# shows PickiPedia's cards, not magenta's).
+PREVIEWER = re.compile(r'TelegramBot|Twitterbot|facebookexternalhit|facebookcatalog|Slackbot|Discordbot|WhatsApp|'
+                       r'LinkedInBot|Mastodon|Pleroma|Akkoma|Iframely|Embedly|Cardyb|redditbot|Applebot|SkypeUriPreview|'
+                       r'vkShare|Pinterest|Snapchat|Google-PageRenderer|bingbot|Googlebot', re.I)
+
+
 @ensure_csrf_cookie
-@require_GET
+@require_safe  # HEAD too: a tiding's page is this, and a link previewer may ask HEAD first
 def moods_page(request, slug=None, section='', card=None):
     """The one page: the Moods, and tidings, prompts, status and settings beside them (`section`: which
     shows first). Each section is its own page, loaded once into it (?embed=1) and kept, so going back
@@ -46,6 +54,10 @@ def moods_page(request, slug=None, section='', card=None):
         if found.slug != slug:  # renamed since: its page now has the new name
             from django.shortcuts import redirect
             return redirect(f'/moods/{found.slug}/', permanent=False)
+    if card and PREVIEWER.search(request.headers.get('User-Agent', '')):
+        return render(request, 'conversations/card.html', {
+            'card': card, 'card_url': request.build_absolute_uri(),
+            'card_icon': request.build_absolute_uri('/moods/icon-512.png')})
     device = mood_auth.device_for(request)
     return render(request, 'conversations/moods.html', {
         # A link's card where its address is shared (tiding_links.card): Open Graph tags, read before any script.
@@ -706,7 +718,7 @@ def _in_a_mood(message_id):
             .select_related('mood').first())
 
 
-@require_GET
+@require_safe  # HEAD too, as a link previewer may ask
 def front_page(request):
     """magenta's front page (services/front.py): anyone may read it, signed in or not."""
     from .services import front

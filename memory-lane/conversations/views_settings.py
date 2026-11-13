@@ -12,7 +12,7 @@ from django.http import JsonResponse
 from django.conf import settings
 from django.shortcuts import render
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods, require_safe
 
 from .models import Mood, Setting, ThinkingEntity
 from .services import mood_auth
@@ -75,8 +75,11 @@ def _opened_on_its_own(request):
     """A frame's own address (?embed=1) opened as a whole page -- a link in it opened in a new tab, or its
     address copied and pasted (Justin, 4 Nov: no bar, and leaving it loaded everything again): sent to
     the same place without ?embed, which is the one page showing it. The browser says what it's loading
-    for (Sec-Fetch-Dest); one that doesn't say gets the frame's page, as before."""
-    if request.headers.get('Sec-Fetch-Dest') != 'document':
+    for (Sec-Fetch-Dest); one that doesn't say gets the frame's page, as before. A link previewer doesn't say,
+    and is sent on too, to the address with the card (Justin, 13 Nov: a link pasted into Telegram with
+    ?embed=1 showed no card)."""
+    from .views_moods import PREVIEWER
+    if request.headers.get('Sec-Fetch-Dest') != 'document' and not PREVIEWER.search(request.headers.get('User-Agent', '')):
         return None
     from django.http import QueryDict
     from django.shortcuts import redirect
@@ -346,7 +349,7 @@ def _work_context(tiding_id, device):
 
 
 @ensure_csrf_cookie
-@require_GET
+@require_safe  # HEAD too: a previewer may ask it before it reads the page (Justin, 13 Nov)
 def tiding_page(request, tiding_id):
     """One link's page: itself and what's been said about it, as a comment can be said. Asked for with
     ?embed=1, it draws inside the one page's Tidings frame; without, the one page, on Tidings. A candidate
