@@ -1814,6 +1814,7 @@
   /* Signed in, you are who you are: no need to choose whose view to see. */
 </style>
 {% include "conversations/poll_card.html" %}
+{% include "conversations/content_warning.html" %}
 </head>
 <body{% if initial_section and initial_section != "moods" %} class="in-section"{% endif %}>
 {% if banner.text %}<div id="magenta-banner" class="banner" role="alert"{% if banner.style %} style="{{ banner.style }}"{% endif %}>{{ banner.text }}</div>{% endif %}

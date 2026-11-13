@@ -107,9 +107,12 @@ def release_cid(url):
 
 def release_embed(cid):
     """A release's player, as delivery-kid pins it: its HLS ladder, the plain file if it isn't one, its still."""
+    from .embeds import warning
     cid = norm_cid(cid)
+    said = warning(cid)
     return {'kind': 'release', 'cid': cid, 'hls': f'{RELEASE_GATEWAY}/{cid}/master.m3u8',
-            'src': f'{RELEASE_GATEWAY}/{cid}', 'poster': f'{RELEASE_GATEWAY}/{cid}/poster.jpg'}
+            'src': f'{RELEASE_GATEWAY}/{cid}', 'warning': said,
+            'poster': '' if said else f'{RELEASE_GATEWAY}/{cid}/poster.jpg'}  # a warned video's picture isn't shown
 
 
 def release_tiding(cid):

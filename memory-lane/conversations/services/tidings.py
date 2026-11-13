@@ -373,6 +373,11 @@ def _cid(title):
     return cid.lower() if cid[:4] == 'Bafy' else cid  # base32 CIDv1: MediaWiki capitalised it
 
 
+def _warns(data):
+    said = data.get('content_warning')
+    return said.strip() if isinstance(said, str) else ''
+
+
 def release_scan(limit=RELEASES, http=None):
     """The newest `limit` releases, newest first: {'cid', 'title', 'kind', 'by', 'at', 'page', 'poster'}."""
     import requests
@@ -417,7 +422,9 @@ def release_scan(limit=RELEASES, http=None):
             'at': parse_datetime(event.get('timestamp') or ''),
             'page': f"{pickipedia_url()}/wiki/{title.replace(' ', '_')}",
             # Pinned beside the stream since delivery-kid made posters; older ones have none, and say so by hiding it.
-            'poster': f'{RELEASE_GATEWAY}/{cid}/poster.jpg' if video else '',
+            # A video with a content warning shows none: its picture is the thing warned of.
+            'poster': f'{RELEASE_GATEWAY}/{cid}/poster.jpg' if video and not _warns(data) else '',
+            'warning': _warns(data),
         })
         if len(out) >= limit:
             break

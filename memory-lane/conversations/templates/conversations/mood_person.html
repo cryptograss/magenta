@@ -122,6 +122,7 @@
     parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
   });
 </script>{% endif %}
+{% include "conversations/content_warning.html" %}
 </head>
 <body>
 <header>
@@ -167,7 +168,7 @@
         <span class="at" title="{{ item.at|date:'c' }}"><span class="when">{{ item.at|date:"M j, g:i A" }}</span>{% if item.block %} · <span class="block" title="Ethereum block">⛓ {{ item.block_s }}</span>{% endif %}</span></div>
       <div class="title"><a href="{{ item.page }}" target="_blank" rel="noopener">{{ item.title }}</a></div>
       <div class="media">
-        {% if item.player.kind == 'video' %}<div class="stage{% if not item.poster and not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.poster|default:item.player.poster }}">{% if item.poster or item.player.poster %}<img loading="lazy" src="{{ item.poster|default:item.player.poster }}" alt="" onerror="this.parentNode.classList.add('bare'); this.remove()">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
+        {% if item.player.kind == 'video' %}{% if item.player.warning %}<div class="cw">{% if item.player.warning %}<button type="button" class="cwveil" aria-label="Content warning: {{ item.player.warning }}. Show it"><span class="cwhead">⚠ Content warning</span><span class="cwsaid">{{ item.player.warning }}</span><span class="cwshow">Show the video</span></button>{% endif %}{% endif %}<div class="stage{% if not item.poster and not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.poster|default:item.player.poster }}">{% if item.poster or item.player.poster %}<img loading="lazy" src="{{ item.poster|default:item.player.poster }}" alt="" onerror="this.parentNode.classList.add('bare'); this.remove()">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>{% if item.player.warning %}</div>{% endif %}
         {% elif item.player.kind == 'audio' %}<audio src="{{ item.player.src }}" controls preload="none"></audio>
         {% else %}<div class="record"><span class="disc" aria-hidden="true">💿</span><a href="{{ item.page }}" target="_blank" rel="noopener">Its page on PickiPedia, with its tracks</a></div>{% endif %}
       </div>
@@ -186,7 +187,7 @@
       </div>
       {% elif item.player %}
       <div class="media">
-        {% if item.player.kind == 'video' %}<div class="stage{% if not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.player.poster }}">{% if item.player.poster %}<img loading="lazy" src="{{ item.player.poster }}" alt="" onerror="this.parentNode.classList.add('bare'); this.remove()">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>
+        {% if item.player.kind == 'video' %}{% if item.player.warning %}<div class="cw">{% if item.player.warning %}<button type="button" class="cwveil" aria-label="Content warning: {{ item.player.warning }}. Show it"><span class="cwhead">⚠ Content warning</span><span class="cwsaid">{{ item.player.warning }}</span><span class="cwshow">Show the video</span></button>{% endif %}{% endif %}<div class="stage{% if not item.player.poster %} bare{% endif %}" role="button" tabindex="0" aria-label="Play {{ item.title }}" data-hls="{{ item.player.hls }}" data-src="{{ item.player.src }}" data-poster="{{ item.player.poster }}">{% if item.player.poster %}<img loading="lazy" src="{{ item.player.poster }}" alt="" onerror="this.parentNode.classList.add('bare'); this.remove()">{% endif %}<span class="kind">video</span><span class="play" aria-hidden="true">▶</span></div>{% if item.player.warning %}</div>{% endif %}
         {% else %}<audio src="{{ item.player.src }}" controls preload="none"></audio>{% endif %}
       </div>
       {% endif %}

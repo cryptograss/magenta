@@ -126,7 +126,8 @@ def releases(name, http=None):
         player = _player(r['cid'])
         if player is None and r['video']:  # the wiki's list didn't say its type: a video plays from its pin
             base = f"{tidings.RELEASE_GATEWAY}/{r['cid']}"
-            player = {'cid': r['cid'], 'kind': 'video', 'src': base, 'hls': f'{base}/master.m3u8', 'poster': r['poster']}
+            player = {'cid': r['cid'], 'kind': 'video', 'src': base, 'hls': f'{base}/master.m3u8', 'poster': r['poster'],
+                      'warning': r.get('warning', '')}
         out.append({'kind': 'release', 'cid': r['cid'], 'title': r['title'], 'page': r['page'], 'poster': r['poster'],
                     'video': r['video'], 'at': r['at'], 'player': player})
     return out

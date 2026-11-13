@@ -85,6 +85,22 @@ class ReleaseTalkTest(_Release):
         self.assertNotIn('<div class="post">', page)  # a release line has no words besides its link
         self.assertIn('uploaded by JMyles · promoted by justin', page)  # its uploader's, not the system's
 
+    def test_a_warned_video_plays_behind_its_veil_with_no_picture_anywhere(self):
+        # Justin, 13 Nov: masked "with a warning wherever it appears".
+        client = self.client_for(self.justin)
+        mock.patch('conversations.services.tidings.release_info', return_value={}).start()
+        mock.patch('conversations.services.embeds.warning', return_value='Flashing lights').start()
+        self.addCleanup(mock.patch.stopall)
+        tid = self.post(client, {'cid': CID}).json()['id']
+        page = client.get(f'/tidings/{tid}/?embed=1').content.decode()
+        self.assertIn('<div class="cw"><button type="button" class="cwveil" aria-label="Content warning: Flashing lights. '
+                      'Show it">', page)
+        self.assertLess(page.index('class="cwveil"'), page.index(f'data-hls="https://ipfs.delivery-kid.cryptograss.live/ipfs/{CID}/master.m3u8"'))
+        self.assertIn('poster=""', page)
+        self.assertNotIn('poster.jpg', page)
+        self.assertEqual(tiding_links.listed()[0]['poster'], '')
+        self.assertIsNone(tiding_links.card(tid)['image'] or None)
+
     def test_tidings_tiles_offer_it_then_point_at_its_talk(self):
         release = {'cid': CID, 'title': 'Do you use AI subtitiles?', 'kind': 'video', 'video': True, 'by': 'JMyles',
                    'at': '2026-11-02T03:08:23Z', 'page': PAGE, 'poster': ''}

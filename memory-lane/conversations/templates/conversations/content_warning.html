@@ -1,0 +1,26 @@
+<!-- A video with a content warning (its Release YAML's content_warning), behind a veil until it's lifted, wherever
+     it plays: a Mood, a tiding, a person's page (Justin, #interfaces, 13 Nov 2026). The veil is services/embeds.veil,
+     or the same markup in a template; its player sits beside it in a .cw, hidden, its picture never sent. -->
+<style>
+  .cw { position: relative; display: block; }
+  .cw:not(.lifted) { min-height: 170px; }
+  .cw:not(.lifted) > :not(.cwveil) { visibility: hidden; }
+  .cw.lifted > .cwveil { display: none; }
+  .cwveil { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 8px; width: 100%; padding: 14px 18px; border: 0; border-radius: 8px;
+    background: #1b1b1f; color: #f3f3f3; font: inherit; text-align: center; cursor: pointer; }
+  .cwveil .cwhead { font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: #f0b13f; }
+  .cwveil .cwsaid { font-size: 15px; line-height: 1.4; max-width: 34em; }
+  .cwveil .cwshow { margin-top: 2px; padding: 5px 16px; border: 1px solid #f3f3f3; border-radius: 999px; font-size: 13.5px; font-weight: 600; }
+  .cwveil:hover .cwshow { background: #f3f3f3; color: #1b1b1f; }
+</style>
+<script>
+  // Lifting it: before anything else hears the click, so the player under it doesn't also start.
+  document.addEventListener('click', e => {
+    const veil = e.target.closest && e.target.closest('.cwveil');
+    if (!veil) return;
+    e.preventDefault();
+    e.stopPropagation();
+    veil.parentNode.classList.add('lifted');
+  }, true);
+</script>

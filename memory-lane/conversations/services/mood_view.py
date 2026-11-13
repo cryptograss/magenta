@@ -303,6 +303,8 @@ def _release_embed(cid):
     player = (f'<video controls preload="none" playsinline data-hls="{hls}" data-src="{src}"{poster}></video>'
               if found['kind'] == 'video' else f'<audio controls preload="none" src="{src}"></audio>')
     mark = '🎬' if found['kind'] == 'video' else '🎵'
+    if found.get('warning'):
+        player = f'<span class="cw">{embeds.veil(found["warning"])}{player}</span>'
     return f'<span class="embed release">{player}<a class="caption" href="{page}"{_OUT}>{mark} {title}</a></span>'
 
 

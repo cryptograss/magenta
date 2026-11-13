@@ -25,6 +25,8 @@ RELEASES = [
     {'ipfs_cid': V0, 'title': "Barlow's Jig", 'file_type': 'video/mp4', 'page_title': V0},
     {'ipfs_cid': 'QmHLSstream00000000000000000000000000000000000', 'title': 'Live', 'file_type': 'video/hls'},
     {'ipfs_cid': 'QmFlac000000000000000000000000000000000000000a', 'title': 'Take 2', 'file_type': 'audio/flac'},
+    {'ipfs_cid': 'QmWarned000000000000000000000000000000000000a', 'title': 'Strobe', 'file_type': 'video/webm',
+     'content_warning': 'Flashing lights <b>from 0:40</b>'},
 ]
 
 
@@ -90,6 +92,20 @@ class EmbedsTest(TestCase):
                       render_html('[[Release:QmHLSstream00000000000000000000000000000000000]]'))
         self.assertIn('<audio controls preload="none" src="https://ipfs.delivery-kid.cryptograss.live/ipfs/qmflac',
                       render_html('[[Release:QmFlac000000000000000000000000000000000000000a]]').lower())
+
+    def test_a_warned_video_plays_behind_its_veil_and_shows_no_picture(self):
+        # Justin, 13 Nov: masked "with a warning wherever it appears".
+        cid = 'QmWarned000000000000000000000000000000000000a'
+        found = embeds.release(cid)
+        self.assertEqual(found['warning'], 'Flashing lights <b>from 0:40</b>')
+        self.assertEqual(found['poster'], '')
+        html = render_html(f'[[Release:{cid}]]')
+        self.assertIn('<span class="cw"><button type="button" class="cwveil" aria-label="Content warning: '
+                      'Flashing lights &lt;b&gt;from 0:40&lt;/b&gt;. Show it">', html)
+        self.assertIn('<span class="cwsaid">Flashing lights &lt;b&gt;from 0:40&lt;/b&gt;</span>', html)
+        self.assertLess(html.index('class="cwveil"'), html.index('<video'))
+        self.assertNotIn('poster=', html)
+        self.assertNotIn('cwveil', render_html(f'[[Release:{V0}]]'))  # one with nothing to warn of plays as before
 
     def test_what_isnt_a_playable_release_stays_a_link(self):
         for text in ('https://ipfs.delivery-kid.cryptograss.live/ipfs/QmUnknown0000000000000000000000000000000000000',

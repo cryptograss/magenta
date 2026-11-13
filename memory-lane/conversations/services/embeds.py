@@ -101,7 +101,8 @@ def releases():
                 continue
             found[normal_cid(r['ipfs_cid'])] = {
                 'title': r.get('title') or r['ipfs_cid'], 'type': (r.get('file_type') or '').lower(),
-                'page': r.get('page_title') or r['ipfs_cid'], 'thumbnail': r.get('thumbnail') or ''}
+                'page': r.get('page_title') or r['ipfs_cid'], 'thumbnail': r.get('thumbnail') or '',
+                'warning': (r.get('content_warning') or '').strip()}
         cache.set('embeds:releases', found, RELEASES_FOR)
     return found
 
@@ -124,8 +125,25 @@ def _release_thumbnail(page):
     return found
 
 
+def warning(cid):
+    """What a release warns of before it plays (its YAML's content_warning), or ''. Justin, #interfaces, 13 Nov
+    2026: a video masked "with a warning wherever it appears". Where it plays it starts behind a veil
+    (content_warning.html); where only its picture would show, none is shown."""
+    return (releases().get(normal_cid(cid)) or {}).get('warning', '')
+
+
+def veil(said):
+    """The veil over a warned player: what it warns of, and the button that lifts it (content_warning.html)."""
+    import html as html_lib
+    said = html_lib.escape(said)
+    return (f'<button type="button" class="cwveil" aria-label="Content warning: {said}. Show it">'
+            f'<span class="cwhead">⚠ Content warning</span><span class="cwsaid">{said}</span>'
+            f'<span class="cwshow">Show the video</span></button>')
+
+
 def release(cid):
-    """A playable release: {'cid', 'title', 'kind': 'video'|'audio', 'src', 'hls', 'poster', 'page'}, or None.
+    """A playable release: {'cid', 'title', 'kind': 'video'|'audio', 'src', 'hls', 'poster', 'page', 'warning'},
+    or None.
     'hls' (videos): the stream to try first; 'src' the plain file, if it isn't one."""
     found = releases().get(normal_cid(cid))
     if not found:
@@ -140,6 +158,9 @@ def release(cid):
     base = f'{GATEWAY}/ipfs/{normal_cid(cid)}'
     if kind == 'video' and not poster:
         poster = f'{base}/poster.jpg'  # pinned with the stream; a release without one shows nothing, not a break
+    if found.get('warning'):
+        poster = ''  # its picture is the thing warned of
     return {'cid': normal_cid(cid), 'title': found['title'], 'kind': kind, 'poster': poster,
+            'warning': found.get('warning', ''),
             'src': base, 'hls': f'{base}/master.m3u8' if kind == 'video' else '',
             'page': f"{pickipedia_url()}/wiki/Release:{found['page'].replace(' ', '_')}"}

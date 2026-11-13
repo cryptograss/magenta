@@ -567,6 +567,7 @@
   });
 </script>
 {% endif %}
+{% include "conversations/content_warning.html" %}
 </head>
 <body>
 <main{% if tiding.release %} class="wide"{% endif %}>
@@ -578,7 +579,7 @@
   <div class="stage{% if r.portrait %} portrait{% endif %}">
     <div class="player">
       <div class="embed" id="theEmbed">
-        <video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
+        {% if tiding.embed.warning %}<div class="cw">{% if tiding.embed.warning %}<button type="button" class="cwveil" aria-label="Content warning: {{ tiding.embed.warning }}. Show it"><span class="cwhead">⚠ Content warning</span><span class="cwsaid">{{ tiding.embed.warning }}</span><span class="cwshow">Show the video</span></button>{% endif %}{% endif %}<video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>{% if tiding.embed.warning %}</div>{% endif %}
         <!-- Each comment that names a moment ("2:14 that slide!") is a mark on this line, and a link that plays from it. -->
         <div class="moments" aria-label="Moments people talked about" hidden></div>
         <div class="quality" aria-label="Quality" hidden></div>
@@ -645,7 +646,7 @@
         <a class="readon" href="{{ tiding.url }}" target="_blank" rel="noopener">{% if w.more %}Read the rest on PickiPedia →{% else %}On PickiPedia →{% endif %}</a>
       </article>
       {% endwith %}{% endif %}
-      {% if tiding.embed %}<div class="embed" id="theEmbed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>{% elif tiding.embed.kind == 'release' %}<video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>
+      {% if tiding.embed %}<div class="embed" id="theEmbed">{% if tiding.embed.kind == 'iframe' %}<iframe src="{{ tiding.embed.src }}" title="{{ tiding.title }}" loading="lazy" allowfullscreen allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>{% elif tiding.embed.kind == 'release' %}{% if tiding.embed.warning %}<div class="cw">{% if tiding.embed.warning %}<button type="button" class="cwveil" aria-label="Content warning: {{ tiding.embed.warning }}. Show it"><span class="cwhead">⚠ Content warning</span><span class="cwsaid">{{ tiding.embed.warning }}</span><span class="cwshow">Show the video</span></button>{% endif %}{% endif %}<video data-hls="{{ tiding.embed.hls }}" data-src="{{ tiding.embed.src }}" poster="{{ tiding.embed.poster }}" controls playsinline preload="metadata"></video>{% if tiding.embed.warning %}</div>{% endif %}
         <!-- Each comment that names a moment ("2:14 that slide!") is a mark on this line, and a link that plays from it. -->
         <div class="moments" aria-label="Moments people talked about" hidden></div>
         <div class="speed" aria-label="Speed"></div>{% else %}<video src="{{ tiding.embed.src }}" controls preload="metadata"></video>
