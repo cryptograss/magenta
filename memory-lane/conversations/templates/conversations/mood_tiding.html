@@ -595,7 +595,7 @@
           <span class="chip rel">release</span>
           <h1><a class="title" href="/tidings/{{ tiding.id }}/" title="This tiding's own page: its link to share">{{ tiding.title }}</a>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}</h1>
           <div class="meta muted">uploaded by {{ r.by|default:tiding.said_by|default:"someone" }}{% if r.upload_block_s %} at block {{ r.upload_block_s }}{% endif %} · promoted by {{ tiding.by|default:"someone" }}
-            · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
+            · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if not work %} · <a class="share" href="/tidings/{{ tiding.id }}/" target="_top" title="This tiding's own address, to share: on a phone, the share sheet; elsewhere, copied">🔗 share</a>{% endif %}{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
             {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
           <!-- BitTorrent is the big way to take it home (Justin, 8 Nov: "louder and prouder"): it's what more
                people know and can open at once. IPFS stays, smaller, with the other links below. -->
@@ -621,7 +621,7 @@
     <span class="body">
       <a class="title" href="{{ tiding.url }}" rel="noopener noreferrer" target="_blank">{{ tiding.title }}</a><span class="host">({{ tiding.host }})</span>{% if tiding.may_retitle %}<button type="button" class="retitle" data-tiding="{{ tiding.id }}" title="Give it another title">✎</button>{% endif %}
       <div class="meta muted">{% if tiding.embed.kind == 'release' %}uploaded by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% elif tiding.said_by == tiding.by %}posted and promoted by {{ tiding.by|default:"someone" }}{% else %}posted by {{ tiding.said_by|default:"someone" }} · promoted by {{ tiding.by|default:"someone" }}{% endif %}
-        · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
+        · {{ tiding.at|date:"M j, g:i A" }} · <a href="/moods/{{ tiding.mood }}/#m-{{ tiding.message }}" title="as said, in #{{ tiding.mood }}">in #{{ tiding.mood }}</a>{% if not work %} · <a class="share" href="/tidings/{{ tiding.id }}/" target="_top" title="This tiding's own address, to share: on a phone, the share sheet; elsewhere, copied">🔗 share</a>{% endif %}{% if tiding.may_withdraw %}<button type="button" class="withdraw" data-tiding="{{ tiding.id }}" data-back="/tidings/?embed=1" title="Take it off Tidings">take it off</button>{% endif %}
         {% if tiding.may_withdraw %}<button type="button" class="mute" data-mute="/api/tidings/{{ tiding.id }}/" title="{% if tiding.muted %}Its 'new comment by' lines are quiet in the Mood; click to hear them again{% else %}Keep this link's 'new comment by' lines out of the Mood{% endif %}">{% if tiding.muted %}🔇 muted in mood{% else %}🔊 in mood{% endif %}</button>{% endif %}</div>
       {% if tiding.post %}
       <!-- What the message said besides its link (Justin, 24 Oct): the post's own words, right under who posted
@@ -1031,6 +1031,24 @@
       v.addEventListener('play', () => { gone = false; mini.close(tidingId); });
     }
   })();
+</script>
+<script>
+  // 🔗 share: the tiding's own address, never this frame's ?embed=1, which has no card where it's pasted
+  // (Justin, 13 Nov). A phone's share sheet where there is one; else it's copied, and says so.
+  document.addEventListener('click', async e => {
+    const a = e.target.closest && e.target.closest('a.share');
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+    e.preventDefault();
+    const url = new URL(a.getAttribute('href'), location.origin).href;
+    const title = (document.querySelector('.thelink .title') || {}).textContent || document.title;
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      try { await navigator.share({ title: title.trim(), url }); return; } catch (err) { if (err.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(url); } catch (err) { window.prompt('Copy this address:', url); return; }
+    const was = a.textContent;
+    a.textContent = '✓ copied';
+    setTimeout(() => { a.textContent = was; }, 1500);
+  });
 </script>
 </body>
 </html>

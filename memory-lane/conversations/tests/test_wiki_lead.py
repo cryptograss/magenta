@@ -278,3 +278,10 @@ class PreviewerCardTest(PageTest):
         with self.wiki():
             framed = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
         self.assertIn('<article class="wikilead">', framed)  # the one page's frame still gets its page
+
+    def test_its_page_offers_its_own_address_to_share(self):
+        # Justin, 13 Nov: "an easier way to harvest the permalink without the ?embed=1".
+        with self.wiki():
+            framed = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        self.assertIn(f'<a class="share" href="/tidings/{self.tiding.id}/" target="_top"', framed)
+        self.assertIn("navigator.clipboard.writeText(url)", framed)
