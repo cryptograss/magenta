@@ -5,15 +5,8 @@
 <meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% if work %}{{ work.ref }} · ramp{% else %}{{ tiding.title }} · tidings{% endif %} · magenta</title>
+{% include "conversations/_theme.html" %}
 <style>
-  :root {
-    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
-    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --code: #f3efe8;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
-            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --code: #29252c; }
-  }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
          font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--bg); }
@@ -98,9 +91,8 @@
   .thelink.release .wiki { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
   .thelink.release .download { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
   .thelink.release .download a.bt { display: inline-block; padding: 9px 16px; border-radius: 8px; background: var(--accent);
-                                    color: #fff; font-size: 15px; font-weight: 650; }
+                                    color: light-dark(#fff, #160b11); font-size: 15px; font-weight: 650; }
   .thelink.release .download a.bt:hover { text-decoration: none; filter: brightness(1.08); }
-  @media (prefers-color-scheme: dark) { .thelink.release .download a.bt { color: #160b11; } }
   .thelink.release .download a.btfile { font-size: 13px; }
   .thelink.release .download.pending { display: block; }
   /* Moments: every time said about it, in the order they play -- the video's own table of contents. */
@@ -133,12 +125,8 @@
   .wikilead figure img { display: block; width: 100%; height: auto; border-radius: 8px; background: var(--code); }
   .wikilead figcaption { margin-top: 4px; font-size: 12px; line-height: 1.35; color: var(--muted); }
   /* Its links as the wiki draws them (Justin, 12 Nov): blue for a page, red for one not written yet. */
-  .wikilead a.wiki { color: #3366cc; }
-  .wikilead a.wiki.new { color: #d73333; }
-  @media (prefers-color-scheme: dark) {
-    .wikilead a.wiki { color: #88a3e8; }
-    .wikilead a.wiki.new { color: #fd7865; }
-  }
+  .wikilead a.wiki { color: light-dark(#3366cc, #88a3e8); }
+  .wikilead a.wiki.new { color: light-dark(#d73333, #fd7865); }
   /* Listen in Rabbithole: the wiki's green pill, made a button to press -- the rabbit chasing the carrot. */
   .wikilead .listen { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; }
   .wikilead .listen a { text-decoration: none; }
