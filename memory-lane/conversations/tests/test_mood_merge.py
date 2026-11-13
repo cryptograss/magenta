@@ -73,13 +73,13 @@ class MergeToolTest(TestCase):
         self.assertEqual(code, 0, said)
         self.assertIn('re: the real fix', shown)
         self.assertIn('fix.py | 1 +', shown)
-        self.assertIn('into main', shown)  # magenta deploys from main; its production branch is long dead
+        self.assertIn('into production', shown)  # every repository runs production since 13 Nov (#radicle)
         self.assertNotIn(LIES, said)
         url, posted = self.sent[1]
         self.assertEqual(url, 'http://ml/api/merge-orders/')
         fields = dict(line.split(': ', 1) for line in posted['order'].splitlines()[1:])
         self.assertEqual((fields['commit'], fields['into'], fields['by'], fields['repo'], fields['branch']),
-                         (self.head, 'main', 'justin', 'magenta', 're/foo'))
+                         (self.head, 'production', 'justin', 'magenta', 're/foo'))
         # A real signature, in the merge namespace, as githouse will check it.
         signers = self.tmp / 'signers'
         signers.write_text(f'justin namespaces="magenta-merge" {Path(self.key + ".pub").read_text().strip()}\n')
@@ -105,8 +105,8 @@ class MergeToolTest(TestCase):
         self.assertIn('Refused: justin: banned', said)
 
     def test_into_another_branch_and_what_isn_t_there(self):
-        code, said, shown = self.merge('--into', 'production')
-        self.assertIn('into production', shown)
+        code, said, shown = self.merge('--into', 'main')
+        self.assertIn('into main', shown)
         code, said, _ = self.merge('--into', 'nonesuch')
         self.assertIn('no branch nonesuch', said)
         self.assertEqual(code, 1)

@@ -471,7 +471,7 @@ class GithouseMergedTest(WorkRepo):
         git(self.repo.work, 'reset', '-q', '--hard', self.base)
         git(self.repo.work, 'merge', '-q', '--no-ff', '-m', f'Merge magenta:{branch}', head)
         merge = git(self.repo.work, 'rev-parse', 'HEAD')
-        self.repo.ref('refs/heads/main', merge)
+        self.repo.ref('refs/heads/production', merge)  # where magenta merges, since 13 Nov (#radicle)
         self.repo.ref(f'refs/merged/{branch}', head)
         git(self.repo.bare, 'update-ref', '-d', f'refs/heads/{branch}')
         return merge
@@ -482,12 +482,12 @@ class GithouseMergedTest(WorkRepo):
         cache.delete(ramp.KEY)
         [m] = ramp.board()['merged']
         self.assertEqual((m['repo'], m['branch'], m['number'], m['merge'], m['base'], m['title']),
-                         ('magenta', 're/foo', None, merge, 'main', 'the foo work'))
+                         ('magenta', 're/foo', None, merge, 'production', 'the foo work'))
         self.assertIsNotNone(m['merged'])
         page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
         merged_table = page.split('<h2>Merged lately</h2>')[1].split('</table>')[0]
         self.assertIn('<span class="ref">magenta:re/foo</span>', merged_table)
-        self.assertIn(f'→ main as {merge[:8]}', merged_table)
+        self.assertIn(f'→ production as {merge[:8]}', merged_table)
 
     def test_one_with_a_pull_request_card_is_listed_once(self):
         self.cards['merged'] = [dict(self.cards['open'][0], merged='2026-11-09 20:00:00')]

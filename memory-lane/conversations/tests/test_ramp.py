@@ -186,10 +186,11 @@ class RampTest(TestCase):
             self.assertIn(seen, text)
 
     def test_a_branch_is_measured_against_where_its_repository_deploys_from(self):
-        # magenta's production is long dead (merge_orders.DEPLOYS_FROM): a branch with no pull request measured
-        # against it showed a year of commits, and its page's diff with them (9 Nov).
+        # Measured against where it merges (merge_orders.DEPLOYS_FROM): magenta's old production, dead a year,
+        # showed a year of commits (9 Nov); every repository runs a live production since 13 Nov (#radicle).
         refs = {'refs/heads/production': None, 'refs/heads/main': None}
-        self.assertEqual(ramp._base(refs, '', 'magenta'), 'main')
+        self.assertEqual(ramp._base(refs, '', 'magenta'), 'production')
+        self.assertEqual(ramp._base({'refs/heads/main': None}, '', 'elsewhere'), 'main')
         self.assertEqual(ramp._base(refs, '', 'maybelle-config'), 'production')
         self.assertEqual(ramp._base(refs, 'production', 'magenta'), 'production')  # a pull request's own target
         self.assertEqual(ramp._base(refs, '', 'elsewhere'), 'production')

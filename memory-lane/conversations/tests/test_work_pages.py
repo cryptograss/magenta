@@ -19,7 +19,7 @@ from conversations.tests.test_ramp import card
 
 
 class WorkRepo(TestCase):
-    """magenta in githouse's copy: main, and re/foo (#7) changing app.py and adding new.txt."""
+    """magenta in githouse's copy: main and production, and re/foo (#7) changing app.py and adding new.txt."""
 
     def setUp(self):
         cache.clear()
@@ -33,6 +33,7 @@ class WorkRepo(TestCase):
         git(self.repo.work, 'commit', '-q', '-m', 'the app')
         self.base = git(self.repo.work, 'rev-parse', 'HEAD')
         self.repo.ref('refs/heads/main', self.base)
+        self.repo.ref('refs/heads/production', self.base)
         git(self.repo.work, 'checkout', '-q', '-b', 're/foo')
         (self.repo.work / 'app.py').write_text('one\n2\nthree\nfour\n')
         (self.repo.work / 'new.txt').write_text('hello\n')

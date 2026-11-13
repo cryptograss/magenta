@@ -4,6 +4,7 @@ signed with memory-lane's own key for whoever pressed, and left in the mailbox f
 import base64
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -32,7 +33,8 @@ class MergeButtonTest(TestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.dir = Path(tempfile.mkdtemp())
-        # githouse's copy of magenta: main, and re/foo one commit ahead of it.
+        # githouse's copy of magenta: main and production (every repository runs production, #radicle 13 Nov),
+        # and re/foo one commit ahead of them.
         cls.githouse = cls.dir / 'srv'
         bare = cls.githouse / 'magenta.git'
         git('init', '--quiet', '--bare', '-b', 'main', str(bare))
@@ -41,7 +43,7 @@ class MergeButtonTest(TestCase):
         (work / 'a.txt').write_text('one\n')
         git('add', '.', cwd=work)
         git('commit', '--quiet', '-m', 'one', cwd=work)
-        git('push', '--quiet', 'origin', 'HEAD:main', cwd=work)
+        git('push', '--quiet', 'origin', 'HEAD:main', 'HEAD:production', cwd=work)
         (work / 'fix.py').write_text('print("fix")\n')
         git('add', '.', cwd=work)
         git('commit', '--quiet', '-m', 'the fix', cwd=work)
@@ -72,13 +74,13 @@ class MergeButtonTest(TestCase):
         return self.client.get('/api/merge-orders/preview/', {'repo': 'magenta', 'branch': 're/foo', **q})
 
     def press(self, **change):
-        body = {'repo': 'magenta', 'branch': 're/foo', 'commit': self.head, 'into': 'main', 'mood': 'ramp', **change}
+        body = {'repo': 'magenta', 'branch': 're/foo', 'commit': self.head, 'into': 'production', 'mood': 'ramp', **change}
         return self.client.post('/api/merge-orders/press/', json.dumps(body), content_type='application/json')
 
     def test_the_sheet_shows_githouse_s_copy(self):
         self.as_('justin')
         seen = self.preview().json()
-        self.assertEqual((seen['commit'], seen['into'], seen['can']), (self.head, 'main', True))
+        self.assertEqual((seen['commit'], seen['into'], seen['can']), (self.head, 'production', True))
         self.assertIn('re: the fix', seen['log'])
         self.assertIn('fix.py | 1 +', seen['stat'])
 
@@ -90,7 +92,7 @@ class MergeButtonTest(TestCase):
         self.assertEqual((kept.by, kept.pressed, kept.mood), ('memory-lane', 'justin', 'ramp'))
         fields = dict(line.split(': ', 1) for line in kept.order.splitlines()[1:])
         self.assertEqual((fields['for'], fields['by'], fields['commit'], fields['into']),
-                         ('justin', 'memory-lane', self.head, 'main'))
+                         ('justin', 'memory-lane', self.head, 'production'))
         # As githouse will check it: memory-lane's public key, in magenta-merge.
         signers = self.dir / 'signers'
         signers.write_text(f'memory-lane namespaces="magenta-merge" {Path(str(self.key) + ".pub").read_text().strip()}\n')
@@ -131,7 +133,7 @@ class MergeButtonTest(TestCase):
         self.as_('justin')
         said = self.press(commit='0' * 40)
         self.assertEqual(said.status_code, 409)
-        self.assertEqual(self.press(into='production').status_code, 409)
+        self.assertEqual(self.press(into='main').status_code, 409)
         self.assertEqual(MergeOrder.objects.count(), 0)
 
     def test_a_banned_presser_and_az5(self):
@@ -145,7 +147,7 @@ class MergeButtonTest(TestCase):
     def test_nobody_can_mail_an_order_that_names_a_presser(self):
         # Only press() writes 'for': a person's own order with it, or one claiming memory-lane, is refused.
         text = merge_orders.HEADER + '\n' + ''.join(f'{k}: {v}\n' for k, v in (
-            ('repo', 'magenta'), ('branch', 're/foo'), ('commit', self.head), ('into', 'main'), ('by', 'skyler'),
+            ('repo', 'magenta'), ('branch', 're/foo'), ('commit', self.head), ('into', 'production'), ('by', 'skyler'),
             ('nonce', 'a' * 32), ('expires', '9999999999'), ('for', 'justin')))
         with self.assertRaises(merge_orders.Invalid):
             merge_orders.parse(text)
@@ -181,7 +183,7 @@ class MergeButtonTest(TestCase):
         with mock.patch('conversations.services.ramp.board', return_value={'open': [card]}):
             said = self.preview(branch='', number='8').json()['error']
         self.assertEqual(said, 'magenta#8 is built on re/under, which has merged since, so there is nothing to merge it '
-                               'into. Its author rebases it onto main and points its pull request at main; then it can merge.')
+                               'into. Its author rebases it onto production and points its pull request at production; then it can merge.')
 
     def test_the_pages_offer_it_only_to_a_merger(self):
         from unittest import mock
@@ -216,7 +218,7 @@ class MergeButtonTest(TestCase):
         pending()  # and again: said once
         said = Message.objects.filter(mood__slug='ramp', source_file='merged')
         self.assertEqual(said.count(), 1)
-        self.assertEqual(event_line(said.get().content), '✓ magenta:re/foo · cccccccc merged by justin: magenta:re/foo into main')
+        self.assertEqual(event_line(said.get().content), '✓ magenta:re/foo · cccccccc merged by justin: magenta:re/foo into production')
 
     def test_a_refused_one_or_one_from_no_mood_says_nothing(self):
         from conversations.models import Message, Mood
@@ -288,10 +290,21 @@ class PromoteButtonTest(TestCase):
                          ('production', 'main', self.production, 'justin'))
 
     def test_not_where_production_isn_t_what_deploys(self):
-        # magenta deploys from main (its production is long dead): nothing to promote there.
-        git('init', '--quiet', '--bare', '-b', 'main', str(self.githouse / 'magenta.git'))
+        # A repository memory-lane doesn't know deploys from production: nothing to promote there.
+        git('init', '--quiet', '--bare', '-b', 'main', str(self.githouse / 'elsewhere.git'))
         self.as_('justin')
-        self.assertIn('deploys from main, not production', self.preview('magenta').json()['error'])
+        self.assertIn('deploys from elsewhere, not production', self.preview('elsewhere').json()['error'])
+
+    def test_a_master_repository_promotes_into_master(self):
+        # pickipedia-mcp has master, not main: production goes into master.
+        bare = self.githouse / 'pickipedia-mcp.git'
+        git('init', '--quiet', '--bare', '-b', 'master', str(bare))
+        self.addCleanup(shutil.rmtree, bare, True)
+        git('push', '--quiet', str(bare), f'{self.main}:refs/heads/master', f'{self.production}:refs/heads/production',
+            cwd=str(self.work))
+        self.as_('justin')
+        seen = self.preview('pickipedia-mcp').json()
+        self.assertEqual((seen['commit'], seen['into'], seen['tip']), (self.production, 'master', self.main))
 
     def test_main_s_own_commits_are_said(self):
         git('fetch', '--quiet', 'origin', cwd=self.work)

@@ -45,10 +45,10 @@ NAMESPACE = 'magenta-merge'
 HEADER = 'githouse merge order v1'
 FIELDS = ('repo', 'branch', 'commit', 'into', 'by', 'nonce', 'expires')
 LIFE = 3600            # seconds an order is good for (githouse allows two hours at most)
-# Where each repository's work goes: the branch its deploys come from. Not guessed from which branches
-# exist: magenta has a production branch, dead since Nov 2025, and deploys from main.
-DEPLOYS_FROM = {'magenta': 'main', 'maybelle-config': 'production', 'pickipedia': 'production',
-                'arthel': 'production', 'rabbithole': 'main', 'pickipedia-mcp': 'master'}
+# Where each repository's work goes: the branch its deploys come from. Every repository runs production since
+# 13 Nov (Justin, #radicle: merge to production, run it, promote to main).
+DEPLOYS_FROM = {'magenta': 'production', 'maybelle-config': 'production', 'pickipedia': 'production',
+                'arthel': 'production', 'rabbithole': 'production', 'pickipedia-mcp': 'production'}
 TARGETS = ('production', 'main', 'master')   # for a repository not listed: the first of these it has
 WAIT = 120             # seconds to wait for githouse's answer
 NAME = re.compile(r'[a-z][a-z0-9-]{0,31}')   # githouse's NAME: what an order's `by` may be

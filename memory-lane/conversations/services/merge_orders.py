@@ -36,12 +36,20 @@ AT_ONCE = 20                         # orders githouse is handed in one look
 DEVICE_SIGNER = 'memory-lane'
 FOR_FIELD = 'for'
 # Where each repository's work goes: the branch its deploys come from (tools/mood_merge.py keeps the same
-# table, standard library only). Not guessed from which branches exist: magenta's production is long dead.
-DEPLOYS_FROM = {'magenta': 'main', 'maybelle-config': 'production', 'pickipedia': 'production',
-                'arthel': 'production', 'rabbithole': 'main', 'pickipedia-mcp': 'master'}
+# table, standard library only). Every repository runs production since 13 Nov (Justin, #radicle: merge to
+# production, run it, promote to main); githouse made it where there was none.
+DEPLOYS_FROM = {'magenta': 'production', 'maybelle-config': 'production', 'pickipedia': 'production',
+                'arthel': 'production', 'rabbithole': 'production', 'pickipedia-mcp': 'production'}
 # Promotion (Justin, #ramp, 11 Nov): machines run production; main is the primary branch, never forced, brought
-# up to production by a person when things are stable. githouse.PROMOTES: the one deploy branch merged into another.
-PROMOTES = {'production': 'main'}
+# up to production by a person when things are stable. githouse.PROMOTES: the one deploy branch merged into another,
+# into the repository's primary: main, or master where it has no main (pickipedia-mcp).
+PROMOTES = {'production': ('main', 'master')}
+
+
+def _primary(held, branch):
+    """The branch `branch` is promoted into in this repository: its main, or its master; None if neither."""
+    from .githouse import _sha
+    return next((b for b in PROMOTES.get(branch, ()) if held is not None and _sha(held, f'refs/heads/{b}')), None)
 _BRANCH = re.compile(r'[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*')
 _FORMS = {'repo': r'[a-z0-9._-]{1,64}', 'branch': r'[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*', 'commit': r'[0-9a-f]{40}',
           'into': r'[A-Za-z0-9._/-]{1,100}', 'by': r'[a-z][a-z0-9-]{0,31}', 'nonce': r'[0-9a-f]{32,64}',
@@ -213,7 +221,7 @@ def _promotion(held, repo, branch):
     """The sheet for a promotion: main brought up to production (githouse.promote). What main gains is
     production's tree, so the stat is main's files against production's (two dots), not since they parted."""
     from .githouse import _git, _sha
-    into = PROMOTES[branch]
+    into = _primary(held, branch) or PROMOTES[branch][0]
     if DEPLOYS_FROM.get(repo) != branch:
         raise Invalid(f'{repo} deploys from {DEPLOYS_FROM.get(repo) or "elsewhere"}, not {branch}: nothing to promote')
     commit, tip = _sha(held, f'refs/heads/{branch}'), _sha(held, f'refs/heads/{into}')
@@ -242,7 +250,7 @@ def promotions():
     found = []
     for repo, branch in sorted(DEPLOYS_FROM.items()):
         held = repository(repo) if branch in PROMOTES else None
-        into = PROMOTES.get(branch)
+        into = _primary(held, branch)
         commit, tip = (_sha(held, f'refs/heads/{branch}'), _sha(held, f'refs/heads/{into}')) if held else (None, None)
         if not commit or not tip:
             continue
