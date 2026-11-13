@@ -573,12 +573,12 @@ def api_servers(request):
     """
     from .services import servers
     from .views_moods import page_version
-    from .services import sprint_notes
-    # The current sprint rides along, for the header's menu (Justin, 3 Nov): asked every minute, kept ten.
+    from .services import bloom_notes
+    # The current bloom rides along, for the header's menu (Justin, 3 Nov): asked every minute, kept ten.
     from .views_moods import LookClock
     clock = LookClock()
     body = {'servers': clock('servers', servers.status), 'page': clock('page', page_version),
-            'sprint': clock('sprint', sprint_notes.shown)}
+            'bloom': clock('bloom', bloom_notes.shown)}
     return clock.report(JsonResponse(body), 'servers')
 
 

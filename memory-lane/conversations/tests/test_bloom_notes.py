@@ -1,4 +1,4 @@
-"""📝 Add to my sprint notes (services/sprint_notes.py; Justin, 24 Oct; the shape settled with re, 25 Oct)."""
+"""📝 Add to my bloom notes (services/bloom_notes.py; Justin, 24 Oct; the shape settled with re, 25 Oct)."""
 
 import json
 import uuid
@@ -7,7 +7,7 @@ from unittest import mock
 from django.test import Client, TestCase
 
 from conversations.models import Message, MessageChange, Mood, ThinkingEntity
-from conversations.services import mood_auth, sprint_notes
+from conversations.services import mood_auth, bloom_notes
 
 
 class FakeBot:
@@ -27,7 +27,7 @@ class FakeBot:
         return {'edit': {'result': 'Success'}}
 
 
-class SprintNotesTest(TestCase):
+class BloomNotesTest(TestCase):
 
     @classmethod
     def setUpTestData(cls):
@@ -38,40 +38,40 @@ class SprintNotesTest(TestCase):
     def setUp(self):
         self.bot = FakeBot()
         names = mock.patch('conversations.services.wiki_auth.names', return_value={'justin': 'JMyles'})
-        sprint = mock.patch.object(sprint_notes, 'current', return_value=('Jellyfish', 'Cryptograss/Jellyfish'))
-        names.start(), sprint.start()
-        self.addCleanup(names.stop), self.addCleanup(sprint.stop)
+        bloom = mock.patch.object(bloom_notes, 'current', return_value=('Jellyfish', 'Cryptograss/Jellyfish'))
+        names.start(), bloom.start()
+        self.addCleanup(names.stop), self.addCleanup(bloom.stop)
 
     def say(self, sender, text):
         return Message.objects.create(id=uuid.uuid4(), sender=sender, mood=self.mood, timestamp=1,
                                       content=text if sender.is_biological_human else [{'type': 'text', 'text': text}])
 
-    def test_the_current_sprint_is_what_the_pointer_names(self):
-        self.assertEqual(sprint_notes.sprint_from("<!-- move me -->\n'''[[Cryptograss/Jellyfish]]'''"),
+    def test_the_current_bloom_is_what_the_pointer_names(self):
+        self.assertEqual(bloom_notes.bloom_from("<!-- move me -->\n'''[[Cryptograss/Jellyfish]]'''"),
                          ('Jellyfish', 'Cryptograss/Jellyfish'))
-        self.assertEqual(sprint_notes.sprint_from('* RH beta\n'), ('RH beta', None))
-        self.assertEqual(sprint_notes.sprint_from('<!-- nothing yet -->'), (None, None))
+        self.assertEqual(bloom_notes.bloom_from('* RH beta\n'), ('RH beta', None))
+        self.assertEqual(bloom_notes.bloom_from('<!-- nothing yet -->'), (None, None))
 
     def test_a_message_into_my_notes_words_and_link_once(self):
         said = self.say(self.re, 'Ship the bar first.\n<script>x</script> and [[Not a link]]')
-        done = sprint_notes.add(said, 'justin', bot=self.bot)
-        self.assertEqual((done['sprint'], done['page'], done['already']),
-                         ('Jellyfish', 'Cryptograss:Sprints/Jellyfish/JMyles', False))
-        page = self.bot.pages['Cryptograss:Sprints/Jellyfish/JMyles']
-        self.assertIn('Notes for the [[Cryptograss/Jellyfish|Jellyfish]] sprint, kept by [[User:JMyles|JMyles]]', page)
+        done = bloom_notes.add(said, 'justin', bot=self.bot)
+        self.assertEqual((done['bloom'], done['page'], done['already']),
+                         ('Jellyfish', 'Cryptograss:Blooms/Jellyfish/JMyles', False))
+        page = self.bot.pages['Cryptograss:Blooms/Jellyfish/JMyles']
+        self.assertIn('Notes for the [[Cryptograss/Jellyfish|Jellyfish]] bloom, kept by [[User:JMyles|JMyles]]', page)
         self.assertIn(f'{{{{Magenta message\n|id={said.id}\n|who=re\n|mood=magenta-interface\n', page)  # a card,
         self.assertIn('|chars=all\n', page)                                                          # every word
         self.assertIn('|text=Ship the bar first.\n&lt;script&gt;x&lt;/script&gt; and &#91;&#91;Not a link&#93;&#93;\n}}', page)
         self.assertIn("A note for justin, from #magenta-interface", self.bot.edits[0][1])
-        again = sprint_notes.add(said, 'justin', bot=self.bot)
+        again = bloom_notes.add(said, 'justin', bot=self.bot)
         self.assertTrue(again['already'])
         self.assertEqual(len(self.bot.edits), 1)
 
     def test_a_reply_noted_by_its_words(self):
         first = self.say(self.justin, 'What first?')
         reply = self.say(self.justin, f'↩ #m-{first.id}\nThe bar.')
-        sprint_notes.add(reply, 'justin', bot=self.bot)
-        page = self.bot.pages['Cryptograss:Sprints/Jellyfish/JMyles']
+        bloom_notes.add(reply, 'justin', bot=self.bot)
+        page = self.bot.pages['Cryptograss:Blooms/Jellyfish/JMyles']
         self.assertIn('|text=The bar.\n}}', page)
         self.assertNotIn('↩', page)
 
@@ -80,28 +80,28 @@ class SprintNotesTest(TestCase):
         client = Client()
         client.cookies[mood_auth.COOKIE] = token
         said = self.say(self.re, 'Worth keeping.')
-        url = f'/api/moods/magenta-interface/messages/{said.id}/sprint-note/'
+        url = f'/api/moods/magenta-interface/messages/{said.id}/bloom-note/'
         with mock.patch('conversations.services.todo_ticks.enabled', return_value=True), \
                 mock.patch('conversations.services.todo_ticks.Bot', return_value=self.bot):
             done = client.post(url, '{}', content_type='application/json')
             self.assertEqual(done.status_code, 200, done.content)
-            self.assertEqual(done.json()['page'], 'Cryptograss:Sprints/Jellyfish/JMyles')
+            self.assertEqual(done.json()['page'], 'Cryptograss:Blooms/Jellyfish/JMyles')
             MessageChange.objects.create(message_id=said.id, mood=self.mood, kind='deleted', by=self.justin)
             self.assertEqual(client.post(url, '{}', content_type='application/json').status_code, 410)
         self.assertEqual(Client().post(url, '{}', content_type='application/json').status_code, 401)
 
     def test_adds_event_message_in_mood_and_in_general(self):
         general, _ = Mood.objects.get_or_create(slug='general', defaults={'title': 'general'})
-        said = self.say(self.re, 'Track this for the sprint.')
-        sprint_notes.add(said, 'justin', bot=self.bot)
+        said = self.say(self.re, 'Track this for the bloom.')
+        bloom_notes.add(said, 'justin', bot=self.bot)
         # 1. Event line in the message's mood
-        in_mood = Message.objects.filter(mood=self.mood, source_file='sprint-note').first()
+        in_mood = Message.objects.filter(mood=self.mood, source_file='bloom-note').first()
         self.assertIsNotNone(in_mood)
         self.assertEqual(in_mood.content['by'], 'justin')
         self.assertEqual(in_mood.content['message'], str(said.id))
-        self.assertEqual(in_mood.content['sprint'], 'Jellyfish')
+        self.assertEqual(in_mood.content['bloom'], 'Jellyfish')
         # 2. Event line in #general
-        in_gen = Message.objects.filter(mood=general, source_file='sprint-note').first()
+        in_gen = Message.objects.filter(mood=general, source_file='bloom-note').first()
         self.assertIsNotNone(in_gen)
         self.assertEqual(in_gen.content['mood'], 'magenta-interface')
         self.assertEqual(in_gen.content['message'], str(said.id))
@@ -109,28 +109,43 @@ class SprintNotesTest(TestCase):
         # 3. Noted in #general itself: only one event message created
         said_in_gen = Message.objects.create(id=uuid.uuid4(), sender=self.re, mood=general, timestamp=2,
                                              content=[{'type': 'text', 'text': 'General note'}])
-        sprint_notes.add(said_in_gen, 'justin', bot=self.bot)
-        gen_events = Message.objects.filter(mood=general, source_file='sprint-note', content__message=str(said_in_gen.id))
+        bloom_notes.add(said_in_gen, 'justin', bot=self.bot)
+        gen_events = Message.objects.filter(mood=general, source_file='bloom-note', content__message=str(said_in_gen.id))
         self.assertEqual(gen_events.count(), 1)
 
 
-class SprintShownTest(TestCase):
-    """The current sprint in the header's menu (Justin, 3 Nov), with /api/servers/."""
+class BloomShownTest(TestCase):
+    """The current bloom in the header's menu (Justin, 3 Nov), with /api/servers/."""
 
     def setUp(self):
         from django.core.cache import cache
-        cache.delete('current-sprint')
+        cache.delete('current-bloom')
+
+    def test_the_old_pointer_is_read_until_the_new_one_is_there(self):
+        """A sprint is a bloom now (13 Nov): Magenta:Current sprint names it until the page moves."""
+        pages = {'Magenta:Current sprint': '[[Cryptograss/Jackalope]]'}
+
+        def get(url, params=None, **_):
+            text = pages.get(params['title'])
+            return mock.Mock(status_code=200 if text is not None else 404, text=text or '')
+        http = mock.Mock(get=get)
+        self.assertEqual(bloom_notes.current(http), ('Jackalope', 'Cryptograss/Jackalope'))
+        pages['Magenta:Current bloom'] = '[[Cryptograss/Kinkajou]]'
+        self.assertEqual(bloom_notes.current(http), ('Kinkajou', 'Cryptograss/Kinkajou'))
+        pages.clear()
+        with self.assertRaises(bloom_notes.Refused):
+            bloom_notes.current(http)
 
     def test_named_linked_and_kept_none_when_the_wiki_cant_say(self):
         from django.test import override_settings
         with override_settings(INTERFACE_WORDS_FROM_WIKI=True, PICKIPEDIA_URL='https://wiki.test'):
-            with mock.patch.object(sprint_notes, 'current', return_value=('Jellyfish', 'Cryptograss/Jellyfish')):
-                self.assertEqual(sprint_notes.shown(), {'name': 'Jellyfish', 'url': 'https://wiki.test/wiki/Cryptograss/Jellyfish'})
+            with mock.patch.object(bloom_notes, 'current', return_value=('Jellyfish', 'Cryptograss/Jellyfish')):
+                self.assertEqual(bloom_notes.shown(), {'name': 'Jellyfish', 'url': 'https://wiki.test/wiki/Cryptograss/Jellyfish'})
             from django.core.cache import cache
-            cache.delete('current-sprint')
-            with mock.patch.object(sprint_notes, 'current', side_effect=sprint_notes.Refused('none', 409)):
-                self.assertIsNone(sprint_notes.shown())
-        self.assertIn('sprint', Client().get('/api/servers/').json())
+            cache.delete('current-bloom')
+            with mock.patch.object(bloom_notes, 'current', side_effect=bloom_notes.Refused('none', 409)):
+                self.assertIsNone(bloom_notes.shown())
+        self.assertIn('bloom', Client().get('/api/servers/').json())
 
 
 class WikiEmbedTest(TestCase):
