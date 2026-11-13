@@ -1,4 +1,7 @@
-"""Saved clips: the team's library of quotes, kept in the record itself.
+"""Saved clips: the team's library of quotes. Magenta:Clips on PickiPedia is canonical (Justin, 13 Nov):
+what plays is the page's rows (every(), page()). Saving and forgetting here are posts in the record, as below,
+and each one also writes its row onto the page, or takes it off (write_page). The record says who saved a
+name first. It plays a clip itself only when the page can't be read or written.
 
     /clips save <name> <yarn link>   saves a clip under a name (or one of our own clips' links)
     /clips <name>                    posts the saved clip (lines after it: words of yours, under it)
@@ -207,8 +210,16 @@ def page_rows(wikitext):
     return rows
 
 
+def bot_name():
+    """The wiki bot's name as its revisions show it (a bot password signs in as User@label), or ''."""
+    from django.conf import settings
+    return (getattr(settings, 'PICKIPEDIA_TODO_BOT_USER', '') or '').split('@')[0].replace('_', ' ').lower()
+
+
 def page(get=None):
-    """The clips page's rows, at its newest trusted revision; kept a while, and the last read stands if it fails."""
+    """The clips page's rows: {name: {'link', 'for'}}. Its links as of its newest revision by a trusted editor or by
+    the wiki bot (which writes only the rows of saves made here: write_page); what each is for as of its newest
+    revision by a trusted editor alone. Kept a while, and the last read stands if it fails."""
     kept = cache.get(USES_KEY)
     if kept is not None and get is None:
         return kept
@@ -218,9 +229,12 @@ def page(get=None):
         except ImportError:
             from wiki_rules import EDITORS, WikiTexts
         trusted = {e.lower().replace('_', ' ') for e in EDITORS}
-        history = (get or WikiTexts().get)(PAGE)
-        text = next((w for _, editor, w in history if (editor or '').lower().replace('_', ' ') in trusted), '')
-        found = page_rows(text)
+        bot = bot_name()
+        history = [(w, (editor or '').lower().replace('_', ' ')) for _, editor, w in (get or WikiTexts().get)(PAGE)]
+        said = page_rows(next((w for w, editor in history if editor in trusted), ''))
+        found = page_rows(next((w for w, editor in history if editor in trusted or (bot and editor == bot)), ''))
+        for name, row in found.items():
+            row['for'] = (said.get(name) or {}).get('for', '')
         cache.set(USES_KEY, found, USES_FOR)
         cache.set(USES_KEY + ':last', found, None)
     except Exception:
@@ -282,6 +296,7 @@ def write_page(name, link=None, by='', bot=None):
         said = f'{by} saved "{name}"' if link else f'{by} forgot "{name}"'
         done = bot.edit(PAGE, new, f'{said}, by magenta: what it is for is a person\'s to write', revision)
         if (done.get('edit') or {}).get('result') == 'Success':
+            cache.delete(USES_KEY)  # read again at once: the page is what plays
             return 'written'
         if (done.get('error') or {}).get('code') != 'editconflict':
             return 'refused'
@@ -312,12 +327,17 @@ def uses():
 
 
 def every():
-    """The library with the page's rows that aren't saved here yet: name -> {'clip', 'by', ...}."""
-    found = dict(library())
-    for name, row in page().items():
-        if name in found:
-            continue
+    """What plays: name -> {'clip', 'by', ...}. The clips page is canonical (Justin, 13 Nov: "I want that to be
+    canonical"): its rows, and only its rows, play -- a row taken off the page stops playing, and a link changed
+    there plays the new one. A save made here reaches the page by write_page, seconds later. Only while the page
+    has never been read (the wiki down since this started, or no bot to write to it) does the record's library
+    stand in, with the page's rows over it."""
+    from . import todo_ticks
+    rows, saved = page(), library()
+    found = {} if rows and todo_ticks.enabled() else dict(saved)
+    for name, row in rows.items():
         clip, own = yarn_clip(row['link']), own_clip(row['link'])
         if clip or own:
-            found[name] = {'clip': clip or own, 'by': 'the clips page', **({'link': row['link']} if own else {})}
+            found[name] = {'clip': clip or own, 'by': (saved.get(name) or {}).get('by', 'the clips page'),
+                           **({'link': row['link']} if own else {})}
     return found
