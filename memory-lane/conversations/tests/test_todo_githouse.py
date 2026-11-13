@@ -72,6 +72,22 @@ class BranchClosedTest(GithouseRefsTest):
         self.assertIs(githouse.branch_closed('magenta', 're/live-one'), False)   # a not-yet: asked again in a minute
 
 
+class BranchGoneTest(GithouseRefsTest):
+
+    def test_gone_is_a_name_githouse_holds_nowhere(self):
+        # magenta:magent/front-page-feeds merged on GitHub (#465) before githouse kept refs/merged/: its pill stood.
+        self.assertIs(githouse.branch_gone('magenta', 'magent/front-page-feeds'), True)
+        self.assertIs(githouse.branch_gone('magenta', 're/live-one'), False)
+        self.assertIs(githouse.branch_gone('magenta', 're/merged-one'), False)
+        self.assertIs(githouse.branch_gone('magenta', 're/closed-one'), False)
+        self.assertIsNone(githouse.branch_gone('arthel', 're/x'))            # a repository githouse doesn't hold
+
+    def test_a_merge_ask_for_a_gone_branch_is_answered(self):
+        from conversations.services.tools_ask import unmerged
+        works = unmerged('magenta:magent/front-page-feeds and magenta:re/live-one')
+        self.assertEqual([w['branch'] for w in works], ['re/live-one'])
+
+
 class TodoTicksByBranchTest(GithouseRefsTest):
 
     def setUp(self):
