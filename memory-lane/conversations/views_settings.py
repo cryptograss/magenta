@@ -681,6 +681,25 @@ def api_branches(request):
         branches = json.loads(path.read_text())
     except (OSError, ValueError):
         branches = {}
-    response = JsonResponse(branches if isinstance(branches, dict) else {})
+    if not isinstance(branches, dict):
+        branches = {}
+    # And every open pull request's branch githouse doesn't hold: one opened on GitHub before the flip (magenta#436,
+    # magent/todo-every-pr) is on the ramp, but githouse has only its refs/pull/436/head, so ~ never offered it
+    # (Justin, 13 Nov). Live, as the ramp has it; from the ramp's last board, which a caller never waits on.
+    from .services import ramp
+    try:
+        board = ramp.board(stale_ok=True)
+    except Exception:  # noqa: BLE001 -- githouse's list alone, as before
+        board = {}
+    for item in board.get('open') or []:
+        repo, branch = item.get('repo'), item.get('branch')
+        if not (repo and branch and item.get('number')) or item.get('state') == 'merged':
+            continue
+        kinds = branches.setdefault(repo, {})
+        if not isinstance(kinds, dict) or any(branch in (kinds.get(k) or {}) for k in ('live', 'merged', 'closed')):
+            continue
+        kinds.setdefault('live', {})[branch] = item.get('head') or ''
+        kinds.setdefault('pulls', {})[branch] = item['number']  # its number: one without an owner/ is named by it
+    response = JsonResponse(branches)
     response['Cache-Control'] = 'public, max-age=60'
     return response

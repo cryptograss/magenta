@@ -8232,11 +8232,15 @@
       const repos = new Set(), owners = new Set(), list = [];
       for (const [repo, kinds] of Object.entries(d || {})) {
         repos.add(repo);
+        // A pull request's branch githouse doesn't hold (opened on GitHub before the flip) comes with its number:
+        // one without an owner/ is offered too, and named repo#N, as merge asks read it (Justin, 13 Nov).
+        const pulls = kinds.pulls || {};
         for (const [state, branches] of [['live', kinds.live], ['merged', kinds.merged], ['closed', kinds.closed]]) {
           for (const branch of Object.keys(branches || {})) {
-            if (OWNED_BRANCH.test(branch) || !branch.includes('/')) continue;
-            owners.add(branch.split('/')[0]);
-            list.push({ repo, branch, state });
+            const number = state === 'live' ? pulls[branch] : undefined;
+            if (OWNED_BRANCH.test(branch) || (!branch.includes('/') && !number)) continue;
+            if (branch.includes('/')) owners.add(branch.split('/')[0]);
+            list.push({ repo, branch, state, number });
           }
         }
       }
@@ -8307,7 +8311,9 @@
             && (b.branch.toLowerCase().startsWith(p) || (at.repo && b.branch.toLowerCase().includes(p))))
         .sort((a, b) => (order[a.state] - order[b.state]) || a.branch.localeCompare(b.branch) || a.repo.localeCompare(b.repo))
         .slice(0, 8)
-        .map(b => ({ insert: `${b.repo}:${b.branch} `, html: `<span class="emo">${mark[b.state]}</span>${esc(b.repo)}:<b>${esc(b.branch)}</b><small>${b.state}</small>` }));
+        .map(b => ({ insert: b.branch.includes('/') ? `${b.repo}:${b.branch} ` : `${b.repo}#${b.number} `,
+                     html: `<span class="emo">${mark[b.state]}</span>${esc(b.repo)}:<b>${esc(b.branch)}</b>`
+                       + `<small>${b.number ? `#${b.number} · ` : ''}${b.state}</small>` }));
     } else if (at.kind === 'command') {
       choices = SLASH_COMMANDS.filter(([name]) => name.startsWith(at.prefix))
         .map(([name, form, what]) => ({ insert: name + ' ', html: `<span class="emo">${name === 'clips' ? '🎬' : name === 'poll' ? '🗳' : '⚙️'}</span><b>${esc(form)}</b><small>${esc(what)}</small>` }));
