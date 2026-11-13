@@ -1372,6 +1372,23 @@ def api_wiki_titles(request):
 
 
 @require_GET
+def api_wiki_tiding(request):
+    """?title=: whether a PickiPedia page is a tiding here, for the banner the wiki draws atop it (Justin,
+    #interfaces, 13 Nov 2026). {"tiding": its page here, "words": Magenta:Interface's wiki-tiding-banner}, or
+    {"tiding": null}. Asked by the wiki's page in a reader's browser, so any site may read it: it's what
+    Tidings shows anyone."""
+    from django.conf import settings
+    from .services import interface_words, tiding_links
+    found = tiding_links.on_wiki(request.GET.get('title', '')[:300])
+    base = getattr(settings, 'MAGENTA_PUBLIC_URL', 'https://magenta.cryptograss.live').rstrip('/')
+    answer = JsonResponse({'tiding': f'{base}/tidings/{found}/', 'id': found,
+                           'words': interface_words.words()['wiki-tiding-banner']} if found else {'tiding': None})
+    answer['Access-Control-Allow-Origin'] = '*'
+    answer['Cache-Control'] = 'public, max-age=120'
+    return answer
+
+
+@require_GET
 def api_wiki_preview(request):
     """?title=: a PickiPedia page in brief, for the card shown on a link to it (services/wiki_preview.py).
     {'title', 'url', 'summary', 'facts', 'art', 'image'}; 404 if there's no such page."""
