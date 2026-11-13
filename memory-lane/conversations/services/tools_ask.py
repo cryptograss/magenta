@@ -184,7 +184,8 @@ def unmerged(purpose):
         if (repo, branch) in seen:
             continue
         seen.add((repo, branch))
-        if not (githouse.branch_merged(repo, branch) or githouse.branch_closed(repo, branch)):
+        if not (githouse.branch_merged(repo, branch) or githouse.branch_closed(repo, branch)
+                or githouse.branch_gone(repo, branch)):
             out.append({'repo': repo, 'branch': branch})
     return with_thumbs(out)
 

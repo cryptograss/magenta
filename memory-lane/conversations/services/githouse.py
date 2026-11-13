@@ -126,6 +126,25 @@ def branch_merged(name, branch):
     return found
 
 
+def branch_gone(name, branch):
+    """Whether a mergeable, <repo>:<branch>, is nowhere in githouse: not live (refs/heads/, nor fetched from GitHub or
+    maybelle into refs/remotes/), not merged, not closed. A branch merged
+    on GitHub before githouse kept refs/merged/ is this (Justin, #pickipedia-style-and-main-page, 13 Nov: the pill
+    for magenta:magent/front-page-feeds stood two days after #465 merged), and so is a name that was never pushed.
+    Either way there is nothing left to merge. githouse fetches every minute, so a branch pushed to GitHub alone is
+    gone for at most that long; the answer is kept that long too. None if githouse doesn't hold the repository."""
+    repo = repository(name)
+    if repo is None or not _BRANCH.fullmatch(branch or ''):
+        return None
+    key = f'githouse:gone:{name}:{branch}'
+    found = cache.get(key)
+    if found is None:
+        found = all(_sha(repo, f'refs/{kind}/{branch}') is None
+                    for kind in ('heads', 'remotes/github', 'remotes/maybelle', 'merged', 'closed'))
+        cache.set(key, found, UNMERGED_FOR)
+    return found
+
+
 def branch_closed(name, branch):
     """Whether a mergeable, <repo>:<branch>, was closed without merging: its owner deleted it, and its name moved
     to refs/closed/ (Justin, 10 Nov: "push the merged / wontfixed status from githouse to the moods"). False while
