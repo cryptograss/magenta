@@ -43,19 +43,29 @@
     text-decoration: none; }
   .mergeSheet a.full:hover { background: var(--accent-soft, #fbe7f1); }
   .mergeSheet a.full[hidden] { display: none; }
-  /* The bar a press goes to (Justin, 9 Nov): just below the nav, one line a merge, ✓ or ✗ when it's done. */
-  .mergeBar { position: fixed; z-index: 1001; top: 0; left: 0; right: 0; display: flex; flex-direction: column; }
+  /* The bar a press goes to (Justin, 9 Nov): just below the nav, ✓ or ✗ when it's done. One row, in the page's
+     own flow, so it pushes what's under it down instead of covering it; two or more presses run across it as a
+     ticker, paused while the pointer is on it (Justin, 13 Nov: "sometimes cover up important material"). */
+  .mergeBar { position: sticky; z-index: 1001; top: 0; flex: none; overflow: hidden; white-space: nowrap;
+              background: var(--panel, #fff); color: var(--ink, #1f1d1a); border-bottom: 1px solid var(--line, #e6e1d8); }
   .mergeBar[hidden] { display: none; }
-  .mergeBar .item { display: flex; align-items: center; gap: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer;
-                    background: var(--panel, #fff); color: var(--ink, #1f1d1a); border-bottom: 1px solid var(--line, #e6e1d8);
-                    box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .mergeBar .track { display: inline-flex; align-items: center; gap: 6px; height: 30px; box-sizing: border-box; padding: 0 8px; }
+  .mergeBar.ticker .track { padding-left: 100%; animation: mergeBarTick var(--tick, 20s) linear infinite; }
+  .mergeBar.ticker:hover .track, .mergeBar.ticker:focus-within .track { animation-play-state: paused; }
+  @keyframes mergeBarTick { to { transform: translateX(-100%); } }
+  @media (prefers-reduced-motion: reduce) {  /* no motion: the row scrolls by hand instead */
+    .mergeBar { overflow-x: auto; }
+    .mergeBar.ticker .track { padding-left: 8px; animation: none; }
+  }
+  .mergeBar .item { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 13px; cursor: pointer;
+                    border-radius: 999px; background: var(--code, #f3efe8); }
   .mergeBar .item .mark { width: 1.2em; text-align: center; font-weight: 700; }
   .mergeBar .item.going .mark::before { content: '◌'; display: inline-block; animation: mergeBarSpin 1s linear infinite; }
   .mergeBar .item.ok { background: light-dark(#e8f6ee, #16321f); color: light-dark(#1d6b3f, #8fd8ab); }
   .mergeBar .item.ok .mark::before { content: '✓'; }
   .mergeBar .item.err { background: light-dark(#fdecea, #3a1916); color: light-dark(#9b2c22, #f2a59c); }
   .mergeBar .item.err .mark::before { content: '✗'; }
-  .mergeBar .item .x { margin-left: auto; border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; opacity: .7; }
+  .mergeBar .item .x { border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; opacity: .7; padding: 0 2px; }
   @keyframes mergeBarSpin { to { transform: rotate(360deg); } }
 </style>
 <template id="mergeSheetTpl">
@@ -240,24 +250,25 @@ window.magentaMerge = (() => {
     if (!s.el.hidden) place(s);
   }
 
-  // The bar: one line a press, just below the nav (Justin, 9 Nov), on every page (10 Nov: "if I go back to moods,
-  // I still want to see it"). It lives in the one page: a press in a section's frame writes its line there
-  // (topBar), so leaving the ramp doesn't hide it. barUnder(() => the header) says where it sits; without it,
-  // over the pane, or the top of the page.
-  let bar = null, barAnchor = null;
+  // The bar: one row, just below the nav (Justin, 9 Nov), on every page (10 Nov: "if I go back to moods, I still
+  // want to see it"). It lives in the one page: a press in a section's frame writes its line there (topBar), so
+  // leaving the ramp doesn't hide it. barUnder(() => the header) says where it sits: right after it, in the flow,
+  // pushing the page down (13 Nov); without it, the top of the page.
+  let bar = null, track = null, barAnchor = null;
   function placeBar() {
     if (!bar) return;
     const head = barAnchor && barAnchor();
-    if (head) {
-      Object.assign(bar.style, { left: '0', right: '0', width: '', top: head.getBoundingClientRect().bottom + 'px' });
-      return;
-    }
-    const el = pane && pane();
-    if (!el) { Object.assign(bar.style, { left: '0', right: '0', top: '0', width: '' }); return; }
-    const r = el.getBoundingClientRect();
-    Object.assign(bar.style, { left: r.left + 'px', right: 'auto', top: r.top + 'px', width: r.width + 'px' });
+    if (head) { if (head.nextElementSibling !== bar) head.after(bar); }
+    else if (document.body.firstElementChild !== bar) document.body.prepend(bar);
   }
-  window.addEventListener('resize', placeBar);
+  // One press: still. Two or more: across it as a ticker, at about 60 px a second however long the row.
+  function tick() {
+    if (!bar) return;
+    const many = track.children.length > 1;
+    bar.classList.toggle('ticker', many);
+    if (many) bar.style.setProperty('--tick', Math.max(8, track.scrollWidth / 60) + 's');
+  }
+  window.addEventListener('resize', tick);
   function barUnder(fn) { barAnchor = fn; placeBar(); }
   // The one page's bar, if this is a section's frame inside it; else this page's own.
   function topBar() {
@@ -283,8 +294,11 @@ window.magentaMerge = (() => {
     el.hidden = false; el.style.inset = '0'; el.setAttribute('aria-modal', 'true');
   }
   function barLine(info) {
-    if (!bar) { bar = document.createElement('div'); bar.className = 'mergeBar'; bar.setAttribute('role', 'status'); document.body.appendChild(bar); }
-    const line = document.createElement('div');
+    if (!bar) {
+      bar = document.createElement('div'); bar.className = 'mergeBar'; bar.setAttribute('role', 'status');
+      track = document.createElement('div'); track.className = 'track'; bar.appendChild(track);
+    }
+    const line = document.createElement('span');
     line.className = 'item going';
     line.innerHTML = '<span class="mark"></span><span class="words"></span><button type="button" class="x" title="Dismiss" hidden>×</button>';
     let ended = null;
@@ -292,15 +306,16 @@ window.magentaMerge = (() => {
       if (e.target.closest('.x') || !ended) return;
       told(info, ended.kind, ended.full);
     });
-    const gone = () => { line.remove(); if (!bar.children.length) bar.hidden = true; };
+    const gone = () => { line.remove(); if (!track.children.length) bar.hidden = true; tick(); };
     line.querySelector('.x').addEventListener('click', gone);
-    bar.prepend(line); bar.hidden = false; placeBar();
+    track.prepend(line); bar.hidden = false; placeBar(); tick();
     return {
-      say(words) { line.querySelector('.words').textContent = words; },
+      say(words) { line.querySelector('.words').textContent = words; },  // the ticker's speed waits for the end
       end(kind, words, full) {
         ended = { kind, full: full || words };
         line.className = 'item ' + kind; line.querySelector('.words').textContent = words;
         line.querySelector('.x').hidden = false;
+        tick();
         if (kind === 'ok') setTimeout(gone, 60000);  // a green check a minute; a red x until it's dismissed
       },
     };
