@@ -229,6 +229,83 @@ def page(get=None):
     return found
 
 
+# A save puts its row on the page, and a forget takes it off (Justin, 13 Nov: "I thought clips were supposed to
+# land here?"). The row's use is left for a person to write: the bot's revision isn't a trusted one, so the page
+# as the emergents are told it changes when someone who is trusted writes what the clip is for.
+def page_with(text, name, link):
+    """The page's text with `name`'s row linking `link`: its link changed if it has a row (its use kept), else a
+    new row with no use yet, last in the table. None if there's no table to put it in."""
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        m = _ROW.match(line.strip())
+        if m and name_of(m[1].strip('`<>[] ')) == name:
+            if m[2].strip('[]') == link:
+                return text
+            lines[i] = f'| {name} || {link} || {m[3]}'.rstrip()
+            return '\n'.join(lines)
+    end = max((i for i, line in enumerate(lines) if line.strip() == '|}'), default=None)
+    if end is None:
+        return None
+    return '\n'.join(lines[:end] + ['|-', f'| {name} || {link} || '] + lines[end:])
+
+
+def page_without(text, name):
+    """The page's text with `name`'s row (and the |- above it) taken out; the text as it was if it has none."""
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        m = _ROW.match(line.strip())
+        if m and name_of(m[1].strip('`<>[] ')) == name:
+            start = i - 1 if i and lines[i - 1].strip() == '|-' else i
+            return '\n'.join(lines[:start] + lines[i + 1:])
+    return text
+
+
+def write_page(name, link=None, by='', bot=None):
+    """Put `name`'s row on the page linking `link`, or take it off (link None): 'written', 'same' or 'refused'.
+    Signed in as the wiki bot (todo_ticks.Bot); an edit made meanwhile is read again, up to three times."""
+    from . import todo_ticks
+    if bot is None and not todo_ticks.enabled():
+        return 'refused'
+    bot = bot or todo_ticks.Bot(purpose='the clips page')
+    if not bot.login():
+        return 'refused'
+    for _ in range(3):
+        revision = bot.read(PAGE)
+        if revision is None:
+            return 'refused'
+        text = revision['slots']['main']['content']
+        new = page_with(text, name, link) if link else page_without(text, name)
+        if new is None:
+            return 'refused'
+        if new == text:
+            return 'same'
+        said = f'{by} saved "{name}"' if link else f'{by} forgot "{name}"'
+        done = bot.edit(PAGE, new, f'{said}, by magenta: what it is for is a person\'s to write', revision)
+        if (done.get('edit') or {}).get('result') == 'Success':
+            return 'written'
+        if (done.get('error') or {}).get('code') != 'editconflict':
+            return 'refused'
+    return 'refused'
+
+
+def page_later(posted, by):
+    """After a post that saves or forgets a clip: its row put on the page, or taken off, on a thread of its own."""
+    from .mood_cache import spawn
+    saved, forgotten = SAVED.match(posted or ''), FORGOTTEN.match(posted or '')
+    if saved:
+        spawn(_page_quietly, saved[1], saved[2], by)
+    elif forgotten:
+        spawn(_page_quietly, forgotten[1], None, by)
+
+
+def _page_quietly(name, link, by):
+    import logging
+    try:
+        logging.getLogger(__name__).info('clips page, %s: %s', name, write_page(name, link, by))
+    except Exception:
+        logging.getLogger(__name__).exception('clips page: %s not written', name)
+
+
 def uses():
     """{name: what it's for}, as the clips page says."""
     return {name: row['for'] for name, row in page().items() if row['for']}

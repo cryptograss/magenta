@@ -298,6 +298,7 @@ def api_say(request, slug):
         note = f'announced in {announce.spread(message, device.entity_id, announced)} other Moods'
     if text.startswith('/clips '):
         clips.forget_cached()  # the library has a new save, or one fewer
+        clips.page_later(text, device.entity_id)  # and Magenta:Clips has its row, or not
     from .services import yarn_kept
     yarn_kept.keep_later(text)  # a Yarn clip said here is fetched once, now, and played from here
     return JsonResponse({'id': str(message.id), **({'note': note} if note else {})}, status=201)
@@ -897,6 +898,7 @@ def api_clip_make(request):
                                    timestamp=int(time.time() * 1000), source_file=WEB_SOURCE,
                                    client_version='magenta-cli/clips')
     clips.forget_cached()
+    clips.page_later(saved.content, signer)  # its row on Magenta:Clips
     return JsonResponse({'name': name, 'link': link, 'mood': mood.slug if mood else None,
                          'url': request.build_absolute_uri(f'/moods/{mood.slug}/#m-{saved.id}') if mood else None},
                         status=201)
