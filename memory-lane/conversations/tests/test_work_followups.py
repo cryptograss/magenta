@@ -453,7 +453,7 @@ class MergeBarAndFreshRampTest(WorkRepo):
         sheet = render_to_string('conversations/_merge_sheet.html')
         self.assertIn(".mergeBar .item.ok .mark::before { content: '✓'; }", sheet)
         self.assertIn(".mergeBar .item.err .mark::before { content: '✗'; }", sheet)
-        self.assertIn('s.away = true; s.el.hidden = true;', sheet)   # Merge now: the sheet goes at once
+        self.assertIn('s.shut();  // free for the next pill now', sheet)   # Merge now: the sheet goes at once
         self.assertIn("window.dispatchEvent(new CustomEvent('magentaMerged', { detail: merged }));", sheet)
         page = self.client.get('/ramp/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe').content.decode()
         self.assertIn("window.addEventListener('magentaMerged', e => {", page)
