@@ -1861,6 +1861,8 @@ def api_wiki_hook(request):
     if moved_from and moved_from != title and len(moved_from) <= 300:
         from .services.wiki_hooks import run
         rows = list(rows) + list(run(moved_from, user, revid, via='push'))
+        from .services.tiding_links import follow_move
+        follow_move(moved_from, title)
     wiki_changes.heard(f"{title} r{revid or '?'}" + (f" (moved from {moved_from})" if moved_from else '')
                        + ': ' + ', '.join(r.hook for r in rows))
     return JsonResponse({'ok': True, 'title': title, 'revid': revid, 'ran': [r.hook for r in rows]})

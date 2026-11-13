@@ -259,6 +259,44 @@ def wiki_page(title):
     return title[:1].upper() + title[1:] if title else None
 
 
+def wiki_url(title):
+    """A PickiPedia page's address, as the wiki writes it."""
+    from urllib.parse import quote
+    from .mood_view import pickipedia_url
+    return f"{pickipedia_url()}/wiki/{quote(title.replace(' ', '_'), safe=';@$!*(),/~:')}"
+
+
+def page_of(tiding):
+    """The PickiPedia page a tiding is, where it is now; None if its link isn't a page there."""
+    return tiding.moved_to or wiki_title(tiding.url)
+
+
+def follow_move(old, new):
+    """A PickiPedia page moved (Justin, #interfaces, 13 Nov 2026: "a pickipedia page shared as a tiding, moved to
+    give it a better headline"): each tiding of the page goes where it went, and takes its new title as its
+    headline unless someone gave it a title of its own. The address said in the Mood stays as it was: the wiki
+    redirects it. Idempotent; the push and the sweep both call it. How many tidings followed."""
+    from conversations.models import Tiding
+    old, new = wiki_page(old), wiki_page(new)
+    if not old or not new or old == new:
+        return 0
+    followed = 0
+    for tiding in Tiding.objects.filter(url__contains='/wiki/'):
+        if page_of(tiding) != old:
+            continue
+        fields = {'moved_to': new}
+        own = wiki_page(tiding.title or '') or ''
+        if own == old:
+            fields['title'] = new[:MAX_TITLE]
+        elif own.startswith(old + ' § '):
+            fields['title'] = (new + own[len(old):])[:MAX_TITLE]
+        Tiding.objects.filter(pk=tiding.pk).update(**fields)
+        followed += 1
+    if followed:
+        _changed()
+    return followed
+
+
 def on_wiki(title):
     """The Tiding a PickiPedia page is, if it's on Tidings: the first promoted, its message not taken back."""
     from conversations.models import Tiding
@@ -268,7 +306,7 @@ def on_wiki(title):
         index = {}
         for tiding in Tiding.objects.select_related('message').filter(
                 work__isnull=True, url__contains='/wiki/').order_by('at'):
-            page = wiki_title(tiding.url)
+            page = page_of(tiding)
             if page and page not in index and tiding.message.mood_id is not None \
                     and (said_of(tiding.message) or '') != DELETED:
                 index[page] = str(tiding.id)
@@ -742,7 +780,7 @@ def mention_of(notice, agent):
             break
     where = f"/tidings/{tiding.id}/#c-{asked.id}"
     text = (f"@{agent}: {asked.by_id} asked you on Tidings, in the discussion of “{tiding.title or tiding.url}” "
-            f"({tiding.url}), {where}:\n\n{asked.text}"
+            f"({tiding.address}), {where}:\n\n{asked.text}"
             + (('\n\nWhat it answers, nearest first:\n' + '\n'.join(above)) if above else '')
             + '\n\nYour reply goes back there as a comment under theirs, as well as here.')
     return {'id': str(notice.id), 'sender': asked.by_id, 'is_human': True, 'created_at': notice.created_at.isoformat(),
@@ -941,7 +979,7 @@ def card(tiding_id):
         description = (_release_of(tiding.url) or {}).get('description') or ''
         image = release_embed(cid)['poster']
     else:
-        lead = _wiki_of(tiding.url)
+        lead = _wiki_of(tiding.address)
         if lead:
             words = ' '.join(html_lib.unescape(re.sub(r'<[^>]+>', '', p)) for p in lead['paragraphs'])
             description, image = words, (lead.get('picture') or {}).get('src') or ''
@@ -969,9 +1007,9 @@ def discussion(tiding_id, viewer=None):
     scored, mines = _tiding_scores([tiding], viewer)
     return {
         'id': str(tiding.id),
-        'url': tiding.url,
-        'host': host_of(tiding.url),
-        'title': tiding.title or tiding.url,
+        'url': tiding.address,
+        'host': host_of(tiding.address),
+        'title': tiding.title or tiding.address,
         'by': tiding.by.name if tiding.by_id else '',
         'at': tiding.at,
         'message': str(message.id),
@@ -985,7 +1023,7 @@ def discussion(tiding_id, viewer=None):
         'muted': tiding.muted_in_mood,
         'embed': embed_of(tiding.url),
         'release': _release_of(tiding.url),
-        'wiki': _wiki_of(tiding.url),
+        'wiki': _wiki_of(tiding.address),
         'comments': tree_of(tiding, message.id, viewer=viewer),
     }
 
@@ -1061,9 +1099,9 @@ def listed(limit=LISTED, viewer=None, order='top'):
         text = said_of(message) or ''
         out.append({
             'id': str(tiding.id),
-            'url': tiding.url,
-            'host': host_of(tiding.url),
-            'title': tiding.title or tiding.url,
+            'url': tiding.address,
+            'host': host_of(tiding.address),
+            'title': tiding.title or tiding.address,
             'by': tiding.by.name if tiding.by_id else '',
             'at': tiding.at,
             'message': str(message.id),

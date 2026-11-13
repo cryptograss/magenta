@@ -1570,6 +1570,18 @@ class Tiding(models.Model):
     muted_in_mood = models.BooleanField(default=False)
     by = models.ForeignKey(ThinkingEntity, models.SET_NULL, null=True, blank=True, related_name='tidings')
     at = models.DateTimeField(auto_now_add=True)
+    # The PickiPedia title its page has now, when the page has moved since it was promoted (Justin, #interfaces,
+    # 13 Nov 2026: a page moved for a better headline). `url` stays as it was said, so the message's ★ and its
+    # post still find their link; `address` is where the page is.
+    moved_to = models.CharField(max_length=300, blank=True, default='')
+
+    @property
+    def address(self):
+        """Where the link goes now: its PickiPedia page's new address if the page moved, else as it was said."""
+        if not self.moved_to:
+            return self.url
+        from conversations.services.tiding_links import wiki_url
+        return wiki_url(self.moved_to)
 
     class Meta:
         db_table = 'tidings'

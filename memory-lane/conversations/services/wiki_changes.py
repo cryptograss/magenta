@@ -92,6 +92,8 @@ def sweep(http=None, now=None):
         titles = [change.get('title', '')]
         if change.get('logtype') == 'move' and (change.get('logparams') or {}).get('target_title'):
             titles.append(change['logparams']['target_title'])
+            from .tiding_links import follow_move  # the push did it too, if it was heard: it's idempotent
+            follow_move(titles[0], titles[1])
         for title in titles:
             if title and cache.add(f'wiki-changes:forgot:{rcid}:{hashlib.sha1(title.encode()).hexdigest()}', 1, 86400):
                 # Told of by the push already: its hooks ran then; the sweep only judges it below.
