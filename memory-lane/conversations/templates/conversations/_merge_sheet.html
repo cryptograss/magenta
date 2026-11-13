@@ -51,15 +51,11 @@
                     box-shadow: 0 2px 8px rgba(0,0,0,.08); }
   .mergeBar .item .mark { width: 1.2em; text-align: center; font-weight: 700; }
   .mergeBar .item.going .mark::before { content: '◌'; display: inline-block; animation: mergeBarSpin 1s linear infinite; }
-  .mergeBar .item.ok { background: #e8f6ee; color: #1d6b3f; }
+  .mergeBar .item.ok { background: light-dark(#e8f6ee, #16321f); color: light-dark(#1d6b3f, #8fd8ab); }
   .mergeBar .item.ok .mark::before { content: '✓'; }
-  .mergeBar .item.err { background: #fdecea; color: #9b2c22; }
+  .mergeBar .item.err { background: light-dark(#fdecea, #3a1916); color: light-dark(#9b2c22, #f2a59c); }
   .mergeBar .item.err .mark::before { content: '✗'; }
   .mergeBar .item .x { margin-left: auto; border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; opacity: .7; }
-  @media (prefers-color-scheme: dark) {
-    .mergeBar .item.ok { background: #16321f; color: #8fd8ab; }
-    .mergeBar .item.err { background: #3a1916; color: #f2a59c; }
-  }
   @keyframes mergeBarSpin { to { transform: rotate(360deg); } }
 </style>
 <template id="mergeSheetTpl">
