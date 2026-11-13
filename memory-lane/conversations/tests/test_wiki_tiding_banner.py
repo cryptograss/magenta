@@ -6,7 +6,7 @@ import uuid
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 
-from conversations.models import Message, Mood, ThinkingEntity, Tiding
+from conversations.models import Message, Mood, ThinkingEntity, Tiding, TidingComment, TidingVote
 from conversations.services import tiding_links
 
 
@@ -25,8 +25,8 @@ class WikiTidingBannerTest(TestCase):
         tiding_links._changed()
         return made
 
-    def ask(self, title):
-        return self.client.get('/api/wiki/tiding/', {'title': title})
+    def ask(self, title, **more):
+        return self.client.get('/api/wiki/tiding/', {'title': title, **more})
 
     def test_a_page_on_tidings_says_where_with_the_words(self):
         made = self.tiding("https://pickipedia.xyz/wiki/Kuba%27s_Last_Merged_Commits:_the_story_of_arthel159#Top")
@@ -55,3 +55,37 @@ class WikiTidingBannerTest(TestCase):
         made.delete()
         tiding_links._changed()
         self.assertEqual(self.ask('Tony Rice').json(), {'tiding': None})
+
+
+    def test_asked_what_was_said_it_says_the_last_of_it(self):
+        """A post's page on the wiki shows the end of its thread (Justin, 13 Nov, #pickipedia-style-and-main-page)."""
+        made = self.tiding('https://pickipedia.xyz/wiki/User:JMyles/My_Long_Forgotten_Dream')
+        Tiding.objects.filter(id=made.id).update(title='My Long Forgotten Dream')
+        magent = ThinkingEntity.objects.create(name='magent', is_biological_human=False)
+        TidingComment.objects.create(tiding=made, by=self.justin, text='The first thing said.')
+        gone = TidingComment.objects.create(tiding=made, by=self.justin, text='[deleted]', changed='deleted')
+        TidingComment.objects.create(tiding=made, by=magent, text='An answer.\n\nIn two paragraphs.')
+        last = TidingComment.objects.create(tiding=made, by=self.justin, text='The last word.')
+        TidingVote.objects.create(tiding=made, by=self.justin)
+        got = self.ask('User:JMyles/My Long Forgotten Dream', recent='2').json()
+        self.assertEqual(got['tiding'], f'https://magenta.cryptograss.live/tidings/{made.id}/')
+        self.assertEqual((got['title'], got['score'], got['comments']), ('My Long Forgotten Dream', 1, 3))
+        self.assertEqual([(r['who'], r['kind'], r['colour']) for r in got['recent']],
+                         [('magent', 'emergent', '#ff67fd'), ('justin', 'person', '')])
+        self.assertEqual(got['recent'][0]['text'], 'An answer.\n\nIn two paragraphs.')
+        self.assertEqual(got['recent'][1]['href'], f'https://magenta.cryptograss.live/tidings/{made.id}/#c-{last.id}')
+        self.assertRegex(got['recent'][1]['at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+        self.assertNotIn(str(gone.id), str(got))
+
+    def test_not_asked_it_says_no_more_than_before(self):
+        made = self.tiding('https://pickipedia.xyz/wiki/Tony_Rice')
+        TidingComment.objects.create(tiding=made, by=self.justin, text='Said.')
+        for more in ({}, {'recent': '0'}, {'recent': 'lots'}, {'recent': '-3'}):
+            self.assertEqual(sorted(self.ask('Tony Rice', **more).json()), ['id', 'tiding', 'words'], more)
+        self.assertEqual(len(self.ask('Tony Rice', recent='99999').json()['recent']), 1)
+        self.assertEqual(self.ask('Nobody', recent='5').json(), {'tiding': None})
+
+    def test_words_are_sent_plain(self):
+        self.assertEqual(tiding_links.plain_words('<p>One <b>bold</b> &amp; <a href="/x">linked</a>.</p>\n<ul><li>a</li><li>b</li></ul><p>Two<br>lines</p>'),
+                         'One bold & linked.\n\na\n\nb\n\nTwo\nlines')
+        self.assertEqual(tiding_links.plain_words(''), '')

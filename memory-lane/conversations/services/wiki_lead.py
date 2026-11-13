@@ -16,6 +16,12 @@ claim-unverified) is left out, words and pictures; a proposal to remove somethin
 without the proposal's badge. And the page's "Listen in Rabbithole" (Template:Listen in Rabbithole, drawn
 pp-listen-stack) is taken out of the words and drawn as a button above them ("a fully rendered button to play on
 rabbithole, as the first bit of content here"): `listen`, {'play': {href, text}, 'trail': {...}}.
+
+A post (somebody's own writing, User:Name/Title, read on the wiki in its Broadside skin) opens here under the
+same masthead it has there: `post`, {'headline', 'kicker', 'dek', 'author': {'name', 'url', 'avatar'},
+'published', 'reads', 'cap'}, from the wiki's own card of the page (api.php?action=pagecard). Justin, 13 Nov
+(#pickipedia-style-and-main-page): "it needs to preview really nicely on its tidings page and then be a smooth
+cognitive transition when the user then visits the full page."
 """
 
 import hashlib
@@ -27,12 +33,13 @@ from urllib.parse import unquote
 LEAD_CHARS = 500
 LEAD_PARAGRAPHS = 3
 SHORT = 40           # fewer characters than this: a dateline or a byline, not one of the paragraphs counted
+CAP_CHARS = 150      # a post's first paragraph with this many characters takes the large first letter: two lines of it
 PICTURE_MIN = 120    # the file's width in pixels, at least
 PICTURE_RATIO = 3.0  # longer side over shorter, at most
 KEPT, MISS = 600, 60  # seconds: an edit shows within ten minutes; a wiki that didn't answer is asked again soon
 # Bump when lead_of reads a page differently: its key changes, so a deploy shows the new reading at once,
 # not after an opening the old code kept runs out (Justin, 12 Nov: merged and redeployed, "why no refreshed?").
-SHAPE = 2
+SHAPE = 3
 NOT_ARTICLES = ('special', 'file', 'image', 'release', 'media')  # a Release has its own page (tiding_links._release_of)
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'}
@@ -293,6 +300,59 @@ def wiki_lead(url, http=None):
     return found or None
 
 
+def is_post(title):
+    """Whether a title is somebody's own writing, as the wiki reads it (PickiPedia's Posts/Post::isPostTitle): a
+    subpage of a user's."""
+    space, colon, rest = (title or '').partition(':')
+    return bool(colon) and space.strip().lower() == 'user' and '/' in rest.strip().strip('/')
+
+
+def post_of(card, base):
+    """A post's masthead from the wiki's card of its page (PickiPedia's Posts/PageCard.php), as the page there
+    draws it; None if the card isn't a post's. Words are kept as text and cut to size, an address only if it is
+    the wiki's own, the date and the reading time said as the wiki says them."""
+    from datetime import datetime
+    post = card.get('post') if isinstance(card, dict) and card.get('kind') == 'post' else None
+    if not isinstance(post, dict):
+        return None
+
+    def words(value, most):
+        return re.sub(r'\s+', ' ', value).strip()[:most] if isinstance(value, str) else ''
+
+    def own(value):
+        return value if isinstance(value, str) and value.startswith(base + '/') and len(value) <= 1000 else ''
+
+    headline = words(post.get('headline'), 300)
+    if not headline:
+        return None
+    author = post.get('author') if isinstance(post.get('author'), dict) else {}
+    published = ''
+    try:
+        at = datetime.fromisoformat(str(post.get('published') or '').replace('Z', '+00:00'))
+        published = f'{at.day} {at:%B} {at.year}'
+    except ValueError:
+        pass
+    minutes = post.get('minutes')
+    minutes = minutes if type(minutes) is int and 0 < minutes < 10000 else 0
+    return {'headline': headline, 'kicker': words(post.get('kicker'), 120), 'dek': words(post.get('dek'), 400),
+            'author': {'name': words(author.get('name'), 80), 'url': own(author.get('url')),
+                       'avatar': own(author.get('avatar'))},
+            'published': published,
+            'reads': ("a minute's read" if minutes == 1 else f"{minutes} minutes' read") if minutes else ''}
+
+
+def _post(title, base, http):
+    """The wiki's card of a post, as post_of reads it; None if the wiki has none to give (one older than its
+    Broadside skin answers an error) or doesn't answer: the page then opens as any article does."""
+    try:
+        got = http.get(f'{base}/api.php', timeout=4, headers={'User-Agent': 'memory-lane (magenta; tidings)'},
+                       params={'action': 'pagecard', 'titles': title, 'format': 'json', 'formatversion': 2}).json()
+        cards = got.get('pagecard') if isinstance(got, dict) else None
+        return post_of(cards[0], base) if isinstance(cards, list) and cards else None
+    except Exception:  # noqa: BLE001 -- the article opens without its masthead
+        return None
+
+
 def _fetch(title, base, http=None):
     import requests
     http = http or requests
@@ -303,6 +363,14 @@ def _fetch(title, base, http=None):
     if not html:
         return None
     lead = lead_of(html, base)
-    if not lead['paragraphs'] and not lead['picture'] and not lead['listen']:
+    post = _post(title, base, http) if is_post(title) else None
+    if not lead['paragraphs'] and not lead['picture'] and not lead['listen'] and not post:
         return None
+    if post:
+        # The large first letter its own page sets, on the first paragraph long enough to stand beside it: not on
+        # a line's note above the piece ("I originally posted this as a story on ..."), where the next
+        # paragraph would wrap around the letter.
+        lengths = [len(re.sub(r'<[^>]+>', '', words)) for words in lead['paragraphs']]
+        post['cap'] = next((i for i, length in enumerate(lengths) if length >= CAP_CHARS), None)
+        lead['post'] = post
     return lead
