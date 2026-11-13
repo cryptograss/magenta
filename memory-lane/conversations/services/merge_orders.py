@@ -206,7 +206,18 @@ def preview(repo, branch='', number=None):
     return {'repo': repo, 'branch': branch, 'number': int(number) if number else None, 'commit': commit,
             'into': into, 'tip': tip,
             'log': _git(held, 'log', '--no-decorate', '--format=%h %an: %s', f'{tip}..{commit}'),
-            'stat': _git(held, 'diff', '--stat', f'{tip}...{commit}')}
+            'stat': _git(held, 'diff', '--stat', f'{tip}...{commit}'),
+            'conflicts': _conflicts(held, tip, commit)}
+
+
+def _conflicts(held, tip, commit):
+    """The files merging commit into tip conflicts in, as githouse would find it: [] if clean, None if git can't say.
+    Asked of the sheet, so a press githouse would refuse is never offered (Justin, 13 Nov: clips-page-row was
+    refused for a conflict the ramp showed but the sheet didn't)."""
+    import tempfile
+    from . import ramp
+    with tempfile.TemporaryDirectory(prefix='merge-sheet-') as scratch:
+        return ramp._merge_tree(held, tip, commit, scratch)
 
 
 def _promotion(held, repo, branch):

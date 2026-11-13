@@ -181,6 +181,10 @@ window.magentaMerge = (() => {
     if (body.can && body.promote) {
       s.$('.go').hidden = false;
       s.say(`Signed by memory-lane on your press; githouse checks it again and promotes, never forcing: main ends at exactly this production.`);
+    } else if (body.conflicts && body.conflicts.length) {
+      // githouse would refuse it: no button, and why, with the files (Justin, 13 Nov).
+      s.$('.go').hidden = true;
+      s.say(`Conflicts with ${body.into} in ${body.conflicts.join(', ')}. Its author merges ${body.into} into it and pushes; then it can merge.`, 'err');
     } else if (body.can) {
       s.$('.go').hidden = false;
       s.say(`Signed by memory-lane on your press; githouse checks it again and merges --no-ff, exactly this commit.`);
