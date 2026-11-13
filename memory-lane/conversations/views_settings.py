@@ -12,7 +12,7 @@ from django.http import JsonResponse
 from django.conf import settings
 from django.shortcuts import render
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods, require_safe
 
 from .models import Mood, Setting, ThinkingEntity
 from .services import mood_auth
@@ -346,7 +346,7 @@ def _work_context(tiding_id, device):
 
 
 @ensure_csrf_cookie
-@require_GET
+@require_safe  # HEAD too: a previewer may ask it before it reads the page (Justin, 13 Nov)
 def tiding_page(request, tiding_id):
     """One link's page: itself and what's been said about it, as a comment can be said. Asked for with
     ?embed=1, it draws inside the one page's Tidings frame; without, the one page, on Tidings. A candidate

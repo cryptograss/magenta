@@ -1,0 +1,8 @@
+<meta property="og:site_name" content="magenta">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ card.title }}">
+<meta property="og:url" content="{{ card_url }}">
+{% if card.description %}<meta property="og:description" content="{{ card.description }}">
+<meta name="description" content="{{ card.description }}">{% endif %}
+<meta property="og:image" content="{{ card.image|default:card_icon }}">
+<meta name="twitter:card" content="{% if card.image %}summary_large_image{% else %}summary{% endif %}">

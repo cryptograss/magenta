@@ -244,3 +244,29 @@ class CardTest(PageTest):
     def test_the_moods_and_a_missing_link_have_no_card(self):
         self.assertNotIn('og:title', self.client.get(f'/tidings/{uuid.uuid4()}/').content.decode())
         self.assertNotIn('og:title', self.client.get('/tidings/').content.decode())
+
+
+@override_settings(PICKIPEDIA_URL=BASE)
+class PreviewerCardTest(PageTest):
+    """Justin, 13 Nov: Telegram drew PickiPedia's cards but not magenta's. A previewer is sent the card alone,
+    not the whole page (most of a megabyte), and may ask HEAD first."""
+
+    def test_a_previewer_gets_the_card_alone(self):
+        with self.wiki():
+            got = self.client.get(f'/tidings/{self.tiding.id}/', HTTP_USER_AGENT='TelegramBot (like TwitterBot)')
+        html = got.content.decode()
+        self.assertIn('<meta property="og:title" content="Kuba&#x27;s Last Merged Commits: the story of arthel159">', html)
+        self.assertIn(f'<meta property="og:image" content="{BASE}/images/thumb/b/b5/Kuba.jpeg/400px-Kuba.jpeg">', html)
+        self.assertLess(len(html), 4000)
+        self.assertNotIn('<script', html)
+
+    def test_a_person_gets_the_page(self):
+        with self.wiki():
+            html = self.client.get(f'/tidings/{self.tiding.id}/', HTTP_USER_AGENT='Mozilla/5.0').content.decode()
+        self.assertIn('og:title', html)
+        self.assertGreater(len(html), 50000)
+
+    def test_head_is_answered(self):
+        with self.wiki():
+            self.assertEqual(self.client.head(f'/tidings/{self.tiding.id}/').status_code, 200)
+        self.assertEqual(self.client.head('/').status_code, 200)
