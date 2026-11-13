@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>stats · magenta</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
+    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --code: #f3efe8;
+    --ok: #2e9e5b; --warn: #d48806; --err: #c0392b; --hover: rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
+            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --code: #29252c;
+            --hover: rgba(255,255,255,.05); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--bg); }
+  main { max-width: 1100px; margin: 0 auto; padding: 18px 16px 60px; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  h2 { font-size: 15px; margin: 22px 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--code); padding: 1px 4px; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); border-top: 0; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+  tr.failed td { color: var(--err); }
+  .via { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+  .via.push { color: var(--ok); border-color: var(--ok); }
+  .push { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px; }
+  .push .no { color: var(--warn); }
+  .push .bad { color: var(--err); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 18px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex-wrap: wrap; }
+  header .brand { font-weight: 700; color: var(--accent); text-decoration: none; }
+  header nav { display: flex; gap: 12px; font-size: 13px; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  header nav a:hover, header nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+  .sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .site { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .site h2 { margin: 0 0 2px; font-size: 16px; }
+  .site .what { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+  .site .open { font-weight: 600; }
+  .nums { display: flex; gap: 18px; flex-wrap: wrap; margin: 6px 0 10px; }
+  .num b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .num span { color: var(--muted); font-size: 12px; }
+  .site ol { margin: 0; padding-left: 20px; font-size: 13px; }
+  .site ol li span { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .site .state { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .site .state.bad { color: var(--warn); }
+  .kept { color: var(--muted); font-size: 13px; margin-top: 18px; }
+</style>
+{% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
+     goes there, which opens it without loading anything again. -->
+<style>body > header { display: none; }</style>
+<script>
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') return;
+    const to = new URL(a.href, location.href);
+    if (to.origin !== location.origin) { a.target = '_top'; return; }
+    if (to.pathname === location.pathname && to.hash) return;  // within this page
+    e.preventDefault();
+    parent.postMessage({ magentaGo: to.pathname + to.search + to.hash }, location.origin);
+  });
+</script>{% endif %}
+</head>
+<body>
+<header>
+  <a class="brand" href="/moods/">magenta</a>
+  <nav>
+    <a href="/status/">status</a>
+    <a href="/tidings/">tidings</a>
+    <a href="/polls/">polls</a>
+    <a href="/prompts/">prompts</a>
+    <a href="/todo/">todo</a>
+    <a href="/ramp/">ramp</a>
+    <a href="/tasks/">tasks</a>
+    <a href="/journals/">journals</a>
+    <a href="/verify/">bundles</a>
+    <a href="/hooks/">wiki hooks</a>
+    <a href="/traffic/" aria-current="page">stats</a>
+    <a href="/settings/">settings</a>
+  </nav>
+</header>
+<main>
+  <h1>Traffic</h1>
+  <p class="lede">Who comes to magenta and PickiPedia, and from where: counted from each site's own access log by
+    <a href="https://goaccess.io/" target="_blank" rel="noopener">GoAccess</a>, on the server. Nothing runs in a
+    reader's browser for it. Both dashboards are public.</p>
+
+  <div class="sites">
+  {% for site in sites %}
+    <section class="site" data-host="{{ site.host }}">
+      <h2>{{ site.name }}</h2>
+      <p class="what">{{ site.what }}</p>
+      <a class="open" href="https://{{ site.host }}/stats/" target="_blank" rel="noopener">Open the dashboard ↗</a>
+      <div class="nums">
+        <div class="num"><b data-n="requests">–</b><span>requests</span></div>
+        <div class="num"><b data-n="visitors">–</b><span>visitors</span></div>
+        <div class="num"><b data-n="crawlers">–</b><span>of it crawlers</span></div>
+      </div>
+      <ol data-n="sites"></ol>
+      <div class="state">reading the dashboard…</div>
+    </section>
+  {% endfor %}
+  </div>
+
+  <p class="kept">What they leave out, on purpose: visitors' addresses, query strings, full referring URLs and
+    search terms. Sign-in links and email tokens never reach the logs at all. A visitor is one address and browser
+    in a day, so each crawler counts as one. The logs themselves are kept 30 days on each server, then rolled off.
+    The configuration is <code>roles/goaccess</code> in maybelle-config.</p>
+</main>
+<script>
+// A few numbers from each dashboard, as it has them now: its own WebSocket (wss://host/stats/ws) sends the whole
+// of what it counts on connecting. Asked once on opening and every 30 s while this section is the one shown;
+// each time the socket is closed again, so a kept-but-hidden section holds nothing open.
+(function () {
+  const EVERY_MS = 30000;
+  const fmt = n => Number(n || 0).toLocaleString();
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function shown() {
+    if (document.visibilityState !== 'visible') return false;
+    try { return !(window.frameElement && window.frameElement.hidden); } catch (e) { return true; }
+  }
+  function read(card) {
+    const host = card.dataset.host;
+    const state = card.querySelector('.state');
+    let done = false;
+    const ws = new WebSocket(`wss://${host}/stats/ws`);
+    const give = (msg, bad) => { if (done) return; done = true; state.textContent = msg; state.classList.toggle('bad', !!bad); try { ws.close(); } catch (e) {} };
+    const timer = setTimeout(() => give('the dashboard didn\'t answer; open it to see', true), 10000);
+    ws.onerror = () => { clearTimeout(timer); give('the dashboard didn\'t answer; open it to see', true); };
+    ws.onmessage = e => {
+      clearTimeout(timer);
+      let d;
+      try { d = JSON.parse(e.data); } catch (err) { return give('the dashboard answered with something unreadable', true); }
+      const g = d.general || {};
+      const crawl = ((d.browsers && d.browsers.data) || []).find(b => b.data === 'Crawlers');
+      card.querySelector('[data-n="requests"]').textContent = fmt(g.total_requests);
+      card.querySelector('[data-n="visitors"]').textContent = fmt(g.unique_visitors);
+      card.querySelector('[data-n="crawlers"]').textContent = crawl ? `${parseFloat(crawl.hits.percent)}%` : '0%';
+      // Referring sites, the site itself left out: where readers came from.
+      const from = ((d.referring_sites && d.referring_sites.data) || []).filter(r => r.data !== host).slice(0, 5);
+      card.querySelector('[data-n="sites"]').innerHTML = from.length
+        ? from.map(r => `<li>${esc(r.data)} <span>· ${fmt(r.visitors.count)} visitor${r.visitors.count === 1 ? '' : 's'}</span></li>`).join('')
+        : '<li><span>no other site has sent anyone yet</span></li>';
+      give(g.start_date ? `counted since ${g.start_date}; as of ${new Date().toLocaleTimeString()}` : `as of ${new Date().toLocaleTimeString()}`);
+    };
+  }
+  const cards = [...document.querySelectorAll('.site[data-host]')];
+  const all = () => cards.forEach(read);
+  all();
+  setInterval(() => { if (shown()) all(); }, EVERY_MS);
+})();
+</script>
+</body>
+</html>

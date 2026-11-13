@@ -27,6 +27,7 @@ urlpatterns = [
     path('moods/faq/', RedirectView.as_view(url='/faq/', permanent=True)),  # its first address
     path('verify/', views_settings.verify_page, name='mood_verify'),
     path('hooks/', views_settings.hooks_page, name='mood_hooks'),
+    path('traffic/', views_settings.traffic_page, name='mood_traffic'),  # /stats/ is Caddy's: the dashboards themselves
     path('tasks/', views_settings.tasks_page, name='mood_tasks'),
     path('journals/', views_settings.journals_page, name='mood_journals'),
     path('ramp/', views_settings.ramp_page, name='mood_ramp'),
