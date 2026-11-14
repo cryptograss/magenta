@@ -251,7 +251,11 @@ if (!window.magentaTicker) {
       }
     }
 
-    return { barLine, barUnder, feed, noteMerged, isMerged, named, placeBar };
+    // Non-mergers get magentaTicker as window.magentaMerge (no confirm sheet on the page), so every sheet
+    // entry point moods.html calls (mergeSheetsFollow -> show, prefetch, within, open) must be a safe no-op
+    // (R.J., #general, 14 Nov: open() threw TypeError on magentaMerge.show and froze on "Loading…").
+    const noop = () => {};
+    return { barLine, barUnder, feed, noteMerged, isMerged, named, placeBar, show: noop, within: noop, prefetch: noop, open: noop };
   })();
   if (!window.magentaMerge) window.magentaMerge = window.magentaTicker;
 }
