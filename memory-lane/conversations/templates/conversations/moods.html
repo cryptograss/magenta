@@ -2289,7 +2289,7 @@
   let baseTitle = 'magenta';
   // Which Mood is on screen, for the merge sheets (_merge_sheet.html): each shows only over its own Mood.
   window.magentaMoodOnScreen = () => sectionNow === 'moods' ? current : null;
-  const mergeSheetsFollow = () => { if (window.magentaMerge) magentaMerge.show(window.magentaMoodOnScreen()); };
+  const mergeSheetsFollow = () => { window.magentaMerge?.show?.(window.magentaMoodOnScreen()); };
   let sectionNow = 'moods';  // or tidings, prompts, status, settings (showSection)
   let people = [];          // everyone who can be named, for @-completion
   let groups = [];          // tags for a group (@core: everyone who signs in with an SSH key)
@@ -7789,7 +7789,7 @@
     box.innerHTML = lines.map(l => l.html).join('<br>')
       + (pills.length ? `<div class="askpills">${pills.map(p => p.html).join('')}</div>` : '');
     // Each Merge… here, looked at before it's pressed: the sheet opens on it (Justin, 9 Nov).
-    if (window.magentaMerge) box.querySelectorAll('button.askmerge').forEach(b =>
+    if (window.magentaMerge?.prefetch) box.querySelectorAll('button.askmerge').forEach(b =>
       magentaMerge.prefetch({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }));
   }
   // A merge ask without what was merged from this page (the merge sheet's word, kept ten minutes): its pill goes
@@ -7819,13 +7819,13 @@
   }
   ['pointerover', 'focusin', 'touchstart'].forEach(kind => document.getElementById('toolsOpen').addEventListener(kind, e => {
     const b = e.target.closest && e.target.closest('button.askmerge');
-    if (b && window.magentaMerge) magentaMerge.prefetch({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null });
+    if (b && window.magentaMerge?.prefetch) magentaMerge.prefetch({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null });
   }, { passive: true }));
   document.getElementById('toolsOpen').addEventListener('click', e => {
     const b = e.target.closest('button.askmerge');
     if (!b) return;
     e.preventDefault();
-    magentaMerge.open({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }, current);
+    window.magentaMerge?.open?.({ repo: b.dataset.repo, branch: b.dataset.branch, number: b.dataset.number || null }, current);
   });
   function renderTyping() {
     document.querySelectorAll('.people .who').forEach(el => el.classList.toggle('typing', typingNow.includes(el.dataset.who)));
@@ -10291,7 +10291,7 @@
         return;
       }
       sayBox.value = ''; saveDraft();
-      magentaMerge.open(work, current);
+      window.magentaMerge?.open?.(work, current);
       return;
     }
     const text = [words, ...sentTray.map(a => a.markdown)].filter(Boolean).join('\n');

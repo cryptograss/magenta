@@ -74,6 +74,46 @@ class SharedGithouseTickerTest(TestCase):
         self.assertIn('window.magentaTicker', merger_html)
         self.assertIn('id="mergeSheetTpl"', merger_html)
 
+    def test_non_merger_magenta_merge_shim_implements_every_sheet_method_without_throwing(self):
+        # R.J., #general, 14 Nov: non-mergers get _ticker.html aliasing window.magentaMerge = window.magentaTicker
+        # without _merge_sheet.html. open() and showSection() call mergeSheetsFollow() -> magentaMerge.show(...);
+        # if any method of _merge_sheet.html's magentaMerge is missing on magentaTicker, open() throws before
+        # poll(true) runs and strands non-mergers on "Loading…".
+        import re
+        import subprocess
+        from django.template.loader import render_to_string
+        ticker_js = '\n'.join(re.findall(r'<script>(.*?)</script>', render_to_string('conversations/_ticker.html'), re.S))
+        sheet_raw = render_to_string('conversations/_merge_sheet.html')
+        sheet_exports = [m.strip() for m in re.search(r'return \{([^}]+)\};\s*\}\)\(\);\s*</script>', sheet_raw).group(1).split(',')]
+        harness = f"""
+const window = {{ addEventListener() {{}}, dispatchEvent() {{}} }};
+const document = {{ body: {{ prepend() {{}}, firstElementChild: null }}, createElement: () => ({{ className: '', hidden: false, style: {{ setProperty() {{}} }}, classList: {{ toggle() {{}} }}, children: [], appendChild() {{}}, addEventListener() {{}}, querySelector: () => ({{}}) }}) }};
+const localStorage = {{ getItem: () => null, setItem() {{}} }};
+const CustomEvent = function(n, o) {{ this.type = n; this.detail = o && o.detail; }};
+{ticker_js}
+const methods = {json.dumps(sheet_exports)};
+for (const m of methods) {{
+  if (typeof window.magentaMerge[m] !== 'function') throw new Error('missing ' + m);
+}}
+window.magentaMerge.show('general');
+window.magentaMerge.show(null);
+window.magentaMerge.prefetch({{ repo: 'magenta', branch: 're/foo' }});
+window.magentaMerge.within(() => null);
+window.magentaMerge.open({{ repo: 'magenta', branch: 're/foo' }}, 'general');
+console.log('OK:' + methods.length);
+"""
+        ran = subprocess.run(['node', '-e', harness], capture_output=True, text=True, check=True)
+        self.assertIn('OK:10', ran.stdout)
+
+        # And every script block rendered on /moods/ for anonymous, wiki-tier, and merger parses cleanly.
+        for who in (None, 'rj', 'justin'):
+            self.client.cookies.clear()
+            if who:
+                self.client.cookies[mood_auth.COOKIE] = who
+            html = self.client.get('/moods/').content.decode()
+            for js in re.findall(r'<script>(.*?)</script>', html, re.S):
+                subprocess.run(['node', '--input-type=commonjs', '--check'], input=js, text=True, check=True)
+
     def test_everyone_sees_another_person_s_githouse_order_from_waiting_to_merged(self):
         with mock.patch('conversations.services.wiki_auth.names',
                         return_value={'justin': 'JMyles', 'skyler': 'SkymanJenkins'}):
