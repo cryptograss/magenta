@@ -123,10 +123,13 @@ def for_mood(mood, http=None):
         except Unreadable as e:
             error = str(e)
     items = with_merges(items, http)
+    from .todo_types import with_closes
+    items = with_closes(mood.slug, items)  # typed; deploys and verifies done once finished (services/todo_types.py)
     if text is not None and not error:
-        from .todo_ticks import tick_later  # merged, but open on the page: a bot ticks it there too
+        from .todo_ticks import tick_later  # done here, but open on the page: a bot ticks it there too
         for item in items:
-            if item.get('merged') or item.get('closed'):
+            if (item.get('merged') or item.get('closed') or item.get('verified') or item.get('deployed')) \
+                    and item.get('link'):
                 tick_later(title, item['link'])
     page = f"{pickipedia_url()}/wiki/{quote(title.replace(' ', '_'))}"
     found = {'page': page, 'edit': f'{page}?action=edit', 'exists': text is not None, 'items': items,
@@ -216,8 +219,10 @@ def all_todos(http=None):
     open_count = sum(1 for it in all_items if not it.get('done') and not it.get('merged'))
     done_count = sum(1 for it in all_items if it.get('done') or it.get('merged'))
 
+    from .todo_types import summary
     result = {
         'items': all_items,
+        'types': summary(all_items),
         'total': len(all_items),
         'open': open_count,
         'done': done_count,

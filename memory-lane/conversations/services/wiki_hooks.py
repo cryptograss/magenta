@@ -138,7 +138,10 @@ def _todo(title, _user):
     if mood is None:
         return 'no such Mood: nothing kept'
     todo.forget(mood)
-    return f'#{mood.slug}: to-do list forgotten; open pages ask for it now'
+    # Read now (one GET of the page): a deploy item's first sighting is its writing, not whenever a page next asks
+    # (services/todo_types.py: a deploy that names no branch counts from then).
+    todo.for_mood(mood)
+    return f'#{mood.slug}: to-do list forgotten and read again; open pages ask for it now'
 
 
 def _journals(_title, _user):
@@ -209,6 +212,11 @@ def run(title, user='', revid=None, via='sweep'):
         return []
     rows = []
     wiki_changes.forget(title, user)
+    try:
+        from . import todo_types
+        todo_types.page_changed(title)  # a verify item linking it ticks at its next look
+    except Exception:  # noqa: BLE001 -- never stops the page's own hooks
+        pass
     for hook in hooks_for(title):
         started = time.monotonic()
         failed, result = False, ''
