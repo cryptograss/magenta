@@ -275,6 +275,17 @@ def page_changed(title):
     return slugs
 
 
+def refresh_lists(slugs, by=''):
+    """Re-read the Mood lists a page change concerned, so a newly verified item ticks and reaches everyone's
+    announcement bar at once rather than waiting for someone to open that Mood."""
+    from conversations.models import Mood
+    from . import todo
+    for slug in slugs or ():
+        mood = Mood.objects.filter(slug=slug).first()
+        if mood is not None:
+            todo.for_mood(mood, by=by)
+
+
 # --- closing: the types that close themselves, beyond merges -------------------------------------------
 
 def with_closes(slug, items):

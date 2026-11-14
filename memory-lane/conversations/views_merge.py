@@ -66,6 +66,10 @@ def api_merge_order(request, order_id):
         from .services import ramp
         if cache.add(f'ramp-told:{order.id}', 1, 3 * 3600):  # once, however often it's asked after
             ramp.changed()
+    if now.get('status') != 'waiting':
+        from django.core.cache import cache
+        if cache.add(f'ticker:settled:{order.id}:{now.get("status")}', 1, 3 * 3600):
+            cache.delete('moods-live')
     return JsonResponse({'id': str(order.id), 'repo': order.repo, 'branch': order.branch, 'by': order.by, **now})
 
 

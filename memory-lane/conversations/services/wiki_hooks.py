@@ -129,18 +129,19 @@ def _mood_doc(title, _user):
     return f'#{slug}: instructions read again'
 
 
-def _todo(title, _user):
+def _todo(title, user):
     from conversations.models import Mood
-    from . import todo
+    from . import ticker, todo
     from .wiki_feed import home_of
     slug = home_of(title)
     mood = Mood.by_slug(slug) if slug else None
     if mood is None:
         return 'no such Mood: nothing kept'
+    previous = ticker.previous_from_wiki(title, mood.slug) if not ticker.has_state(mood.slug) else None
     todo.forget(mood)
-    # Read now (one GET of the page): a deploy item's first sighting is its writing, not whenever a page next asks
-    # (services/todo_types.py: a deploy that names no branch counts from then).
-    todo.for_mood(mood)
+    # Read now (one GET of the page): a deploy item's first sighting is its writing, and any non-merge,
+    # non-deploy item just marked done reaches everyone's announcement bar (services/ticker.py).
+    todo.for_mood(mood, by=user, previous_items=previous)
     return f'#{mood.slug}: to-do list forgotten and read again; open pages ask for it now'
 
 
@@ -214,7 +215,9 @@ def run(title, user='', revid=None, via='sweep'):
     wiki_changes.forget(title, user)
     try:
         from . import todo_types
-        todo_types.page_changed(title)  # a verify item linking it ticks at its next look
+        slugs = todo_types.page_changed(title)  # a verify item linking it ticks now
+        if slugs:
+            todo_types.refresh_lists(slugs, by=user)
     except Exception:  # noqa: BLE001 -- never stops the page's own hooks
         pass
     for hook in hooks_for(title):
