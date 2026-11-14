@@ -71,11 +71,14 @@ SUBCOMMANDS:
                         subtitle burned in, and save it under a name, as
                         /clips save does for a Yarn link: /clips <name>
                         plays it. Times: seconds, m:ss or h:mm:ss. Signed
-                        with your SSH key. --name (default: the subtitle's
-                        first words), --mood (default: general), --out FILE
-                        to cut only and look first. Runs mood_clip.py.
-  clips list            Every clip: its name, what it's for (from the
-                        Magenta:Clips page on PickiPedia) and its link.
+                        with your SSH key. Its row lands on Magenta:Clips,
+                        where you write what it's for. --name (default: the
+                        subtitle's first words), --mood to say it in one
+                        (default: none), --out FILE to cut only and look
+                        first. Runs mood_clip.py.
+  clips list            Every clip: its name, what it's for and its link,
+                        from the Magenta:Clips page on PickiPedia, which is
+                        the list itself.
   merge <repo>:<branch> [--into B] [--yes]
                         Merge a branch without a pull request. Fetches it and
                         its target from GitHub itself, shows you git log and
