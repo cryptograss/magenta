@@ -7396,8 +7396,11 @@
       const name = id.slice(id.indexOf('/') + 1);  // under its maker's heading, just the model
       return `<option value="${esc(full)}"${on ? ' selected' : ''}>${esc(name)}${ctx ? ' · ' + esc(kTokens(ctx)) : ''}</option>`;
     };
-    const body = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([maker, ms]) => maker
-      ? `<optgroup label="${esc(maker)}">${ms.map(option).join('')}</optgroup>` : ms.map(option).join('')).join('');
+    const sortKey = id => `${id.startsWith('~') ? '0' : '1'}:${id.replace(/^~/, '')}`;
+    const body = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([maker, ms]) => {
+      const sorted = ms.slice().sort((a, b) => sortKey(a[0]).localeCompare(sortKey(b[0])));
+      return maker ? `<optgroup label="${esc(maker)}">${sorted.map(option).join('')}</optgroup>` : sorted.map(option).join('');
+    }).join('');
     const stale = vendorOf(chosen) === v.name;  // set, but no longer in the catalog
     // Nothing set: its own default, by the name of the model that runs (choosing it again sets it outright).
     // Set: a way back to that default.

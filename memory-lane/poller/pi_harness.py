@@ -467,6 +467,9 @@ class PiWaker:
         """{'harness', 'vendors': [{'name', 'usable', 'models': [[id, context], ...]}]}: every model this
         Pi knows, and whether the keys here reach each vendor (what `pi --list-models` lists is what
         it can run). Never the keys themselves. None if Pi says nothing."""
+        # `--list-models` reads ~/.pi/agent/models-store.json without touching the network, so an
+        # emergent running only Claude Code turns never picks up new OpenRouter models unless we refresh.
+        self.run_quietly([self.pi, 'update', '--models'])
         known = {}
         package = self.package()
         if package is not None:
@@ -488,8 +491,9 @@ class PiWaker:
         for name in sorted(set(known) | set(usable)):
             models = [list(m)[:2] for m in known.get(name, [])]
             ids = {m[0] for m in models}
-            models += [[m, None] for m in usable.get(name, []) if m not in ids]  # a vendor of its own (models.json)
+            models += [[m, None] for m in usable.get(name, []) if m not in ids]  # a vendor of its own, or newer than compat
             models = [m for m in models if not is_router(f'{name}/{m[0]}')]
+            models.sort(key=lambda m: (m[0].lstrip('~').split('/', 1)[0], not m[0].startswith('~'), m[0].lstrip('~')))
             vendors.append({'name': name, 'usable': name in usable, 'models': models})
         return {'harness': self.harness(), 'vendors': vendors}
 

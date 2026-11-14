@@ -100,6 +100,42 @@ class PiCatalogTest(TestCase):
             ('openrouter', True, [['moonshotai/kimi-k3', 1000000]]),
         ])
 
+    def test_refreshes_the_store_and_sorts_new_models_with_their_maker(self):
+        waker = PiWaker(pi='pi', version='1.5.2')
+        known = json.dumps({'openrouter': [
+            ['~google/gemini-pro-latest', 1048576],
+            ['google/gemini-4-argon', 1048576],
+            ['z-ai/glm-5.3-flash', 1048576],
+        ]})
+        listed = ('provider    model                   context  max-out  thinking  images\n'
+                  'openrouter  google/gemini-4-carbon  1.0M     943.7K   yes       yes\n')
+        calls = []
+
+        def fake_run(cmd, cwd=None):
+            calls.append(cmd)
+            if cmd[0] == 'node':
+                return known
+            if cmd == ['pi', '--list-models']:
+                return listed
+            return ''
+
+        with mock.patch.object(PiWaker, 'package', return_value='/opt/pi'), \
+                mock.patch.object(PiWaker, 'run_quietly', side_effect=fake_run):
+            got = waker.catalog()
+        self.assertLess(calls.index(['pi', 'update', '--models']), calls.index(['pi', '--list-models']))
+        self.assertEqual([m[0] for m in got['vendors'][0]['models']], [
+            '~google/gemini-pro-latest',
+            'google/gemini-4-argon',
+            'google/gemini-4-carbon',
+            'z-ai/glm-5.3-flash',
+        ])
+
+    def test_settings_page_groups_vendor_models_by_maker_and_keeps_slots_apart(self):
+        html = self.client.get('/settings/?embed=1').content.decode()
+        self.assertIn('<optgroup label="', html)
+        self.assertIn("'default:' + (agent || '')", html)
+        self.assertIn("'wide:' + a", html)
+
     def test_nothing_to_say_when_pi_says_nothing(self):
         with mock.patch.object(PiWaker, 'package', return_value=None), \
                 mock.patch.object(PiWaker, 'run_quietly', return_value='No models available.\n'):
