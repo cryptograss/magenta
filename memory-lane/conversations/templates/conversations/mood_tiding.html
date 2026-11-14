@@ -178,9 +178,13 @@
   .wikilead.broadside a.bs-author:hover { color: var(--bs-rust); text-decoration: none; }
   .wikilead.broadside .bs-meta { color: var(--bs-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .wikilead.broadside > p { margin: 0 0 1.15em; text-wrap: pretty; }
-  /* Its links as the post's own page draws them. */
-  .wikilead.broadside a.wiki, .wikilead.broadside a.ext { color: light-dark(#2c5cb5, #8fb1f2); }
-  .wikilead.broadside a.wiki.new { color: light-dark(#c2372d, #ff8a75); }
+  /* Its links as the post's own page draws them (prose.css, .bs-body a): the same blue and red, and a line under
+     each, faint until pointed at, so a link is one without its colour too. */
+  .wikilead.broadside a.wiki, .wikilead.broadside a.ext { color: light-dark(#2c5cb5, #8fb1f2);
+    text-decoration: underline; text-decoration-thickness: .06em; text-underline-offset: .18em;
+    text-decoration-color: color-mix(in srgb, currentColor 32%, transparent); transition: text-decoration-color .15s; }
+  .wikilead.broadside a.wiki:hover, .wikilead.broadside a.ext:hover { text-decoration-color: currentColor; }
+  .wikilead.broadside a.wiki.new { color: light-dark(#c2372d, #ff8a75); text-decoration-style: dotted; }
   /* The first letter, as the post's own page sets it (wiki_lead: the first paragraph long enough for it). */
   .wikilead.broadside > p.cap::first-letter { float: left; margin: .08em .1em 0 0; color: var(--bs-rust);
     font-style: normal; font-weight: 700; font-size: 3.4em; line-height: .82; }
