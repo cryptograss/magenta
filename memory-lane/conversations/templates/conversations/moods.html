@@ -10513,10 +10513,10 @@
   const STALE_MS = 60000;
   function refreshSection(name, swapOpen) {
     const old = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
-    if (!old || sectionFrames.querySelector(`iframe[data-section="${name}"][data-fresh]`)) return;  // its first load is fresh; or one's on its way
+    if (!old || !old.dataset.loaded || old.dataset.want || sectionFrames.querySelector(`iframe[data-section="${name}"][data-fresh]`)) return;  // its first load or a move is under way; or a fresh one's on its way
     if (sectionNow === name && !swapOpen) { sectionPending[name] = true; return; }  // under the reader: done when they leave, unless it's a data section
     let at = `/${name}/?embed=1`;  // where they were in it -- a link's discussion, say -- drawn again there
-    try { const l = old.contentWindow.location; if (l.pathname.startsWith(`/${name}/`)) at = l.pathname + l.search; } catch (e) {}
+    try { const l = old.contentWindow.location; if (l.pathname.startsWith(`/${name}/`)) at = l.pathname + l.search + l.hash; } catch (e) {}
     const fresh = document.createElement('iframe');
     fresh.dataset.section = name;
     fresh.dataset.fresh = '1';
@@ -10527,9 +10527,11 @@
       try { there = fresh.contentWindow.location.pathname === new URL(at, location.origin).pathname; } catch (e) { there = true; }
       if (!there) return;
       fresh.removeEventListener('load', arrived);
+      if (!old.isConnected || old.dataset.want) { fresh.remove(); return; }  // moved meanwhile (e.g. into a candidate): don't swap the old page back in
       if (sectionNow === name && !swapOpen) { fresh.remove(); sectionPending[name] = true; return; }  // opened meanwhile: theirs stays
       if (sectionNow === name) fresh.hidden = false;  // read it now: fresh takes its place
       old.remove();
+      sectionFrames.querySelectorAll(`.loading.moving[data-section="${name}"]`).forEach(v => v.remove());
       fresh.dataset.loaded = Date.now();  // so the next stale check counts from this copy
       delete fresh.dataset.fresh;
     });
@@ -10580,12 +10582,42 @@
   // where the link was -- the ramp's list, or the Mood whose merge sheet it was (Justin, 9 Nov).
   function rampFrameTo(path, hash) {
     const want = `${path}?embed=1${hash || ''}`;
+    // Moving the ramp to a specific place cancels any background redraw of where it used to be: otherwise that
+    // redraw finishes, removes `frame` mid-flight, swaps the old page back in, and strands `.loading.moving`
+    // over `#sectionFrames` forever (Skyler, #interfaces, 14 Nov).
+    sectionFrames.querySelectorAll('iframe[data-section="ramp"][data-fresh]').forEach(f => f.remove());
     const frame = sectionFrames.querySelector('iframe[data-section="ramp"]:not([data-fresh])');
     if (!frame) { frameFor('ramp', false, want); return; }
-    let there = null;
-    try { there = frame.contentWindow.location.pathname; } catch (e) {}
-    if (there === path && !hash) return;  // there already
-    if (candidateAt(path) && there !== path) rampWaiting(frame, path);
+    let there = null, thereHash = '';
+    try {
+      there = frame.contentWindow.location.pathname;
+      thereHash = frame.contentWindow.location.hash;
+    } catch (e) {}
+    if (there === path) {
+      if (!hash) return;  // there already
+      if (hash === '#diff' && thereHash === '#diff') {
+        try { frame.contentWindow.dispatchEvent(new Event('magentaShowDiff')); } catch (e) {}
+        return;
+      }
+      try { frame.contentWindow.location.replace(want); } catch (e) { frame.src = want; }
+      return;
+    }
+    // Navigating to another page: clear `loaded` until it arrives, so showSection doesn't see an old timestamp
+    // and start refreshSection('ramp', true) behind this navigation's back.
+    delete frame.dataset.loaded;
+    frame.dataset.want = path;
+    if (candidateAt(path)) rampWaiting(frame, path);
+    else sectionFrames.querySelector('.loading.moving[data-section="ramp"]')?.remove();
+    frame.addEventListener('load', function stamped() {
+      let arrivedPath = path;
+      try { arrivedPath = frame.contentWindow.location.pathname; } catch (e) {}
+      if (!arrivedPath.startsWith('/ramp/')) return;
+      frame.removeEventListener('load', stamped);
+      if (frame.dataset.want === path) {
+        frame.dataset.loaded = Date.now();
+        delete frame.dataset.want;
+      }
+    });
     try { frame.contentWindow.location.replace(want); } catch (e) { frame.src = want; }
   }
   // A frame that's moved keeps its old page on screen until the new one is in: the ramp's list, while a

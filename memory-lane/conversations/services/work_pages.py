@@ -60,15 +60,42 @@ def _path(path):
 def find(repo, branch, fresh_if_missing=False):
     """The ramp's item for this work while it's open, or None. From the last board, however old, so a work's page
     never waits on a rebuild (Justin, 9 Nov: "± See the full diff" sat ~8 s on Tidings, the board rebuilding).
-    fresh_if_missing: not on an old board, ask a fresh one (a branch pushed since it was built)."""
-    import time
+    When the branch was pushed after that board was built, read githouse's copy of this one branch directly
+    instead of rebuilding every repository's board (12.3 s on maybelle, 11 Nov)."""
     from . import ramp
     board = ramp.board(stale_ok=True)
     item = next((i for i in board.get('open', []) if i.get('repo') == repo and i.get('branch') == branch), None)
-    if item is None and fresh_if_missing and time.time() - board.get('built', 0) >= ramp.BOARD_FOR:
-        board = ramp.board()
-        item = next((i for i in board.get('open', []) if i.get('repo') == repo and i.get('branch') == branch), None)
+    if item is None:
+        item = _pushed(repo, branch)
     return item
+
+
+def _pushed(repo, branch):
+    """An item for an open candidate branch in githouse (or on an open card) that isn't on the cached board yet,
+    so opening its page right after a push neither 404s nor waits on a 7-repo board rebuild."""
+    from . import githouse, ramp
+    held = githouse.repository(repo)
+    head = githouse._sha(held, f'refs/heads/{branch}') if held and not ramp.githouse_owned(branch) else None
+    card = next((c for c in ramp.cards().get('open', [])
+                 if c.get('repo') == repo and c.get('branch') == branch), None)
+    if card and not head and held and card.get('number'):
+        head = githouse._sha(held, f"refs/pull/{int(card['number'])}/head")
+    if card and head and githouse.commit_merged(repo, head):
+        return None
+    if card:
+        moods = [m.strip() for m in card.get('moods', '').split(',') if m.strip()]
+        return {'repo': repo, 'branch': branch, 'number': int(card['number']) if card.get('number') else None,
+                'title': card.get('title', ''), 'description': card.get('description', ''),
+                'author': card.get('author', ''), 'worked_on_by': card.get('worked_on_by', ''),
+                'moods': moods, 'deploy': card.get('deploy', ''), 'url': card.get('url', ''),
+                'base': card.get('base', ''), 'state': card.get('state', 'open'), 'head': head}
+    if not head:
+        return None
+    subject = _read(held, 'log', '-1', '--format=%s', head).strip()
+    body = _read(held, 'log', '-1', '--format=%b', head).strip()
+    return {'repo': repo, 'branch': branch, 'number': None, 'title': subject, 'description': body,
+            'author': branch.split('/')[0] if '/' in branch else '', 'worked_on_by': '',
+            'moods': [], 'deploy': '', 'url': '', 'base': '', 'state': 'pushed', 'head': head}
 
 
 def address(repo, branch):
