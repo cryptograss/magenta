@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 
 from conversations.models import Message, Mood, ThinkingEntity, Tiding
-from conversations.services.wiki_lead import lead_of, title_of
+from conversations.services.wiki_lead import is_post, lead_of, post_of, title_of
 
 BASE = 'https://pickipedia.xyz'
 URL = f"{BASE}/wiki/Kuba's_Last_Merged_Commits:_the_story_of_arthel159"
@@ -285,3 +285,220 @@ class PreviewerCardTest(PageTest):
             framed = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
         self.assertIn(f'<a class="share" href="/tidings/{self.tiding.id}/" target="_top"', framed)
         self.assertIn("navigator.clipboard.writeText(url)", framed)
+
+
+
+POST_URL = f'{BASE}/wiki/User:JMyles/My_Long_Forgotten_Dream'
+# As the wiki's api.php?action=pagecard answers for a post (PickiPedia's Posts/PageCard.php).
+POST_CARD = {'asked': 'User:JMyles/My Long Forgotten Dream', 'kind': 'post', 'title': 'My Long Forgotten Dream',
+             'url': POST_URL, 'text': 'On May 1, 2022 (my birthday), I awoke in St. Augustine', 'image': None,
+             'post': {'headline': 'My Long Forgotten Dream', 'kicker': '', 'dek': '',
+                      'author': {'name': 'Justin Holmes', 'url': f'{BASE}/wiki/User:JMyles',
+                                 'avatar': f'{BASE}/images/thumb/a/ab/Justin.jpg/96px-Justin.jpg'},
+                      'published': '2026-01-29T04:05:06Z', 'minutes': 8}}
+
+
+# A post that writes the line over its headline and the line under it in its own body, as the wiki parses it
+# (PickiPedia's Posts/Post::sourced reads them into its masthead, and its stylesheet hides them where they stand).
+DEK_PAGE = ('<div class="mw-content-ltr mw-parser-output" lang="en" dir="ltr">'
+            '<p class="pp-kicker-source">Field notes\n</p>'
+            '<p class="pp-dek-source">What the piece is about, in a line, with '
+            '<a href="/wiki/Main_Page" title="Main Page">a link</a>.\n</p>'
+            '<div class="mw-heading mw-heading2"><h2 id="One">One</h2></div>\n'
+            '<p>' + 'There are two ways to go about it, and this is the first paragraph of the piece itself. ' * 2
+            + '\n</p><p>And the second.\n</p></div>')
+
+
+class MastheadWordsTest(TestCase):
+    """What a post's masthead says isn't its opening's first paragraph as well. Seen on the page of a post with
+    a dek, 13 Nov: the dek stood under the headline and again as the first of the words."""
+
+    def test_any_article_keeps_every_paragraph(self):
+        lead = lead_of(DEK_PAGE, BASE)
+        self.assertEqual(lead['paragraphs'][0], 'Field notes')
+        self.assertTrue(lead['paragraphs'][1].startswith('What the piece is about, in a line, with <a class="wiki"'))
+
+    def test_under_its_masthead_the_kicker_and_the_dek_are_not_said_again(self):
+        lead = lead_of(DEK_PAGE, BASE, post=True)
+        self.assertEqual(len(lead['paragraphs']), 2)
+        self.assertTrue(lead['paragraphs'][0].startswith('There are two ways to go about it'))
+        self.assertEqual(lead['paragraphs'][1], 'And the second.')
+        self.assertFalse(lead['more'])
+
+
+LONG = 'Words enough to be a paragraph and not a line. ' * 3
+
+
+def cap_of(inside):
+    """The words the paragraph with the large first letter opens with, in a post whose body is this."""
+    lead = lead_of(f'<div class="mw-content-ltr mw-parser-output" lang="en" dir="ltr">{inside}</div>', BASE, post=True)
+    return None if lead['cap'] is None else lead['paragraphs'][lead['cap']][:12]
+
+
+class FirstLetterTest(TestCase):
+    """A post's large first letter stands where its own page sets it. The same cases, in the same order, as
+    PickiPedia's tests/check-posts.php ("Where the large first letter stands"): one rule, kept in two places."""
+
+    def test_on_the_paragraph_a_post_opens_with(self):
+        self.assertEqual(cap_of(f'<p>A {LONG}</p><p>B {LONG}</p>'), 'A Words enou')
+
+    def test_not_on_a_line_above_it(self):
+        self.assertEqual(cap_of(f'<p>Work-in-progress</p><p>B {LONG}</p>'), 'B Words enou')
+
+    def test_nor_on_a_note_set_off_by_a_rule_however_long(self):
+        self.assertEqual(cap_of(f'<p><i>N {LONG}</i></p><hr><p>B {LONG}</p>'), 'B Words enou')
+
+    def test_nor_on_what_the_masthead_says(self):
+        self.assertEqual(cap_of(f'<div class="pp-kicker-source">K</div><p class="pp-dek-source">D {LONG}</p><p>B {LONG}</p>'),
+                         'B Words enou')
+
+    def test_a_post_of_one_line_has_none(self):
+        self.assertIsNone(cap_of('<p>or: in defense of something</p>'))
+
+    def test_nor_one_that_opens_with_a_video_and_a_heading(self):
+        self.assertIsNone(cap_of('<div class="hls-video-player"></div><div class="mw-heading mw-heading2"><h2>One</h2></div>'
+                                 f'<p>B {LONG}</p>'))
+
+    def test_a_list_or_a_picture_between_is_no_heading(self):
+        self.assertEqual(cap_of(f'<p>A line.</p><ul><li>{LONG}</li></ul><figure><img src="x"></figure><p>B {LONG}</p>'),
+                         'B Words enou')
+
+    def test_a_paragraph_inside_something_else_is_not_the_posts_own(self):
+        self.assertEqual(cap_of(f'<blockquote><p>Q {LONG}</p></blockquote><p>B {LONG}</p>'), 'B Words enou')
+
+    def test_what_is_in_a_comment_or_a_style_is_not_markup(self):
+        self.assertEqual(cap_of(f'<!-- <p>C {LONG}</p> --><style>p > a {{ color: red }}</style><p>B {LONG}</p>'), 'B Words enou')
+
+    def test_the_last_paragraph_can_be_it(self):
+        self.assertEqual(cap_of(f'<p>A line.</p><p>B {LONG}</p>'), 'B Words enou')
+
+    def test_a_style_between_a_note_and_its_rule_changes_nothing(self):
+        # The wiki's rule blanks styles and scripts before it looks, so it never sees one: nor does this.
+        self.assertEqual(cap_of(f'<p>N {LONG}</p><style>.x {{ color: red }}</style><hr><p>B {LONG}</p>'), 'B Words enou')
+
+    def test_one_that_is_not_shown_here_takes_it_and_no_other_does(self):
+        # Three paragraphs are shown at most: a letter the page sets further down isn't moved up to one of them.
+        self.assertIsNone(cap_of('<p>One short line of words, forty and more.</p>' * 4 + f'<p>B {LONG}</p>'))
+
+    def test_any_article_is_told_nothing_of_it(self):
+        self.assertNotIn('cap', lead_of(PAGE, BASE))
+
+
+class PostOfTest(TestCase):
+    """A post's masthead, read from the wiki's card of it (Justin, 13 Nov, #pickipedia-style-and-main-page)."""
+
+    def test_which_titles_are_posts(self):
+        for title in ('User:JMyles/My Long Forgotten Dream', 'user:JMyles/letters-to-emergents/13'):
+            self.assertTrue(is_post(title), title)
+        for title in ('User:JMyles', 'User:JMyles/', 'Kuba Hejhal', 'Song:August', 'AC/DC', ''):
+            self.assertFalse(is_post(title), title)
+
+    def test_the_masthead_as_the_wiki_says_it(self):
+        self.assertEqual(post_of(POST_CARD, BASE), {
+            'headline': 'My Long Forgotten Dream', 'kicker': '', 'dek': '',
+            'author': {'name': 'Justin Holmes', 'url': f'{BASE}/wiki/User:JMyles',
+                       'avatar': f'{BASE}/images/thumb/a/ab/Justin.jpg/96px-Justin.jpg'},
+            'published': '29 January 2026', 'reads': "8 minutes' read"})
+        short = {**POST_CARD, 'post': {**POST_CARD['post'], 'minutes': 1, 'kicker': '  Letters to\nemergents ',
+                                       'published': 'when'}}
+        got = post_of(short, BASE)
+        self.assertEqual((got['reads'], got['kicker'], got['published']), ("a minute's read", 'Letters to emergents', ''))
+
+    def test_only_the_wikis_own_addresses(self):
+        card = {**POST_CARD, 'post': {**POST_CARD['post'], 'author': {
+            'name': 'Justin Holmes', 'url': 'javascript:alert(1)', 'avatar': 'https://example.com/face.jpg'}}}
+        self.assertEqual(post_of(card, BASE)['author'], {'name': 'Justin Holmes', 'url': '', 'avatar': ''})
+
+    def test_anything_else_is_no_masthead(self):
+        for card in ({**POST_CARD, 'kind': 'page'}, {'kind': 'post'}, {'kind': 'post', 'post': {'headline': ' '}},
+                     {'error': {'code': 'badvalue'}}, None, 'post'):
+            self.assertIsNone(post_of(card, BASE), card)
+
+
+@override_settings(PICKIPEDIA_URL=BASE)
+class PostPageTest(TestCase):
+    """On its tiding's page a post opens under the masthead its own page has."""
+
+    def setUp(self):
+        cache.clear()
+        justin = ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        mood = Mood.objects.create(slug='general', title='general')
+        said = Message.objects.create(id=uuid.uuid4(), sender=justin, mood=mood, content=POST_URL,
+                                      source_file='mood-web', timestamp=1)
+        self.tiding = Tiding.objects.create(message=said, url=POST_URL, by=justin, title='My Long Forgotten Dream')
+
+    def wiki(self, page=PAGE):
+        answer = mock.Mock()
+        answer.json.return_value = {'parse': {'title': 'x', 'text': page}}
+        return mock.patch('requests.get', return_value=answer)
+
+    def wiki_with_cards(self, card=POST_CARD, page=PAGE):
+        def answer(url, **asked):
+            got = mock.Mock()
+            got.json.return_value = ({'pagecard': [card]} if asked['params']['action'] == 'pagecard'
+                                     else {'parse': {'title': 'x', 'text': page}})
+            return got
+        return mock.patch('requests.get', side_effect=answer)
+
+    def article(self, html, opens):
+        start = html.index(opens)
+        return html[start:html.index('</article>', start)]
+
+    def test_a_post_opens_under_its_masthead(self):
+        with self.wiki_with_cards() as got:
+            html = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        self.assertEqual([c.kwargs['params']['action'] for c in got.call_args_list], ['parse', 'pagecard'])
+        self.assertEqual(got.call_args.kwargs['params']['titles'], 'User:JMyles/My Long Forgotten Dream')
+        article = html[html.index('<article class="wikilead broadside more">'):]
+        self.assertIn(f'<h2 class="bs-title"><a href="{POST_URL}" target="_blank" rel="noopener">My Long Forgotten Dream</a></h2>', article)
+        self.assertIn(f'<img class="bs-face" src="{BASE}/images/thumb/a/ab/Justin.jpg/96px-Justin.jpg" alt=""', article)
+        self.assertIn(f'<a class="bs-author" href="{BASE}/wiki/User:JMyles" target="_blank" rel="noopener">Justin Holmes</a>', article)
+        self.assertIn('<div class="bs-meta">29 January 2026 · 8 minutes&#x27; read</div>', article)
+        self.assertLess(article.index('class="bs-byline"'), article.index('Today, we merge the last open commits of'))
+        # The large first letter: not on the dateline, on the first paragraph long enough to stand beside it.
+        self.assertIn('<p><i>11 Nov 2026</i></p>', article)
+        self.assertIn('<p class="cap">Today, we merge the last open commits of', article)
+        self.assertEqual(article.count('class="cap"'), 1)
+        self.assertIn('Keep reading on PickiPedia →', article)
+        self.assertNotIn('bs-kicker', article)
+
+    def test_a_wiki_with_no_cards_yet_opens_it_as_any_article(self):
+        with self.wiki():  # an older wiki: it answers the same to whatever is asked, and has no pagecard
+            html = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        self.assertIn('<article class="wikilead">', html)
+        self.assertIn('Read the rest on PickiPedia →', html)
+        self.assertNotIn('bs-byline', html[html.index('<article class="wikilead">'):])
+        self.assertNotIn('class="cap"', html)
+
+    def test_nothing_the_wiki_says_is_markup_here(self):
+        card = {**POST_CARD, 'post': {**POST_CARD['post'], 'headline': '<script>alert(1)</script>', 'dek': '<b>dek</b>'}}
+        with self.wiki_with_cards(card):
+            html = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt;</a></h2>', html)
+        self.assertIn('<p class="bs-dek">&lt;b&gt;dek&lt;/b&gt;</p>', html)
+
+    def test_what_the_masthead_says_is_said_once(self):
+        card = {**POST_CARD, 'post': {**POST_CARD['post'], 'kicker': 'Field notes',
+                                      'dek': 'What the piece is about, in a line, with a link.'}}
+        with self.wiki_with_cards(card, DEK_PAGE):
+            html = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        article = self.article(html, '<article class="wikilead broadside">')
+        self.assertIn('<p class="bs-kicker">Field notes</p>', article)
+        self.assertIn('<p class="bs-dek">What the piece is about, in a line, with a link.</p>', article)
+        self.assertEqual(article.count('What the piece is about'), 1)
+        self.assertEqual(article.count('Field notes'), 1)
+        # The words under it are the piece's own; and no large letter past a heading, here as on its own page.
+        self.assertIn('<p>There are two ways to go about it', article)
+        self.assertNotIn('class="cap"', article)
+
+    def test_with_no_masthead_its_dek_is_still_among_its_words(self):
+        with self.wiki(DEK_PAGE):  # an older wiki, with no card to give: nothing here says the dek but the words
+            html = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        article = self.article(html, '<article class="wikilead">')
+        self.assertIn('<p>What the piece is about, in a line, with <a class="wiki"', article)
+
+    def test_its_links_are_underlined_as_its_own_page_underlines_them(self):
+        with self.wiki_with_cards():
+            html = self.client.get(f'/tidings/{self.tiding.id}/?embed=1').content.decode()
+        rule = html[html.index('.wikilead.broadside a.wiki, .wikilead.broadside a.ext {'):]
+        self.assertIn('text-decoration: underline;', rule[:rule.index('}')])

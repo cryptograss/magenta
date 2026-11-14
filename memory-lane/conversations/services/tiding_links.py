@@ -314,6 +314,66 @@ def on_wiki(title):
     return index.get(wiki_page(title) or '')
 
 
+# What the wiki's own page of a post shows under it (PickiPedia's Posts/PostData::tiding; Justin,
+# #pickipedia-style-and-main-page, 13 Nov 2026: "If posted as a tiding, put some recent messages from the tidings
+# thread at the bottom"). Asked with ?recent=N, api/wiki/tiding/ also says the link's title, its score, how much
+# has been said, and the last N things said.
+RECENT_MOST = 12
+RECENT_KEPT = 60  # seconds; the wiki keeps a page's answer two minutes itself
+
+
+def plain_words(drawn):
+    """A comment as plain words, a blank line between its paragraphs: what said_html drew, without its markup.
+    The wiki shows these as text, so nothing magenta draws has to be trusted there."""
+    import html as html_lib
+    text = re.sub(r'(?i)<br\s*/?>', '\n', drawn or '')
+    text = re.sub(r'(?i)</(p|div|li|blockquote|pre|h[1-6]|tr|ul|ol)\s*>', '\n\n', text)
+    text = html_lib.unescape(re.sub(r'<[^>]+>', '', text))
+    text = re.sub(r'[ \t\r\f\v]+', ' ', text)
+    return re.sub(r' ?\n[ \n]*\n ?', '\n\n', text).strip()
+
+
+def recent(tiding, most=5):
+    """A link's talk in brief, for the wiki's page of it: {'title', 'score', 'comments', 'recent': [...]} -- the
+    last `most` things said, both kinds (the Mood's replies and the comments said here), oldest first, each
+    {'who', 'text', 'href', 'at', 'block', 'kind': 'person' or 'emergent', 'colour'}. What was deleted, and the
+    Mood's own lines, are left out. Kept RECENT_KEPT seconds."""
+    from datetime import timezone
+    from django.conf import settings
+    from django.core.cache import cache
+    from conversations.models import ThinkingEntity
+    from .eth_blocks import BlockClock
+    from .front import agent_colour
+    most = max(0, min(most, RECENT_MOST))
+    key = f'tidings:recent:{tiding.id}:{most}'
+    found = cache.get(key)
+    if found is not None:
+        return found
+    tree = tree_of(tiding, tiding.message_id)
+    said = sorted((n for n in _walk(tree) if n.get('text') and n.get('changed') != 'deleted'
+                   and n.get('sender') and n['sender'] != 'system'), key=lambda n: n['at'])
+    last = said[-most:] if most else []
+    people = set(ThinkingEntity.objects.filter(name__in={n['sender'] for n in last}, is_biological_human=True)
+                 .values_list('name', flat=True))
+    base = getattr(settings, 'MAGENTA_PUBLIC_URL', 'https://magenta.cryptograss.live').rstrip('/')
+    clock = BlockClock()
+    rows = []
+    for node in last:
+        block = clock.block_at(node['at'].timestamp())
+        emergent = node['sender'] not in people
+        rows.append({'who': node['sender'], 'text': plain_words(node.get('html')) or node['text'],
+                     'href': f"{base}/tidings/{tiding.id}/#c-{node['id']}",
+                     'at': node['at'].astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                     'block': int(block) if block is not None else None,
+                     'kind': 'emergent' if emergent else 'person',
+                     'colour': agent_colour(node['sender']) if emergent else ''})
+    scored, _ = _tiding_scores([tiding])
+    found = {'title': tiding.title or '', 'score': scored.get(str(tiding.id), 0), 'comments': count(tree),
+             'recent': rows}
+    cache.set(key, found, RECENT_KEPT)
+    return found
+
+
 def promote_many(message, by, urls, http=None, title=None, tags=None):
     """Put each of `urls` (links of the message) on Tidings. [(Tiding, whether it's new)], in their order.
     A title given is one link's: with several, each is titled as its page titles itself."""
