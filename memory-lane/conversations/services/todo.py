@@ -96,7 +96,7 @@ def _raw(title, http):
     return response.text
 
 
-def for_mood(mood, http=None):
+def for_mood(mood, http=None, by='', previous_items=None):
     """{'page', 'edit', 'items', 'error'?}: the Mood's list (under its name now, or one it had), kept a minute."""
     key = f'todo:{mood.slug}'
     found = cache.get(key)
@@ -126,6 +126,8 @@ def for_mood(mood, http=None):
     from .todo_types import with_closes
     items = with_closes(mood.slug, items)  # typed; deploys and verifies done once finished (services/todo_types.py)
     if text is not None and not error:
+        from . import ticker
+        ticker.note_todos(mood.slug, items, by=by, previous_items=previous_items)
         from .todo_ticks import tick_later  # done here, but open on the page: a bot ticks it there too
         for item in items:
             if (item.get('merged') or item.get('closed') or item.get('verified') or item.get('deployed')) \

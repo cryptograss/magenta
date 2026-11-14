@@ -1,0 +1,258 @@
+<!-- The shared announcement bar under the nav (services/ticker.py; Justin, 9, 13 & 14 Nov): everyone's githouse
+     merges and promotions (on their way, ✓ or ✗) and everyone's newly completed to-dos (beyond merges and
+     deploys). One row in the page's flow so nothing under it is covered; two or more chips run across it as a
+     ticker at 60 px/s, paused while hovered or focused. Included for every viewer; _merge_sheet.html adds the
+     confirm sheet and Merge button on top for mergers. -->
+<style>
+  .mergeSheet { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+                background: rgba(0,0,0,.45); padding: 12px; box-sizing: border-box; }
+  .mergeSheet[hidden] { display: none; }
+  .mergeSheet .box { background: var(--panel, #fff); color: var(--ink, #1f1d1a); border: 1px solid var(--line, #e6e1d8);
+                     border-radius: 10px; width: min(720px, 100%); max-height: 92%; display: flex; flex-direction: column;
+                     box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+  .mergeSheet .head { padding: 12px 14px 6px; font-weight: 600; }
+  .mergeSheet .head .sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted, #6b6560);
+                           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 2px; }
+  .mergeSheet .about { padding: 0 14px 8px; font-size: 13.5px; line-height: 1.4; }
+  .mergeSheet .about .title { display: block; margin-bottom: 2px; }
+  .mergeSheet .about .words { color: var(--muted, #6b6560); }
+  .mergeSheet .who { padding: 0 14px 8px; font-size: 12.5px; color: var(--muted, #6b6560); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .mergeSheet .who:empty { display: none; }
+  .mergeSheet .who .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--who);
+                          margin-right: 3px; vertical-align: 0; }
+  .mergeSheet .who a { color: inherit; text-decoration: none; }
+  .mergeSheet .who a:hover { color: var(--ink, #1f1d1a); }
+  .mergeSheet .who .stale { opacity: .6; }
+  .mergeSheet pre { margin: 0 14px 8px; padding: 8px 10px; background: var(--code, #f3efe8); border-radius: 6px;
+                    font-size: 12px; overflow: auto; white-space: pre; max-height: 30vh; }
+  .mergeSheet .say { padding: 0 14px 8px; font-size: 13px; white-space: pre-wrap; }
+  .mergeSheet .say.err { color: var(--err, #c0392b); }
+  .mergeSheet .say.ok { color: var(--ok, #2e9e5b); }
+  .mergeSheet .row { display: flex; gap: 8px; justify-content: flex-end; padding: 8px 14px 12px; }
+  .mergeSheet button { font: inherit; border-radius: 6px; padding: 6px 14px; cursor: pointer;
+                       border: 1px solid var(--line, #e6e1d8); background: none; color: inherit; }
+  .mergeSheet button.go { background: var(--accent, #b8106b); border-color: var(--accent, #b8106b); color: #fff; font-weight: 600; }
+  .mergeSheet button:disabled { opacity: .5; cursor: default; }
+  .mergeSheet a.full { display: block; width: fit-content; margin: 0 14px 10px; font-size: 13px;
+    padding: 2px 10px; border-radius: 4px; border: 1px solid var(--accent, #b8106b); color: var(--accent, #b8106b);
+    text-decoration: none; }
+  .mergeSheet a.full:hover { background: var(--accent-soft, #fbe7f1); }
+  .mergeSheet a.full[hidden] { display: none; }
+  .mergeBar { position: sticky; z-index: 1001; top: 0; flex: none; overflow: hidden; white-space: nowrap;
+              background: var(--panel, #fff); color: var(--ink, #1f1d1a); border-bottom: 1px solid var(--line, #e6e1d8); }
+  .mergeBar[hidden] { display: none; }
+  .mergeBar .track { display: inline-flex; align-items: center; gap: 6px; height: 30px; box-sizing: border-box; padding: 0 8px; }
+  .mergeBar.ticker .track { padding-left: 100%; animation: mergeBarTick var(--tick, 20s) linear infinite; }
+  .mergeBar.ticker:hover .track, .mergeBar.ticker:focus-within .track { animation-play-state: paused; }
+  @keyframes mergeBarTick { to { transform: translateX(-100%); } }
+  @media (prefers-reduced-motion: reduce) {  /* no motion: the row scrolls by hand instead */
+    .mergeBar { overflow-x: auto; }
+    .mergeBar.ticker .track { padding-left: 8px; animation: none; }
+  }
+  .mergeBar .item { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 13px; cursor: pointer;
+                    border-radius: 999px; background: var(--code, #f3efe8); }
+  .mergeBar .item .mark { width: 1.2em; text-align: center; font-weight: 700; }
+  .mergeBar .item.going .mark::before { content: '◌'; display: inline-block; animation: mergeBarSpin 1s linear infinite; }
+  .mergeBar .item.ok { background: light-dark(#e8f6ee, #16321f); color: light-dark(#1d6b3f, #8fd8ab); }
+  .mergeBar .item.ok .mark::before { content: '✓'; }
+  .mergeBar .item.err { background: light-dark(#fdecea, #3a1916); color: light-dark(#9b2c22, #f2a59c); }
+  .mergeBar .item.err .mark::before { content: '✗'; }
+  .mergeBar .item .x { border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; opacity: .7; padding: 0 2px; }
+  @keyframes mergeBarSpin { to { transform: rotate(360deg); } }
+</style>
+<script>
+if (!window.magentaTicker) {
+  window.magentaTicker = (() => {
+    const DISMISSED_KEY = 'magentaTickerDismissed';
+    let dismissed = new Set();
+    try { dismissed = new Set(JSON.parse(sessionStorage.getItem(DISMISSED_KEY) || '[]')); } catch (e) {}
+    function rememberDismissed(id) {
+      if (!id) return;
+      dismissed.add(id);
+      try { sessionStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed].slice(-100))); } catch (e) {}
+    }
+
+    const done = new Map();          // 'repo#n' or 'repo:branch' -> when merged
+    const DONE_MS = 10 * 60 * 1000;  // by then every list memory-lane serves has it merged
+    const namesOf = w => [w.number ? `${w.repo}#${w.number}` : '', w.branch ? `${w.repo}:${w.branch}` : ''].filter(Boolean);
+    function noteMerged(w) { if (w && w.repo) namesOf(w).forEach(n => done.set(n, Date.now())); }
+    function isMerged(w) { return !!w && namesOf(w).some(n => Date.now() - (done.get(n) || 0) < DONE_MS); }
+
+    const REPOS = { magenta: 'magenta', pr: 'magenta', maybelle: 'maybelle-config', 'maybelle-config': 'maybelle-config',
+                    pickipedia: 'pickipedia', 'pickipedia-mcp': 'pickipedia-mcp', arthel: 'arthel', rabbithole: 'rabbithole' };
+    function named(text) {
+      const found = [], key = new Set();
+      let last = '';
+      for (const m of String(text || '').matchAll(/(?:\b([A-Za-z][A-Za-z0-9-]*)( ?))?#(\d+)\b|\b([a-z][a-z0-9-]*):([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+)/g)) {
+        let word = m[1] || '';
+        if (word && m[2] && !REPOS[word.toLowerCase()]) word = '';
+        if (word) last = REPOS[word.toLowerCase()] || word;
+        const w = m[3] ? { repo: last, number: Number(m[3]) } : { repo: m[4], branch: m[5] };
+        last = w.repo || last;
+        const k = w.repo + (w.number ? '#' + w.number : ':' + w.branch);
+        if (w.repo && !key.has(k)) { key.add(k); found.push(w); }
+      }
+      return found;
+    }
+
+    let bar = null, track = null, barAnchor = null;
+    const byId = new Map();       // id -> entry
+    const mergedTold = new Set(); // merge ids already broadcast to the page
+
+    function placeBar() {
+      if (!bar) return;
+      const head = barAnchor && barAnchor();
+      if (head) { if (head.nextElementSibling !== bar) head.after(bar); }
+      else if (document.body.firstElementChild !== bar) document.body.prepend(bar);
+    }
+    function tick() {
+      if (!bar) return;
+      const many = track.children.length > 1;
+      bar.classList.toggle('ticker', many);
+      if (many) bar.style.setProperty('--tick', Math.max(8, track.scrollWidth / 60) + 's');
+    }
+    window.addEventListener('resize', tick);
+    function barUnder(fn) { barAnchor = fn; placeBar(); }
+
+    function told(info, kind, words) {
+      const el = document.createElement('div');
+      el.className = 'mergeSheet';
+      el.setAttribute('role', 'dialog');
+      el.setAttribute('aria-modal', 'true');
+      el.style.inset = '0';
+      el.innerHTML = '<div class="box">'
+        + '<div class="head"><span class="what"></span><span class="sub"></span></div>'
+        + '<div class="say"></div>'
+        + '<a class="full" href="#" hidden></a>'
+        + '<div class="row"><button type="button" class="no">Close</button></div>'
+        + '</div>';
+      el.querySelector('.what').textContent = (info && info.what) || 'Activity';
+      el.querySelector('.sub').textContent = (info && info.sub) || '';
+      const sayEl = el.querySelector('.say');
+      sayEl.textContent = words || '';
+      sayEl.className = 'say' + (kind ? ' ' + kind : '');
+      const full = el.querySelector('.full');
+      if (info && info.link) {
+        full.href = info.link;
+        full.textContent = info.linkLabel || 'Open →';
+        if (/^https?:\/\//i.test(info.link) && !info.link.startsWith(location.origin + '/')) {
+          full.target = '_blank'; full.rel = 'noopener';
+        }
+        full.hidden = false;
+      }
+      const gone = () => { document.removeEventListener('keydown', onKey); el.remove(); };
+      const onKey = e => { if (e.key === 'Escape') gone(); };
+      document.addEventListener('keydown', onKey);
+      el.querySelector('.no').addEventListener('click', gone);
+      full.addEventListener('click', () => setTimeout(gone, 0));
+      el.addEventListener('click', e => { if (e.target === el) gone(); });
+      document.body.appendChild(el);
+    }
+
+    function barLine(info, opts) {
+      if (!bar) {
+        bar = document.createElement('div'); bar.className = 'mergeBar'; bar.setAttribute('role', 'status');
+        track = document.createElement('div'); track.className = 'track'; bar.appendChild(track);
+      }
+      const curInfo = Object.assign({}, info || {});
+      const line = document.createElement('span');
+      line.className = 'item going';
+      line.innerHTML = '<span class="mark"></span><span class="words"></span><button type="button" class="x" title="Dismiss" hidden>×</button>';
+      let ended = null, itemId = (opts && opts.id) || null, timer = null;
+      const entry = { id: itemId, el: line, info: curInfo, state: 'going', words: '', local: !!(opts && opts.local), handle: null, gone: null };
+
+      line.addEventListener('click', e => {
+        if (e.target.closest('.x') || !ended) return;
+        told(entry.info, ended.kind, ended.full);
+      });
+      const gone = byUser => {
+        if (timer) { clearTimeout(timer); timer = null; }
+        if (byUser && entry.id) rememberDismissed(entry.id);
+        if (entry.id && byId.get(entry.id) === entry) byId.delete(entry.id);
+        line.remove();
+        if (!track.children.length) bar.hidden = true;
+        tick();
+      };
+      entry.gone = gone;
+      line.querySelector('.x').addEventListener('click', () => gone(true));
+      track.prepend(line); bar.hidden = false; placeBar(); tick();
+
+      const handle = {
+        claim(id) {
+          if (!id) return;
+          if (entry.id && byId.get(entry.id) === entry) byId.delete(entry.id);
+          entry.id = itemId = id;
+          entry.local = true;
+          dismissed.delete(id);
+          byId.set(id, entry);
+        },
+        say(words) {
+          if (entry.words === words) return;
+          entry.words = words;
+          line.querySelector('.words').textContent = words;
+        },
+        end(kind, words, full, stayMs) {
+          if (ended && ended.kind === kind) {
+            ended.full = full || ended.full;
+            return;
+          }
+          ended = { kind, full: full || words };
+          entry.state = kind;
+          entry.local = false;
+          entry.words = words;
+          line.className = 'item ' + kind;
+          line.querySelector('.words').textContent = words;
+          line.querySelector('.x').hidden = false;
+          tick();
+          if (timer) clearTimeout(timer);
+          if (kind === 'ok') timer = setTimeout(() => gone(false), stayMs || 60000);
+        },
+      };
+      entry.handle = handle;
+      if (itemId) byId.set(itemId, entry);
+      return handle;
+    }
+
+    function feed(items) {
+      if (!Array.isArray(items)) return;
+      const seen = new Set();
+      // Oldest to newest when prepending, so the newest item lands first at the left.
+      for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i];
+        if (!it || !it.id) continue;
+        seen.add(it.id);
+        if (it.state === 'ok' && it.merged && !mergedTold.has(it.id)) {
+          mergedTold.add(it.id);
+          noteMerged(it.merged);
+          window.dispatchEvent(new CustomEvent('magentaMerged', { detail: it.merged }));
+        }
+        if (dismissed.has(it.id)) continue;
+        const info = { what: it.what, sub: it.sub, link: it.link, linkLabel: it.link_label };
+        let entry = byId.get(it.id);
+        if (!entry) {
+          const h = barLine(info, { id: it.id, local: false });
+          if (it.state === 'going') {
+            h.say(it.words || '');
+          } else {
+            const ageMs = it.at ? Math.max(0, Date.now() - it.at * 1000) : 0;
+            h.end(it.state || 'ok', it.words || '', it.full || it.words || '', Math.max(8000, 60000 - ageMs));
+          }
+        } else {
+          Object.assign(entry.info, info);
+          if (it.state === 'going') {
+            if (!entry.local && entry.state === 'going') entry.handle.say(it.words || '');
+          } else if (entry.state === 'going') {
+            entry.handle.end(it.state || 'ok', it.words || '', it.full || it.words || '', 60000);
+          }
+        }
+      }
+      for (const [id, entry] of [...byId.entries()]) {
+        if (!seen.has(id) && entry.state === 'going' && !entry.local) entry.gone(false);
+      }
+    }
+
+    return { barLine, barUnder, feed, noteMerged, isMerged, named, placeBar };
+  })();
+  if (!window.magentaMerge) window.magentaMerge = window.magentaTicker;
+}
+</script>

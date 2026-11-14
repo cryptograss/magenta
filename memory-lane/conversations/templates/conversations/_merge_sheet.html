@@ -8,66 +8,7 @@
      go to another Mood, come back to see how it went (Justin, 9 Nov). magentaMerge.within(() => element) says
      what pane it covers; magentaMerge.show(slug) which Mood is on screen (null: none). Without them, the sheet
      covers the page, as on the ramp and a work's page. -->
-<style>
-  .mergeSheet { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
-                background: rgba(0,0,0,.45); padding: 12px; box-sizing: border-box; }
-  .mergeSheet[hidden] { display: none; }
-  .mergeSheet .box { background: var(--panel, #fff); color: var(--ink, #1f1d1a); border: 1px solid var(--line, #e6e1d8);
-                     border-radius: 10px; width: min(720px, 100%); max-height: 92%; display: flex; flex-direction: column;
-                     box-shadow: 0 10px 40px rgba(0,0,0,.3); }
-  .mergeSheet .head { padding: 12px 14px 6px; font-weight: 600; }
-  .mergeSheet .head .sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted, #6b6560);
-                           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 2px; }
-  .mergeSheet .about { padding: 0 14px 8px; font-size: 13.5px; line-height: 1.4; }
-  .mergeSheet .about .title { display: block; margin-bottom: 2px; }
-  .mergeSheet .about .words { color: var(--muted, #6b6560); }
-  .mergeSheet .who { padding: 0 14px 8px; font-size: 12.5px; color: var(--muted, #6b6560); display: flex; flex-wrap: wrap; gap: 4px 14px; }
-  .mergeSheet .who:empty { display: none; }
-  .mergeSheet .who .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--who);
-                          margin-right: 3px; vertical-align: 0; }
-  .mergeSheet .who a { color: inherit; text-decoration: none; }
-  .mergeSheet .who a:hover { color: var(--ink, #1f1d1a); }
-  .mergeSheet .who .stale { opacity: .6; }
-  .mergeSheet pre { margin: 0 14px 8px; padding: 8px 10px; background: var(--code, #f3efe8); border-radius: 6px;
-                    font-size: 12px; overflow: auto; white-space: pre; max-height: 30vh; }
-  .mergeSheet .say { padding: 0 14px 8px; font-size: 13px; }
-  .mergeSheet .say.err { color: var(--err, #c0392b); }
-  .mergeSheet .say.ok { color: var(--ok, #2e9e5b); }
-  .mergeSheet .row { display: flex; gap: 8px; justify-content: flex-end; padding: 8px 14px 12px; }
-  .mergeSheet button { font: inherit; border-radius: 6px; padding: 6px 14px; cursor: pointer;
-                       border: 1px solid var(--line, #e6e1d8); background: none; color: inherit; }
-  .mergeSheet button.go { background: var(--accent, #b8106b); border-color: var(--accent, #b8106b); color: #fff; font-weight: 600; }
-  .mergeSheet button:disabled { opacity: .5; cursor: default; }
-  .mergeSheet a.full { display: block; width: fit-content; margin: 0 14px 10px; font-size: 13px;
-    padding: 2px 10px; border-radius: 4px; border: 1px solid var(--accent, #b8106b); color: var(--accent, #b8106b);
-    text-decoration: none; }
-  .mergeSheet a.full:hover { background: var(--accent-soft, #fbe7f1); }
-  .mergeSheet a.full[hidden] { display: none; }
-  /* The bar a press goes to (Justin, 9 Nov): just below the nav, ✓ or ✗ when it's done. One row, in the page's
-     own flow, so it pushes what's under it down instead of covering it; two or more presses run across it as a
-     ticker, paused while the pointer is on it (Justin, 13 Nov: "sometimes cover up important material"). */
-  .mergeBar { position: sticky; z-index: 1001; top: 0; flex: none; overflow: hidden; white-space: nowrap;
-              background: var(--panel, #fff); color: var(--ink, #1f1d1a); border-bottom: 1px solid var(--line, #e6e1d8); }
-  .mergeBar[hidden] { display: none; }
-  .mergeBar .track { display: inline-flex; align-items: center; gap: 6px; height: 30px; box-sizing: border-box; padding: 0 8px; }
-  .mergeBar.ticker .track { padding-left: 100%; animation: mergeBarTick var(--tick, 20s) linear infinite; }
-  .mergeBar.ticker:hover .track, .mergeBar.ticker:focus-within .track { animation-play-state: paused; }
-  @keyframes mergeBarTick { to { transform: translateX(-100%); } }
-  @media (prefers-reduced-motion: reduce) {  /* no motion: the row scrolls by hand instead */
-    .mergeBar { overflow-x: auto; }
-    .mergeBar.ticker .track { padding-left: 8px; animation: none; }
-  }
-  .mergeBar .item { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 13px; cursor: pointer;
-                    border-radius: 999px; background: var(--code, #f3efe8); }
-  .mergeBar .item .mark { width: 1.2em; text-align: center; font-weight: 700; }
-  .mergeBar .item.going .mark::before { content: '◌'; display: inline-block; animation: mergeBarSpin 1s linear infinite; }
-  .mergeBar .item.ok { background: light-dark(#e8f6ee, #16321f); color: light-dark(#1d6b3f, #8fd8ab); }
-  .mergeBar .item.ok .mark::before { content: '✓'; }
-  .mergeBar .item.err { background: light-dark(#fdecea, #3a1916); color: light-dark(#9b2c22, #f2a59c); }
-  .mergeBar .item.err .mark::before { content: '✗'; }
-  .mergeBar .item .x { border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; opacity: .7; padding: 0 2px; }
-  @keyframes mergeBarSpin { to { transform: rotate(360deg); } }
-</style>
+{% include "conversations/_ticker.html" %}
 <template id="mergeSheetTpl">
   <div class="mergeSheet" hidden role="dialog">
     <div class="box">
@@ -204,14 +145,10 @@ window.magentaMerge = (() => {
     }
   }
 
-  // What's been pressed here: on its way to githouse, or merged. By both its names, repo#N and repo:branch, since
-  // a pill may name it by either.
+  // What's been pressed here: on its way to githouse, or merged (shared with window.magentaTicker).
   const going = new Set();
-  const done = new Map();          // name -> when githouse said merged
-  const DONE_MS = 10 * 60 * 1000;  // by then every list memory-lane serves has it merged
   const namesOf = w => [w.number ? `${w.repo}#${w.number}` : '', w.branch ? `${w.repo}:${w.branch}` : ''].filter(Boolean);
-  function noteMerged(w) { if (w && w.repo) namesOf(w).forEach(n => done.set(n, Date.now())); }
-  function isMerged(w) { return !!w && namesOf(w).some(n => Date.now() - (done.get(n) || 0) < DONE_MS); }
+  const { barLine, barUnder, feed, noteMerged, isMerged, named, placeBar } = window.magentaTicker;
 
   // One sheet a Mood, free again the moment Merge now is pressed: the press goes on in the bar, so another pill
   // opens its own work, not the one still merging (Justin, 12 Nov).
@@ -250,75 +187,13 @@ window.magentaMerge = (() => {
     if (!s.el.hidden) place(s);
   }
 
-  // The bar: one row, just below the nav (Justin, 9 Nov), on every page (10 Nov: "if I go back to moods, I still
-  // want to see it"). It lives in the one page: a press in a section's frame writes its line there (topBar), so
-  // leaving the ramp doesn't hide it. barUnder(() => the header) says where it sits: right after it, in the flow,
-  // pushing the page down (13 Nov); without it, the top of the page.
-  let bar = null, track = null, barAnchor = null;
-  function placeBar() {
-    if (!bar) return;
-    const head = barAnchor && barAnchor();
-    if (head) { if (head.nextElementSibling !== bar) head.after(bar); }
-    else if (document.body.firstElementChild !== bar) document.body.prepend(bar);
-  }
-  // One press: still. Two or more: across it as a ticker, at about 60 px a second however long the row.
-  function tick() {
-    if (!bar) return;
-    const many = track.children.length > 1;
-    bar.classList.toggle('ticker', many);
-    if (many) bar.style.setProperty('--tick', Math.max(8, track.scrollWidth / 60) + 's');
-  }
-  window.addEventListener('resize', tick);
-  function barUnder(fn) { barAnchor = fn; placeBar(); }
-  // The one page's bar, if this is a section's frame inside it; else this page's own.
+  // The one page's bar, if this is a section's frame inside it; else this page's own (_ticker.html).
   function topBar() {
     try {
       const up = window.parent;
       if (up !== window && up.location.origin === location.origin && up.magentaMerge && up.magentaMerge.barLine) return up.magentaMerge;
     } catch (e) {}
     return null;
-  }
-  // What githouse said, in a sheet of its own on the page the bar is on: the press's own sheet may be in a
-  // frame that isn't on screen.
-  function told(info, kind, words) {
-    const el = tpl.content.firstElementChild.cloneNode(true);
-    el.querySelector('.what').textContent = info.what;
-    el.querySelector('.sub').textContent = info.sub || '';
-    el.querySelector('.say').textContent = words;
-    el.querySelector('.say').className = 'say ' + kind;
-    el.querySelector('.go').remove();
-    const gone = () => el.remove();
-    el.querySelector('.no').addEventListener('click', gone);
-    el.addEventListener('click', e => { if (e.target === el) gone(); });
-    document.body.appendChild(el);
-    el.hidden = false; el.style.inset = '0'; el.setAttribute('aria-modal', 'true');
-  }
-  function barLine(info) {
-    if (!bar) {
-      bar = document.createElement('div'); bar.className = 'mergeBar'; bar.setAttribute('role', 'status');
-      track = document.createElement('div'); track.className = 'track'; bar.appendChild(track);
-    }
-    const line = document.createElement('span');
-    line.className = 'item going';
-    line.innerHTML = '<span class="mark"></span><span class="words"></span><button type="button" class="x" title="Dismiss" hidden>×</button>';
-    let ended = null;
-    line.addEventListener('click', e => {  // done: the whole of what githouse said
-      if (e.target.closest('.x') || !ended) return;
-      told(info, ended.kind, ended.full);
-    });
-    const gone = () => { line.remove(); if (!track.children.length) bar.hidden = true; tick(); };
-    line.querySelector('.x').addEventListener('click', gone);
-    track.prepend(line); bar.hidden = false; placeBar(); tick();
-    return {
-      say(words) { line.querySelector('.words').textContent = words; },  // the ticker's speed waits for the end
-      end(kind, words, full) {
-        ended = { kind, full: full || words };
-        line.className = 'item ' + kind; line.querySelector('.words').textContent = words;
-        line.querySelector('.x').hidden = false;
-        tick();
-        if (kind === 'ok') setTimeout(gone, 60000);  // a green check a minute; a red x until it's dismissed
-      },
-    };
   }
 
   // Merge now: the sheet goes at once, and the bar says how it's going (Justin, 9 Nov). Clicking the bar's
@@ -346,6 +221,7 @@ window.magentaMerge = (() => {
       if (!r.ok) {
         words = status.error || ('memory-lane said ' + r.status);
       } else {
+        if (status.id && line.claim) line.claim('merge:' + status.id);  // shared feed owns the same chip
         for (let waited = 0; status.status === 'waiting' && waited < 120; waited += 3) {
           line.say(`${doing} ${name}${seen.promote ? '' : ' into ' + seen.into}… ${waited ? waited + ' s' : ''}`);
           await new Promise(go => setTimeout(go, 3000));
@@ -382,25 +258,6 @@ window.magentaMerge = (() => {
   }
   function show(slug) { onScreen = slug; sheets.forEach(reveal); }
 
-  // The pieces of work a 🪢 ask names: repo#N or "repo #N" (a bare #N takes the repo before it) and repo:branch.
-  // With a space, only a repository's own name counts: "merge #316" is magenta's (tools_ask.named_pulls; Justin,
-  // 11 Nov: "rabbithole #29" was taken for magenta's).
-  const REPOS = { magenta: 'magenta', pr: 'magenta', maybelle: 'maybelle-config', 'maybelle-config': 'maybelle-config',
-                  pickipedia: 'pickipedia', 'pickipedia-mcp': 'pickipedia-mcp', arthel: 'arthel', rabbithole: 'rabbithole' };
-  function named(text) {
-    const found = [], key = new Set();
-    let last = '';
-    for (const m of String(text || '').matchAll(/(?:\b([A-Za-z][A-Za-z0-9-]*)( ?))?#(\d+)\b|\b([a-z][a-z0-9-]*):([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+)/g)) {
-      let word = m[1] || '';
-      if (word && m[2] && !REPOS[word.toLowerCase()]) word = '';
-      if (word) last = REPOS[word.toLowerCase()] || word;
-      const w = m[3] ? { repo: last, number: Number(m[3]) } : { repo: m[4], branch: m[5] };
-      last = w.repo || last;
-      const k = w.repo + (w.number ? '#' + w.number : ':' + w.branch);
-      if (w.repo && !key.has(k)) { key.add(k); found.push(w); }
-    }
-    return found;
-  }
-  return { open, named, within, show, prefetch, barLine, barUnder, noteMerged, isMerged };
+  return { open, named, within, show, prefetch, barLine, barUnder, feed, noteMerged, isMerged };
 })();
 </script>

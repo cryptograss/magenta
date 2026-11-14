@@ -1979,7 +1979,7 @@ def api_moods_live(request):
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list
-    from .services import banner, listening, watchers
+    from .services import banner, listening, ticker, watchers
     for slug in list(live):  # who's listening by voice there, 🎧 beside their names (Justin, 22 Oct)
         heard_by = listening.in_mood(slug)
         if heard_by:
@@ -1987,7 +1987,11 @@ def api_moods_live(request):
     for slug, n in watchers.by_mood().items():  # who's reading without signing in: a count beside the Mood
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['watching'] = n
     b_data = banner.get_banner()
-    body = {'moods': live, 'blocks': AROUND_BLOCKS, 'banner': b_data}
+    try:
+        tick_items = ticker.items()
+    except Exception:  # noqa: BLE001 -- never lose the live poll
+        tick_items = []
+    body = {'moods': live, 'blocks': AROUND_BLOCKS, 'banner': b_data, 'ticker': tick_items}
     cache.set('moods-live', body, 3)
     return JsonResponse(body)
 

@@ -2642,6 +2642,8 @@
         liveData = payload.moods || {};
         freshAsks(liveData);
         renderBanner(payload.banner || null);
+        window.__lastTicker = payload.ticker || [];
+        if (window.magentaTicker) magentaTicker.feed(window.__lastTicker);
         // A word somewhere newer than the list knew: re-sorted (Justin, 1 Nov), else only who's around redrawn.
         if (Object.entries(liveData).some(([slug, d]) => d.said && d.said !== (before[slug] || {}).said)) renderNav();
         markLive();
@@ -11125,12 +11127,13 @@
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/moods/sw.js', { scope: '/moods/' }).catch(() => {});
 })();
 </script>
-{% if can_merge %}{% include "conversations/_merge_sheet.html" %}
+{% if can_merge %}{% include "conversations/_merge_sheet.html" %}{% else %}{% include "conversations/_ticker.html" %}{% endif %}
 <script>
-  // A merge sheet covers its Mood's pane, not the page, and goes and comes with its Mood (Justin, 9 Nov).
-  magentaMerge.within(() => document.getElementById('main'));
-  magentaMerge.barUnder(() => document.querySelector('body > header'));  // the bar, on every page: below the nav
-  magentaMerge.show(window.magentaMoodOnScreen ? window.magentaMoodOnScreen() : null);
-</script>{% endif %}
+  // Everyone shares the announcement bar below the nav (Justin, 14 Nov); mergers also get the confirm sheet.
+  magentaTicker.barUnder(() => document.querySelector('body > header'));
+  if (window.__lastTicker) magentaTicker.feed(window.__lastTicker);
+  {% if can_merge %}magentaMerge.within(() => document.getElementById('main'));
+  magentaMerge.show(window.magentaMoodOnScreen ? window.magentaMoodOnScreen() : null);{% endif %}
+</script>
 </body>
 </html>

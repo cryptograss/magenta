@@ -116,9 +116,12 @@ def receive(order, signature, mood='', now=None, under_limit=None):
         raise Invalid(f"not signed by {fields['by']}'s key, in {NAMESPACE}")
     if under_limit and not under_limit(f"merge-order:{fields['by']}", 20):
         raise Limited(f"{fields['by']} has sent 20 orders this minute; wait a minute")
-    return MergeOrder.objects.create(order=order, signature=signature, nonce=fields['nonce'], repo=fields['repo'],
-                                     branch=fields['branch'], by=fields['by'], expires=fields['expires'],
-                                     mood=str(mood or '')[:100])
+    created = MergeOrder.objects.create(order=order, signature=signature, nonce=fields['nonce'], repo=fields['repo'],
+                                        branch=fields['branch'], by=fields['by'], expires=fields['expires'],
+                                        mood=str(mood or '')[:100])
+    from django.core.cache import cache
+    cache.delete('moods-live')  # everyone's bar shows the order on its way
+    return created
 
 
 def mergers():
@@ -294,9 +297,12 @@ def press(person, repo, branch, commit, into, mood='', now=None):
             raise Invalid(f'signing failed: {done.stderr.strip()[:200]}')
         with open(order_file + '.sig') as f:
             signature = f.read()
-    return MergeOrder.objects.create(order=text, signature=signature, nonce=parsed['nonce'], repo=repo,
-                                     branch=branch, by=DEVICE_SIGNER, pressed=person, expires=parsed['expires'],
-                                     mood=str(mood or '')[:100])
+    created = MergeOrder.objects.create(order=text, signature=signature, nonce=parsed['nonce'], repo=repo,
+                                        branch=branch, by=DEVICE_SIGNER, pressed=person, expires=parsed['expires'],
+                                        mood=str(mood or '')[:100])
+    from django.core.cache import cache
+    cache.delete('moods-live')  # everyone's bar shows the press on its way
+    return created
 
 
 def _record(path):
@@ -312,7 +318,8 @@ def outcome(order):
     kept = _record(merges / f'{order.nonce}.json')
     if kept is not None:
         if kept.get('order') == order.order and kept.get('signature') == order.signature:
-            return {'status': kept.get('outcome'), 'why': kept.get('why'), 'merge': kept.get('merge')}
+            return {'status': kept.get('outcome'), 'why': kept.get('why'), 'merge': kept.get('merge'),
+                    'at': kept.get('at')}
         return {'status': 'refused', 'why': 'another order with the same nonce was carried out first'}
     seen = hashlib.sha256(f'{order.order}\0{order.signature}'.encode()).hexdigest()
     mailed = _record(merges / 'mailed' / f'{seen}.json')
@@ -357,16 +364,26 @@ def announce_merged(now=None):
     from conversations.models import ConversationParticipant, Message, MergeOrder, Mood
     from .todo import MERGED_SOURCE
     now = int(time.time() if now is None else now)
-    said = 0
-    for order in MergeOrder.objects.filter(expires__gte=now - LIFE_MAX, announced_at__isnull=True) \
-            .exclude(mood='').iterator():
+    from django.core.cache import cache
+    said, merged_any, settled_any = 0, False, False
+    for order in MergeOrder.objects.filter(expires__gte=now - LIFE_MAX, announced_at__isnull=True).iterator():
         found = outcome(order)
-        if not found or found.get('status') != 'merged':
+        if not found:
             continue
-        mood = Mood.objects.filter(slug=order.mood).first()
+        if found.get('status') != 'merged':
+            if cache.add(f'ticker:settled:{order.id}:{found.get("status")}', 1, LIFE_MAX):
+                settled_any = True
+            continue
+        mood = Mood.objects.filter(slug=order.mood).first() if order.mood else None
+        if order.mood and mood is None:
+            continue
         # Claimed in the database, so of memory-lane's workers asked at once, one says it.
-        if mood is None or not MergeOrder.objects.filter(id=order.id, announced_at__isnull=True) \
+        if not MergeOrder.objects.filter(id=order.id, announced_at__isnull=True) \
                 .update(announced_at=timezone.now()):
+            continue
+        merged_any = True
+        cache.delete_many([f'githouse:branch:{order.repo}:{order.branch}', f'githouse:closed:{order.repo}:{order.branch}'])
+        if mood is None:
             continue
         system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
         fields = parse(order.order)
@@ -378,17 +395,14 @@ def announce_merged(now=None):
                                         'commit': merge[:40], 'by': order.pressed or order.by,
                                         'commit_url': f'https://github.com/cryptograss/{order.repo}/commit/{merge}'
                                         if merge else ''})
-        # githouse's "not merged yet" is kept a minute (githouse.UNMERGED_FOR): drop it, or a list looked at in the
-        # minute before the press is built again from it and the item waits that minute out (re, 10 Nov).
-        from django.core.cache import cache
-        cache.delete_many([f'githouse:branch:{order.repo}:{order.branch}', f'githouse:closed:{order.repo}:{order.branch}'])
         said += 1
-    if said:
-        from django.core.cache import cache
+    if merged_any:
         from . import ramp, todo, tools_ask
         ramp.changed()  # the ramp drops what merged
         todo.forget_all()  # and a to-do item linking its page ticks now, not in a minute
         # And its 🪢 pill goes at the next live poll, not when the asks' 15 s and the poll's 3 s run out (Justin,
         # 12 Nov: a merged pill stayed until he did something else).
         cache.delete_many([tools_ask.KEY, 'moods-live'])
+    elif settled_any:
+        cache.delete('moods-live')  # everyone's bar shows the refusal now
     return said
