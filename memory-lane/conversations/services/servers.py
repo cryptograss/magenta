@@ -125,6 +125,22 @@ def last_deploy(name):
     return found
 
 
+def last_finished(name):
+    """The newest *finished* deploy told for a server, as last_deploy has it, or None: for a to-do item's
+    "redeploy" (services/todo_types.py). Kept until record_deploy tells another."""
+    from conversations.models import Message
+    key = f'server-finished:{name}'
+    kept = cache.get(key)
+    if kept is not None:
+        return kept or None
+    row = (Message.objects.filter(source_file=SOURCE, content__server=name, content__state='finished')
+           .order_by('-created_at').values('content', 'created_at').first())
+    found = None if row is None else {
+        **row['content'], 'at': row['created_at'].isoformat(), 'at_ts': row['created_at'].timestamp()}
+    cache.set(key, found or {}, DEPLOY_KEPT)
+    return found
+
+
 PROBING_KEY = 'server-check:probing'
 
 
@@ -222,8 +238,9 @@ def record_deploy(name, state, commit='', by='', note='', commits=None):
         Message(id=uuid.uuid4(), sender=system, mood=mood, content=content, timestamp=stamp, source_file=SOURCE)
         for mood in moods])
     cache.delete(f'server-check:{name}')  # look again: it may be back, or gone
-    cache.delete(_deploy_key(name))
+    cache.delete_many([_deploy_key(name), f'server-finished:{name}'])
     if state == 'finished':
-        from . import ramp
+        from . import ramp, todo
         ramp.changed()  # the ramp's "live on" column, now: not at the next rebuild
+        todo.forget_all()  # and a to-do item waiting on this deploy ticks at its next look (todo_types)
     return len(moods)

@@ -31,6 +31,15 @@
                     border-radius: 6px; background: var(--panel); color: var(--muted); cursor: pointer; }
   .filters button:hover { color: var(--ink); border-color: var(--accent); }
   .filters button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  /* By type (Justin, 14 Nov): one button each, its open count; another click on it shows every type again. */
+  .types { display: flex; flex-wrap: wrap; gap: 4px; margin: -6px 0 14px; }
+  .types button { font: inherit; font-size: 12.5px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px;
+                  background: var(--panel); color: var(--ink); cursor: pointer; }
+  .types button .n { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 3px; }
+  .types button:hover { border-color: var(--accent); }
+  .types button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .types button.none { opacity: .5; }
+  .chip.typechip { color: var(--ink); }
   .stats { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
   .todolist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .todoitem { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line);
@@ -89,7 +98,8 @@
 </header>
 <main>
   <h1>To-do</h1>
-  <p class="lede">Every Mood's to-do items combined in reverse chronological order. Merged PRs tick themselves.</p>
+  <p class="lede">Every Mood's to-do items, newest first. Merges, deploys and verifies tick themselves the moment
+    they're finished; the rest are ticked by hand.</p>
 
   <div class="controls">
     <input type="search" id="todoSearch" placeholder="Filter by task, person, or note…" aria-label="Filter tasks">
@@ -100,10 +110,15 @@
       {% endfor %}
     </select>
     <div class="filters" role="group" aria-label="Status filter">
-      <button type="button" class="f-btn active" data-filter="all">All ({{ todos.total }})</button>
-      <button type="button" class="f-btn" data-filter="open">Open ({{ todos.open }})</button>
+      <button type="button" class="f-btn" data-filter="all">All ({{ todos.total }})</button>
+      <button type="button" class="f-btn active" data-filter="open">Open ({{ todos.open }})</button>
       <button type="button" class="f-btn" data-filter="done">Done ({{ todos.done }})</button>
     </div>
+  </div>
+
+  <div class="types" role="group" aria-label="Type filter">
+    {% for t in todos.types %}<button type="button" class="t-btn{% if not t.open %} none{% endif %}" data-type="{{ t.type }}"
+      title="{{ t.about }}: {{ t.open }} open of {{ t.total }}">{{ t.emoji }} {{ t.label }}<span class="n">{{ t.open }}</span></button>{% endfor %}
   </div>
 
   <div class="stats" id="todoStats">Showing {{ todos.total }} tasks</div>
@@ -111,12 +126,12 @@
   <ul class="todolist" id="todoList">
     {% for item in todos.items %}
     <li class="todoitem{% if item.done or item.merged %} done{% endif %}"
-        data-mood="{{ item.mood }}"
+        data-mood="{{ item.mood }}" data-type="{{ item.type }}"
         data-status="{% if item.done or item.merged %}done{% else %}open{% endif %}"
         data-search="{{ item.task|lower }} {{ item.note|lower }} {% for w in item.who %}{{ w|lower }} {% endfor %}#{{ item.mood }}">
       <span class="statusicon {% if item.merged %}is-merged{% elif item.done %}is-done{% else %}is-open{% endif %}"
-            title="{% if item.merged %}Merged{% elif item.closed %}Closed, not merged{% elif item.done %}Done{% else %}Open{% endif %}">
-        {% if item.merged %}🔀{% elif item.closed %}✕{% elif item.done %}✓{% else %}○{% endif %}
+            title="{% if item.merged %}Merged{% elif item.closed %}Closed, not merged{% elif item.deployed %}Deployed: the server runs it{% elif item.verified %}Verified: no bot edit waits on the page{% elif item.done %}Done{% else %}Open{% endif %}">
+        {% if item.merged %}🔀{% elif item.closed %}✕{% elif item.deployed %}🖥️{% elif item.verified %}✅{% elif item.done %}✓{% else %}○{% endif %}
       </span>
       <div class="content">
         <div>
@@ -124,7 +139,7 @@
           <span class="chips">
             <a class="chip moodchip" href="/moods/{{ item.mood }}/">#{{ item.mood_title }}</a>
             {% for w in item.who %}<span class="chip whochip">{{ w }}</span>{% endfor %}
-            {% if item.kind %}<span class="chip kindchip">{{ item.kind }}</span>{% endif %}
+            {% for t in todos.types %}{% if t.type == item.type %}<span class="chip typechip" title="{{ t.about }}{% if item.kind and item.kind|lower != t.type %} (written as “{{ item.kind }}”){% endif %}">{{ t.emoji }} {{ t.label }}</span>{% endif %}{% endfor %}
           </span>
         </div>
         {% if item.note %}<div class="noteline">{{ item.note }}</div>{% endif %}
@@ -143,7 +158,8 @@
   const filterBtns = document.querySelectorAll('.f-btn');
   const items = document.querySelectorAll('.todoitem');
   const stats = document.getElementById('todoStats');
-  let currentFilter = 'all';
+  const typeBtns = document.querySelectorAll('.t-btn');
+  let currentFilter = 'open', currentType = '';
 
   function applyFilters() {
     const q = (searchInput.value || '').trim().toLowerCase();
@@ -154,7 +170,8 @@
       const matchSearch = !q || el.dataset.search.includes(q);
       const matchMood = !mood || el.dataset.mood === mood;
       const matchStatus = currentFilter === 'all' || el.dataset.status === currentFilter;
-      const show = matchSearch && matchMood && matchStatus;
+      const matchType = !currentType || el.dataset.type === currentType;
+      const show = matchSearch && matchMood && matchStatus && matchType;
       el.style.display = show ? '' : 'none';
       if (show) visible++;
     });
@@ -173,6 +190,16 @@
       applyFilters();
     });
   });
+  // One type at a time; pressed again, every type. Kept in the address (#type=deploy), so a link opens on it.
+  function setType(type) {
+    currentType = type;
+    typeBtns.forEach(b => b.classList.toggle('active', b.dataset.type === type));
+    history.replaceState(null, '', type ? '#type=' + type : location.pathname + location.search);
+    applyFilters();
+  }
+  typeBtns.forEach(btn => btn.addEventListener('click', () => setType(currentType === btn.dataset.type ? '' : btn.dataset.type)));
+  const asked = (location.hash.match(/^#type=([a-z]+)$/) || [])[1];
+  if (asked) setType(asked); else applyFilters();
 })();
 </script>
 </body>
