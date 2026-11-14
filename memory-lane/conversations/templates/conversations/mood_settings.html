@@ -222,7 +222,7 @@ Every change is kept at the bottom, with who made it.</p>
     } else if (key === 'idle_after') {
       input = `<input type="number" min="0" step="5" ${attrs} data-scale="60" value="${Math.round((value || 0) / 60)}">`;
     } else if (key === 'model') {
-      input = modelField(attrs, value, agent);
+      input = modelField(attrs, value, agent, '', 'default:' + (agent || ''));
     } else {
       input = `<input type="number" min="0" ${attrs} value="${esc(value)}">`;
     }
@@ -243,29 +243,54 @@ Every change is kept at the bottom, with who made it.</p>
 
   // A model: vendor, then its model, where the emergent's harness reports a catalog (Pi); else the aliases.
   const catalogs = {};  // agent -> {vendors}, or null (none reported)
-  const vendorPicked = {};  // agent -> a vendor picked, before one of its models is
+  const vendorPicked = {};  // slot -> a vendor picked, before one of its models is
   const ALIASES = ['opus', 'sonnet', 'fable', 'haiku'];
+  function kTokens(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1000) return (n < 10000 && n % 1000 ? (n / 1000).toFixed(1) : Math.round(n / 1000)) + 'k';
+    return String(n);
+  }
   function vendorOf(m) { const i = (m || '').indexOf('/'); return i > 0 ? m.slice(0, i) : ''; }
-  function modelField(attrs, value, agent, blank) {
+  function modelSortKey(id) { return `${id.startsWith('~') ? '0' : '1'}:${id.replace(/^~/, '')}`; }
+  function modelField(attrs, value, agent, blank, slot) {
     const c = agent ? catalogs[agent] : null;
     if (!c) {
       const opts = !value || ALIASES.includes(value) ? ALIASES : [...ALIASES, value];
       return `<select ${attrs}><option value="">${blank || '(harness default)'}</option>${opts.map(o =>
         `<option value="${esc(o)}" ${o === value ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     }
-    const vendor = vendorPicked[agent] || vendorOf(value);
+    const pickKey = slot || agent;
+    const vendor = vendorPicked[pickKey] || vendorOf(value);
     const vendors = c.vendors.filter(v => v.usable || v.name === vendor).sort((a, b) => a.name.localeCompare(b.name));
     const v = vendors.find(x => x.name === vendor);
-    const first = `<select data-role="vendor" data-for="${esc(agent)}" title="vendor" ${viewer ? '' : 'disabled'}>`
-      + `<option value="" ${v ? '' : 'selected'}>${value ? 'vendor…' : blank || '(harness default)'}</option>`
+    const vendorAttrs = `data-role="vendor" data-slot="${esc(pickKey)}" data-for="${esc(agent)}"${pickKey.startsWith('default:') ? ` data-key="model" data-mood="" data-agent="${esc(agent)}"` : ''}`;
+    const first = `<select ${vendorAttrs} title="vendor" ${viewer ? '' : 'disabled'}>`
+      + `<option value="" ${v ? '' : 'selected'}>${blank || (value ? '↺ harness default' : '(harness default)')}</option>`
       + vendors.map(x => `<option value="${esc(x.name)}" ${x === v ? 'selected' : ''}>${esc(x.name)}${x.usable ? '' : ' · no key'}</option>`).join('')
       + '</select>';
     if (!v) return first;
-    const ids = v.models.map(m => `${v.name}/${m[0]}`);
-    return first + ` <select ${attrs} title="model"><option value="" ${value ? '' : 'selected'}>${value ? (blank || '↺ default') : 'pick a model…'}</option>`
-      + (value && !ids.includes(value) && vendorOf(value) === v.name ? `<option value="${esc(value)}" selected>${esc(value.slice(v.name.length + 1))}</option>` : '')
-      + ids.map(id => `<option value="${esc(id)}" ${id === value ? 'selected' : ''}>${esc(id.slice(v.name.length + 1))}</option>`).join('')
-      + '</select>';
+    const groups = new Map();
+    for (const m of v.models) {
+      const at = m[0].indexOf('/'), maker = at > 0 ? m[0].slice(0, at).replace(/^~/, '') : '';
+      if (!groups.has(maker)) groups.set(maker, []);
+      groups.get(maker).push(m);
+    }
+    let found = false;
+    const option = ([id, ctx]) => {
+      const full = `${v.name}/${id}`, on = full === value;
+      found = found || on;
+      const name = id.slice(id.indexOf('/') + 1);
+      return `<option value="${esc(full)}"${on ? ' selected' : ''}>${esc(name)}${ctx ? ' · ' + esc(kTokens(ctx)) : ''}</option>`;
+    };
+    const body = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([maker, ms]) => {
+      const sorted = ms.slice().sort((a, b) => modelSortKey(a[0]).localeCompare(modelSortKey(b[0])));
+      return maker ? `<optgroup label="${esc(maker)}">${sorted.map(option).join('')}</optgroup>` : sorted.map(option).join('');
+    }).join('');
+    const stale = value && !found && vendorOf(value) === v.name;
+    const pick = (value ? `<option value="">${blank || '↺ harness default'}</option>` : '')
+      + (found ? '' : stale ? `<option value="${esc(value)}" selected>${esc(value.slice(v.name.length + 1))}</option>`
+                            : '<option value="" selected disabled>pick a model…</option>');
+    return first + ` <select ${attrs} data-slot="${esc(pickKey)}" title="model">${pick}${body}</select>`;
   }
 
   // The one thing asked for at the top: one model per emergent, set everywhere (agent, no Mood).
@@ -283,7 +308,7 @@ Every change is kept at the bottom, with who made it.</p>
     const any = Object.values(wide).some(w => Object.values(w).some(Boolean));
     return `<div class="card">`
       + state.emergents.map(a => `<div class="mrow"><span class="who">${esc(a)}</span><span>`
-        + modelField(`data-wide="model" data-agent="${esc(a)}" ${dis}`, (wide[a] || {}).model || '', a, leave)
+        + modelField(`data-wide="model" data-agent="${esc(a)}" ${dis}`, (wide[a] || {}).model || '', a, leave, 'wide:' + a)
         + `</span><span>${effort(a, 'mention_effort')}</span></div>`).join('')
       + `<div class="setline"><button type="button" id="setWide" ${viewer && any ? '' : 'disabled'}>Set</button>`
       + ` <span class="status" id="wideStatus"></span></div></div>`;
@@ -525,15 +550,37 @@ Every change is kept at the bottom, with who made it.</p>
   }
   document.addEventListener('input', e => { if (e.target.dataset && e.target.dataset.key) bannerPreview(); });
   document.addEventListener('change', e => {
-    if (e.target.dataset && e.target.dataset.role === 'vendor') { vendorPicked[e.target.dataset.for] = e.target.value; render(); return; }
+    if (e.target.dataset && e.target.dataset.role === 'vendor') {
+      const slot = e.target.dataset.slot || e.target.dataset.for;
+      if (e.target.value) {
+        vendorPicked[slot] = e.target.value;
+        render();
+      } else {
+        delete vendorPicked[slot];
+        if (slot.startsWith('wide:')) {
+          const a = e.target.dataset.for;
+          if (wide[a]) delete wide[a].model;
+          document.getElementById('models').innerHTML = modelRows();
+        } else if (e.target.dataset.key) {
+          save(e.target);
+        } else {
+          render();
+        }
+      }
+      return;
+    }
     if (e.target.dataset && e.target.dataset.wide) {
       const a = e.target.dataset.agent;
       (wide[a] = wide[a] || {})[e.target.dataset.wide] = e.target.value;
+      if (!e.target.value && e.target.dataset.slot) delete vendorPicked[e.target.dataset.slot];
       document.getElementById('models').innerHTML = modelRows();
       return;
     }
     if (e.target.dataset && e.target.dataset.offer !== undefined) { saveOffered(e.target); return; }
-    if (e.target.dataset && e.target.dataset.key) save(e.target);
+    if (e.target.dataset && e.target.dataset.key) {
+      if (e.target.dataset.slot) delete vendorPicked[e.target.dataset.slot];
+      save(e.target);
+    }
   });
   document.addEventListener('click', async e => {
     if (e.target.id === 'setWide') setWide();
