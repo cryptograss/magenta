@@ -269,6 +269,15 @@ class LoopGuardTest(PlainCase):
             self.assertEqual(guard.see('read', {'path': 'x'}), '')
         self.assertIn('maximum tool calls limit (10)', guard.see('read', {'path': 'x'}))
 
+    def test_no_ceiling_at_zero(self):
+        """Claude Code turns run with max_calls=0 (13 Nov): many calls, all different, never trip it."""
+        guard = LoopGuard(max_calls=0)
+        self.assertEqual([guard.see(f'read_{i}', {'path': f'f{i}'}) for i in range(1000)], [''] * 1000)
+        self.assertIsNone(guard.warn)
+        for _ in range(2):
+            guard.see('read', {'path': 'same'})
+        self.assertIn('identical arguments', guard.see('read', {'path': 'same'}))  # a real loop still does
+
     def test_default_max_calls_is_150(self):
         guard = LoopGuard()
         self.assertEqual(guard.max_calls, 150)

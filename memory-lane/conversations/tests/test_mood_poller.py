@@ -817,6 +817,12 @@ class RealProcessTest(TestCase):
             's-old', 'prompt', new_session_id='s-new')
         self.assertEqual(reply, 'looked')
 
+    def test_a_long_turn_of_different_calls_runs_to_its_end(self):
+        # Justin, #interfaces, 13 Nov: four long turns ended at 150 calls that day, none of them a loop.
+        _, reply = self.waker(self.screenshots([f'page {i}' for i in range(400)])).wake(
+            's-old', 'prompt', new_session_id='s-new')
+        self.assertEqual(reply, 'looked')
+
     def test_the_same_call_with_the_same_answer_still_ends_the_turn(self):
         with self.assertRaisesRegex(RuntimeError, 'tool loop: mcp__playwright__browser_take_screenshot called 3'):
             self.waker(self.screenshots(['same page'] * 6)).wake('s-old', 'prompt', new_session_id='s-new')

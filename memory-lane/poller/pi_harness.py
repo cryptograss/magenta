@@ -127,7 +127,7 @@ class LoopGuard:
                  window_size=TOOL_LOOP_WINDOW, max_calls=None):
         self.limit = limit
         self.window_limit = window_limit
-        self.max_calls = TOOL_LOOP_MAX_CALLS if max_calls is None else max_calls
+        self.max_calls = TOOL_LOOP_MAX_CALLS if max_calls is None else max_calls  # 0: no ceiling
         self.warn_at = (self.max_calls * 2) // 3  # where the wrap-up warning goes out (2/3 of the budget)
         self.warn = None  # set once, at warn_at: the pi harness delivers it as an RPC steer
         self.streak, self.last = 0, None
@@ -156,9 +156,9 @@ class LoopGuard:
             return f'tool loop: {name} called {self.streak}× with identical arguments'
         if self.window_limit and window_count >= self.window_limit:
             return f'tool loop: {name} called {window_count}× within last {len(self.recent)} calls'
-        if self.total >= self.max_calls:
+        if self.max_calls and self.total >= self.max_calls:
             return f'tool loop: turn exceeded maximum tool calls limit ({self.total})'
-        if self.warn is None and self.total >= self.warn_at:
+        if self.max_calls and self.warn is None and self.total >= self.warn_at:
             self.warn = (f'tool budget: {self.total} of {self.max_calls} tool calls used this turn. '
                          'Wrap up soon: finish what is in hand, then post your reply and stop calling tools.')
         return ''
