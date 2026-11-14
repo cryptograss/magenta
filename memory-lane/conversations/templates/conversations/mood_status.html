@@ -246,8 +246,11 @@
       const name = id.slice(id.indexOf('/') + 1);
       return `<option value="${esc(full)}"${on ? ' selected' : ''}>${esc(name)}${ctx ? ' · ' + esc(kTokens(ctx)) : ''}</option>`;
     };
-    const body = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([maker, ms]) => maker
-      ? `<optgroup label="${esc(maker)}">${ms.map(option).join('')}</optgroup>` : ms.map(option).join('')).join('');
+    const sortKey = id => `${id.startsWith('~') ? '0' : '1'}:${id.replace(/^~/, '')}`;
+    const body = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([maker, ms]) => {
+      const sorted = ms.slice().sort((a, b) => sortKey(a[0]).localeCompare(sortKey(b[0])));
+      return maker ? `<optgroup label="${esc(maker)}">${sorted.map(option).join('')}</optgroup>` : sorted.map(option).join('');
+    }).join('');
     const stale = vendorOf(chosen) === v.name;
     const pick = !chosen && !vendorPicked[pickKey] ? `<option value="" selected>${esc(fallback)}</option>`
       : (chosen ? `<option value="">↺ default</option>` : '')

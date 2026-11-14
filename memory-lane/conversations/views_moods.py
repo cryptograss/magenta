@@ -1388,13 +1388,22 @@ def api_wiki_tiding(request):
     """?title=: whether a PickiPedia page is a tiding here, for the banner the wiki draws atop it (Justin,
     #interfaces, 13 Nov 2026). {"tiding": its page here, "words": Magenta:Interface's wiki-tiding-banner}, or
     {"tiding": null}. Asked by the wiki's page in a reader's browser, so any site may read it: it's what
-    Tidings shows anyone."""
+    Tidings shows anyone. With ?recent=N (a post's page on the wiki asks, from its server: Justin,
+    #pickipedia-style-and-main-page, 13 Nov 2026), also its "title", "score", how many "comments", and the last
+    N things said, "recent" (tiding_links.recent)."""
     from django.conf import settings
     from .services import interface_words, tiding_links
     found = tiding_links.on_wiki(request.GET.get('title', '')[:300])
     base = getattr(settings, 'MAGENTA_PUBLIC_URL', 'https://magenta.cryptograss.live').rstrip('/')
-    answer = JsonResponse({'tiding': f'{base}/tidings/{found}/', 'id': found,
-                           'words': interface_words.words()['wiki-tiding-banner']} if found else {'tiding': None})
+    said = {'tiding': f'{base}/tidings/{found}/', 'id': found,
+            'words': interface_words.words()['wiki-tiding-banner']} if found else {'tiding': None}
+    most = request.GET.get('recent', '')
+    if found and most.isascii() and most.isdigit() and 0 < int(most[:4]):
+        from .models import Tiding
+        tiding = Tiding.objects.select_related('message').filter(id=found).first()
+        if tiding is not None:
+            said.update(tiding_links.recent(tiding, int(most[:4])))
+    answer = JsonResponse(said)
     answer['Access-Control-Allow-Origin'] = '*'
     answer['Cache-Control'] = 'public, max-age=120'
     return answer
