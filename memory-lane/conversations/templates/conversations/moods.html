@@ -290,10 +290,12 @@
                       border: 1px solid var(--line); border-radius: 10px; padding: 1px 9px; cursor: pointer; }
   .turn .body .topp:hover { color: var(--accent); border-color: var(--accent); }
   .turn .body a.onwiki { display: block; font-size: 12.5px; color: var(--muted); margin: 2px 0 6px; text-decoration: none; }
-  #uploadBox { position: fixed; z-index: 40; top: 64px; left: 50%; transform: translateX(-50%); width: min(440px, 94vw);
+  /* A box that asks for something (this one, and a Mood's four below) is a <dialog>, shown above the page: the
+     browser centres it, puts the cursor in its first field, closes it on Esc, and keeps the page behind still. */
+  #uploadBox { margin-top: 64px; width: min(440px, 94vw); max-width: none; color: var(--ink);
                background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.18);
-               padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; }
-  #uploadBox[hidden] { display: none; }
+               padding: 12px 14px; font-size: 13.5px; }
+  #uploadBox form { display: flex; flex-direction: column; gap: 8px; }
   #uploadBox label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); }
   #uploadBox .hint { font-size: 12.5px; color: var(--muted); }
   #uploadBox input, #uploadBox textarea, #uploadBox select { font: inherit; color: var(--ink); background: var(--bg);
@@ -425,10 +427,12 @@
   #promotePick .go { background: var(--accent); color: #fff; }
   #promotePick .go:disabled { opacity: .45; cursor: default; }
   #promotePick .cancel { background: none; color: var(--muted); }
-  #renameBox, #newBox, #closeBox, #moveBox { position: fixed; z-index: 30; top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 94vw);
+  #renameBox, #newBox, #closeBox, #moveBox { margin-top: 44px; width: min(520px, 94vw); max-width: none; color: var(--ink);
                background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,.18);
-               padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-  #renameBox[hidden], #newBox[hidden], #closeBox[hidden], #moveBox[hidden] { display: none; }
+               padding: 12px; }
+  #renameBox form, #newBox form, #closeBox form, #moveBox form { display: flex; flex-direction: column; gap: 8px; }
+  dialog > .err { display: block; margin-top: 8px; color: var(--accent); font-size: 12px; }
+  #uploadBox::backdrop, #renameBox::backdrop, #newBox::backdrop, #closeBox::backdrop, #moveBox::backdrop { background: rgba(0,0,0,.35); }
   #renameBox .archive { float: right; color: var(--muted); }
   #newBox .hint, #closeBox .hint, #moveBox .hint { font-size: 12.5px; color: var(--muted); }
   #closeBox label, #moveBox label { display: flex; gap: 6px; align-items: baseline; font-size: 13.5px; }
@@ -1929,7 +1933,7 @@
   <div id="sealKey"></div>
   <div id="sealsList"></div>
 </div>
-<form id="uploadBox" hidden>
+<dialog id="uploadBox"><form>
   <b>Put this picture on PickiPedia</b>
   <label>Name <input id="upName" maxlength="180" required></label>
   <label>What it is <textarea id="upDesc" rows="3" maxlength="2000" placeholder="Who, what, where, when"></textarea></label>
@@ -1939,17 +1943,17 @@
   </select></label>
   <span class="hint" id="upHint">It goes up as you, from your PickiPedia account: PickiPedia will ask you to allow it.</span>
   <span class="note" id="upNote"></span>
-  <span><button type="submit">Put it on PickiPedia</button> <button type="button" id="upCancel">Cancel</button></span>
-</form>
-<form id="renameBox" hidden>
+  <span><button type="submit">Put it on PickiPedia</button> <button type="button" commandfor="uploadBox" command="close">Cancel</button></span>
+</form></dialog>
+<dialog id="renameBox"><form>
   <input id="renameTitle" maxlength="200" aria-label="Title" placeholder="Title">
   <!-- Its description and instructions are one document, on PickiPedia (Justin, re and magent, 29 Oct): its first paragraph is
        what this page shows, and the whole is what its emergents read -- a trusted editor's revision, never this box. -->
   <a id="renameDoc" class="hint" target="_blank" rel="noopener">Its description and instructions: one page on PickiPedia →</a>
-  <span><button type="submit">Rename</button> <button type="button" id="renameCancel">Cancel</button>
+  <span><button type="submit">Rename</button> <button type="button" commandfor="renameBox" command="close">Cancel</button>
     <button type="button" id="archiveBtn" class="archive" title="Out of the Moods list, into Archived. It stays readable, its sessions and container untouched, and a mention there is still answered.">Archive</button>
     <button type="button" id="pinBtn" class="archive" title="At the top of the Moods list, for everyone">Pin</button></span>
-</form>
+</form></dialog>
 <dialog id="promotePick">
   <form method="dialog">
     <p><b>Which of its links go on Tidings?</b></p>
@@ -1981,7 +1985,7 @@
     <div class="bar"><button type="button" class="save">Save</button><button type="button" class="plain">Plain again</button><button type="submit" class="cancel">Cancel</button></div>
   </form>
 </dialog>
-<form id="newBox" hidden>
+<dialog id="newBox"><form>
   <input id="newTitle" maxlength="200" aria-label="Title" placeholder="What the new Mood is about">
   <textarea id="newDesc" rows="2" maxlength="2000" aria-label="Description" placeholder="A line or two more (optional)"></textarea>
   <div class="forkchoice" id="newThread" hidden>
@@ -1992,17 +1996,17 @@
   </div>
   <span class="hint" id="newHint"></span>
   <span class="hint" id="newTaken" hidden></span>
-  <span><button type="submit">Start</button> <button type="button" id="newCancel">Cancel</button></span>
-</form>
-<form id="closeBox" hidden>
+  <span><button type="submit">Start</button> <button type="button" commandfor="newBox" command="close">Cancel</button></span>
+</form></dialog>
+<dialog id="closeBox"><form>
   <b id="closeTitle"></b>
   <label id="closeAskLine"><input type="checkbox" id="closeAsk" checked> <span id="closeAskWords"></span></label>
   <textarea id="closeNote" rows="2" maxlength="2000" aria-label="A note for them"></textarea>
   <span class="hint" id="closeModel"></span>
-  <span><button type="submit" id="closeGo"></button> <button type="button" id="closeCancel">Cancel</button></span>
-</form>
+  <span><button type="submit" id="closeGo"></button> <button type="button" commandfor="closeBox" command="close">Cancel</button></span>
+</form></dialog>
 <!-- Moving a thread to another Mood (Justin, emergence, 1 Nov 2026): four boxes, done in one call (api_move_thread). -->
-<form id="moveBox" hidden>
+<dialog id="moveBox"><form>
   <b id="moveTitle"></b>
   <label><span id="moveToWords"></span> <select id="moveTo" required></select></label>
   <label><input type="checkbox" id="moveFrom"> <span id="moveFromWords"></span></label>
@@ -2010,8 +2014,8 @@
   <label><input type="checkbox" id="moveCompact"> <span id="moveCompactWords"></span></label>
   <label><input type="checkbox" id="moveInform" checked> <span id="moveInformWords"></span></label>
   <textarea id="moveNote" rows="2" maxlength="2000" aria-label="A note for them"></textarea>
-  <span><button type="submit" id="moveGo"></button> <button type="button" id="moveCancel">Cancel</button></span>
-</form>
+  <span><button type="submit" id="moveGo"></button> <button type="button" commandfor="moveBox" command="close">Cancel</button></span>
+</form></dialog>
 <div id="locked"></div>
 <div id="search" hidden role="search">
   <div class="bar">
@@ -3838,10 +3842,9 @@
       const named = [...new Set((d.faces || []).filter(f => f.named).sort((a, b) => a.box[0] - b.box[0]).map(f => f.named.person))];
       if (named.length) document.getElementById('upHint').textContent += ` It will say who's in it: ${named.join(', ')}.`;
     }).catch(() => {});
-    uploadBox.hidden = false;
-    document.getElementById('upName').focus();
+    uploadBox.showModal();
   }
-  document.getElementById('upCancel').addEventListener('click', () => { uploadBox.hidden = true; uploading = null; });
+  uploadBox.addEventListener('close', () => { uploading = null; });  // sent, cancelled, or Esc
   uploadBox.addEventListener('submit', async e => {
     e.preventDefault();
     if (!uploading) return;
@@ -3864,7 +3867,7 @@
       markUploaded(uploading.sha, body.file, body.page);  // it was there already
       // From Tidings: its frame says so at once (its pictures say "on PickiPedia").
       if (uploading.tidings) sectionFrames.querySelector('iframe[data-section="tidings"]')?.contentWindow.location.reload();
-      uploadBox.hidden = true; uploading = null;
+      uploadBox.close();
       poll(false);
     } catch (err) { note.textContent = err.message; }
   });
@@ -5171,17 +5174,14 @@
       document.getElementById('renameDoc').href = headMood.document || '#';
       document.getElementById('archiveBtn').textContent = isArchived(current) ? 'Unarchive' : 'Archive';
       document.getElementById('pinBtn').textContent = isPinned(current) ? 'Unpin' : 'Pin';
-      renameBox.hidden = false;
-      document.getElementById('renameTitle').focus();
-    } else if (e.target.closest('#renameCancel')) {
-      renameBox.hidden = true;
+      renameBox.showModal();
     } else if (e.target.closest('#archiveBtn')) {
       const r = await fetch(`/api/moods/${encodeURIComponent(current)}/archive/`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
         body: JSON.stringify({ archived: !isArchived(current) }),
       });
       if (!r.ok) { showError('archive: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
-      renameBox.hidden = true;
+      renameBox.close();
       loadMoods();
     } else if (e.target.closest('#pinBtn')) {
       const r = await fetch(`/api/moods/${encodeURIComponent(current)}/pin/`, {
@@ -5189,7 +5189,7 @@
         body: JSON.stringify({ pinned: !isPinned(current) }),
       });
       if (!r.ok) { showError('pin: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
-      renameBox.hidden = true;
+      renameBox.close();
       loadMoods();
     } else if (e.target.closest('#newMood') || e.target.closest('.mood-head .newthread')) {
       // A thread (from the head's ⑂): of the Mood open now, forked by default.
@@ -5210,8 +5210,7 @@
       document.getElementById('newTitle').value = '';
       document.getElementById('newDesc').value = '';
       document.getElementById('newTaken').hidden = true;
-      newBox.hidden = false;
-      document.getElementById('newTitle').focus();
+      newBox.showModal();
     } else if (e.target.closest('#newBox .reopenthread')) {
       const slug = e.target.closest('.reopenthread').dataset.slug;
       const r = await fetch(`/api/moods/${encodeURIComponent(slug)}/archive/`, {
@@ -5219,7 +5218,7 @@
         body: JSON.stringify({ archived: false }),
       });
       if (!r.ok) { showError('reopen: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
-      newBox.hidden = true;
+      newBox.close();
       markArchived(slug, false);
       open(slug, true);
       loadMoods();  // not waited for: the list can take seconds
@@ -5239,7 +5238,7 @@
       document.getElementById('closeGo').textContent = WORDS['close-button'] || 'Close';
       closeBox._was = closeBox._chosen = null; delete vendorPicked[HANDOFF_AGENT];
       drawCloseModel(parent);
-      closeBox.hidden = false;
+      closeBox.showModal();
     } else if (e.target.closest('.mood-head .movethread')) {
       // Moving: to any open Mood but its own and those under it (the server says no to those too).
       const parent = (headMood || {}).thread_of || '';
@@ -5257,12 +5256,7 @@
       const note = document.getElementById('moveNote');
       note.value = ''; note.placeholder = WORDS['close-note'] || '';
       wordsFrom(document.getElementById('moveGo'), 'move-button').textContent = WORDS['move-button'] || 'Move';
-      document.getElementById('moveBox').hidden = false;
-      document.getElementById('moveTo').focus();
-    } else if (e.target.closest('#moveCancel')) {
-      document.getElementById('moveBox').hidden = true;
-    } else if (e.target.closest('#closeCancel')) {
-      closeBox.hidden = true; delete vendorPicked[HANDOFF_AGENT];
+      document.getElementById('moveBox').showModal();
     } else if (e.target.closest('.mood-head .closethread')) {
       const r = await fetch(`/api/moods/${encodeURIComponent(current)}/archive/`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
@@ -5282,9 +5276,14 @@
       [moods.find(x => x.slug === current), headMood].forEach(m => { if (m) { m.forked_at = at; m.incorporated = m.compacted = false; } });
       drawMoodbar(headMood);
       loadMoods().then(() => drawMoodbar(headMood));
-    } else if (e.target.closest('#newCancel')) {
-      newBox.hidden = true;
     }
+  });
+  closeBox.addEventListener('close', () => { delete vendorPicked[HANDOFF_AGENT]; });  // closed, cancelled, or Esc
+  // A Cancel closes its box by its own markup (commandfor, command="close"). Safari before 26.2 and Firefox
+  // before 144 don't know that: there, this does it.
+  if (!('command' in HTMLButtonElement.prototype)) document.addEventListener('click', e => {
+    const cancel = e.target.closest('button[command="close"]');
+    if (cancel) document.getElementById(cancel.getAttribute('commandfor'))?.close();
   });
   // The handoff agent's model and effort in the Mood it hands back to, to change just before (Justin, 27 Oct):
   // the model is the one it runs on there anyway (a handoff never switches: the cache), the effort its handoff_effort.
@@ -5340,7 +5339,7 @@
     }
     const r = await post(`/api/moods/${encodeURIComponent(slug)}/close-thread/`, { incorporated: !!ask });
     if (!r.ok) { showError('close: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
-    closeBox.hidden = true;
+    closeBox.close();
     await loadMoods();
     drawMoodbar(headMood);
     poll(false);
@@ -5360,7 +5359,7 @@
         compact: document.getElementById('moveCompact').checked, inform: document.getElementById('moveInform').checked }),
     }).finally(() => { go.disabled = false; });
     if (!r.ok) { showError('move: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
-    document.getElementById('moveBox').hidden = true;
+    document.getElementById('moveBox').close();
     const m = moods.find(x => x.slug === current);
     if (m) m.thread_of = to;
     if (headMood) headMood.thread_of = to;
@@ -5394,7 +5393,7 @@
     }
     if (!r.ok) { showError((newBox._threadOf ? 'thread: ' : 'new Mood: ') + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     const made = await r.json();
-    newBox.hidden = true;
+    newBox.close();
     await loadMoods();
     open(made.slug, true);
   });
@@ -5406,7 +5405,7 @@
     });
     if (!r.ok) { showError('rename: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
     const named = await r.json();
-    renameBox.hidden = true;
+    renameBox.close();
     if (named.slug && named.slug !== current) { location.href = '/moods/' + encodeURIComponent(named.slug) + '/'; return; }  // its new name, its new address
     showMoodName({ ...headMood, ...named });
     const desc = document.querySelector('.mood-head .desc');
@@ -8053,12 +8052,12 @@
       : '<div class="none">No edits on PickiPedia.</div>';
     return `<div class="head">${icon(c.name, true)}${nameHtml(c.name)}<span class="links"><a href="/people/${encodeURIComponent(c.name)}/" title="Their last posts here and edits on PickiPedia, as one stream">Their page →</a>`
       + `<a href="${esc(c.page)}" target="_blank" rel="noopener">User page ↗</a></span>`
-      + `<button type="button" class="x" aria-label="Close">×</button></div>${profile}`
+      + `<button type="button" class="x" commandfor="personCard" command="close" aria-label="Close">×</button></div>${profile}`
       + `<h4>Trail</h4>${trail}<h4>Last messages</h4>${messages}<h4>Last edits on PickiPedia</h4>${edits}`;
   }
   async function openPersonCard(name) {
     hidePreview();
-    personCard.innerHTML = `<div class="head">${icon(name, true)}${nameHtml(name)}<button type="button" class="x" aria-label="Close">×</button></div>`
+    personCard.innerHTML = `<div class="head">${icon(name, true)}${nameHtml(name)}<button type="button" class="x" commandfor="personCard" command="close" aria-label="Close">×</button></div>`
       + `<div class="loading" aria-busy="true" aria-label="Loading their card"><span class="sk" style="--w: 80%"></span><span class="sk" style="--w: 55%"></span>`
       + `<h4>Trail</h4>${'<span class="sk pill"></span>'.repeat(4)}<h4>Last messages</h4>`
       + [92, 70, 84].map(w => `<span class="sk" style="--w: 35%"></span><span class="sk" style="--w: ${w}%"></span>`).join('')
@@ -8074,7 +8073,7 @@
     personCard.innerHTML = cardHtml(c);
   }
   personCard.addEventListener('click', e => {
-    if (e.target === personCard || e.target.closest('.x')) { personCard.close(); return; }
+    if (e.target === personCard) { personCard.close(); return; }  // a click on the dimmed page around it
     const a = e.target.closest('a[data-card-mood]');
     if (!a) return;
     e.preventDefault();
@@ -8455,9 +8454,11 @@
   // Images into the composer: paste, drop, or the + button. Each is stored
   // first, then its markdown goes in at the caret.
   function showError(message) {
-    composer.querySelectorAll('.err, .note').forEach(el => el.remove());
-    composer.insertAdjacentHTML('beforeend', `<span class="err">${esc(message)}</span>`);
+    document.querySelectorAll('#composer .err, #composer .note, dialog > .err').forEach(el => el.remove());
+    // Said in the box open over the page, if one is: the composer is dimmed behind it.
+    (document.querySelector('dialog:modal') || composer).insertAdjacentHTML('beforeend', `<span class="err">${esc(message)}</span>`);
   }
+  document.addEventListener('close', e => e.target.querySelector?.(':scope > .err')?.remove(), true);  // a box closed: its error with it
   // What's said next makes an old error old news.
   sayBox.addEventListener('input', () => { const err = composer.querySelector('.err'); if (err) err.remove(); });
   document.getElementById('sayHelp').addEventListener('click', e => { showNote(e.currentTarget.title, 9000); sayBox.focus(); });
