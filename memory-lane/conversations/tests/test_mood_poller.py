@@ -3667,3 +3667,35 @@ class WakeFooterAsksTest(TestCase):
         for tag in ('<tools to=', '<merge to=', '<deploy to='):
             self.assertIn(tag, body)
         self.assertIn('mention the agent', body)
+
+
+class FailureWhyTest(TestCase):
+    """The failed dot's one line says what went wrong, not where Node threw (re, 15 Nov: magent's two dots read
+    'pi exited 1 without settling: node:events:497', the error itself four lines further down)."""
+
+    NODE = ('pi exited 1 without settling: node:events:497\n'
+            "      throw er; // Unhandled 'error' event\n"
+            '      ^\n\n'
+            'Error: connect ECONNREFUSED 127.0.0.1:1\n'
+            '    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1631:16)\n'
+            "Emitted 'error' event on Socket instance at:\n")
+
+    def test_a_node_crash_says_its_error(self):
+        from poller.mood_poller import failure_why
+        self.assertEqual(failure_why(RuntimeError(self.NODE)),
+                         'pi exited 1 without settling: Error: connect ECONNREFUSED 127.0.0.1:1')
+
+    def test_a_script_location_and_a_typed_error(self):
+        from poller.mood_poller import failure_why
+        e = RuntimeError('pi exited 1 without settling: /usr/local/lib/x/cli.js:12\nthrow e\n\n'
+                         "TypeError: Cannot read properties of undefined (reading 'content')\n    at f (cli.js:1:2)")
+        self.assertEqual(failure_why(e), "pi exited 1 without settling: TypeError: Cannot read properties of "
+                                         "undefined (reading 'content')")
+
+    def test_anything_else_is_its_first_line(self):
+        from poller.mood_poller import failure_why
+        self.assertEqual(failure_why(RuntimeError('pi exited 143 without settling: tool loop: x\nmore')),
+                         'pi exited 143 without settling: tool loop: x')
+        self.assertEqual(failure_why(RuntimeError('pi exited 1 without settling: node:events:497\n  ^')),
+                         'pi exited 1 without settling: node:events:497')  # no error line: as it was
+        self.assertEqual(failure_why(RuntimeError('')), 'it failed to run')

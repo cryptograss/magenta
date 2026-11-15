@@ -1801,6 +1801,29 @@ def since_last_word(turns, agent, before_id=None, silences=()):
     return turns
 
 
+# A crashed Node harness (Pi) prints where it threw first ("node:events:497"), then the line that says what
+# happened ("Error: read ECONNRESET"). The Mood's dot keeps one line, so it keeps that one (re, 15 Nov: magent's
+# two dots read only "node:events:497", and the rest was in a log nobody else can read).
+_TRACE_AT = re.compile(r'\s*(?:node:[\w/]+|/\S+\.m?[jt]s):\d+(?::\d+)?\s*$')
+_ERROR_LINE = re.compile(r'^\s*(?:[A-Z]\w*)?(?:Error|Exception)\b|^\s*\w+ \[ERR_\w+\]')
+
+
+def failure_why(e):
+    """One line for the Mood's dot saying why a wake failed: the exception's first line, or, when that is only
+    a Node stack location, its prefix and the error line under it."""
+    text = str(e)
+    if not text:
+        return 'it failed to run'
+    lines = text.splitlines()
+    head = lines[0]
+    at = _TRACE_AT.search(head)
+    if at:
+        cause = next((line.strip() for line in lines[1:] if _ERROR_LINE.match(line)), None)
+        if cause:
+            head = f'{head[:at.start()].rstrip()} {cause}'
+    return head[:200]
+
+
 class MoodPoller:
 
     def __init__(self, api, waker, agent='magent', state_path=None, grace=600,
@@ -2853,8 +2876,7 @@ class MoodPoller:
                 poster.put({'type': 'result', 'subtype': subtype, 'is_error': True,
                             'session_id': new_session, 'uuid': str(uuid.uuid4())})
                 poster.close()
-            return 'failed', None, 0.0, {'why': str(e).splitlines()[0][:200] if str(e) else 'it failed to run',
-                                         'retry': False}
+            return 'failed', None, 0.0, {'why': failure_why(e), 'retry': False}
         finally:
             beating.set()
             for info in (limits.values() if not self.dry_run else ()):
