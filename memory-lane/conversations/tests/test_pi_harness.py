@@ -123,7 +123,11 @@ class CommandTest(TestCase):
                          ('create', 'update', 'delete', 'move', 'protect', 'upload', 'browser'))])
         self.assertNotIn('mcp__pickipedia__update_page', mcp)
         self.assertEqual(cmd[cmd.index('--thinking') + 1], 'xhigh')
-        self.assertNotIn('--tools', waker.command(None, 'new', full=True))
+        # A full wake adds the shell and the editors, rather than naming nothing: with no --tools, Pi restores
+        # the session's last loadout, look-only if the last wake was (magent, re, 15 Nov).
+        full = waker.command('old', 'new', full=True)
+        self.assertEqual(full[full.index('--tools') + 1], '+bash,+edit,+write')
+        self.assertTrue(all(t.startswith('+') for t in full[full.index('--tools') + 1].split(',')))  # no allowlist
         self.assertEqual(cmd[1:3], ['--mode', 'rpc'])
         self.assertNotIn('hi', cmd)  # the prompt never rides the command line: stdin carries it
 
