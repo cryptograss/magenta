@@ -197,13 +197,16 @@ def ramp_page(request):
     """The ramp (services/ramp.py; Cryptograss:Moods/ramp/Plan, section 2): every open pull request and
     githouse branch across our repositories, the last few merged, the names used, githouse's log.
     Justin, 7 Nov: "Does githouse have a UI that I can see?" -- "build the ramp view"."""
+    from django.core.cache import cache
     from .services import merge_orders, mood_auth, ramp, thumbs, work_pages as work
-    board = ramp.board()
+    # Serve the last board at once and rebuild behind the scenes when it only aged past BOARD_FOR (11.1 s on
+    # maybelle, 15 Nov); build fresh only on first boot or right after ramp.changed() marked a merge ('built': 0).
+    board = ramp.board(stale_ok=bool((cache.get(ramp.KEY) or {}).get('built')))
     work.with_merged_pages(board.get('merged', []))
     device = mood_auth.device_for(request)
     # The Merge buttons, for a merger signed in with their SSH key (Plan, section 10); githouse checks again.
     can_merge = bool(device) and device.tier == 'key' and merge_orders.can_press(device.entity_id)
-    open_ = ramp.with_people(work.with_pages(thumbs.with_thumbs(ramp.with_tests(ramp.ordered(board['open'], '')))))
+    open_ = ramp.with_people(work.with_pages(thumbs.with_thumbs(ramp.with_tests(ramp.ordered(board['open'], ''), fast=True))))
     ramp.with_blocks(open_)
     return render(request, 'conversations/mood_pulls.html',
                   {'board': board, 'open': open_,
@@ -339,7 +342,7 @@ def _work_context(tiding_id, device):
     panel = work.panel(page)
     if panel['item']:
         thumbs.with_thumbs([panel['item']])  # its 👍s; its open merge asks came with it (ramp.asks)
-    panel['tests'] = ramp.test_runs().get((panel['repo'], panel['head'])) if panel['head'] else None
+    panel['tests'] = ramp.test_runs_fast().get((panel['repo'], panel['head'])) if panel['head'] else None
     panel['description_html'] = tiding_links.said_html(panel['description']) if panel['description'] else ''
     panel['address'] = work.address(panel['repo'], panel['branch'])  # its own, in the ramp
     return {'work': panel, 'highlight_css': work.highlight_css(),

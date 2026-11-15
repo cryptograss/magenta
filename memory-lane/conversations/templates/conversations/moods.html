@@ -10597,6 +10597,7 @@
       thereHash = frame.contentWindow.location.hash;
     } catch (e) {}
     if (there === path) {
+      sectionFrames.querySelector('.loading.moving[data-section="ramp"]')?.remove();
       if (!hash) return;  // there already
       if (hash === '#diff' && thereHash === '#diff') {
         try { frame.contentWindow.dispatchEvent(new Event('magentaShowDiff')); } catch (e) {}
@@ -10640,10 +10641,22 @@
     veil.dataset.for = path;
     veil.innerHTML = `<div><span class="spin"></span><p>Opening ${esc(repo)}:${esc(branch.join('/'))}…</p></div>`;
     veil.hidden = false;  // showSection hides it with the rest of the ramp when another section's shown
-    frame.addEventListener('load', function arrived() {
-      frame.removeEventListener('load', arrived);
+    const started = Date.now();
+    const clear = () => {
+      frame.removeEventListener('load', clear);
+      frame.removeEventListener('error', clear);
+      clearInterval(watch);
       if (veil.dataset.for === path) veil.remove();
-    });
+    };
+    const watch = setInterval(() => {
+      if (!veil.isConnected || veil.dataset.for !== path) { clearInterval(watch); return; }
+      try {
+        if (frame.contentWindow.location.pathname === path && frame.contentDocument?.readyState !== 'loading') clear();
+      } catch (e) {}
+      if (Date.now() - started > 15000) clear();
+    }, 200);
+    frame.addEventListener('load', clear);
+    frame.addEventListener('error', clear);
   }
   function showSection(name, push, at, hash) {
     if (name === 'ramp') rampFrameTo(at || '/ramp/', hash);

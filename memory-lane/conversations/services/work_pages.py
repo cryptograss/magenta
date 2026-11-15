@@ -76,7 +76,7 @@ def _pushed(repo, branch):
     from . import githouse, ramp
     held = githouse.repository(repo)
     head = githouse._sha(held, f'refs/heads/{branch}') if held and not ramp.githouse_owned(branch) else None
-    card = next((c for c in ramp.cards().get('open', [])
+    card = next((c for c in ramp.cards_fast().get('open', [])
                  if c.get('repo') == repo and c.get('branch') == branch), None)
     if card and not head and held and card.get('number'):
         head = githouse._sha(held, f"refs/pull/{int(card['number'])}/head")
