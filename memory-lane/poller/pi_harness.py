@@ -87,6 +87,13 @@ def _look_only_tools():
 
 
 LOOK_ONLY_TOOLS = _look_only_tools()
+# A full wake names its tools too, as additions to whatever Pi starts with. With no --tools at all, Pi 1.5
+# restores the loadout its session recorded (sdk.js usesDefaultTools; agent-session.js _restoreToolsFromTranscript),
+# so a full wake forked from a session whose last wake was look-only ran look-only: read, grep, find, ls and
+# codemode, no bash, edit or write (magent, #ramp, 15 Nov; re tried it on Pi 1.5.2: a plain fork of a
+# `--tools read,grep,ls` session recorded only those three, a fork with these added bash, edit and write). Only
+# +name entries: the restored loadout stays, nothing is allowlisted, so every MCP tool stays reachable.
+FULL_TOOL_ADDITIONS = '+bash,+edit,+write'
 COMPACT = re.compile(r'/compact(?:\s+(.+))?\Z', re.S)  # what the runner sends for "/compact re [what to keep]"
 # Seconds to let a stopped turn wind down, its in-flight tool included, before SIGKILL.
 TURN_STOP_GRACE = 10
@@ -635,8 +642,8 @@ class PiWaker:
             cmd += ['--model', ALIASES.get(model, model)]
         if effort:
             cmd += ['--thinking', EFFORTS.get(effort, effort)]
-        if not full:
-            cmd += ['--tools', LOOK_ONLY_TOOLS]  # look-only: reads and the allowlisted MCP tools (wake_policy.py)
+        # Look-only: reads and the allowlisted MCP tools (wake_policy.py). Full: Pi's own, added to what it restores.
+        cmd += ['--tools', FULL_TOOL_ADDITIONS if full else LOOK_ONLY_TOOLS]
         if system:  # its instructions (mood_poller.MoodPoller.instructions_for): after Pi's own, never in the session
             cmd += ['--append-system-prompt', system]
         return cmd
