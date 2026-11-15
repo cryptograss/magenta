@@ -3,41 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <script>
+        try {
+            const t = localStorage.getItem('theme');
+            if (t === 'light' || t === 'dark') document.querySelector('meta[name="color-scheme"]').content = t;
+        } catch (_) {}
+    </script>
     <title>Compact Memory Viewer</title>
     <style>
+        :root {
+            color-scheme: light dark;
+            &:has(> head > meta[name="color-scheme"][content="dark"]) { color-scheme: dark; }
+            &:has(> head > meta[name="color-scheme"][content="light"]) { color-scheme: light; }
+        }
         body {
             font-family: 'Monaco', 'Courier New', monospace;
             font-size: 12px;
             margin: 0;
             padding: 10px;
-            background: #1e1e1e;
-            color: #d4d4d4;
+            background: light-dark(#ffffff, #1e1e1e);
+            color: light-dark(#1a1a1a, #d4d4d4);
             transition: background 0.3s, color 0.3s;
-        }
-        body.light-mode {
-            background: #ffffff;
-            color: #1a1a1a;
         }
         .header {
             padding: 10px;
-            background: #252526;
-            border-bottom: 1px solid #3e3e42;
+            background: light-dark(#f5f5f5, #252526);
+            border-bottom: 1px solid light-dark(#d0d0d0, #3e3e42);
             position: sticky;
             top: 0;
             z-index: 100;
             transition: background 0.3s, border-color 0.3s;
         }
-        body.light-mode .header {
-            background: #f5f5f5;
-            border-bottom: 1px solid #d0d0d0;
-        }
         .stats {
-            color: #858585;
+            color: light-dark(#666666, #858585);
             margin-bottom: 5px;
             transition: color 0.3s;
-        }
-        body.light-mode .stats {
-            color: #666666;
         }
         .filters {
             display: flex;
@@ -48,43 +49,31 @@
         .filters input, .filters select, .filters button, .filters label {
             padding: 4px 8px;
             font-size: 11px;
-            background: #3c3c3c;
-            color: #d4d4d4;
-            border: 1px solid #555;
+            background: light-dark(#ffffff, #3c3c3c);
+            color: light-dark(#1a1a1a, #d4d4d4);
+            border: 1px solid light-dark(#c0c0c0, #555555);
             border-radius: 3px;
             transition: background 0.3s, color 0.3s, border-color 0.3s;
-        }
-        body.light-mode .filters input,
-        body.light-mode .filters select,
-        body.light-mode .filters button,
-        body.light-mode .filters label {
-            background: #ffffff;
-            color: #1a1a1a;
-            border: 1px solid #c0c0c0;
         }
         .filters button {
             cursor: pointer;
         }
         .filters button:hover {
-            background: #505050;
-        }
-        body.light-mode .filters button:hover {
-            background: #e8e8e8;
+            background: light-dark(#e8e8e8, #505050);
         }
         .theme-toggle {
-            background: #3c3c3c;
-            color: #d4d4d4;
-            border: 1px solid #555;
-            padding: 4px 8px;
-            font-size: 11px;
-            cursor: pointer;
-            border-radius: 3px;
             font-family: inherit;
         }
-        body.light-mode .theme-toggle {
-            background: #ffffff;
-            color: #1a1a1a;
-            border: 1px solid #c0c0c0;
+        .theme-toggle .to-light { display: none; }
+        @media (prefers-color-scheme: dark) {
+            :root:not(:has(> head > meta[name="color-scheme"][content="light"])) .theme-toggle {
+                .to-light { display: inline; }
+                .to-dark { display: none; }
+            }
+        }
+        :root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-toggle {
+            .to-light { display: inline; }
+            .to-dark { display: none; }
         }
         .filters label {
             display: flex;
@@ -101,50 +90,28 @@
             margin-top: 10px;
         }
         tr {
-            border-bottom: 1px solid #2d2d30;
+            border-bottom: 1px solid light-dark(#e0e0e0, #2d2d30);
             cursor: pointer;
             transition: background 0.15s;
         }
-        body.light-mode tr {
-            border-bottom: 1px solid #e0e0e0;
-        }
         tr:hover {
-            background: #2a2d2e;
-        }
-        body.light-mode tr:hover {
-            background: #f0f0f0;
+            background: light-dark(#f0f0f0, #2a2d2e);
         }
         tr.justin {
-            background: #1e2731;
-        }
-        body.light-mode tr.justin {
-            background: #e8f4ff;
+            background: light-dark(#e8f4ff, #1e2731);
         }
         tr.magent {
-            background: #1e2e26;
-        }
-        body.light-mode tr.magent {
-            background: #e8ffe8;
+            background: light-dark(#e8ffe8, #1e2e26);
         }
         tr.thinking {
-            background: #2e2626;
-            font-style: italic;
-        }
-        body.light-mode tr.thinking {
-            background: #fff4e8;
+            background: light-dark(#fff4e8, #2e2626);
             font-style: italic;
         }
         tr.tool {
-            background: #2a2531;
-        }
-        body.light-mode tr.tool {
-            background: #f5e8ff;
+            background: light-dark(#f5e8ff, #2a2531);
         }
         tr.system {
-            background: #252a2e;
-        }
-        body.light-mode tr.system {
-            background: #e8f0f8;
+            background: light-dark(#e8f0f8, #252a2e);
         }
         tr.child {
             opacity: 0.85;
@@ -159,26 +126,20 @@
         .indent-1 { padding-left: 40px !important; }
         .indent-2 { padding-left: 80px !important; }
         .blockheight {
-            color: #569cd6;
+            color: light-dark(#0066cc, #569cd6);
             width: 85px;
             text-align: right;
             font-size: 10px;
             font-weight: bold;
         }
-        body.light-mode .blockheight {
-            color: #0066cc;
-        }
         .num {
-            color: #858585;
+            color: light-dark(#666666, #858585);
             width: 50px;
             text-align: right;
             font-size: 10px;
         }
-        body.light-mode .num {
-            color: #666666;
-        }
         .row-num {
-            color: #4ec9b0;
+            color: light-dark(#0a7c6a, #4ec9b0);
             width: 40px;
             max-width: 40px;
             text-align: right;
@@ -186,9 +147,6 @@
             font-weight: bold;
             display: none;
             padding: 2px 0 !important;
-        }
-        body.light-mode .row-num {
-            color: #0a7c6a;
         }
         .missing-marker {
             color: #ff0000;
@@ -200,16 +158,13 @@
             padding: 2px 0 !important;
         }
         .expand-icon {
-            color: #569cd6;
+            color: light-dark(#0066cc, #569cd6);
             width: 20px;
             max-width: 20px;
             text-align: center;
             font-size: 14px;
             font-weight: bold;
             padding: 2px 0 !important;
-        }
-        body.light-mode .expand-icon {
-            color: #0066cc;
         }
         .expand-icon.loading {
             animation: spin 1s linear infinite;
@@ -219,7 +174,7 @@
             100% { transform: rotate(360deg); }
         }
         .importance {
-            color: #dcdcaa;
+            color: light-dark(#7a6a00, #dcdcaa);
             width: 30px;
             max-width: 30px;
             text-align: center;
@@ -227,11 +182,8 @@
             display: none;
             padding: 2px 0 !important;
         }
-        body.light-mode .importance {
-            color: #7a6a00;
-        }
         .from {
-            color: #4ec9b0;
+            color: light-dark(#0a7c6a, #4ec9b0);
             width: 60px;
             max-width: 60px;
             font-weight: bold;
@@ -240,21 +192,15 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        body.light-mode .from {
-            color: #0a7c6a;
-        }
         .arrow {
-            color: #666;
+            color: light-dark(#999999, #666666);
             width: 20px;
             max-width: 20px;
             text-align: center;
             padding: 0 !important;
         }
-        body.light-mode .arrow {
-            color: #999999;
-        }
         .to {
-            color: #4ec9b0;
+            color: light-dark(#0a7c6a, #4ec9b0);
             width: 60px;
             max-width: 60px;
             padding: 0 !important;
@@ -262,49 +208,34 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        body.light-mode .to {
-            color: #0a7c6a;
-        }
         .content {
-            color: #d4d4d4;
+            color: light-dark(#1a1a1a, #d4d4d4);
             max-width: 400px;
             overflow: hidden;
             text-overflow: ellipsis;
             padding: 2px 4px !important;
         }
-        body.light-mode .content {
-            color: #1a1a1a;
-        }
         .timestamp {
-            color: #858585;
+            color: light-dark(#666666, #858585);
             font-size: 10px;
             width: 140px;
             max-width: 140px;
             padding: 2px 4px !important;
         }
-        body.light-mode .timestamp {
-            color: #666666;
-        }
         .uuid {
-            color: #666;
+            color: light-dark(#999999, #666666);
             font-size: 9px;
             width: 70px;
             max-width: 70px;
             font-family: monospace;
             padding: 2px 4px !important;
         }
-        body.light-mode .uuid {
-            color: #999999;
-        }
         .source {
-            color: #858585;
+            color: light-dark(#666666, #858585);
             font-size: 9px;
             width: 120px;
             max-width: 120px;
             padding: 2px 4px !important;
-        }
-        body.light-mode .source {
-            color: #666666;
         }
         .expanded td {
             white-space: pre-wrap;
@@ -314,29 +245,11 @@
             padding: 20px;
             color: #858585;
         }
-        .thinking-marker {
-            color: #ce9178;
-            font-size: 10px;
-            margin-left: 5px;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.7);
-        }
-        body.light-mode .modal {
-            background-color: rgba(0,0,0,0.5);
-        }
-        .modal-content {
-            background-color: #252526;
-            margin: 5% auto;
+        #notesModal {
+            background: light-dark(#ffffff, #252526);
+            color: inherit;
             padding: 20px;
-            border: 1px solid #3e3e42;
+            border: 1px solid light-dark(#c0c0c0, #3e3e42);
             width: 70%;
             max-width: 800px;
             max-height: 80vh;
@@ -344,132 +257,101 @@
             border-radius: 4px;
             transition: background 0.3s, border-color 0.3s;
         }
-        body.light-mode .modal-content {
-            background-color: #ffffff;
-            border: 1px solid #c0c0c0;
+        #notesModal:modal {
+            overscroll-behavior: contain;
+        }
+        #notesModal::backdrop {
+            background: light-dark(rgba(0,0,0,0.5), rgba(0,0,0,0.7));
+            overflow: hidden;
+            overscroll-behavior: contain;
         }
         .modal-header {
-            color: #cccccc;
-            font-size: 16px;
-            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: light-dark(#1a1a1a, #cccccc);
             margin-bottom: 15px;
             padding-bottom: 10px;
-            border-bottom: 1px solid #3e3e42;
+            border-bottom: 1px solid light-dark(#d0d0d0, #3e3e42);
             transition: color 0.3s, border-color 0.3s;
         }
-        body.light-mode .modal-header {
-            color: #1a1a1a;
-            border-bottom: 1px solid #d0d0d0;
+        .modal-header h2 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: bold;
         }
         .modal-close {
-            color: #858585;
-            float: right;
+            background: none;
+            border: 0;
+            padding: 0;
+            line-height: 1;
+            color: light-dark(#666666, #858585);
             font-size: 28px;
             font-weight: bold;
             cursor: pointer;
         }
         .modal-close:hover {
-            color: #cccccc;
-        }
-        body.light-mode .modal-close {
-            color: #666666;
-        }
-        body.light-mode .modal-close:hover {
-            color: #1a1a1a;
+            color: light-dark(#1a1a1a, #cccccc);
         }
         .note-item {
             margin-bottom: 15px;
             padding: 12px;
-            background: #2d2d30;
-            border-left: 3px solid #ce9178;
+            background: light-dark(#f8f8f8, #2d2d30);
+            border-left: 3px solid light-dark(#d17a4a, #ce9178);
             transition: background 0.3s;
         }
-        body.light-mode .note-item {
-            background: #f8f8f8;
-            border-left: 3px solid #d17a4a;
-        }
         .note-author {
-            color: #ce9178;
+            color: light-dark(#d17a4a, #ce9178);
             font-size: 11px;
             margin-bottom: 6px;
             transition: color 0.3s;
-        }
-        body.light-mode .note-author {
-            color: #d17a4a;
         }
         .note-content {
             white-space: pre-wrap;
             font-family: monospace;
         }
         .era-header {
-            background: #3e3e42;
+            background: light-dark(#d8d8d8, #3e3e42);
+            color: light-dark(#1a1a1a, #d4d4d4);
             font-weight: bold;
             cursor: pointer;
         }
-        body.light-mode .era-header {
-            background: #d8d8d8;
-            color: #1a1a1a;
-        }
         .era-header.current-era {
-            background: #2a4a6a;
-        }
-        body.light-mode .era-header.current-era {
-            background: #a8d4f0;
+            background: light-dark(#a8d4f0, #2a4a6a);
         }
         .era-uuid {
             font-size: 9px;
-            color: #858585;
+            color: light-dark(#666666, #858585);
             font-family: monospace;
         }
-        body.light-mode .era-uuid {
-            color: #666666;
-        }
         .window-header {
-            background: #2d2d30;
+            background: light-dark(#e8e8e8, #2d2d30);
+            color: light-dark(#1a1a1a, #d4d4d4);
             font-weight: bold;
             cursor: pointer;
         }
-        body.light-mode .window-header {
-            background: #e8e8e8;
-            color: #1a1a1a;
-        }
         .window-header.current-heap {
-            background: #2a4a6a;
-        }
-        body.light-mode .window-header.current-heap {
-            background: #a8d4f0;
+            background: light-dark(#a8d4f0, #2a4a6a);
         }
         .window-uuid {
             font-size: 9px;
-            color: #858585;
+            color: light-dark(#666666, #858585);
             font-family: monospace;
         }
-        body.light-mode .window-uuid {
-            color: #666666;
-        }
         .window-preview-text {
-            color: #999;
+            color: light-dark(#666666, #999999);
             font-style: italic;
         }
-        body.light-mode .window-preview-text {
-            color: #666;
-        }
         .main-flow-header {
-            background: #252526;
+            background: light-dark(#f0f0f0, #252526);
+            color: light-dark(#1a1a1a, #d4d4d4);
             font-style: italic;
             cursor: pointer;
         }
-        body.light-mode .main-flow-header {
-            background: #f0f0f0;
-            color: #1a1a1a;
-        }
         .thinking-marker {
-            color: #ce9178;
+            color: light-dark(#d17a4a, #ce9178);
             font-size: 10px;
             margin-left: 5px;
-        }
-        body.light-mode .thinking-marker {
-            color: #d17a4a;
         }
     </style>
 </head>
@@ -479,7 +361,7 @@
             <span id="messageCount">Loading...</span> | Database: <strong id="databaseName">{{ database }}</strong>
         </div>
         <div class="filters">
-            <button class="theme-toggle" onclick="toggleTheme()">☀️ Light Mode</button>
+            <button type="button" class="theme-toggle" onclick="toggleTheme()"><span class="to-light">☀️ Light Mode</span><span class="to-dark">🌙 Dark Mode</span></button>
             <button id="autoRefreshBtn" onclick="toggleAutoRefresh()" style="background: #2a5a2a;">🔄 Auto-Refresh: ON</button>
             <span id="newMessageIndicator" style="display: none; color: #4CAF50; font-weight: bold;">● New messages!</span>
             <input type="text" id="searchFilter" placeholder="Search content..." style="min-width: 200px;">
@@ -520,16 +402,14 @@
         <tbody id="messagesBody"></tbody>
     </table>
 
-    <!-- Modal for displaying notes -->
-    <div id="notesModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <span class="modal-close" onclick="closeNotesModal()">&times;</span>
-                <span id="modalTitle">Notes</span>
-            </div>
-            <div id="modalBody"></div>
+    <!-- Dialog for displaying notes -->
+    <dialog id="notesModal" closedby="any" aria-labelledby="modalTitle">
+        <div class="modal-header">
+            <h2 id="modalTitle">Notes</h2>
+            <button type="button" class="modal-close" commandfor="notesModal" command="close" aria-label="Close" autofocus>&times;</button>
         </div>
-    </div>
+        <div id="modalBody"></div>
+    </dialog>
 
     <script>
         let eraData = null;
@@ -1634,16 +1514,15 @@
                     // Copy the row class for proper light/dark mode styling
                     expandedRow.className = row.className;
 
-                    const isLightMode = document.body.classList.contains('light-mode');
-                    const borderColor = isLightMode ? '#007acc' : '#007acc';
-                    const noteDividerColor = isLightMode ? '#d0d0d0' : '#3e3e42';
-                    const noteHeaderColor = isLightMode ? '#666666' : '#858585';
-                    const noteBackground = isLightMode ? '#f8f8f8' : '#2d2d30';
-                    const noteBorderColor = isLightMode ? '#d17a4a' : '#ce9178';
-                    const noteAuthorColor = isLightMode ? '#d17a4a' : '#ce9178';
-                    const buttonBackground = isLightMode ? '#007acc' : '#0e639c';
-                    const buttonText = isLightMode ? '#ffffff' : '#ffffff';
-                    const buttonBorder = isLightMode ? '#005a9e' : '#1177bb';
+                    const borderColor = '#007acc';
+                    const noteDividerColor = 'light-dark(#d0d0d0, #3e3e42)';
+                    const noteHeaderColor = 'light-dark(#666666, #858585)';
+                    const noteBackground = 'light-dark(#f8f8f8, #2d2d30)';
+                    const noteBorderColor = 'light-dark(#d17a4a, #ce9178)';
+                    const noteAuthorColor = 'light-dark(#d17a4a, #ce9178)';
+                    const buttonBackground = 'light-dark(#007acc, #0e639c)';
+                    const buttonText = '#ffffff';
+                    const buttonBorder = 'light-dark(#005a9e, #1177bb)';
 
                     let expandedContent = `<td colspan="9" style="padding: 10px 20px; border-left: 3px solid ${borderColor};">`;
 
@@ -2009,35 +1888,45 @@
             });
 
             modalBody.innerHTML = html;
-            modal.style.display = 'block';
+            if (!modal.open) modal.showModal();
         }
 
-        function closeNotesModal() {
-            document.getElementById('notesModal').style.display = 'none';
+        if (!('commandForElement' in HTMLButtonElement.prototype)) {
+            document.addEventListener('click', e => {
+                const btn = e.target.closest('button[command="close"][commandfor]');
+                if (btn) document.getElementById(btn.getAttribute('commandfor'))?.close();
+            });
         }
-
-        // Close modal when clicking outside of it
-        window.onclick = function(event) {
-            const modal = document.getElementById('notesModal');
-            if (event.target === modal) {
-                closeNotesModal();
-            }
+        if (!('closedBy' in HTMLDialogElement.prototype)) {
+            const notesModal = document.getElementById('notesModal');
+            const outside = e => {
+                const r = notesModal.getBoundingClientRect();
+                return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+            };
+            let pressedOutside = false;
+            notesModal.addEventListener('pointerdown', e => { pressedOutside = outside(e); });
+            notesModal.addEventListener('pointerup', e => { if (pressedOutside && outside(e)) notesModal.close(); });
         }
 
         function toggleTheme() {
-            const body = document.body;
-            const button = document.querySelector('.theme-toggle');
-
-            if (body.classList.contains('light-mode')) {
-                body.classList.remove('light-mode');
-                button.textContent = '☀️ Light Mode';
-                localStorage.setItem('theme', 'dark');
+            const meta = document.querySelector('meta[name="color-scheme"]');
+            const sysDark = matchMedia('(prefers-color-scheme: dark)').matches;
+            const curDark = meta.content === 'dark' ? true : meta.content === 'light' ? false : sysDark;
+            const next = curDark ? 'light' : 'dark';
+            if (next === (sysDark ? 'dark' : 'light')) {
+                meta.content = 'light dark';
+                try { localStorage.removeItem('theme'); } catch (_) {}
             } else {
-                body.classList.add('light-mode');
-                button.textContent = '🌙 Dark Mode';
-                localStorage.setItem('theme', 'light');
+                meta.content = next;
+                try { localStorage.setItem('theme', next); } catch (_) {}
             }
         }
+        window.addEventListener('storage', e => {
+            if (e.key === 'theme') {
+                document.querySelector('meta[name="color-scheme"]').content =
+                    (e.newValue === 'light' || e.newValue === 'dark') ? e.newValue : 'light dark';
+            }
+        });
 
         // Auto-refresh functionality
         let autoRefreshEnabled = true;
@@ -2172,19 +2061,7 @@
             }
         }
 
-        // Restore theme preference on load
-        function restoreTheme() {
-            const savedTheme = localStorage.getItem('theme');
-            const button = document.querySelector('.theme-toggle');
-
-            if (savedTheme === 'light') {
-                document.body.classList.add('light-mode');
-                button.textContent = '🌙 Dark Mode';
-            }
-        }
-
         // Load on page load
-        restoreTheme();
         loadMessages();
         startAutoRefresh(); // Start checking for new messages
     </script>
