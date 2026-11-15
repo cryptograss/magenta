@@ -39,3 +39,14 @@ class ThemeTest(SimpleTestCase):
             with self.subTest(page.name):
                 for block in re.findall(r'@media \(prefers-color-scheme: dark\) \{(.*?)\n  \}', page.read_text(), re.S):
                     self.assertNotIn(':root', block)
+
+    def test_memory_lane_switches_colours_by_color_scheme_and_uses_dialog(self):
+        html = (HERE / 'memory_lane.html').read_text()
+        self.assertIn('<meta name="color-scheme" content="light dark">', html)
+        self.assertIn('color-scheme: light dark;', html)
+        self.assertIn('light-dark(', html)
+        self.assertNotIn('light-mode', html)
+        self.assertNotIn('window.onclick', html)
+        self.assertIn('<dialog id="notesModal"', html)
+        self.assertIn('commandfor="notesModal" command="close"', html)
+
