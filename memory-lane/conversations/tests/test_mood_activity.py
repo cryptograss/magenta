@@ -67,6 +67,24 @@ class ActivityTest(TestCase):
             self.add(self.magent, 299 - i, {}, model=ToolUse, tool_name='Bash', tool_id=f't{i}', stop_reason='tool_use')
         self.assertEqual(self.now()['since'], NOW - 300)
 
+    def test_a_long_turn_begun_by_a_wake_counts_from_its_wake_not_the_day_before(self):
+        # Justin, 16 Nov (#interfaces): magent "thinking" 1 minute in, 2, ... 8, then 1,400-odd. Its turn began
+        # with a wake (no post), ran past RECENT rows, and was dated from its last end_turn here, a day earlier;
+        # its runs since had ended with turn-results, which the long-turn search never looked at.
+        system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        poller, _ = ConversationParticipant.objects.get_or_create(name='mood-poller')
+        self.add(self.justin, 90_000, '@magent go', source_file='mood-web')
+        self.add(self.magent, 89_990, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn')
+        self.add(system, 89_989, {'type': 'turn-result', 'agent': 'magent', 'subtype': 'success'})
+        self.add(poller, 3_600, 'a quiet look')  # a later run, its last line no end_turn (Pi)
+        self.add(self.magent, 3_590, {}, model=ToolUse, tool_name='Bash', tool_id='q1', stop_reason='tool_use')
+        self.add(system, 3_580, {'type': 'turn-result', 'agent': 'magent', 'subtype': 'success'})
+        self.add(poller, 600, 'a wake')
+        for i in range(80):
+            self.add(self.magent, 599 - i, {}, model=ToolUse, tool_name='Bash', tool_id=f'w{i}', stop_reason='tool_use')
+        self.assertEqual(activity(self.mood, now=NOW, only='magent')['since'], NOW - 600)
+        self.assertEqual(self.now()['since'], NOW - 600)
+
     def test_background_tasks_show_until_they_end(self):
         from conversations.services.mood_view import background_tasks
         session = uuid.uuid4()
