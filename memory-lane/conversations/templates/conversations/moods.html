@@ -338,6 +338,10 @@
   #voiceMode .bar.now .when { color: var(--accent); font-weight: 700; }
   #voiceMode .bar.sending { border-style: dashed; border-color: var(--accent); animation: voiceSlideIn 0.25s ease-out; }
   #voiceMode .bar.sending .when { color: var(--accent); font-weight: 700; }
+  #voiceMode .bar.warn { border: 2px solid #d97706; background: var(--panel); background: color-mix(in srgb, #d97706 10%, var(--panel)); animation: voiceSlideIn 0.25s ease-out; }
+  #voiceMode .bar.warn .when { color: #d97706; font-weight: 700; }
+  #voiceMode .bar.warn .say { -webkit-line-clamp: 3; }
+  #voiceMode .bar .again { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; font-weight: 600; }
   #voiceMode .bar.work { border-style: dashed; }
   #voiceMode .bar.still { animation: none; }
   #voiceMode .bar .drop { flex: none; font: inherit; font-size: 20px; border: 0; background: none; color: var(--muted); padding: 8px 12px; cursor: pointer; }
@@ -3125,8 +3129,9 @@
   // there is and is still listening for more. Made here as WAV, and played through the reader itself,
   // so they sound wherever reading does, a locked phone too.
   const CHIME_NOTES = { in: [[880, .07], [1318.5, .12]], end: [[1318.5, .1], [987.8, .1], [659.3, .22]],
+                        drop: [[587.3, .13], [415.3, .15], [587.3, .13], [415.3, .26]],
                         tick: [[1760, .035]] };  // "still coming": the tiniest sound (Justin, 28 Oct)
-  const CHIME_GAIN = { tick: .07 };
+  const CHIME_GAIN = { tick: .07, drop: .48 };
   const chimeUrls = {};
   function chimeUrl(kind) {
     if (chimeUrls[kind]) return chimeUrls[kind];
@@ -8850,14 +8855,31 @@
   let recorder = null, memoTimer = null, memoSaving = false, memoThenSend = false;
   let memoDiscard = false;  // ✕ pressed while recording: the recording stops and goes nowhere
   const discardBtn = document.getElementById('discardBtn');
-  function showDiscard() { discardBtn.hidden = !(recorder || sayBox.value.trim()); }
+  function showDiscard() {
+    discardBtn.hidden = !(recorder || sayBox.value.trim());
+    if (voicePending && (voicePending.state === 'ready' || voicePending.state === 'quiet')
+        && voicePending.memoLink && !sayBox.value.includes(voicePending.memoLink)) {
+      voicePending = null; renderVoiceMode();
+    }
+  }
   sayBox.addEventListener('input', showDiscard);
+  function memoClearDraft(link) {
+    if (link) sayBox.value = sayBox.value.replace(link, '').replace(/\n{3,}/g, '\n\n').trim();
+    sayBox.dispatchEvent(new Event('input'));
+    composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
+    if (voicePending && (voicePending.state === 'ready' || voicePending.state === 'quiet')) {
+      voicePending = null; renderVoiceMode();
+    }
+    showDiscard();
+  }
   discardBtn.addEventListener('click', () => {
     if (recorder) { memoDiscard = true; memoThenSend = false; recorder.stop(); }
     if (memoPending) { memoPending.remove(); memoPending = null; }
+    if (voicePending && (voicePending.state === 'ready' || voicePending.state === 'quiet')) voicePending = null;
     sayBox.value = '';
     sayBox.dispatchEvent(new Event('input'));  // the draft, the box's size, its suggestions: as if typed away
     composer.querySelectorAll('.err, .note.memo-note').forEach(el => el.remove());
+    renderVoiceMode();
     showDiscard();
   });
   let memoStarted = 0, memoPending = null;  // Send pressed before it's saved: its place in the thread, saying how far
@@ -8894,6 +8916,7 @@
     let heard = opened, looked = opened, mutedAt = null, gone = false;
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
       analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
       ctx.createMediaStreamSource(stream).connect(analyser);
@@ -8909,17 +8932,20 @@
       // When it went quiet (ms), if it's been quiet long enough to stop; else null.
       quietSince() {
         const now = Date.now();
-        if (gone) return Math.min(heard, now);
-        if (mutedAt && now - mutedAt >= QUIET_STOP_S * 1000) return mutedAt;
+        if (gone || (track && track.readyState === 'ended')) return Math.min(heard, now);
+        if (track && !track.muted) mutedAt = null;
         // Only what was looked at counts: a page in the background is asked seldom, and a gap says nothing.
-        if (now - looked > 2000 || !analyser || ctx.state !== 'running') heard = now;
-        else {
+        if (now - looked > 2000 || !analyser || ctx.state !== 'running') {
+          if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+          heard = now;
+        } else {
           analyser.getFloatTimeDomainData(buf);
           let peak = 0;
           for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
-          if (peak > QUIET_LEVEL) heard = now;
+          if (peak > QUIET_LEVEL) { heard = now; mutedAt = null; }
         }
         looked = now;
+        if (mutedAt && now - mutedAt >= QUIET_STOP_S * 1000) return mutedAt;
         return now - heard >= QUIET_STOP_S * 1000 ? heard : null;
       },
       close() { try { if (ctx) ctx.close(); } catch (e) {} },
@@ -8958,6 +8984,7 @@
     }
     return new Blob([out], { type: 'audio/wav' });
   }
+  function alertDrop() { try { new Audio(chimeUrl('drop')).play().catch(() => {}); } catch (e) {} }
   if (voiceOn && viewer && window.MediaRecorder && navigator.mediaDevices) memoBtn.hidden = false;
   const clock = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
   memoBtn.addEventListener('click', async () => {
@@ -8971,8 +8998,9 @@
     const chunks = [], started = Date.now();
     memoStarted = started;
     const mic = micWatch(stream);
-    let wentQuiet = null;  // seconds in, when the microphone went quiet and the recording was stopped for it
+    let wentQuiet = null, alerted = false;  // seconds in, when the microphone went quiet and the recording was stopped for it
     recorder.addEventListener('dataavailable', e => { if (e.data.size) chunks.push(e.data); });
+    recorder.addEventListener('error', () => { if (!alerted) { alerted = true; alertDrop(); } });
     recorder.addEventListener('stop', async () => {
       clearInterval(memoTimer);
       sendTyping(false);
@@ -8995,6 +9023,7 @@
       try {
         // Ends in silence: what has sound goes, as a WAV, and they're told (unless that would be too big to send).
         quiet = await quietTail(blob);
+        if ((quiet || wentQuiet !== null) && !alerted) { alerted = true; alertDrop(); }
         if (quiet && quiet.sound < 0.5) throw new Error('the microphone sent only silence, so there is nothing to send. Is another app using it?');
         if (quiet) {
           const trimmed = wavOf(quiet.audio, quiet.sound + 0.5);
@@ -9027,21 +9056,25 @@
       composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
       if (ready && memoThenSend) { memoThenSend = false; say(); }
       else if (ready && (quiet || wentQuiet !== null)) {
-        // Said, with the choice: send what has sound, or take it out and record again.
+        // Said, with the choice: send what has sound, or take it out and record again (in #voiceMode too: Justin, 16 Nov).
         const at = clock(quiet ? quiet.sound : wentQuiet);
         const after = quiet ? ` The ${clock(quiet.total - quiet.sound)} of silence after it ${blob.type === 'audio/wav' ? "isn't sent" : 'is still in it'}.` : '';
         if (memoPending) { memoPending.remove(); memoPending = null; }
+        voicePending = { state: 'quiet', at, seconds, stopped: wentQuiet !== null, memoLink, who: viewer, mood: current };
+        renderVoiceMode();
         composer.insertAdjacentHTML('beforeend', `<span class="note memo-note quiet">🎙 The microphone went quiet at ${esc(at)}`
           + `${wentQuiet !== null ? ', so the recording stopped' : ''}: a locked screen, a call or earbuds dropping can do that.${esc(after)}`
           + ` Send what's there, or <button type="button" class="again">record again</button></span>`);
         composer.querySelector('.memo-note.quiet .again').addEventListener('click', () => {
-          sayBox.value = sayBox.value.replace(memoLink, '').replace(/\n{3,}/g, '\n\n');
-          sayBox.dispatchEvent(new Event('input'));
-          composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());
+          memoClearDraft(memoLink);
           memoBtn.click();
         });
       }
-      else if (ready) composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">Ready to send: its words are written in as it goes.</span>');
+      else if (ready) {
+        voicePending = { state: 'ready', seconds, memoLink, who: viewer, mood: current };
+        renderVoiceMode();
+        composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">Ready to send: its words are written in as it goes.</span>');
+      }
     });
     try { recorder.start(1000); }
     catch (e) {  // a microphone that can't be recorded: nothing under way, nothing for Send to wait on
@@ -9050,7 +9083,7 @@
     }
     voicePending = { state: 'recording', seconds: 0, pct: 0, who: viewer, mood: current };
     renderVoiceMode();
-    recordingHold(true);  // nothing read aloud over it
+    recordingHold(true);  // nothing read aloud over it, and screen kept awake
     composer.querySelectorAll('.err, .note').forEach(el => el.remove());
     composer.insertAdjacentHTML('beforeend', '<span class="note memo-note">🎙 Recording: ■ stops it to add words; Send sends it as it is; ✕ throws it away.</span>');
     memoBtn.classList.add('recording');
@@ -9063,9 +9096,9 @@
       if (Date.now() - recordingSaid > 3000) { recordingSaid = Date.now(); sendTyping(true, 'recording'); }
       memoBtn.textContent = '■ ' + clock(s);
       if (voicePending && voicePending.state === 'recording') { voicePending.seconds = s; renderVoiceMode(); }
-      if (s >= MEMO_MAX_S && recorder) recorder.stop();
+      if (s >= MEMO_MAX_S && recorder) { alerted = true; alertDrop(); recorder.stop(); }
       const since = recorder ? mic.quietSince() : null;
-      if (since !== null && recorder) { wentQuiet = Math.max(0, (since - started) / 1000); recorder.stop(); }
+      if (since !== null && recorder) { wentQuiet = Math.max(0, (since - started) / 1000); alerted = true; alertDrop(); recorder.stop(); }
     }, 500);
   });
 
@@ -9417,13 +9450,37 @@
     if (!hold) readNext();
     renderReadBar();
   }
+  // Screen wake lock: without it, a phone's screen auto-locks 15-30 s into a hands-free memo and iOS/Android
+  // zeroes the microphone stream mid-sentence (Justin, #connectome, 16 Nov: cut to 0.0 at 0:13.3).
+  let wakeSentinel = null, wakeWanted = false;
+  async function syncScreenWake() {
+    const want = !!(readRecording || document.body.classList.contains('voice-mode'));
+    wakeWanted = want;
+    if (!want) {
+      if (wakeSentinel) { const s = wakeSentinel; wakeSentinel = null; try { await s.release(); } catch (e) {} }
+      return;
+    }
+    if (wakeSentinel || document.hidden || !navigator.wakeLock?.request) return;
+    try {
+      const s = await navigator.wakeLock.request('screen');
+      if (!wakeWanted) { try { await s.release(); } catch (e) {} return; }
+      wakeSentinel = s;
+      s.addEventListener('release', () => { if (wakeSentinel === s) wakeSentinel = null; });
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && wakeWanted) syncScreenWake(); });
+
   // Recording a memo: what's being read stops where it is, and goes on from there once the
   // recording's done; a message's own ▶ stops. Messages that come meanwhile are queued.
   function recordingHold(on) {
     readRecording = on;
-    if (on) { reader.pause(); if (speaking) stopSpeaking(); prefetchNext(); }
-    else if (clipDone && reader.paused && !readHeld) atSpeed(reader).play().catch(() => {});
-    if (!on) readNext();
+    syncScreenWake();
+    if (on) { keepAwake(false); reader.pause(); if (speaking) stopSpeaking(); prefetchNext(); }
+    else {
+      keepAwake(readMode !== 'off' && !readHeld && !readBlocked);
+      if (clipDone && reader.paused && !readHeld) atSpeed(reader).play().catch(() => {});
+      readNext();
+    }
     renderReadBar();
   }
 
@@ -9539,7 +9596,7 @@
       else if (chimed) await chimed;
       let ticks = null;
       const settled = words.finally(() => clearInterval(ticks));
-      ticks = setInterval(() => { if (readNow === now && !readHeld) atSpeed(new Audio(chimeUrl('tick'))).play().catch(() => {}); }, 3000);
+      ticks = setInterval(() => { if (readNow === now && !readHeld && !readRecording) atSpeed(new Audio(chimeUrl('tick'))).play().catch(() => {}); }, 3000);
       words = settled;
     }
     try {
@@ -11079,6 +11136,7 @@
   function setVoiceMode(on) {
     document.body.classList.toggle('voice-mode', on);
     store.set('voiceMode', on);
+    syncScreenWake();
     if (on && readMode === 'off') setReadMode('here');  // voice mode is for listening: it starts listening here
     renderVoiceMode();
   }
@@ -11106,17 +11164,26 @@
     // 1. What was just heard, or what's currently being recorded/uploaded/transcribed/sent.
     // Kept as the one before it until the next message is completely done.
     let pastBar = '';
-    if (voicePending) {
-      const s = voicePending.seconds ? ` (${clock(voicePending.seconds)})` : '';
-      if (voicePending.state === 'recording') {
+    const pendingHere = voicePending && (!voicePending.mood || voicePending.mood === current) ? voicePending : null;
+    if (pendingHere) {
+      const s = pendingHere.seconds ? ` (${clock(pendingHere.seconds)})` : '';
+      if (pendingHere.state === 'recording') {
         pastBar = bar('sending work', 'rec', `<b>${esc(shown(viewer))}</b> · recording voice memo${s}…`, -1);
-      } else if (voicePending.state === 'uploading') {
-        const pct = voicePending.pct ? `${voicePending.pct}%` : 'saving…';
+      } else if (pendingHere.state === 'uploading') {
+        const pct = pendingHere.pct ? `${pendingHere.pct}%` : 'saving…';
         pastBar = bar('sending work', 'upload', `<b>${esc(shown(viewer))}</b> · saving voice memo${s}: ${pct}`, -1);
-      } else if (voicePending.state === 'transcribing') {
+      } else if (pendingHere.state === 'quiet') {
+        pastBar = `<div class="bar warn"><span class="when">mic off</span><span class="say">🎙 Mic went quiet at <b>${esc(pendingHere.at)}</b>`
+          + `${pendingHere.stopped ? ', so recording stopped' : ' (silence trimmed)'} — `
+          + `<button type="button" class="again" data-v="again">record again</button> or tap ➤ to send${s}</span>`
+          + `<button type="button" class="drop" data-v="drop-memo" aria-label="Discard memo">✕</button></div>`;
+      } else if (pendingHere.state === 'ready') {
+        pastBar = `<div class="bar sending"><span class="when">ready</span><span class="say"><b>${esc(shown(viewer))}</b> · voice memo${s} ready — tap ➤ to send</span>`
+          + `<button type="button" class="drop" data-v="drop-memo" aria-label="Discard memo">✕</button></div>`;
+      } else if (pendingHere.state === 'transcribing') {
         pastBar = bar('sending work', 'writing', `<b>${esc(shown(viewer))}</b> · transcribing voice memo${s}…`, -1);
-      } else if (voicePending.state === 'sending') {
-        pastBar = bar('sending work', 'sending', `<b>${esc(shown(viewer))}</b> · ${esc(voicePending.text || 'sending…')}`, -1);
+      } else if (pendingHere.state === 'sending') {
+        pastBar = bar('sending work', 'sending', `<b>${esc(shown(viewer))}</b> · ${esc(pendingHere.text || 'sending…')}`, -1);
       }
     } else if (readLastDone) {
       pastBar = bar('past', readLastDone.whenLabel || 'heard', readLabel(readLastDone), -1);
@@ -11125,7 +11192,7 @@
     // Its slide-in only when it's new: redrawn every second (an agent's clock), it slid in again each time and the
     // top line flickered (Justin, 8 Nov). New is what it is, not its words: a memo's clock and an upload's percent
     // change every second, and slid it in again each time (Justin, 9 Nov, recording on his phone).
-    const pastKey = voicePending ? 'memo:' + voicePending.state
+    const pastKey = pendingHere ? 'memo:' + pendingHere.state
       : readLastDone ? 'heard:' + (readLastDone.id || readLastDone.whenLabel || '') + ':' + readLabel(readLastDone) : '';
     if (pastBar && pastKey === renderVoiceMode.pastWas) pastBar = pastBar.replace('class="bar ', 'class="bar still ');
     else renderVoiceMode.pastWas = pastKey;
@@ -11150,13 +11217,15 @@
     if (voiceMode.innerHTML !== html) voiceMode.innerHTML = html;
   }
   voiceMode.addEventListener('click', e => {
-    const drop = e.target.closest('.drop');
+    const drop = e.target.closest('.drop[data-i]');
     if (drop) { readQueue.splice(+drop.dataset.i, 1); saveReadPlace(); renderReadBar(); return; }
     const v = e.target.closest('[data-v]')?.dataset.v;
     if (v === 'pause') readPause.click();
     else if (v === 'skip') skipClip();
     else if (v === 'go') goBtn.click();
     else if (v === 'memo') memoBtn.click();
+    else if (v === 'again') { const link = voicePending?.memoLink; memoClearDraft(link); memoBtn.click(); }
+    else if (v === 'drop-memo') memoClearDraft(voicePending?.memoLink);
     else if (v === 'send') composer.requestSubmit();
     else if (v === 'where') { setReadMode(readMode === 'everywhere' ? 'here' : 'everywhere'); readPoll(); }
     else if (v === 'leave') setVoiceMode(false);
