@@ -734,8 +734,9 @@ def keyterms():
               for kind in ('emergent', 'agent')]  # either, as people say it (emergent since 25 Oct)
     moods = [t for t in Mood.objects.values_list('title', flat=True) if t and len(t) <= 50]
     seen, out = set(), []
+    from . import voice_aliases
     from .voice_words import words
-    for term in words()['keyterms'] + names + moods:
+    for term in words()['keyterms'] + voice_aliases.keyterms() + names + moods:
         if term and term.lower() not in seen and len(term) <= 50:
             seen.add(term.lower())
             out.append(term)
@@ -946,8 +947,17 @@ def spoken_mentions(text, mentionable, aliases=None):
     `aliases`: {lowercased other name (a PickiPedia name): name here}."""
     names = {n.lower(): n.lower() for n in mentionable}
     names.update({k.lower(): v.lower() for k, v in (aliases or {}).items() if v.lower() in names})
+    from . import voice_aliases
     from .voice_words import words
+    for k, v in voice_aliases.aliases().items():
+        if v.lower() in names and k.lower() not in names:
+            names[k.lower()] = v.lower()
     names.update({k: v for k, v in words()['heard_as'].items() if v in names and k not in names})
+    colour_stems = {c[:-1] for c in COLOURS}
+    for k, v in list(names.items()):
+        if k not in colour_stems:
+            for variant in voice_aliases.initial_variants(k):
+                names.setdefault(variant, v)
     if not names or not text:
         return text
     # "the red emergent" or "the red agent" (or without "the") is re: said by its colour. Then "at the red agent" is "at re", which
