@@ -203,7 +203,7 @@ class SpeakerEndpointsTest(TestCase):
                                        stop_reason='tool_use', content={}, tool_name='Bash', tool_id=f't{i}')
             said = ask()
         self.assertEqual(said.status_code, 200)
-        self.assertEqual(fake.asked[-1][2]['json']['text'], 'Magent is still thinking: 3 minutes in, 3 steps so far.')
+        self.assertEqual(fake.asked[-1][2]['json']['text'], 'Magent is still thinking: 15 blocks in, 3 steps so far.')
 
     def test_speak_can_say_who_speaks_first_or_only_that(self):
         fake = FakeQuartet()

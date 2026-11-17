@@ -85,6 +85,19 @@ class ActivityTest(TestCase):
         self.assertEqual(activity(self.mood, now=NOW, only='magent')['since'], NOW - 600)
         self.assertEqual(self.now()['since'], NOW - 600)
 
+    def test_the_start_its_runner_noted_wins_over_the_record(self):
+        # Justin, 17 Nov: note when a turn starts, and read the record only when that can't be had.
+        system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        self.add(self.magent, 5_000, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn')
+        for i in range(80):  # a long turn, its first rows past what the record search can be sure of
+            self.add(self.magent, 479 - i, {}, model=ToolUse, tool_name='Bash', tool_id=f'n{i}', stop_reason='tool_use')
+        self.assertEqual(self.now()['since'], NOW - 479)  # no word from the runner: the record
+        set_running('m26', 'magent', since=NOW - 490, now=NOW)
+        self.assertEqual(self.now()['since'], NOW - 490)  # the runner's own note
+        self.add(system, 950, {'type': 'turn-result', 'agent': 'magent'})  # a note older than the last run's end: stale
+        set_running('m26', 'magent', since=NOW - 1_000, now=NOW)
+        self.assertEqual(self.now()['since'], NOW - 479)
+
     def test_background_tasks_show_until_they_end(self):
         from conversations.services.mood_view import background_tasks
         session = uuid.uuid4()
