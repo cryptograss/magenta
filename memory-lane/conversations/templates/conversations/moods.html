@@ -2690,6 +2690,7 @@
         if (!was.has(w.emergent)) readQueue.push({ kind: 'thinking', waiting: w.for, waitingTo: w.to || '', mood: slug, who: w.emergent, agent: w.emergent });
       }
     }
+    orderReadQueue();
     readNext();
   }
   setInterval(refreshLive, viewer ? 5000 : VISITOR_POLL_MS);
@@ -9263,6 +9264,7 @@
   const READ_PAGE = 30;  // what /api/moods/recent/ gives at most (views_moods.RECENT_MAX)
   const MEMO_AUDIO = /^🎙 \[voice memo[^\]]*\]\((\/moods\/media\/[0-9a-f]{64}\.[a-z0-9]+)\)/;
   const readQueue = [], readHeard = new Set();
+  let readSeq = 0;  // arrival tie-breaker when grouping readQueue by Mood
   let readMode = 'off', readSinceMs = 0, readLast = null, readNow = null, readHeld = false, readBlocked = false, readWhy = '';
   let readLastDone = null;   // what was just heard or sent: kept until the next message is completely done (Justin, 30 Oct)
   let voicePending = null;   // memo/text currently recording/uploading/transcribing/sending in voice mode
@@ -9324,6 +9326,49 @@
   }
   readSel.addEventListener('change', () => { readBlocked = false; setReadMode(readSel.value); readPoll(); });
 
+  // Drain every queued message of the active Mood before moving chronologically to the next Mood with unread
+  // messages, instead of zipper-merging between Moods (Justin, #interfaces, 16 Nov).
+  function orderReadQueue() {
+    if (readQueue.length < 2) return;
+    for (const item of readQueue) if (!item._seq) item._seq = ++readSeq;
+    const atMs = item => {
+      const t = item.at ? new Date(item.at).getTime() : NaN;
+      return Number.isFinite(t) ? t : 0;
+    };
+    if (readMode !== 'everywhere') {
+      const msgs = readQueue.filter(i => i.kind !== 'thinking');
+      const thk = readQueue.filter(i => i.kind === 'thinking');
+      readQueue.length = 0;
+      readQueue.push(...msgs, ...thk);
+      return;
+    }
+    const pinned = (readBlocked || (readQueue[0] && readQueue[0].tries)) && readQueue[0] ? readQueue[0] : null;
+    const rest = pinned ? readQueue.slice(1) : readQueue.slice();
+    const activeMood = (pinned && pinned.kind !== 'deploy' && pinned.mood)
+      || (readNow && readNow.item && readNow.item.kind !== 'deploy' && readNow.item.mood)
+      || (readLast && readLast.mood)
+      || current
+      || '';
+    const groups = new Map(), thinking = [];
+    for (const item of rest) {
+      if (item.kind === 'thinking') { thinking.push(item); continue; }
+      const key = item.kind === 'deploy' || !item.mood ? `deploy:${item.id || item._seq}` : `mood:${item.mood}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    for (const list of groups.values()) list.sort((a, b) => (atMs(a) - atMs(b)) || (a._seq - b._seq));
+    const orderedGroups = [...groups.entries()].sort(([ka, la], [kb, lb]) => {
+      const aActive = activeMood && ka === `mood:${activeMood}` ? 0 : 1;
+      const bActive = activeMood && kb === `mood:${activeMood}` ? 0 : 1;
+      if (aActive !== bActive) return aActive - bActive;
+      return (atMs(la[0]) - atMs(lb[0])) || (la[0]._seq - lb[0]._seq);
+    });
+    readQueue.length = 0;
+    if (pinned) readQueue.push(pinned);
+    for (const [, list] of orderedGroups) readQueue.push(...list);
+    readQueue.push(...thinking);
+  }
+
   async function readPoll() {
     if (readMode === 'off' || !readSinceMs) return;
     let events;
@@ -9342,6 +9387,7 @@
     const fresh = events.filter(e => (said(e) || redeployed(e)) && e.id && !readHeard.has(e.id))
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     for (const e of fresh) { readHeard.add(e.id); readQueue.push(e); }
+    if (fresh.length) orderReadQueue();
     if (readRecording) prefetchNext();  // came while recording: ready for when it stops
     if (fresh.length) saveReadPlace();
     // Next time from a minute before the newest: a clock a little off misses nothing, and ids keep it once.
@@ -9562,6 +9608,7 @@
   }
   async function readNext() {
     if (readNow || readHeld || readRecording || readBlocked || readMode === 'off' || !readQueue.length) { renderReadBar(); return; }
+    orderReadQueue();
     const item = readQueue.shift();
     // "X is thinking" only as the latest news: when nothing else is waiting, it says something's
     // coming. With more to hear, or its answer already in, it's left out (Justin, 19 Oct).
@@ -11113,6 +11160,7 @@
         if (d.slug && d.slug !== current) {
           if (sectionNow !== 'moods') showSection('moods', true);
           open(d.slug, true);
+          if (!readNow) { readLast = null; orderReadQueue(); renderReadBar(); }
         }
         showNote(d.slug ? `🧭 Now in #${d.slug}` : `🧭 Didn't catch which Mood${d.heard ? ` (heard “${d.heard}”)` : ''}: still here.`, 6000);
         if (d.url) await playThrough(d.url);

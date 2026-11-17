@@ -105,10 +105,11 @@ def _bloom(_title, _user):
 
 
 def _card(title, _user):
-    from . import wiki_preview
+    from . import voice_aliases, wiki_preview
     from .emergent_powers import FRAMES_KEY
     wiki_preview.forget(title)
     cache.delete(FRAMES_KEY)
+    voice_aliases.forget()
     got = wiki_preview.preview(title)
     return 'card read again' if got else 'no such User page: card forgotten'
 
