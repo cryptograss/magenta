@@ -1991,24 +1991,36 @@ def api_moods_live(request):
         tick_items = ticker.items()
     except Exception:  # noqa: BLE001 -- never lose the live poll
         tick_items = []
-    body = {'moods': live, 'blocks': AROUND_BLOCKS, 'banner': b_data, 'ticker': tick_items}
+    try:  # the chain's head with it, as the watcher has it: a page needn't ask separately (services/chain_head)
+        from .services import chain_head
+        head = chain_head.latest()
+    except Exception:  # noqa: BLE001 -- never lose the live poll
+        head = None
+    body = {'moods': live, 'blocks': AROUND_BLOCKS, 'banner': b_data, 'ticker': tick_items, 'head': head}
     cache.set('moods-live', body, 3)
     return JsonResponse(body)
 
 
 @require_GET
 def api_block(request):
-    """Ethereum mainnet's newest block -- height and time -- from a public
-    explorer, cached a minute; the page counts on from it, a block every
-    12 seconds."""
+    """Ethereum mainnet's newest block: height, its time, and how we have it ('via'). From the watcher
+    (services/chain_head) when it's feeding us: 'socket' when the node pushes each block, 'polling' when
+    that's dropped and we ask every 12 s. Else from a public explorer, cached a minute: 'explorer'. Pages
+    count on from it, a block every 12 s. Anyone may read it, PickiPedia's pages included."""
     from django.core.cache import cache
-    block = cache.get('eth-head')
+    from .services import chain_head
+    block = chain_head.latest()
     if block is None:
-        try:
-            import requests
-            head = requests.get('https://eth.blockscout.com/api/v2/main-page/blocks', timeout=5).json()[0]
-            block = {'height': int(head['height']), 'at': head['timestamp'], 'seconds': SECONDS_PER_BLOCK}
-        except Exception:
-            block = {'height': None}
-        cache.set('eth-head', block, 60 if block['height'] else 15)
-    return JsonResponse(block)
+        block = cache.get('eth-head')
+        if block is None:
+            try:
+                import requests
+                head = requests.get('https://eth.blockscout.com/api/v2/main-page/blocks', timeout=5).json()[0]
+                block = {'height': int(head['height']), 'at': head['timestamp'], 'seconds': SECONDS_PER_BLOCK, 'via': 'explorer'}
+            except Exception:
+                block = {'height': None}
+            cache.set('eth-head', block, 60 if block['height'] else 15)
+    response = JsonResponse(block)
+    response['Access-Control-Allow-Origin'] = '*'
+    response['Cache-Control'] = 'no-store'
+    return response

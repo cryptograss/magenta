@@ -237,6 +237,13 @@
   @media (max-width: 640px) { #helpMenu { min-width: calc(100vw - 20px); } }
   #stateMenu .block, #stateMenu .bloom { padding: 2px 0 6px; color: var(--ink); }
   #stateMenu .bloom[hidden] { display: none; }
+  /* How the block reaches us (Justin, 17 Nov: "an indicator for whether the socket has dropped and we're back
+     to polling"): pushed on the socket, asked for every 12 s, or only counted on from an explorer. */
+  #stateMenu .block .feed { margin-left: 8px; font-size: 12px; color: var(--muted); }
+  #stateMenu .block .feed::before { content: '●'; margin-right: 3px; }
+  #stateMenu .block .feed.socket::before { color: #2e9e5b; }
+  #stateMenu .block .feed.polling::before { color: #d08b00; }
+  #stateMenu .block .feed.explorer::before { color: var(--line); }
   #stateMenu .bloom a { color: var(--accent); }
   #stateMenu #serverPop { position: static; min-width: 0; border: 0; box-shadow: none; padding: 0; background: none; border-top: 1px solid var(--line); }
   /* The servers: four dots, pulsing while one is being redeployed. */
@@ -2646,6 +2653,14 @@
         liveData = payload.moods || {};
         freshAsks(liveData);
         renderBanner(payload.banner || null);
+        // The chain's head, as the watcher has it: every poll, so the block ticks as it lands. None means the
+        // watcher isn't feeding us: the explorer's, then (refreshBlock), not the last one we had going stale.
+        try {  // declared further down; by the time a fetch has answered, they are
+          if ('head' in payload) {
+            if (payload.head && payload.head.height) { blockAnchor = payload.head; tickBlock(); }
+            else if (blockAnchor && blockAnchor.via !== 'explorer') { blockAnchor = null; refreshBlock(); }
+          }
+        } catch (e) { console.warn('head:', e); }
         window.__lastTicker = payload.ticker || [];
         if (window.magentaTicker) magentaTicker.feed(window.__lastTicker);
         // A word somewhere newer than the list knew: re-sorted (Justin, 1 Nov), else only who's around redrawn.
@@ -2854,7 +2869,8 @@
   setInterval(loadHumans, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadTodo(todoShown === null); });
 
-  // --- the chain's height: from the explorer now and then, a block every 12 s between ---
+  // --- the chain's height: with every live poll, from the watcher (services/chain_head); else from the explorer
+  //     now and then, a block every 12 s between ---
   const blockEl = document.getElementById('block');
   let blockAnchor = null;
   // A moment as its block, with commas: its own where it's stamped (eth_blockheight), else counted from the
@@ -2874,12 +2890,20 @@
     } catch (e) {}
     tickBlock();
   }
+  // How the block reaches us (services/chain_head): its word in the menu, and the hover's.
+  const FEEDS = {
+    socket: ['live', 'pushed to us by the node as each block lands'],
+    polling: ['polling', "the node's socket has dropped: we're asking for the newest block every 12 s"],
+    explorer: ['counted', "the block watcher isn't feeding us: a public explorer's, now and then"],
+  };
   function tickBlock() {
     if (!blockAnchor) { blockEl.textContent = ''; return; }
     const since = Math.max(0, (Date.now() - new Date(blockAnchor.at).getTime()) / 1000);
     const height = blockAnchor.height + Math.floor(since / blockAnchor.seconds);
-    blockEl.textContent = '⛓ ' + height.toLocaleString();
-    blockEl.title = `Ethereum mainnet, about block ${height.toLocaleString()} (counted on from the explorer's ${blockAnchor.height.toLocaleString()})`;
+    const feed = FEEDS[blockAnchor.via] || FEEDS.explorer;
+    blockEl.innerHTML = `⛓ ${height.toLocaleString()}<span class="feed ${blockAnchor.via in FEEDS ? blockAnchor.via : 'explorer'}">${feed[0]}</span>`;
+    blockEl.title = `Ethereum mainnet, block ${height.toLocaleString()}: ${feed[1]}`
+      + (height > blockAnchor.height ? ` (counted on from ${blockAnchor.height.toLocaleString()}, 12 s a block)` : '');
   }
   setInterval(tickBlock, 3000);
   setInterval(refreshBlock, 5 * 60 * 1000);

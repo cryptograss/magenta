@@ -28,3 +28,5 @@ segno>=1.6,<2
 maxminddb>=2.6,<4
 # Syntax colours on a piece of work's page: its diffs and whole files (conversations/services/work_pages.py).
 Pygments>=2.17,<3
+# The chain's head pushed to us as each block lands (conversations/services/chain_head.py, manage.py watch_head).
+websockets>=15,<17
