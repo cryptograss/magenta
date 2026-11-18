@@ -99,6 +99,21 @@ def block_at(ts):
     return before[0] if after == before[0] + 1 else None
 
 
+def height_at(now=None):
+    """The chain's height at `now`, from the rows: the block itself for a moment they cover, else the
+    newest block and 12 s slots after it, while the watcher is feeding us. None when it isn't."""
+    from django.utils import timezone
+    from conversations.models import ChainHead
+    now = now or timezone.now()
+    if latest(now) is None:
+        return None
+    number, at = ChainHead.objects.order_by('-number').values_list('number', 'timestamp').first()
+    ts = int(now.timestamp())
+    if ts < at:
+        return block_at(ts)
+    return number + (ts - at) // SECONDS_PER_SLOT
+
+
 def blocks_since(ts, now=None):
     """How many blocks have landed since unix time ts, counted, not estimated; None if it can't be
     counted (the watcher not feeding us, or ts outside the day kept)."""

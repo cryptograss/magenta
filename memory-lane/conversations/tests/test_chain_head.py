@@ -193,3 +193,49 @@ class EndpointTest(TestCase):
     def test_every_live_poll_carries_the_head(self):
         chain_head.record(26_437_301, 1_763_400_012, 'polling')
         self.assertEqual(self.client.get('/api/moods/live/').json()['head']['via'], 'polling')
+
+
+class OneHeadTest(TestCase):
+    """Everything in magenta that wants the chain's height now reads the watcher's rows (Justin, 18 Nov:
+    "we're not repeating a lookup anywhere, right?"), and falls back only when the watcher is quiet."""
+
+    def rows(self, first, count, at, seen=None):
+        seen = seen or timezone.now()
+        for k in range(count):
+            ChainHead.objects.create(number=first + k, timestamp=at + 12 * k, seen_at=seen, via='socket')
+
+    def test_the_height_now_is_the_newest_block_and_slots_after_it(self):
+        now = timezone.now()
+        self.rows(500, 3, int(now.timestamp()) - 30)  # 502 landed 6 s ago
+        self.assertEqual(chain_head.height_at(now), 502)
+        self.assertEqual(chain_head.height_at(now + timedelta(seconds=13)), 503)  # a block on, counted
+        self.assertEqual(chain_head.height_at(now - timedelta(seconds=20)), 500)  # a moment the rows cover: 501 lands 18 s ago
+        self.assertIsNone(chain_head.height_at(now + timedelta(minutes=5)))  # the watcher quiet: not guessed
+
+    def test_tasks_on_a_block_schedule_take_the_watcher_s_height_before_the_anchors(self):
+        from conversations.services import tasks
+        now = timezone.now()
+        self.rows(26_000_000, 2, int(now.timestamp()) - 12)
+        stale_anchor = [(25_000_000, int(now.timestamp()) - 60)]
+        self.assertEqual(tasks.head(now, stale_anchor), 26_000_001)
+        ChainHead.objects.all().delete()
+        self.assertEqual(tasks.head(now, stale_anchor), 25_000_005)  # the watcher's gone: the anchors, as before
+
+    def test_a_video_draft_takes_the_watcher_s_block_without_asking_a_node(self):
+        from conversations.services import delivery_kid
+        now = timezone.now()
+        self.rows(26_442_600, 1, int(now.timestamp()) - 3)
+        with mock.patch('conversations.services.eth_blocks.fetch_head', side_effect=AssertionError('asked a node')):
+            self.assertEqual(delivery_kid._block_now(), 26_442_600)
+
+    def test_the_ramp_counts_a_recent_push_from_the_rows(self):
+        from conversations.services import ramp
+        now = timezone.now()
+        t = int(now.timestamp())
+        self.rows(700, 31, t - 360)  # a block every 12 s for the last six minutes, 730 the newest
+        pushed = now - timedelta(seconds=100)
+        items = [{'pushed': pushed}]
+        top = ramp.with_blocks(items, now)
+        self.assertEqual(top, 730)
+        self.assertEqual(items[0]['pushed_block'], chain_head.block_at(int(pushed.timestamp())))
+        self.assertEqual(items[0]['pushed_ago'], 730 - items[0]['pushed_block'])
