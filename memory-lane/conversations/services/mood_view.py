@@ -1717,6 +1717,7 @@ def _activity(mood, now=None, only=None):
     # bookkeeping -- Claude Code writes one just after a turn ends -- and
     # say nothing about whether anyone is working.
     rows = mood.messages.filter(is_sidechain=False).exclude(sender_id='system')
+    theirs = set()
     if only:
         rows = rows.exclude(sender_id__in=agents - {only})
         # Nor what came back to the others: their tool results are their sessions' lines, not this
@@ -1846,16 +1847,27 @@ def _activity(mood, now=None, only=None):
     start = streak[-1]
     if len(streak) == len(recent) == RECENT:
         # A long turn runs past the rows read above: find where it began.
+        # Bounded as the streak above is: a runner's turn-result ends a run as an end_turn line does, and the
+        # harness's own bookkeeping and the others' sessions are no line of this turn's. Without them, a turn
+        # begun by a wake (no post) and run past RECENT rows was dated from the last end_turn or post found,
+        # however old (Justin, 16 Nov: magent "thinking" 8 minutes, then 1,400 and more: since its last
+        # end_turn here, the day before).
         from django.db.models import Q
         mine = mood.messages.filter(is_sidechain=False)
         if only:
             mine = mine.exclude(sender_id__in=agents - {only})
+            if theirs:
+                mine = mine.exclude(session_id__in=theirs)
+        ends_run = Q(sender_id='system', content__type='turn-result')
+        if only:
+            ends_run &= Q(content__agent=only)
         boundary = (mine.filter(created_at__lt=start.created_at)
                     .filter(Q(sender_id__in=agents, stop_reason__in=TURN_ENDS) | Q(source_file__in=POSTED)
-                            | Q(content__type='command_output'))
+                            | Q(content__type='command_output') | ends_run)
                     .order_by('-created_at').first())
         if boundary is not None:
-            start = mine.filter(created_at__gt=boundary.created_at).order_by('created_at').first() or start
+            start = (mine.exclude(sender_id='system').filter(created_at__gt=boundary.created_at)
+                     .order_by('created_at').first() or start)
     # Which tools this turn has, as its wake said (Justin, 29 Oct: 🔨 by a pulsing name in the list).
     tools = next((said for said in (wake_said(prose(m.content) or '') for m in streak if m.sender_id == WAKE_SENDER) if said), '')
     return {'emergent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v},
