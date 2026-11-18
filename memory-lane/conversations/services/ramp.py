@@ -786,9 +786,10 @@ def with_people(items):
 
 def with_blocks(items, now=None):
     """Each item's push in blocks ago (Justin, 9 Nov, #ramp: "show 'pushed' as blocks ago"): 'pushed_block', the
-    block at the push (eth_blocks' anchors), and 'pushed_ago', the head now less that. The head is tasks.head's,
-    else the one the block bar fetched; with neither, nothing is guessed: the page shows the time."""
+    block at the push (eth_blocks' anchors), and 'pushed_ago', the head now less that. The head is tasks.head's
+    (the watcher's, while it's feeding us), else the one the block bar fetched; with neither, nothing is guessed: the page shows the time."""
     from conversations.models import BlockAnchor
+    from . import chain_head
     from .eth_blocks import SECONDS_PER_SLOT, BlockClock
     from .tasks import head
     now = now or datetime.now(timezone.utc)
@@ -808,7 +809,9 @@ def with_blocks(items, now=None):
         if not pushed:
             continue
         block = clock.block_at(int(pushed.timestamp()))
-        if block is None:  # after the newest anchor: its 12-second slots, as tasks.head counts them
+        if block is None:  # after the newest anchor: the watcher's rows, block by block (services/chain_head)
+            block = chain_head.block_at(int(pushed.timestamp()))
+        if block is None:  # nor those: its 12-second slots, as tasks.head counts them
             block = top - max(0, int((now - pushed).total_seconds())) // SECONDS_PER_SLOT
         i['pushed_block'], i['pushed_ago'] = block, max(0, top - block)
         i['pushed_ago_said'] = f"{i['pushed_ago']:,}"
