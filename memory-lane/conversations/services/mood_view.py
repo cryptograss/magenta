@@ -1870,7 +1870,11 @@ def _activity(mood, now=None, only=None):
                      .order_by('created_at').first() or start)
     # Which tools this turn has, as its wake said (Justin, 29 Oct: 🔨 by a pulsing name in the list).
     tools = next((said for said in (wake_said(prose(m.content) or '') for m in streak if m.sender_id == WAKE_SENDER) if said), '')
-    return {'emergent': agent, 'doing': _doing(newest), 'since': _when(start), **{k: v for k, v in how.items() if v},
+    # When the turn began: as its runner noted it at the start, where the runner says so (Justin, 17 Nov: "note
+    # [it] at the start ... falling back to this logic" -- the record read above -- when it can't be had).
+    noted = running_in(mood.slug, now).get(agent)
+    since = noted['since'] if noted and (ended is None or ended < noted['since']) else _when(start)
+    return {'emergent': agent, 'doing': _doing(newest), 'since': since, **{k: v for k, v in how.items() if v},
             **({'tools': tools} if tools else {})}
 
 

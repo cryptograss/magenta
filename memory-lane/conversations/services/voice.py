@@ -427,12 +427,13 @@ def intro(message, by, where=False, http=requests):
 
 def narrate_thinking(mood, agent, by, where=False, still=None, waiting='', waiting_to='', http=requests):
     """The URL of the narrator saying `agent` has started work ("Magent is
-    thinking." -- with `where`, the Mood first: "Pound magenta interface. ..."). With `still`, (minutes, steps):
-    that it's still at it, a minute or more on, and how far (Justin, 22 Oct: "are they still thinking?").
+    thinking." -- with `where`, the Mood first: "Pound magenta interface. ..."). With `still`, (blocks, steps):
+    that it's still at it, a minute or more on, and how far (Justin, 22 Oct: "are they still thinking?"), in
+    blocks since it began (Justin, 17 Nov).
     Made once per wording, and kept."""
     if still:
-        minutes, steps = still
-        how = [f"{minutes} minute{'s' if minutes != 1 else ''} in"]
+        blocks, steps = still
+        how = [f"{blocks} block{'s' if blocks != 1 else ''} in"]
         if steps:
             how.append(f"{steps} step{'s' if steps != 1 else ''} so far")
         script = (_where(mood) if where else '') + f"{spoken_name(agent)} is still thinking: {', '.join(how)}."
