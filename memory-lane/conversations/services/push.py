@@ -175,7 +175,7 @@ def notification(notice):
     turn = notice['turn']
     mood = Mood.objects.filter(slug=notice['mood']).first()
     # Who and where in the title; the body, only what they said (Justin, 29 Oct: a phone's fill up fast).
-    where = (mood.title or mood.slug) if mood else 'a Mood'
+    where = (f'#{mood.slug}' if mood.thread_of_id else (mood.title or mood.slug)) if mood else 'a Mood'
     title = {'answer': f"{turn['sender']} answered you in {where}", 'mention': f"{turn['sender']} mentioned you in {where}",
              'talk': f"{turn['sender']} edited your talk page"}.get(notice['kind'], f"{turn['sender']} in {where}")
     at = parse_datetime(turn.get('created_at') or '')

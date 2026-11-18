@@ -22,7 +22,7 @@ from .services import settings as knobs
 def settings_state():
     agents = list(ThinkingEntity.objects.filter(is_biological_human=False).order_by('name')
                   .values_list('name', flat=True))
-    moods = [{'slug': m.slug, 'title': m.title or m.slug} for m in Mood.objects.order_by('slug')]
+    moods = [{'slug': m.slug, 'title': m.label} for m in Mood.objects.order_by('slug')]
     from .services import wiki_auth
     wiki_names = wiki_auth.names()
     rows = list(Setting.objects.exclude(key__in=knobs.MODERATION_KEYS))

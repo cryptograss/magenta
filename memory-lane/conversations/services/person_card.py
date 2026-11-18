@@ -104,7 +104,7 @@ def card(name, http=None):
         text = prose(post.content).strip()
         if not text or text == '[deleted]':
             continue
-        messages.append({'id': str(post.id), 'mood': post.mood.slug, 'mood_title': post.mood.title,
+        messages.append({'id': str(post.id), 'mood': post.mood.slug, 'mood_title': post.mood.label,
                          'at': post.created_at.isoformat(), 'block': post.eth_blockheight,
                          'snippet': snippet_of(text)[:SNIPPET], **_answered(prompts.get(str(post.id)))})
         if len(messages) == MESSAGES:
@@ -121,7 +121,7 @@ def card(name, http=None):
         posted.add(post.mood.slug)
         steps[post.mood.slug] = max(steps.get(post.mood.slug, 0), at)
     latest = sorted(steps.items(), key=lambda kv: kv[1], reverse=True)[:presence.TRAIL_KEPT]
-    titles = dict(Mood.objects.filter(slug__in=[slug for slug, _ in latest]).values_list('slug', 'title'))
+    titles = {m.slug: m.label for m in Mood.objects.filter(slug__in=[slug for slug, _ in latest])}
     trail = [{'mood': slug, 'title': titles.get(slug, slug), 'at': at, 'posted': slug in posted}
              for slug, at in latest if slug in titles]
 

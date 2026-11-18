@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, register_converter
 from django.views.generic import RedirectView
 from . import views
 from . import views_auth
@@ -8,6 +8,20 @@ from . import views_runner
 from . import views_settings
 from . import views_admin
 from . import views_merge
+
+
+class MoodSlugConverter:
+    """A Mood's slug, or a thread's namespaced slug (<mood>.<thread>, Justin, 18 Nov)."""
+    regex = r'[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*'
+
+    def to_python(self, value):
+        return value
+
+    def to_url(self, value):
+        return str(value)
+
+
+register_converter(MoodSlugConverter, 'mood')
 
 urlpatterns = [
     path('', views_moods.front_page, name='front'),
@@ -40,14 +54,14 @@ urlpatterns = [
          RedirectView.as_view(url='/tidings/%(tiding_id)s/', permanent=True, query_string=True)),
     path('moods/tour/<str:name>', views_settings.tour_asset, name='mood_tour_asset'),
     path('api/tour/', views_settings.api_tour, name='api_tour'),
-    path('moods/<slug:slug>/instructions/', views_settings.instructions_page, name='mood_instructions'),
-    path('moods/<slug:slug>/rules/', views_settings.rules_page, name='mood_rules'),
     path('moods/manifest.webmanifest', views_moods.app_manifest, name='mood_app_manifest'),
     path('moods/sw.js', views_moods.app_service_worker, name='mood_app_sw'),
-    path('moods/share/', views_moods.app_share, name='mood_app_share'),  # before <slug>: a share, not a Mood
+    path('moods/share/', views_moods.app_share, name='mood_app_share'),  # before <mood>: a share, not a Mood
     path('moods/icon-<int:size>.png', views_moods.app_icon, name='mood_app_icon'),
     path('moods/mark-<int:size>.png', views_moods.app_icon, {'kind': 'mark'}, name='mood_app_mark'),
-    path('moods/<slug:slug>/', views_moods.moods_page, name='mood'),
+    path('moods/<mood:slug>/instructions/', views_settings.instructions_page, name='mood_instructions'),
+    path('moods/<mood:slug>/rules/', views_settings.rules_page, name='mood_rules'),
+    path('moods/<mood:slug>/', views_moods.moods_page, name='mood'),
     path('moods/auth/wiki/', views_auth.wiki_signin, name='mood_wiki_signin'),
     path('moods/auth/wiki/callback', views_auth.wiki_signin_return, name='mood_wiki_return'),
     path('moods/auth/wiki/upload', views_auth.wiki_upload_return, name='mood_wiki_upload_return'),
@@ -60,12 +74,12 @@ urlpatterns = [
     path('api/auth/devices/<uuid:device_id>/revoke/', views_auth.api_device_revoke, name='auth_device_revoke'),
     path('api/auth/renew/', views_auth.api_renew, name='auth_renew'),
     path('api/attest/', views_auth.api_attest, name='api_attest'),
-    path('api/moods/<slug:slug>/say/', views_auth.api_say, name='api_mood_say'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/edit/', views_auth.api_message_edit, name='api_message_edit'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/promote/', views_auth.api_message_promote, name='api_message_promote'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/bloom-note/', views_auth.api_message_bloom_note,
+    path('api/moods/<mood:slug>/say/', views_auth.api_say, name='api_mood_say'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/edit/', views_auth.api_message_edit, name='api_message_edit'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/promote/', views_auth.api_message_promote, name='api_message_promote'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/bloom-note/', views_auth.api_message_bloom_note,
          name='api_message_bloom_note'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/sprint-note/', views_auth.api_message_bloom_note),  # a page loaded before 13 Nov
+    path('api/moods/<mood:slug>/messages/<str:message_id>/sprint-note/', views_auth.api_message_bloom_note),  # a page loaded before 13 Nov
     path('api/tidings/badges/', views_settings.api_tidings_badges, name='api_tidings_badges'),
     path('api/tidings/find/', views_settings.api_tidings_find, name='api_tidings_find'),
     path('api/tidings/release/', views_auth.api_tiding_release, name='api_tiding_release'),
@@ -77,20 +91,20 @@ urlpatterns = [
          name='api_tiding_comment_vote_row'),
     path('api/tidings/<str:tiding_id>/vote/', views_auth.api_tiding_vote, name='api_tiding_vote'),
     path('api/tidings/<str:tiding_id>/said/<str:kind>/<str:node_id>/', views_auth.api_tiding_said, name='api_tiding_said'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/hear-again/', views_auth.api_memo_again, name='api_memo_again'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/delete/', views_auth.api_message_delete, name='api_message_delete'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/react/', views_auth.api_react, name='api_message_react'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/vote/', views_auth.api_poll_vote, name='api_poll_vote'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/close-poll/', views_auth.api_poll_close, name='api_poll_close'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/nudge/', views_auth.api_poll_nudge, name='api_poll_nudge'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/pin/', views_auth.api_pin_message, name='api_message_pin'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/sealed/', views_auth.api_message_sealed, name='api_message_sealed'),
-    path('api/moods/<slug:slug>/messages/<str:message_id>/restore/', views_auth.api_message_restore, name='api_message_restore'),
-    path('api/moods/<slug:slug>/taken-back/', views_auth.api_mood_taken_back, name='api_mood_taken_back'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/hear-again/', views_auth.api_memo_again, name='api_memo_again'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/delete/', views_auth.api_message_delete, name='api_message_delete'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/react/', views_auth.api_react, name='api_message_react'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/vote/', views_auth.api_poll_vote, name='api_poll_vote'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/close-poll/', views_auth.api_poll_close, name='api_poll_close'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/nudge/', views_auth.api_poll_nudge, name='api_poll_nudge'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/pin/', views_auth.api_pin_message, name='api_message_pin'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/sealed/', views_auth.api_message_sealed, name='api_message_sealed'),
+    path('api/moods/<mood:slug>/messages/<str:message_id>/restore/', views_auth.api_message_restore, name='api_message_restore'),
+    path('api/moods/<mood:slug>/taken-back/', views_auth.api_mood_taken_back, name='api_mood_taken_back'),
     path('api/clips/', views_auth.api_clips, name='api_clips'),
     path('api/clips/make/', views_auth.api_clip_make, name='api_clip_make'),
     path('clips/<uuid:clip>/', views_moods.own_clip, name='own_clip'),
-    path('api/moods/<slug:slug>/rename/', views_auth.api_rename, name='api_mood_rename'),
+    path('api/moods/<mood:slug>/rename/', views_auth.api_rename, name='api_mood_rename'),
     path('api/moods/', views_moods.api_moods, name='api_moods'),
     path('api/moods/pulse/', views_moods.api_pulse, name='api_moods_pulse'),
     path('api/messages/<str:message_id>/', views_moods.api_message, name='api_message'),
@@ -121,27 +135,27 @@ urlpatterns = [
     path('api/ramp/file/', views_merge.api_ramp_file, name='api_ramp_file'),
     path('api/merge-orders/pending/', views_merge.api_merge_orders_pending, name='api_merge_orders_pending'),
     path('api/merge-orders/<uuid:order_id>/', views_merge.api_merge_order, name='api_merge_order'),
-    path('api/moods/<slug:slug>/turns/', views_moods.api_mood_turns, name='api_mood_turns'),
-    path('api/moods/<slug:slug>/unfurl/<str:message_id>/', views_moods.api_unfurl, name='api_mood_unfurl'),
-    path('api/moods/<slug:slug>/todo/', views_moods.api_mood_todo, name='api_mood_todo'),
-    path('api/moods/<slug:slug>/humans/', views_moods.api_mood_humans, name='api_mood_humans'),
+    path('api/moods/<mood:slug>/turns/', views_moods.api_mood_turns, name='api_mood_turns'),
+    path('api/moods/<mood:slug>/unfurl/<str:message_id>/', views_moods.api_unfurl, name='api_mood_unfurl'),
+    path('api/moods/<mood:slug>/todo/', views_moods.api_mood_todo, name='api_mood_todo'),
+    path('api/moods/<mood:slug>/humans/', views_moods.api_mood_humans, name='api_mood_humans'),
     path('api/github/hook/', views_moods.api_github_hook, name='api_github_hook'),
     path('api/wiki/hook/', views_moods.api_wiki_hook, name='api_wiki_hook'),
     path('api/wiki-hooks/', views_moods.api_wiki_hooks, name='api_wiki_hooks'),
     path('wiki-hooks/', views_moods.wiki_hooks_page, name='wiki_hooks'),
-    path('api/moods/<slug:slug>/sessions/', views_moods.api_mood_sessions, name='api_mood_sessions'),
-    path('api/moods/<slug:slug>/steps/<str:step_id>/', views_moods.api_mood_step, name='api_mood_step'),
-    path('api/moods/<slug:slug>/typing/', views_moods.api_typing, name='api_mood_typing'),
-    path('api/moods/<slug:slug>/here/', views_moods.api_here, name='api_mood_here'),
-    path('api/moods/<slug:slug>/interrupt/', views_auth.api_interrupt, name='api_mood_interrupt'),
-    path('api/moods/<slug:slug>/archive/', views_auth.api_archive, name='api_mood_archive'),
-    path('api/moods/<slug:slug>/close-thread/', views_auth.api_close_thread, name='api_close_thread'),
-    path('api/moods/<slug:slug>/move-thread/', views_auth.api_move_thread, name='api_move_thread'),
-    path('api/moods/<slug:slug>/refork/', views_auth.api_refork, name='api_refork'),
-    path('api/moods/<slug:slug>/pin/', views_auth.api_pin, name='api_mood_pin'),
-    path('api/moods/<slug:slug>/memo/', views_auth.api_memo, name='api_mood_memo'),
-    path('api/moods/<slug:slug>/speak/<str:message_id>/', views_auth.api_speak, name='api_mood_speak'),
-    path('api/moods/<slug:slug>/verify/<str:message_id>/', views_auth.api_verify, name='api_mood_verify'),
+    path('api/moods/<mood:slug>/sessions/', views_moods.api_mood_sessions, name='api_mood_sessions'),
+    path('api/moods/<mood:slug>/steps/<str:step_id>/', views_moods.api_mood_step, name='api_mood_step'),
+    path('api/moods/<mood:slug>/typing/', views_moods.api_typing, name='api_mood_typing'),
+    path('api/moods/<mood:slug>/here/', views_moods.api_here, name='api_mood_here'),
+    path('api/moods/<mood:slug>/interrupt/', views_auth.api_interrupt, name='api_mood_interrupt'),
+    path('api/moods/<mood:slug>/archive/', views_auth.api_archive, name='api_mood_archive'),
+    path('api/moods/<mood:slug>/close-thread/', views_auth.api_close_thread, name='api_close_thread'),
+    path('api/moods/<mood:slug>/move-thread/', views_auth.api_move_thread, name='api_move_thread'),
+    path('api/moods/<mood:slug>/refork/', views_auth.api_refork, name='api_refork'),
+    path('api/moods/<mood:slug>/pin/', views_auth.api_pin, name='api_mood_pin'),
+    path('api/moods/<mood:slug>/memo/', views_auth.api_memo, name='api_mood_memo'),
+    path('api/moods/<mood:slug>/speak/<str:message_id>/', views_auth.api_speak, name='api_mood_speak'),
+    path('api/moods/<mood:slug>/verify/<str:message_id>/', views_auth.api_verify, name='api_mood_verify'),
     path('api/voice/voices/', views_auth.api_voices, name='api_voices'),
     path('api/voice/search/', views_auth.api_voice_search, name='api_voice_search'),
     path('api/voice/sample/<str:voice_id>/', views_auth.api_voice_sample, name='api_voice_sample'),
@@ -151,12 +165,12 @@ urlpatterns = [
     path('api/voice/narrate/', views_auth.api_narrate, name='api_voice_narrate'),
     path('api/voice/heard/', views_auth.api_voice_heard, name='api_voice_heard'),
     path('api/me/look/', views_auth.api_my_look, name='api_my_look'),
-    path('api/moods/<slug:slug>/media/', views_auth.api_media, name='api_mood_media'),
-    path('api/moods/<slug:slug>/stream/', views_runner.api_stream, name='api_mood_stream'),
-    path('api/moods/<slug:slug>/quiet/', views_runner.api_quiet, name='api_mood_quiet'),
-    path('api/moods/<slug:slug>/held/', views_runner.api_held, name='api_mood_held'),
-    path('api/moods/<slug:slug>/running/', views_runner.api_running, name='api_mood_running'),
-    path('api/moods/<slug:slug>/degraded/', views_runner.api_degraded, name='api_mood_degraded'),
+    path('api/moods/<mood:slug>/media/', views_auth.api_media, name='api_mood_media'),
+    path('api/moods/<mood:slug>/stream/', views_runner.api_stream, name='api_mood_stream'),
+    path('api/moods/<mood:slug>/quiet/', views_runner.api_quiet, name='api_mood_quiet'),
+    path('api/moods/<mood:slug>/held/', views_runner.api_held, name='api_mood_held'),
+    path('api/moods/<mood:slug>/running/', views_runner.api_running, name='api_mood_running'),
+    path('api/moods/<mood:slug>/degraded/', views_runner.api_degraded, name='api_mood_degraded'),
     path('api/emergents/<str:name>/models/', views_runner.api_emergent_models, name='api_emergent_models'),
     path('api/emergents/<str:name>/tasks/<str:task>/', views_auth.api_task, name='api_emergent_task'),
     path('api/deploys/', views_runner.api_deploys, name='api_deploys'),
@@ -170,9 +184,9 @@ urlpatterns = [
     path('moods/media/<str:sha256>.<str:ext>', views_moods.media_file, name='mood_media'),
     path('moods/media/<str:sha256>.<str:ext>/preview', views_moods.media_preview, name='mood_media_preview'),
     path('api/media/<str:sha256>/pickipedia/', views_auth.api_media_to_pickipedia, name='api_media_to_pickipedia'),
-    path('api/moods/<slug:slug>/video/ticket/', views_auth.api_video_ticket, name='api_video_ticket'),
-    path('api/moods/<slug:slug>/video/draft/', views_auth.api_video_draft, name='api_video_draft'),
-    path('api/moods/<slug:slug>/video/<str:draft>/progress/', views_auth.api_video_progress, name='api_video_progress'),
+    path('api/moods/<mood:slug>/video/ticket/', views_auth.api_video_ticket, name='api_video_ticket'),
+    path('api/moods/<mood:slug>/video/draft/', views_auth.api_video_draft, name='api_video_draft'),
+    path('api/moods/<mood:slug>/video/<str:draft>/progress/', views_auth.api_video_progress, name='api_video_progress'),
     path('api/media/<str:sha256>/faces/', views_auth.api_media_faces, name='api_media_faces'),
     path('api/media/<str:sha256>/faces/name/', views_auth.api_media_face_name, name='api_media_face_name'),
     path('api/media/<str:sha256>/license/', views_auth.api_media_license, name='api_media_license'),

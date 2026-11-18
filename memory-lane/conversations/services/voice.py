@@ -150,7 +150,7 @@ def _direction(body):
 SPOKEN_SYMBOLS = {'▶': 'play', '■': 'stop', '✎': 'the pencil', '⚙': 'the gear', '🎙': 'the microphone',
                   '📌': 'the pin', '⌕': 'search', '＋': 'plus', '✓': '', '✗': '', '✦': '', '⟲': '', '→': 'to',
                   '←': 'from', '≥': 'at least', '≤': 'at most', '≈': 'about', '×': 'times', '…': '...'}
-_MOOD_LINK = re.compile(r'(?:https?://\S+?)?/moods/([\w-]+)/#m-[0-9a-f-]{36}', re.I)
+_MOOD_LINK = re.compile(r'(?:https?://\S+?)?/moods/([\w.-]+)/#m-[0-9a-f-]{36}', re.I)
 _UUID = re.compile(r'(?:#m-)?\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b', re.I)
 _HASH = re.compile(r'\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,64}\b', re.I)  # commits, digests
 _LONG_TOKEN = re.compile(r'(?<!\S)[^\s]{33,}(?!\S)')  # keys, base64, anything nobody would read out
@@ -193,7 +193,7 @@ def plain(text, asides=False):
     text = _PATH.sub(lambda m: m.group(1), text)
     text = _LONG_TOKEN.sub(named('a long string'), text)
     text = re.sub(r'(?<![\w&])#(\d+)\b', r'number \1', text)             # #69: "number 69", not "hashtag"
-    text = re.sub(r'(?<![\w&/#])#([A-Za-z][\w-]*)', lambda m: f' {said_mood(m.group(1))} ', text)  # a Mood: "pound general"
+    text = re.sub(r'(?<![\w&/#.])#([A-Za-z][\w-]*(?:\.[A-Za-z0-9][\w-]*)*)', lambda m: f' {said_mood(m.group(1))} ', text)  # a Mood: "pound general"
     for symbol, words in SPOKEN_SYMBOLS.items():
         text = text.replace(symbol, f' {words} ' if words else ' ')
     text = re.sub(r'^\s{0,3}#{1,6}\s*', '', text, flags=re.M)        # headings
@@ -400,8 +400,8 @@ def spoken_name(name):
 
 
 def said_mood(slug):
-    """A Mood as it's said: #magenta-interface is "pound magenta interface"."""
-    return 'pound ' + (slug or '').replace('-', ' ').replace('_', ' ')
+    """A Mood as it's said: #magenta-interface is "pound magenta interface"; #interfaces.threads, "pound interfaces dot threads"."""
+    return 'pound ' + (slug or '').replace('.', ' dot ').replace('-', ' ').replace('_', ' ')
 
 
 def _where(mood):

@@ -186,14 +186,19 @@ def _say_checks(text, device, slug=None):
     except emergent_commands.Invalid as e:
         return JsonResponse({'error': str(e)}, status=400)
     if command and command[0] == 'incorporate':
-        thread = Mood.by_slug(command[2].split()[0].lstrip('#'))
-        if slug and (thread is None or thread.thread_of_id is None or thread.thread_of.slug != slug):
+        ref = command[2].split()[0].lstrip('#')
+        here = Mood.by_slug(slug) if slug else None
+        thread = (Mood.by_slug(f'{here.slug}.{ref}') if '.' not in ref and here else None) or Mood.by_slug(ref)
+        if here and (thread is None or thread.thread_of_id is None or thread.thread_of_id != here.pk):
             return JsonResponse({'error': f'{command[2].split()[0]} is not a thread of this Mood. '
                                           f'{emergent_commands.INCORPORATE_FORM}'}, status=400)
         return None
     if command and command[0] == 'handoff':
         to = command[2].split()[0]
-        if slug and (Mood.by_slug(to.lstrip('#')) is None or to.lstrip('#') == slug):
+        ref = to.lstrip('#')
+        here = Mood.by_slug(slug) if slug else None
+        dest = Mood.by_slug(ref) or (Mood.by_slug(f'{here.slug}.{ref}') if '.' not in ref and here else None)
+        if here and (dest is None or dest.pk == here.pk):
             return JsonResponse({'error': f'{to}: no other Mood by that name. {emergent_commands.HANDOFF_FORM}'}, status=400)
         return None
     if command:
@@ -1250,15 +1255,15 @@ def api_new_mood(request):
     # fresh (they start anew), with that Mood's settings carried over.
     parent = None
     if body.get('thread_of'):
-        parent = Mood.by_slug(str(body['thread_of']))
+        parent = Mood.by_slug(str(body['thread_of']).lstrip('#'))
         if parent is None:
             return JsonResponse({'error': 'no such Mood to open a thread from'}, status=404)
     fork = bool(parent) and body.get('fork', True) is not False
-    taken = name_taken(title)
+    taken = name_taken(title, thread_of=parent)
     if taken:
         return taken
     from django.utils import timezone as tz
-    mood = Mood.objects.create(slug=Mood.free_slug(title), title=title, description=description,
+    mood = Mood.objects.create(slug=Mood.free_slug(title, thread_of=parent), title=title, description=description,
                                thread_of=parent, forked_at=tz.now() if fork else None)
     system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
     kind = ('fork' if fork else 'fresh') if parent else None
@@ -1276,11 +1281,11 @@ def api_new_mood(request):
                          **({'thread_of': parent.slug, 'kind': kind} if parent else {})}, status=201)
 
 
-def name_taken(title, mood=None):
-    """409 when another Mood has (or had) the name `title` makes, or a page of the site's own has it; None when
-    it's free. Saying which, and whether it's closed, so the page can offer to open that one again."""
+def name_taken(title, mood=None, thread_of=Mood._UNSET):
+    """409 when another Mood in the same namespace has (or had) the name `title` makes, or a page of the site's
+    own has it; None when it's free. Saying which, and whether it's closed, so the page can offer to open it."""
     from .services import settings as knobs
-    other = Mood.holder(title, mood)
+    other = Mood.holder(title, mood, thread_of=thread_of)
     if other is None:
         return None
     if other == 'page':
@@ -1401,10 +1406,15 @@ def api_move_thread(request, slug):
     from .services import settings as knobs
     if to.slug in knobs.archived_slugs():
         return JsonResponse({'error': f'#{to.slug} is archived: open it again first'}, status=400)
+    taken = name_taken(thread.title or thread.local_slug, thread, thread_of=to)
+    if taken:
+        return taken
 
+    old_slug = thread.slug
+    next_slug = Mood.free_slug(thread.title or thread.local_slug, thread, thread_of=to)
     tail = f' {note}' if note else ''
-    asked_from = f'/incorporate #{thread.slug}{tail}' if ask['incorporate_from'] else None
-    asked_to = f'/incorporate #{thread.slug}{tail}' if ask['incorporate_to'] else None
+    asked_from = f'/incorporate #{old_slug}{tail}' if ask['incorporate_from'] else None
+    asked_to = f'/incorporate #{next_slug}{tail}' if ask['incorporate_to'] else None
     compact = None
     if ask['compact']:
         spoke = sorted(set(Message.objects.filter(mood=thread, sender_id__in=agent_names())
@@ -1412,7 +1422,7 @@ def api_move_thread(request, slug):
         if spoke:
             compact = f"/compact {','.join(spoke)}{tail}"
     # Refused before anything is done, as each would be if typed: the move is all or nothing.
-    for text, where in ((asked_from, old.slug), (compact, thread.slug)):
+    for text, where in ((asked_from, old.slug), (compact, old_slug)):
         if text:
             refused = _say_checks(text, device, where)
             if refused:
@@ -1422,7 +1432,7 @@ def api_move_thread(request, slug):
     if ask['inform']:  # Magenta:Interface's words, its {from}, {to} and {dir} filled in (any other braces left be)
         inform = interface_words.words().get('move-inform') or interface_words.DEFAULTS['move-inform']
         for field, value in (('from', f'#{old.slug}'), ('to', f'#{to.slug}'),
-                             ('dir', f'/moods/{root.slug}/threads/{thread.slug}/')):
+                             ('dir', f'/moods/{root.slug}/threads/{thread.local_slug}/')):
             inform = inform.replace('{' + field + '}', value)
 
     client = web_client(request, device)
@@ -1436,7 +1446,7 @@ def api_move_thread(request, slug):
     def line(mood):
         Message.objects.create(id=uuid.uuid4(), sender=system, mood=mood, source_file=NEW_MOOD_SOURCE,
                                content={'type': 'moved', 'by': device.entity_id, 'thread': thread.slug,
-                                        'from_mood': old.slug, 'to_mood': to.slug},
+                                        'was': old_slug, 'from_mood': old.slug, 'to_mood': to.slug},
                                timestamp=int(time.time() * 1000))
 
     posted = []
@@ -1445,16 +1455,15 @@ def api_move_thread(request, slug):
             posted.append(str(say(old, asked_from).id))
         if compact:
             posted.append(str(say(thread, compact).id))
-        thread.thread_of = to
-        thread.save(update_fields=['thread_of'])
+        thread.move_to(to)
         for mood in (thread, old, to):
             line(mood)
         if asked_to:
             posted.append(str(say(to, asked_to).id))
         if inform:
             posted.append(str(say(thread, inform).id))
-    return JsonResponse({'slug': thread.slug, 'thread_of': to.slug, 'from': old.slug, 'posted': posted,
-                         'compacted': compact is not None})
+    return JsonResponse({'slug': thread.slug, 'was': old_slug, 'thread_of': to.slug, 'from': old.slug,
+                         'posted': posted, 'compacted': compact is not None})
 
 
 @require_POST

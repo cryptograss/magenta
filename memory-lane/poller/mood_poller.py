@@ -1544,12 +1544,13 @@ def near_misses(agent, page, seen):
 # /incorporate #<thread> (memory-lane services/emergent_commands): the handoff agent folds a thread back into the
 # Mood it came from -- one account, full length whatever the Mood's verbosity, with the handoff's own model and
 # effort (Justin, 27 Oct). Its words live here and on the Dials page (dial 'incorporate'), not in each agent's orders.
-INCORPORATE = re.compile(r'\A\s*(?:↩ #m-[0-9a-f-]+\n)?/incorporate\s+#([a-z0-9][a-z0-9-]{0,79})(?![\w-])\s*(.*)\Z', re.I | re.S)
+_MOOD_REF = r'[a-z0-9][a-z0-9-]{0,79}(?:\.[a-z0-9][a-z0-9-]{0,79}){0,4}'
+INCORPORATE = re.compile(rf'\A\s*(?:↩ #m-[0-9a-f-]+\n)?/incorporate\s+#({_MOOD_REF})(?![\w-])\s*(.*)\Z', re.I | re.S)
 INCORPORATE_ASK = recovered('line', 'incorporate')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
 INCORPORATE_ROOM = 60_000  # characters of the thread's record word for word (a prompt is at most MAX_PROMPT_CHARS); older, counted
 
 
-HANDOFF_COMMAND = re.compile(r'\A\s*(?:↩ #m-[0-9a-f-]+\n)?/handoff\s+#([a-z0-9][a-z0-9-]{0,79})(?![\w-])\s*(.*)\Z', re.I | re.S)
+HANDOFF_COMMAND = re.compile(rf'\A\s*(?:↩ #m-[0-9a-f-]+\n)?/handoff\s+#({_MOOD_REF})(?![\w-])\s*(.*)\Z', re.I | re.S)
 HANDOFF_ASK = recovered('line', 'handoff')  # words: Cryptograss:Emergents/Wake (poller/wake_texts.md)
 
 
@@ -1735,7 +1736,7 @@ def transcript_of(turns, new_ids=(), limit=20_000, each=1500):
 # in the same Mood -- in a post that wakes the agent: read from there, in
 # whichever Mood the link names.
 # /messages/<uuid>, a message's own address, names no Mood: where it is is asked (LOOK_UP).
-_MESSAGE_LINK = re.compile(r'(?:/moods/([\w-]+)/#m-|(/messages/)|#m-)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})')
+_MESSAGE_LINK = re.compile(r'(?:/moods/([\w.-]+)/#m-|(/messages/)|#m-)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})')
 LOOK_UP = '?'  # linked_message: the Mood to be asked
 CHARS_PER_TOKEN = 4
 EACH_MAX = 8000  # characters of any one message read word for word
@@ -2990,7 +2991,7 @@ class MoodPoller:
             lines += ['', wake_line(self.texts, 'handoff', HANDOFF_ASK, to=to, about=f' ({about})' if about else '')]
         if incorporate or handing:
             if incorporate:
-                lines += self.incorporate_brief(*incorporate)
+                lines += self.incorporate_brief(*incorporate, parent=slug)
             # No length line at all: the ask says how long and what goes in it. The Mood's (brief, say) would cut it
             # short, and 'thorough' is about chat -- "explain your reasoning" -- not a handoff (Justin, 27 Oct).
             extras = self.extras_lines(slug, length=False)
@@ -3002,6 +3003,7 @@ class MoodPoller:
         """What's been handed to the agent in this Mood and not shown it yet, as prompt lines; marked shown in the
         ledger as they go into a prompt (never on a dry run: nothing is delivered). `again`: ids a cut-off turn
         was shown, owed once more with its retry."""
+        self._carry_aliases(slug)
         self.handed_now = (slug, [])
         try:
             page = page()
@@ -3022,15 +3024,25 @@ class MoodPoller:
         session, and another model reads all of it again uncached (Justin, 27 Oct: "a cache miss")."""
         return {'effort': self.knob(slug, 'handoff_effort', 'high')}
 
-    def incorporate_brief(self, thread, note=''):
+    def incorporate_brief(self, thread, note='', parent=''):
         """The /incorporate ask, and the thread's record word for word (its newest INCORPORATE_ROOM characters)."""
+        candidates = [f'{parent}.{thread}', thread] if parent and '.' not in thread else [thread]
+        turns, err = None, None
+        for name in candidates:
+            try:
+                got = self.api.recent(name, limit=1000)
+                if name != thread and not got.get('mood') and not got.get('turns'):
+                    continue
+                thread = ((got.get('mood') or {}).get('slug')) or name
+                turns = got['turns']
+                break
+            except Exception as e:  # noqa: BLE001
+                err = e
         lines = ['', wake_line(self.texts, 'incorporate', INCORPORATE_ASK, thread=thread)]
         if note:
             lines += ['', f'Asked to be sure of: {note}']
-        try:
-            turns = self.api.recent(thread, limit=1000)['turns']
-        except Exception as e:  # noqa: BLE001
-            return lines + ['', f"(#{thread}'s record could not be read here ({e}): read it with read_mood.)"]
+        if turns is None:
+            return lines + ['', f"(#{thread}'s record could not be read here ({err}): read it with read_mood.)"]
         kept, size = [], 0
         for turn in reversed(turns):
             size += min(len(turn.get('text', '')), EACH_MAX) + 40
@@ -3157,8 +3169,17 @@ class MoodPoller:
         said = '; '.join(f"{n} is {'recording a voice memo' if n in rec else 'typing'}" for n in typing)
         return ['', wake_line(self.texts, 'typing', TYPING_NOTE, said=said, first=typing[0])]
 
+    def _carry_aliases(self, slug):
+        """Carry any ledger entries kept under a name `slug` went by before a rename (self.known_as)."""
+        for old in (getattr(self, 'known_as', None) or {}).get(slug, ()):
+            for key in ('handed', 'announced', 'reacted', 'nearmiss', 'consider'):
+                d = self.state.get(key)
+                if isinstance(d, dict) and old in d and slug not in d:
+                    d[slug] = d.pop(old)
+
     def announced_lines(self, slug, page):
         """/announce made in other Moods, not yet told to it here (memory-lane services/announce.py), once each."""
+        self._carry_aliases(slug)
         found = (page or {}).get('announcements') or []
         told = self.state.setdefault('announced', {})
         mine = set(told.get(slug) or ())
@@ -3176,6 +3197,7 @@ class MoodPoller:
         woken in a Mood, what was there already is only noted."""
         if page is None:
             return []
+        self._carry_aliases(slug)
         known = self.state.setdefault('reacted', {})
         first = slug not in known
         lines, keys = reactions_to(self.agent, page, set(known.get(slug) or ()))
@@ -3190,6 +3212,7 @@ class MoodPoller:
         was there before its first wake in a Mood is only noted, as reactions are."""
         if page is None:
             return []
+        self._carry_aliases(slug)
         known = self.state.setdefault('nearmiss', {})
         first = slug not in known
         lines, keys = near_misses(self.agent, page, set(known.get(slug) or ()))
@@ -3409,6 +3432,7 @@ class MoodPoller:
 
     def consider_mood(self, m):
         slug, now = m['slug'], self.now()
+        self._carry_aliases(slug)
         newest, web, human = m.get('newest'), m.get('last_web_post'), m.get('last_human')
         st = self.state['consider'].get(slug)
         if st is None:  # first sight: nothing said before now is owed a thought

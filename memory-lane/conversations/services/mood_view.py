@@ -732,12 +732,12 @@ def own_clip_card(clip, url):
 
 # A message's own link (its time copies it): a card, not a URL (services/links.py). /messages/<id> now;
 # /moods/<slug>/#m-<id> as it was copied before.
-_PERMALINK = re.compile(r'^https?://[^/\s]+/(?:messages/|moods/[\w-]+/#m-)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$')
-# '#general' (a Mood) or '#m-<id>' (a message, or the id's first 8). Not '&#x27;'
-# (an escaped quote), not 'C#', not a URL's fragment (those are linked already).
-_HASH = re.compile(r'(?<![\w&#/;=])#(m-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})'
+_PERMALINK = re.compile(r'^https?://[^/\s]+/(?:messages/|moods/[\w.-]+/#m-)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$')
+# '#general' (a Mood), '#interfaces.threads' (a thread: Justin, 18 Nov), or '#m-<id>' (a message, or the id's
+# first 8). Not '&#x27;' (an escaped quote), not 'C#', not a URL's fragment (those are linked already).
+_HASH = re.compile(r'(?<![\w&#/;=.])#(m-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})'
                    r'|t-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8})'
-                   r'|[a-z0-9][a-z0-9-]{0,79})(?![\w-])', re.I)
+                   r'|[a-z0-9][a-z0-9-]{0,79}(?:\.[a-z0-9][a-z0-9-]{0,79})*)(?![\w-])', re.I)
 
 
 def _message_link(ref):
@@ -787,10 +787,16 @@ def _hash_link(match):
     if ref[:2].lower() == 't-' and re.fullmatch(r't-[0-9a-f-]{8,36}', ref, re.I):
         return _tiding_link(ref[2:]) or match.group(0)
     from .links import mood_names
-    slug = mood_names().get(ref.lower())
+    known = mood_names()
+    head, tail = ref, ''
+    slug = known.get(head.lower())
+    while not slug and '.' in head:  # '#interfaces.Then': link #interfaces, leave '.Then' outside
+        head, part = head.rsplit('.', 1)
+        tail = f'.{part}{tail}'
+        slug = known.get(head.lower())
     if not slug:
         return match.group(0)  # '#96', '#fff', a Mood nobody has: as written
-    return f'<a class="moodlink" href="/moods/{slug}/" data-mood="{slug}">#{ref}</a>'
+    return f'<a class="moodlink" href="/moods/{slug}/" data-mood="{slug}">#{head}</a>{tail}'
 
 
 # A candidate branch named in what's said -- magenta:re/foo, or magenta#453 -- links to its page in the ramp
@@ -1301,7 +1307,7 @@ WAKE_REASON = re.compile(r'<mood-wake\b[^>]*?\breason=\\?"([a-z-]{1,20})\\?"')
 
 # An /announce the wake carried (the poller's announced_lines; services/announce.py): who, from where, its words.
 HEARD_AT = '[announced by '
-HEARD = re.compile(r'\[announced by ([\w.-]+) in #([\w-]+)(?: \(#m-([0-9a-f-]{36})\))?, [^\]]*\] ((?:[^\\]|\\[^n])*)')
+HEARD = re.compile(r'\[announced by ([\w.-]+) in #([\w.-]+)(?: \(#m-([0-9a-f-]{36})\))?, [^\]]*\] ((?:[^\\]|\\[^n])*)')
 
 
 def heard_in(text):
@@ -2051,4 +2057,5 @@ def mood_payload(mood, light=False):
            if mood.thread_of_id else {}),
         # Threads opened from here, newest first (closing one archives it).
         'threads': [{'slug': s, 'title': t or s} for s, t in mood.threads.order_by('-created_at').values_list('slug', 'title')],
+        'aliases': list(mood.aliases.values_list('slug', flat=True)),
     }

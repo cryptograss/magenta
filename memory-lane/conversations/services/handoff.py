@@ -94,7 +94,8 @@ def from_message(message):
     system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
     made = []
     for block in blocks:
-        other = Mood.by_slug(block['to'] or block['from'])
+        ref = block['to'] or block['from']
+        other = Mood.by_slug(ref) or (Mood.by_slug(f'{here.slug}.{ref}') if '.' not in ref else None)
         if other is None or other.pk == here.pk:
             continue
         # Sent there (to:), or brought in here (from:): either way, the context lands where it's for.

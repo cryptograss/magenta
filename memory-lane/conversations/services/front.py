@@ -103,7 +103,7 @@ def lately(limit=LATELY, scan=2000):
             continue  # this person is here already, at their latest
         words = snippet_of(reply_to(text)[1])
         out.append({'who': msg.sender_id, 'name': name_html(msg.sender_id, wiki_names, looks),
-                    'mood': msg.mood.slug, 'title': msg.mood.title or msg.mood.slug,
+                    'mood': msg.mood.slug, 'title': msg.mood.label,
                     'said': words[:80] + ('…' if len(words) > 80 else ''),
                     'at': msg.created_at, 'ago': timesince(msg.created_at).split(',')[0]})  # "1 day", not "1 day, 9 hours"
         if len(out) == limit:

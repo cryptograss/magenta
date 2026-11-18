@@ -39,11 +39,12 @@ COMMANDS = {
 FORM = {name: f'/{name} <emergent>[,<emergent>…]' + (' [what to keep]' if words == 'optional' else ' <what to keep>' if words else '')
         for name, (_, words) in COMMANDS.items()}
 HANDOFF_AGENT = 'magent'
-INCORPORATE_FORM = '/incorporate #<thread> [what to be sure to carry back]'
-INCORPORATE = re.compile(r'/incorporate(?=\s|\Z)\s*(?:#([a-z0-9][a-z0-9-]{0,79})(?![\w-]))?\s*(.*)\Z', re.I | re.S)
+_MOOD_REF = r'[a-z0-9][a-z0-9-]{0,79}(?:\.[a-z0-9][a-z0-9-]{0,79}){0,4}'
+INCORPORATE_FORM = '/incorporate #<mood.thread> [what to be sure to carry back]'
+INCORPORATE = re.compile(rf'/incorporate(?=\s|\Z)\s*(?:#({_MOOD_REF})(?![\w-]))?\s*(.*)\Z', re.I | re.S)
 # The other direction: what's here, taken to another Mood (a fresh thread, or anywhere) as one handoff, by the same agent.
 HANDOFF_FORM = '/handoff #<mood> [what about]'
-HANDOFF = re.compile(r'/handoff(?=\s|\Z)\s*(?:#([a-z0-9][a-z0-9-]{0,79})(?![\w-]))?\s*(.*)\Z', re.I | re.S)
+HANDOFF = re.compile(rf'/handoff(?=\s|\Z)\s*(?:#({_MOOD_REF})(?![\w-]))?\s*(.*)\Z', re.I | re.S)
 
 
 class Invalid(ValueError):

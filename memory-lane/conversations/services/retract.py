@@ -335,7 +335,8 @@ def copies_of(message_id):
 def taken_back_in(mood, limit=200):
     """[{'copy', 'message', 'sender', 'kind', 'by', 'at'}], newest first: who took back what in a Mood, and when."""
     from conversations.models import Message, SealedCopy
-    copies = list(SealedCopy.objects.filter(mood_slug=mood.slug).order_by('-at', '-id')[:limit])
+    slugs = [mood.slug, *mood.aliases.values_list('slug', flat=True)]
+    copies = list(SealedCopy.objects.filter(mood_slug__in=slugs).order_by('-at', '-id')[:limit])
     senders = dict(Message.objects.filter(id__in=[c.message_id for c in copies]).values_list('id', 'sender_id'))
     return [{'copy': c.id, 'message': str(c.message_id), 'sender': senders.get(c.message_id), 'kind': c.kind,
              'by': c.by, 'at': c.at.isoformat()} for c in copies]
