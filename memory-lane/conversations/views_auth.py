@@ -1887,9 +1887,14 @@ def api_narrate(request):
             return JsonResponse({'error': f'{agent.name} is not at work there now'}, status=409)
         steps = ToolUse.objects.filter(mood=mood, sender=agent, is_sidechain=False,
                                        timestamp__gte=int(doing['since'] * 1000)).count()
+        from .services import chain_head
         from .views_moods import SECONDS_PER_BLOCK
-        # How long, in blocks, as we keep time (Justin, 17 Nov: "a 'blocks since' in these messages").
-        still = (max(1, int((time.time() - doing['since']) // SECONDS_PER_BLOCK)), steps)
+        # How long, in blocks, as we keep time (Justin, 17 Nov: "a 'blocks since' in these messages"): counted
+        # from the chain's head where the watcher has the blocks, else 12 s a block (his fallback).
+        blocks = chain_head.blocks_since(doing['since'])
+        if blocks is None:
+            blocks = int((time.time() - doing['since']) // SECONDS_PER_BLOCK)
+        still = (max(1, blocks), steps)
     waiting = str(body.get('waiting') or '')
     if waiting and not re.fullmatch(r'[\w.-]+(?:,\s*[\w.-]+)*', waiting):
         return JsonResponse({'error': 'waiting: emergents\' names'}, status=400)

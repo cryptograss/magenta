@@ -1476,6 +1476,29 @@ class LoginCode(models.Model):
         db_table = 'login_codes'
 
 
+class ChainHead(models.Model):
+    """
+    A block as it landed at the head of the chain, one row a block, the last day of them
+    (conversations/services/chain_head.py; `manage.py watch_head` writes them).
+
+    Not the record's clock: BlockAnchor is finalized and can't be reorged away; these are the
+    newest blocks, a minute old at most, for counting live ("15 blocks in"). A reorg at the head
+    rewrites a row, and that's fine here.
+    """
+
+    number = models.BigIntegerField(primary_key=True)
+    timestamp = models.BigIntegerField(db_index=True, help_text="The block's own time, unix seconds")
+    seen_at = models.DateTimeField(help_text='When the watcher heard of it')
+    via = models.CharField(max_length=16, help_text="'socket' (pushed to us) or 'polling' (asked for)")
+
+    class Meta:
+        db_table = 'chain_heads'
+        ordering = ['number']
+
+    def __str__(self):
+        return f"head {self.number} via {self.via}"
+
+
 class BlockAnchor(models.Model):
     """
     A real Ethereum block and its timestamp, fetched from a node.
