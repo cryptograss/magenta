@@ -1034,20 +1034,50 @@
   /* The license a picture of yours goes out under, said as it's attached (services/media.LICENSES). */
   #licenseBar { max-width: 760px; margin: 0 auto; padding: 6px 16px 0; font-size: 12.5px; color: var(--muted); }
   #licenseBar[hidden] { display: none; }
-  #videoBar { max-width: 760px; margin: 0 auto; padding: 6px 16px 0; font-size: 12.5px; color: var(--muted); }
-  #videoBar[hidden] { display: none; }
-  #videoBar .track { display: inline-block; vertical-align: middle; width: 120px; height: 4px; margin: 0 6px;
-                     background: var(--rule, #ddd); border-radius: 2px; overflow: hidden; }
-  #videoBar .fill { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
-  #videoBar button { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
+  /* A video on its way to being a Release: one block each, from sending to its Release page. On a
+     phone the one in front takes the bottom fifth of the screen (Justin, 19 Nov: "hard to see"). */
+  #videoPanel { max-width: 760px; margin: 0 auto; padding: 0 16px; max-height: 60vh; overflow-y: auto; }
+  #videoPanel[hidden] { display: none; }
+  #videoPanel .vp-item { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+                         font-size: 13px; background: var(--panel); }
+  #videoPanel .vp-head { display: flex; align-items: baseline; gap: 8px; }
+  #videoPanel .vp-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #videoPanel .vp-size { flex: none; color: var(--muted); font-size: 12px; }
+  #videoPanel .vp-x, #videoPanel .vp-cancel { flex: none; font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; }
+  #videoPanel .vp-cancel { color: var(--accent); text-decoration: underline; }
+  #videoPanel .vp-steps { display: flex; gap: 4px; list-style: none; margin: 7px 0 6px; padding: 0; font-size: 11px; }
+  #videoPanel .vp-steps li { flex: 1; min-width: 0; padding-top: 4px; border-top: 3px solid var(--line); color: var(--muted);
+                             text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #videoPanel .vp-steps li.done { border-color: var(--accent); }
+  #videoPanel .vp-steps li.now { border-color: var(--accent); color: var(--ink); font-weight: 700; }
+  #videoPanel .vp-steps li.now.bad { border-color: #c0392b; color: #c0392b; }
+  #videoPanel .vp-bar { height: 8px; margin: 2px 0 5px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  #videoPanel .vp-bar .fill { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  #videoPanel .vp-bar.wait .fill { opacity: .45; animation: vp-wait 1.4s ease-in-out infinite alternate; }
+  @keyframes vp-wait { from { opacity: .25; } to { opacity: .6; } }
+  @media (prefers-reduced-motion: reduce) { #videoPanel .vp-bar.wait .fill { animation: none; } }
+  #videoPanel .vp-what { font-variant-numeric: tabular-nums; }
+  #videoPanel .vp-warn { color: #c0392b; }
+  #videoPanel .vp-note { margin-top: 2px; color: var(--muted); font-size: 12px; }
+  #videoPanel .vp-note:empty { display: none; }
+  #videoPanel .vp-act { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
+  #videoPanel .vp-act:empty { display: none; }
+  #videoPanel .vp-act label { flex: 1 1 14em; min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #videoPanel .vp-act input { flex: 1; min-width: 0; font: inherit; padding: 3px 6px; }
+  #videoPanel .vp-act button { font: inherit; cursor: pointer; }
+  #videoPanel a.vp-go { color: var(--accent); }
+  @media (max-width: 720px), (pointer: coarse) {
+    #videoPanel .vp-item.first { min-height: 20vh; display: flex; flex-direction: column; justify-content: center; font-size: 15px; }
+    #videoPanel .vp-item.first .vp-bar { height: 14px; border-radius: 7px; }
+    #videoPanel .vp-item.first .vp-what b { font-size: 22px; }
+    #videoPanel .vp-item.first .vp-steps { font-size: 12px; }
+    #videoPanel .vp-item.first .vp-note { font-size: 13px; }
+    #videoPanel .vp-act input { font-size: 16px; padding: 7px 8px; }  /* 16px: iOS zooms the page on anything smaller */
+    #videoPanel .vp-act button, #videoPanel a.vp-go { min-height: 40px; padding: 6px 12px; font-size: 15px; }
+    #videoPanel a.vp-go { display: inline-flex; align-items: center; border: 1px solid var(--accent); border-radius: 8px; text-decoration: none; }
+    #videoPanel .vp-x, #videoPanel .vp-cancel { min-width: 36px; min-height: 32px; font-size: 15px; }
+  }
   .event .vprogress progress { width: 6em; height: 0.8em; vertical-align: middle; }
-  #videoCards { max-width: 760px; margin: 0 auto; padding: 0 16px; }
-  #videoCards .vcard { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; padding: 8px 10px;
-                       border: 1px solid var(--rule, #ddd); border-radius: 8px; font-size: 13px; }
-  #videoCards .vcard .name { font-weight: 600; }
-  #videoCards .vcard input { flex: 1 1 14em; min-width: 0; font: inherit; padding: 3px 6px; }
-  #videoCards .vcard .make { font: inherit; cursor: pointer; }
-  #videoCards .vcard .later { font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; }
   #licenseBar label { margin-left: 10px; white-space: nowrap; cursor: pointer; }
   #licenseBar button { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
   a.permalink:hover time { text-decoration: underline; }
@@ -2069,8 +2099,7 @@
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button>
       <label id="stripLocation" title="Phone photos carry where and when they were taken (GPS), and the camera. They go with the picture unless this is ticked; ticked, all of it is removed before anyone sees it (a HEIC photo's carried into its JPEG)."><input type="checkbox"> Remove photo details (place, time, camera)</label></div>
-    <div id="videoCards"></div>
-    <div id="videoBar" hidden><span class="what"></span><span class="track"><span class="fill"></span></span><span class="pct"></span> <button type="button" id="videoCancel">cancel</button></div>
+    <div id="videoPanel" hidden aria-live="polite"></div>
     <div id="shareCard" hidden><span class="what"></span><label class="into">into <select id="shareMood" aria-label="Which Mood it goes to"></select></label><button type="button" id="shareHere"></button><button type="button" id="shareDrop" title="Don't share it" aria-label="Don't share it">✕</button></div>
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
     <form id="composer" data-tour="composer" autocomplete="off">
@@ -4985,7 +5014,7 @@
     }
     if (e.type === 'release-draft') {  // a video sent to delivery-kid, with its draft page (services/delivery_kid.py)
       el.className = 'event';
-      if (e.draft && videoWaiting) videoWaiting.drop(e.draft);  // its page is made: no more card
+      if (e.draft && videoWaiting) videoWaiting.paged(e.draft, e.page, e.title);  // its page is made: the panel moves on a step
       el.innerHTML = `🎬 <b>${esc(shown(e.by || 'someone'))}</b> sent a video to delivery-kid: `
         + `<a href="${esc(e.page || '#')}" target="_blank" rel="noopener">${esc(e.title || 'its ReleaseDraft')}</a>`
         + ` · title it, review it and finalize it there · ${esc(stamp(e.created_at))}`
@@ -6659,7 +6688,7 @@
     mergeSheetsFollow();  // a merge sheet opened here shows; another Mood's waits for it
     recordPath(slug);
     sayHere(slug);  // shown here to everyone, and gone from where they were
-    renderVideoCards();  // the videos waiting for a draft page are per Mood
+    renderVideoPanel();  // the videos on their way are per Mood
     renderShare();  // a share waiting says which Mood it would go to
     restoreDraft();
     showLicense();  // pictures in the draft left behind aren't in this one
@@ -8775,63 +8804,285 @@
   function videosIn(list) {
     return dkUpload ? [...(list || [])].filter(f => /^video\//.test(f.type) || (!f.type && VIDEO_NAME.test(f.name || ''))) : [];
   }
-  const videoBar = document.getElementById('videoBar');
-  let videoSending = null;  // the upload under way, if any: one at a time
-  function videoSays(what, pct) {
-    videoBar.hidden = false;
-    videoBar.querySelector('.what').textContent = what;
-    videoBar.querySelector('.track').style.display = pct == null ? 'none' : '';
-    videoBar.querySelector('.fill').style.width = (pct || 0) + '%';
-    videoBar.querySelector('.pct').textContent = pct == null ? '' : pct + '%';
-  }
+  function sizeOf(n) { return n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(n / 1e6)) + ' MB'; }
   function dkError(xhr) {
     try {
-      const body = JSON.parse(xhr.responseText);
+      const body = typeof xhr.body === 'object' && xhr.body ? xhr.body : JSON.parse(xhr.responseText);
       const d = body.detail ?? body;
       return (d && (d.error || d.message)) || (typeof d === 'string' ? d : JSON.stringify(d)).slice(0, 200);
-    } catch (e) { return `${xhr.status} ${xhr.statusText}`.trim() || 'no answer'; }
+    } catch (e) { return `${xhr.status} ${xhr.statusText || ''}`.trim() || 'no answer'; }
   }
-  function sizeOf(n) { return n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(n / 1e6)) + ' MB'; }
+  // <video-uploader>
+  // A video sent to delivery-kid in pieces (its routes/upload.py). As one request, a 940 MB video from
+  // a phone was lost whole to any dropped connection, locked screen or restart of delivery-kid (Justin,
+  // 19 Nov: "The connection dropped before it was all sent", most of the time). In pieces, what has
+  // arrived stays: after a drop it asks delivery-kid how much is there and carries on from that byte,
+  // for as long as it takes, until it's all there or someone cancels.
+  // Everything it touches is handed in, so it runs the same under test (tests/test_video_upload.py).
+  //   file: a File/Blob · url: delivery-kid's /draft-content · draft: its id there
+  //   headers(): the upload token's headers now · renew(): a fresh token, after a 401
+  //   wait(ms): resolves after ms, or sooner when the connection may be back
+  //   says(state, bytes, detail): 'sending' | 'waiting' | 'checking', for the panel
+  function videoUploader({ file, url, draft, headers, renew, wait, says, XHR, piece = 8 * 1024 * 1024, stall = 45000 }) {
+    let cancelled = false, live = null, received = 0, renewed = false;
+    const at = path => `${url}/${encodeURIComponent(draft)}/upload${path}`;
+    const fatal = (message) => Object.assign(new Error(message), { fatal: true });
+    // One request. Resolves {status, body}; rejects (not fatal) when the connection fails or goes
+    // quiet for `stall` ms, which a half-open connection on a phone does without ever erroring.
+    function ask(method, to, body, sent) {
+      return new Promise((resolve, reject) => {
+        const xhr = live = new XHR();
+        let quiet = null;
+        const heard = () => { clearTimeout(quiet); quiet = setTimeout(() => { xhr.abort(); }, stall); };
+        const over = () => { clearTimeout(quiet); if (live === xhr) live = null; };
+        xhr.open(method, to);
+        for (const [k, v] of Object.entries(headers() || {})) xhr.setRequestHeader(k, v);
+        if (xhr.upload) xhr.upload.addEventListener('progress', e => { heard(); if (sent) sent(e.loaded); });
+        xhr.addEventListener('progress', heard);
+        xhr.addEventListener('load', () => {
+          over();
+          let answer = {};
+          try { answer = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+          resolve({ status: xhr.status, body: answer });
+        });
+        xhr.addEventListener('error', () => { over(); reject(new Error('the connection dropped')); });
+        xhr.addEventListener('abort', () => { over(); reject(cancelled ? fatal('cancelled') : new Error('the connection went quiet')); });
+        heard();
+        xhr.send(body ?? null);
+      });
+    }
+    const refused = r => fatal(`delivery-kid said ${r.status}: ${dkError(r)}`);
+    // What only waiting can fix: delivery-kid restarting (502-504 from its proxy), or busy.
+    const passing = r => r.status === 0 || r.status === 429 || r.status >= 500;
+    async function unlocked(r) {  // a 401: the token ran out mid-upload. One fresh one, then it's a refusal.
+      if (r.status !== 401 || renewed || !renew) return false;
+      renewed = true;
+      await renew();
+      return true;
+    }
+    async function where() {
+      const r = await ask('GET', at(''));
+      if (r.status === 200 && typeof r.body.received === 'number') return r.body.received;
+      if (passing(r)) throw new Error(`delivery-kid answered ${r.status}`);
+      if (await unlocked(r)) return where();
+      throw refused(r);
+    }
+    async function run(from = 0) {
+      received = from;
+      let tries = 0;
+      for (;;) {
+        if (cancelled) throw fatal('cancelled');
+        try {
+          if (received >= file.size) {
+            says('checking', received);
+            const r = await ask('POST', at('/complete'));
+            if (r.status === 200) return r.body;
+            if (r.status === 409 && typeof r.body.detail?.received === 'number') { received = r.body.detail.received; continue; }
+            if (passing(r)) throw new Error(`delivery-kid answered ${r.status}`);
+            if (await unlocked(r)) continue;
+            throw refused(r);
+          }
+          const base = received;
+          says('sending', base);
+          const r = await ask('POST', at(`?name=${encodeURIComponent(file.name || 'video')}&size=${file.size}&offset=${base}`),
+                              file.slice(base, base + piece), loaded => says('sending', Math.min(file.size, base + loaded)));
+          if (r.status === 200 && typeof r.body.received === 'number') { received = r.body.received; tries = 0; renewed = false; continue; }
+          if (r.status === 409) {
+            const d = r.body.detail || {};
+            if (d.status === 'uploaded') { received = file.size; continue; }  // it finished; only the answer was lost
+            if (d.status) throw refused(r);                                    // finalizing, finalized: not ours to add to
+            received = typeof d.received === 'number' ? d.received : await where();
+            continue;
+          }
+          if (passing(r)) throw new Error(`delivery-kid answered ${r.status}`);
+          if (await unlocked(r)) continue;
+          throw refused(r);
+        } catch (e) {
+          if (e.fatal || cancelled) throw cancelled ? fatal('cancelled') : e;
+          // Nothing more is sent until delivery-kid has said how much arrived: asked after a wait that
+          // grows while it stays away (1 s, 2, 4, 8, then every 15).
+          for (;;) {
+            tries++;
+            says('waiting', received, { tries, why: e.message });
+            await wait(Math.min(15000, 1000 * 2 ** Math.min(tries - 1, 4)));
+            if (cancelled) throw fatal('cancelled');
+            try { received = await where(); break; } catch (e2) { if (e2.fatal) throw e2; }
+          }
+        }
+      }
+    }
+    return { run, where, cancel() { cancelled = true; live?.abort(); }, get received() { return received; } };
+  }
+  // </video-uploader>
+  const videoPanel = document.getElementById('videoPanel');
+  let videoSending = null;  // the upload under way, if any: one at a time
+  // Resolves after ms, or as soon as the connection may be back: the network says so, or the page is looked at again.
+  function videoWait(ms) {
+    return new Promise(resolve => {
+      const done = () => { clearTimeout(t); removeEventListener('online', done); document.removeEventListener('visibilitychange', seen); resolve(); };
+      const seen = () => { if (!document.hidden) done(); };
+      const t = setTimeout(done, ms);
+      addEventListener('online', done);
+      document.addEventListener('visibilitychange', seen);
+    });
+  }
+  // An upload that a reload, a crash or a closed tab cut short: delivery-kid still has what arrived, and
+  // this browser remembers which draft it was, so picking the same file again carries on from there.
+  const videoLeftOff = {
+    KEY: 'dk-sending',
+    get() { try { return JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch (e) { return null; } },
+    set(v) { try { v ? localStorage.setItem(this.KEY, JSON.stringify(v)) : localStorage.removeItem(this.KEY); } catch (e) {} },
+    fits(file) { const v = this.get(); return v && v.name === (file.name || 'video') && v.size === file.size ? v : null; },
+  };
+  async function videoTicket() {
+    const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/video/ticket/', { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+    const ticket = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(ticket.error || r.status);
+    return ticket;
+  }
+  function dkAsk(method, to, headers) {  // a small request to delivery-kid: {status, body}, or a rejection when it can't be reached
+    return fetch(to, { method, headers }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+  }
+  // As one request, as before: for a delivery-kid that doesn't take pieces yet.
+  function sendVideoWhole(file, ticket, draft, sending) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      sending.cancel = () => xhr.abort();
+      xhr.open('POST', ticket.url);
+      for (const [k, v] of Object.entries(ticket.headers || {})) xhr.setRequestHeader(k, v);
+      if (draft) xhr.setRequestHeader('X-Draft-Id', draft);
+      xhr.upload.addEventListener('progress', e => { if (e.lengthComputable) videoSays('sending', e.loaded); });
+      xhr.upload.addEventListener('load', () => videoSays('checking', file.size));
+      xhr.addEventListener('load', () => {
+        if (xhr.status !== 200) return reject(new Error(`delivery-kid said ${xhr.status}: ${dkError(xhr)}`));
+        try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(new Error("delivery-kid's answer wasn't readable")); }
+      });
+      xhr.addEventListener('error', () => reject(new Error('the connection dropped before it was all sent')));
+      xhr.addEventListener('abort', () => reject(new Error('cancelled')));
+      const form = new FormData();
+      form.append('files', file);
+      xhr.send(form);
+    });
+  }
   async function sendVideo(file) {
     if (videoSending) { showError('video: one at a time; this one waits until the last is in'); return; }
     const name = file.name || 'video';
-    videoSending = {};
-    videoSays(`Sending ${name} (${sizeOf(file.size)}) to delivery-kid…`, 0);
+    const sending = videoSending = { name, size: file.size, mood: current, state: 'sending', sent: 0, marks: [], began: Date.now() };
+    syncScreenWake();  // the screen stays on: a locked phone stops sending
+    renderVideoPanel();
+    let draft = null, headers = null, dk = null, mine = false;
     try {
-      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/video/ticket/', {
-        method: 'POST', headers: { 'X-CSRFToken': csrf() } });
-      const ticket = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(ticket.error || r.status);
-      const draft = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        videoSending.xhr = xhr;
-        xhr.open('POST', ticket.url);
-        for (const [k, v] of Object.entries(ticket.headers || {})) xhr.setRequestHeader(k, v);
-        xhr.upload.addEventListener('progress', e => {
-          if (e.lengthComputable) videoSays(`Sending ${name}: ${sizeOf(e.loaded)} of ${sizeOf(e.total)}`, Math.round(100 * e.loaded / e.total));
+      let ticket = await videoTicket();
+      headers = () => ticket.headers || {};
+      dk = ticket.url;
+      // Carrying on an upload this browser was cut off from, if delivery-kid still has it; else a new draft.
+      let from = 0, pieces = false;
+      const before = videoLeftOff.fits(file);
+      if (before) {
+        const r = await dkAsk('GET', `${ticket.url}/${before.draft}/upload`, headers()).catch(() => null);
+        if (r && r.status === 200 && r.body.resumable && ['awaiting_upload', 'uploading', 'upload_failed'].includes(r.body.status)
+            && (!r.body.name || (r.body.name === name && r.body.size === file.size))) {
+          draft = before.draft; from = r.body.received || 0; pieces = true;
+        }
+      }
+      if (!draft) {
+        const old = videoLeftOff.get();  // a different file, or one delivery-kid no longer has: its leftovers go
+        if (old) dkAsk('DELETE', `${ticket.url}/${old.draft}`, headers()).catch(() => {});
+        videoLeftOff.set(null);
+        const made = await dkAsk('POST', ticket.url + '/init', headers()).catch(() => null);
+        if (made && made.status === 200 && made.body.draft_id) {
+          draft = made.body.draft_id;
+          const r = await dkAsk('GET', `${ticket.url}/${draft}/upload`, headers()).catch(() => null);
+          pieces = !!(r && r.status === 200 && r.body.resumable);
+        } else if (made && made.status >= 400 && made.status < 500 && ![404, 405].includes(made.status)) {
+          throw new Error(`delivery-kid said ${made.status}: ${dkError(made)}`);
+        }
+      }
+      sending.draft = draft;
+      sending.pieces = pieces;
+      let answer;
+      if (pieces) {
+        videoLeftOff.set({ draft, name, size: file.size, mood: sending.mood, sent: from, at: Date.now() });
+        mine = true;
+        const up = videoUploader({
+          file, url: ticket.url, draft, headers, wait: videoWait, XHR: XMLHttpRequest,
+          renew: async () => { ticket = await videoTicket(); },
+          says: videoSays,
         });
-        xhr.upload.addEventListener('load', () => videoSays(`${name} is on delivery-kid; it's looking it over…`, null));
-        xhr.addEventListener('load', () => {
-          if (xhr.status !== 200) return reject(new Error(`delivery-kid said ${xhr.status}: ${dkError(xhr)}`));
-          try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(new Error("delivery-kid's answer wasn't readable")); }
-        });
-        xhr.addEventListener('error', () => reject(new Error('the connection dropped before it was all sent')));
-        xhr.addEventListener('abort', () => reject(new Error('cancelled')));
-        const form = new FormData();
-        form.append('files', file);
-        xhr.send(form);
-      });
-      // In: a card under the box, and PickiPedia only when they ask for it (Sky, 12 Oct:
-      // being sent there the moment it landed was too abrupt). Kept in this browser, so
-      // a reload or a send in between doesn't lose it.
+        sending.cancel = () => up.cancel();
+        answer = await up.run(from);
+      } else {
+        answer = await sendVideoWhole(file, ticket, draft, sending);
+      }
+      // In: its title, and PickiPedia only when they ask for it (Sky, 12 Oct: being sent there the
+      // moment it landed was too abrupt). Kept in this browser, so a reload or a send in between doesn't lose it.
       videoSending = null;
-      videoBar.hidden = true;
-      videoWaiting.add({ draft: draft.draft_id, name, title: name.replace(/\.[^.]+$/, ''), mood: current });
+      videoLeftOff.set(null);
+      syncScreenWake();
+      videoWaiting.add({ draft: answer.draft_id, name, size: file.size, title: name.replace(/\.[^.]+$/, ''), mood: sending.mood, at: Date.now() });
     } catch (e) {
       videoSending = null;
-      videoBar.hidden = true;
-      showError('video: ' + e.message);
+      syncScreenWake();
+      // Cancelled: their choice, so what went up is deleted and nothing sits on delivery-kid without a page.
+      if (e.message === 'cancelled' && draft && dk) dkAsk('DELETE', `${dk}/${draft}`, headers()).catch(() => {});
+      // In pieces, a dropped connection never ends up here (it waits and carries on): this is a refusal, or a
+      // cancel, and there is nothing left to carry on with.
+      if (mine) videoLeftOff.set(null);
+      renderVideoPanel();
+      if (e.message !== 'cancelled') showError('video: ' + e.message);
     }
+  }
+  // What the panel says while a video goes up: in place, many times a second, without redrawing it.
+  function videoSays(state, bytes, detail) {
+    const s = videoSending;
+    if (!s) return;
+    const now = Date.now();
+    if (s.state !== state) { s.state = state; s.marks = []; }
+    s.sent = bytes; s.detail = detail || null;
+    if (state === 'sending') {
+      s.marks.push([now, bytes]);
+      while (s.marks.length > 2 && now - s.marks[0][0] > 12000) s.marks.shift();
+      if (s.pieces && now - (s.noted || 0) > 4000) {  // for the card a reload would show
+        s.noted = now;
+        const left = videoLeftOff.get();
+        if (left && left.draft === s.draft) videoLeftOff.set({ ...left, sent: bytes });
+      }
+    }
+    const el = videoPanel.querySelector('.vp-item.sending');
+    if (!el) return renderVideoPanel();
+    const pct = s.size ? Math.min(100, Math.floor(100 * bytes / s.size)) : 0;
+    el.querySelector('.vp-bar').classList.toggle('wait', state === 'waiting');
+    el.querySelector('.vp-bar .fill').style.width = pct + '%';
+    el.querySelector('.vp-what').innerHTML = videoSendingSays(s, pct);
+    el.querySelector('.vp-note').textContent = videoSendingNote(s);
+  }
+  function timeLeft(seconds) {
+    if (!isFinite(seconds) || seconds <= 0) return '';
+    if (seconds < 50) return 'under a minute left';
+    const m = Math.round(seconds / 60);
+    return m < 60 ? `about ${m} min left` : `about ${Math.floor(m / 60)} h ${m % 60} min left`;
+  }
+  function videoSendingSays(s, pct) {
+    if (s.state === 'checking') return `<b>100%</b> · all of it is on delivery-kid; it's looking it over…`;
+    const of = `${esc(sizeOf(s.sent))} of ${esc(sizeOf(s.size))}`;
+    if (s.state === 'waiting') {
+      // Whose side it's on, as far as can be told: this device's connection, or delivery-kid not answering.
+      const why = navigator.onLine === false ? 'no connection' : /answered 5\d\d/.test(s.detail?.why || '') ? "delivery-kid isn't answering" : 'the connection dropped';
+      return `<b>${pct}%</b> · ${of} · <span class="vp-warn">${why}: waiting to carry on</span>`;
+    }
+    let rate = '';
+    if (s.marks.length > 1) {
+      const [t0, b0] = s.marks[0], [t1, b1] = s.marks[s.marks.length - 1];
+      const perSec = t1 > t0 ? (b1 - b0) / ((t1 - t0) / 1000) : 0;
+      if (perSec > 0) rate = ` · ${(perSec / 1e6).toFixed(perSec < 1e6 ? 2 : 1)} MB/s` + (timeLeft((s.size - s.sent) / perSec) ? ` · ${timeLeft((s.size - s.sent) / perSec)}` : '');
+    }
+    return `<b>${pct}%</b> · ${of}${rate}`;
+  }
+  function videoSendingNote(s) {
+    if (s.state === 'checking') return '';
+    if (!s.pieces) return 'Keep this page open and the screen on until it is in.';
+    if (s.state === 'waiting') return `${sizeOf(s.sent)} is safe on delivery-kid. It carries on by itself, from there.`;
+    return 'Keep this page open. If the connection drops, it carries on from where it stopped.';
   }
   // How each 🎬 line's video is coming along on delivery-kid (services/delivery_kid.progress): viewing
   // only, finalizing stays on its ReleaseDraft page. Asked often while it encodes, now and then while
@@ -8877,53 +9128,196 @@
       return ` · ${esc(p.status || '')}`;
     },
   };
-  // Videos on delivery-kid still waiting for their ReleaseDraft page: a card each, for this Mood.
+  // A video of yours from this browser, after it's on delivery-kid: followed in the panel until its Release
+  // page exists. Kept per Mood, in this browser.
   var videoWaiting = {  // var: the thread may render a 🎬 line, or switch Moods, before this line has run
     KEY: 'dk-waiting',
-    all() { try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch (e) { return []; } },
-    save(list) { try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {} renderVideoCards(); },
+    all() {
+      try {
+        const now = Date.now();  // a finished one is forgotten after a day; anything after two weeks
+        return JSON.parse(localStorage.getItem(this.KEY) || '[]')
+          .filter(w => !(w.doneAt && now - w.doneAt > 864e5) && !(w.at && now - w.at > 14 * 864e5));
+      } catch (e) { return []; }
+    },
+    save(list) { try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {} renderVideoPanel(); },
     add(v) { this.save(this.all().filter(w => w.draft !== v.draft).concat([v])); },
     drop(draft) { if (this.all().some(w => w.draft === draft)) this.save(this.all().filter(w => w.draft !== draft)); },
+    // Its draft page is made (its 🎬 line has come): from here it's followed, not titled.
+    paged(draft, page, title) {
+      const list = this.all(), mine = list.find(w => w.draft === draft);
+      if (!mine || mine.page) return;
+      Object.assign(mine, { page: page || '', title: title || mine.title });
+      this.save(list);
+    },
+    // What delivery-kid says of it now. Redrawn only when that changes.
+    heard(draft, p) {
+      const list = this.all(), mine = list.find(w => w.draft === draft);
+      if (!mine) return;
+      const was = JSON.stringify(mine.p || null);
+      mine.p = { status: p.status, message: p.message || '', progress: typeof p.progress === 'number' ? p.progress : null,
+                 queue_ahead: p.queue_ahead || 0, release: p.release || '' };
+      if (['finalized', 'gone'].includes(p.status) && !mine.doneAt) mine.doneAt = Date.now();
+      if (JSON.stringify(mine.p) === was) return;
+      try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {}
+      renderVideoPanel();
+    },
+    retitle(draft, title) {  // typed, not yet sent: kept, without redrawing the box being typed in
+      const list = this.all(), mine = list.find(w => w.draft === draft);
+      if (mine) { mine.title = title; try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {} }
+    },
   };
-  function renderVideoCards() {
-    const box = document.getElementById('videoCards');
-    if (!box || !videoWaiting) return;
-    box.innerHTML = '';
-    for (const v of videoWaiting.all().filter(w => w.mood === current)) {
-      const card = document.createElement('div');
-      card.className = 'vcard';
-      card.innerHTML = `🎬 <span class="name"></span> is on delivery-kid. Its title: <input type="text" maxlength="200">`
-        + `<button type="button" class="make" title="Or press Send, which then opens the draft page">Make its draft page on PickiPedia</button>`
-        + `<button type="button" class="later" title="Forget this card. The video stays on delivery-kid, without a draft page.">✕</button>`;
-      card.querySelector('.name').textContent = v.name;
-      const title = card.querySelector('input');
-      title.value = v.title || '';
-      card.querySelector('.make').addEventListener('click', async ev => {
-        ev.target.disabled = true;
-        ev.target.textContent = 'Off to PickiPedia…';
-        try {
-          const r = await fetch('/api/moods/' + encodeURIComponent(v.mood) + '/video/draft/', { method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-            body: JSON.stringify({ draft: v.draft, title: title.value, then: ev.target.dataset.then }) });
-          const body = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(body.error || r.status);
-          saveDraft();
-          location.href = body.go;  // back here once the page is written; its 🎬 line clears this card
-        } catch (e) {
-          ev.target.disabled = false;
-          ev.target.textContent = 'Make its draft page on PickiPedia';
-          showError('video: ' + e.message);
-        }
-      });
-      card.querySelector('.later').addEventListener('click', () => {
-        if (confirm(`Forget ${v.name}? It stays on delivery-kid, but without a draft page nobody can finalize it from there.`)) videoWaiting.drop(v.draft);
-      });
-      box.appendChild(card);
-    }
+  // The five steps a video takes, and which one it's on: 0 sending, 1 its draft page, 2 finalizing (a
+  // person's press, on PickiPedia), 3 encoding and pinning, 4 its Release page.
+  const VIDEO_STEPS = ['Send', 'Draft page', 'Finalize', 'Encode', 'Release'];
+  function videoSteps(now, bad) {
+    return '<ol class="vp-steps">' + VIDEO_STEPS.map((label, i) =>
+      `<li class="${i < now ? 'done' : i === now ? (bad ? 'now bad' : 'now') : ''}">${label}</li>`).join('') + '</ol>';
   }
-  renderVideoCards();
-  document.getElementById('videoCancel').addEventListener('click', () => videoSending?.xhr?.abort());
-  // Leaving mid-upload loses it: say so first.
+  function videoItemHtml(v) {
+    const p = v.p || {}, head = (extra = '') => `<div class="vp-head"><span class="vp-name">🎬 ${esc(v.title || v.name)}</span>`
+      + (v.size ? `<span class="vp-size">${esc(sizeOf(v.size))}</span>` : '') + extra + `</div>`;
+    const x = title => `<button type="button" class="vp-x" title="${esc(title)}" aria-label="${esc(title)}">✕</button>`;
+    const page = v.page ? `<a class="vp-go" href="${esc(v.page)}" target="_blank" rel="noopener">Open its draft page</a>` : '';
+    if (!v.page) {
+      return head(x('Forget this one. The video stays on delivery-kid, without a draft page.')) + videoSteps(1)
+        + `<div class="vp-what"><b>It's on delivery-kid.</b> Next: its draft page on PickiPedia.</div>`
+        + `<div class="vp-act"><label>Its title: <input type="text" maxlength="200" value="${esc(v.title || '')}"></label>`
+        + `<button type="button" class="make" title="Or press Send, which then opens the draft page">Make its draft page</button></div>`;
+    }
+    if (p.status === 'finalized') {
+      return head(x('Done: take it off this panel')) + videoSteps(5)
+        + `<div class="vp-what"><b>Pinned.</b> ` + (p.release ? `<a class="vp-go" href="${esc(p.release)}" target="_blank" rel="noopener">Its Release page</a>` : 'Its Release page is on its way.') + `</div>`
+        + `<div class="vp-note">PickiPedia's bot writes the Release page a minute or two after the pin.</div>`;
+    }
+    if (p.status === 'finalizing') {
+      const waiting = p.queue_ahead ? `Queued: ${Number(p.queue_ahead)} ahead of it.` : esc(p.message || 'Encoding…');
+      const pct = typeof p.progress === 'number' && !p.queue_ahead ? Math.max(0, Math.min(100, Math.round(p.progress))) : null;
+      return head() + videoSteps(3)
+        + `<div class="vp-bar${pct == null ? ' wait' : ''}"><span class="fill" style="width:${pct == null ? 100 : pct}%"></span></div>`
+        + `<div class="vp-what">${pct == null ? '' : `<b>${pct}%</b> · `}${waiting}</div>`
+        + `<div class="vp-note">delivery-kid does this by itself: this page can be closed.</div>`;
+    }
+    if (p.status === 'finalize_failed') {
+      return head(x('Take it off this panel')) + videoSteps(3, true)
+        + `<div class="vp-what"><span class="vp-warn"><b>Finalizing failed.</b></span> ${esc(p.message || '')}</div><div class="vp-act">${page}</div>`;
+    }
+    if (p.status === 'gone') {
+      return head(x('Take it off this panel')) + videoSteps(2, true)
+        + `<div class="vp-what">Its files were deleted from delivery-kid (abandoned).</div>`;
+    }
+    return head(x('Take it off this panel. Its draft page stays.')) + videoSteps(2)
+      + `<div class="vp-what"><b>Its draft page is made.</b> Next: finalize it there, which starts the encoding.</div><div class="vp-act">${page}</div>`;
+  }
+  function renderVideoPanel() {
+    if (!videoWaiting || !videoPanel) return;  // videoWaiting first: it's the var, and the rest may not have run yet
+    const items = [];
+    const s = videoSending;
+    if (s && s.mood === current) {
+      const pct = s.size ? Math.min(100, Math.floor(100 * (s.sent || 0) / s.size)) : 0;
+      items.push({ cls: 'sending', html: `<div class="vp-head"><span class="vp-name">🎬 ${esc(s.name)}</span><span class="vp-size">${esc(sizeOf(s.size))}</span>`
+        + `<button type="button" class="vp-cancel">cancel</button></div>` + videoSteps(0)
+        + `<div class="vp-bar${s.state === 'waiting' ? ' wait' : ''}"><span class="fill" style="width:${pct}%"></span></div>`
+        + `<div class="vp-what">${videoSendingSays(s, pct)}</div><div class="vp-note">${esc(videoSendingNote(s))}</div>` });
+    }
+    const left = !s && videoLeftOff.get();
+    if (left && left.mood === current) {
+      const pct = left.size ? Math.min(100, Math.floor(100 * (left.sent || 0) / left.size)) : 0;
+      items.push({ cls: 'leftoff', html: `<div class="vp-head"><span class="vp-name">🎬 ${esc(left.name)}</span><span class="vp-size">${esc(sizeOf(left.size))}</span>`
+        + `<button type="button" class="vp-x" title="Don't carry on: delete what arrived" aria-label="Don't carry on: delete what arrived">✕</button></div>` + videoSteps(0)
+        + `<div class="vp-bar wait"><span class="fill" style="width:${pct}%"></span></div>`
+        + `<div class="vp-what"><b>Stopped at about ${pct}%.</b> What arrived is kept on delivery-kid.</div>`
+        + `<div class="vp-act"><button type="button" class="vp-again">Add the same file again to carry on</button></div>` });
+    }
+    for (const v of videoWaiting.all().filter(w => w.mood === current)) items.push({ cls: 'waiting', draft: v.draft, html: videoItemHtml(v) });
+    // Typing a title isn't to be interrupted by a redraw that changes nothing.
+    const drawn = JSON.stringify(items.map(i => [i.cls, i.draft, i.cls === 'sending' ? '' : i.html]));
+    videoPanel.hidden = !items.length;
+    if (videoPanel.dataset.drawn === drawn) return;
+    videoPanel.dataset.drawn = drawn;
+    videoPanel.innerHTML = '';
+    items.forEach((item, n) => {
+      const el = document.createElement('div');
+      el.className = `vp-item ${item.cls}${n === 0 ? ' first' : ''}`;
+      if (item.draft) el.dataset.draft = item.draft;
+      el.innerHTML = item.html;
+      videoPanel.appendChild(el);
+    });
+    videoFollow.look();
+  }
+  videoPanel.addEventListener('input', e => {
+    const item = e.target.closest('.vp-item.waiting');
+    if (item && e.target.matches('input[type=text]')) videoWaiting.retitle(item.dataset.draft, e.target.value);
+  });
+  videoPanel.addEventListener('click', async e => {
+    const item = e.target.closest('.vp-item');
+    if (!item) return;
+    if (e.target.closest('.vp-cancel')) {
+      if (confirm(`Stop sending ${videoSending?.name || 'it'}? What has gone up is deleted.`)) videoSending?.cancel?.();
+      return;
+    }
+    if (e.target.closest('.vp-again')) { fileInput.click(); return; }
+    const v = videoWaiting.all().find(w => w.draft === item.dataset.draft);
+    if (e.target.closest('.vp-x')) {
+      if (item.classList.contains('leftoff')) {
+        const left = videoLeftOff.get();
+        if (!left || !confirm(`Don't carry on with ${left.name}? What arrived is deleted from delivery-kid.`)) return;
+        videoLeftOff.set(null);
+        renderVideoPanel();
+        try { const t = await videoTicket(); await dkAsk('DELETE', `${t.url}/${left.draft}`, t.headers || {}); } catch (err) {}
+        return;
+      }
+      if (v && !v.page && !confirm(`Forget ${v.name}? It stays on delivery-kid, but without a draft page nobody can finalize it from there.`)) return;
+      if (v) videoWaiting.drop(v.draft);
+      return;
+    }
+    const make = e.target.closest('.make');
+    if (make && v) {
+      make.disabled = true;
+      make.textContent = 'Off to PickiPedia…';
+      try {
+        const r = await fetch('/api/moods/' + encodeURIComponent(v.mood) + '/video/draft/', { method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+          body: JSON.stringify({ draft: v.draft, title: item.querySelector('input').value, then: make.dataset.then }) });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error || r.status);
+        saveDraft();
+        location.href = body.go;  // back here once the page is written; its 🎬 line moves this on a step
+      } catch (err) {
+        make.disabled = false;
+        make.textContent = 'Make its draft page';
+        showError('video: ' + err.message);
+      }
+    }
+  });
+  // Asks how each of this browser's videos with a draft page is coming along, for the panel: often while
+  // one encodes, now and then while one waits for its finalize, and not at all while the page is hidden.
+  const videoFollow = {
+    timer: null, asking: false,
+    due() { return videoWaiting.all().filter(w => w.mood === current && w.page && !['finalized', 'gone', 'finalize_failed'].includes(w.p?.status)); },
+    look() {
+      if (this.timer || this.asking || document.hidden || !this.due().length) return;
+      this.timer = setTimeout(() => this.ask(), 50);
+    },
+    async ask() {
+      this.timer = null;
+      this.asking = true;
+      let soon = false;
+      for (const v of this.due()) {
+        try {
+          const r = await fetch('/api/moods/' + encodeURIComponent(v.mood) + '/video/' + encodeURIComponent(v.draft) + '/progress/');
+          if (!r.ok) continue;
+          const p = await r.json();
+          videoWaiting.heard(v.draft, p);
+          if (p.status === 'finalizing') soon = true;
+        } catch (e) {}
+      }
+      this.asking = false;
+      if (this.due().length && !document.hidden) this.timer = setTimeout(() => this.ask(), soon ? 5000 : 30000);
+    },
+  };
+  document.addEventListener('visibilitychange', () => videoFollow.look());
+  renderVideoPanel();
+  // Leaving mid-upload stops it: say so first. (In pieces, what arrived is kept; the same file carries on.)
   window.addEventListener('beforeunload', e => { if (videoSending) { e.preventDefault(); e.returnValue = ''; } });
   if (dkUpload) {
     // video/* alone isn't enough everywhere: Sky's Mac greyed out videos in the
@@ -9614,7 +10008,7 @@
   // zeroes the microphone stream mid-sentence (Justin, #connectome, 16 Nov: cut to 0.0 at 0:13.3).
   let wakeSentinel = null, wakeWanted = false;
   async function syncScreenWake() {
-    const want = !!(readRecording || document.body.classList.contains('voice-mode'));
+    const want = !!(readRecording || document.body.classList.contains('voice-mode') || videoSending);  // a locked phone stops sending a video
     wakeWanted = want;
     if (!want) {
       if (wakeSentinel) { const s = wakeSentinel; wakeSentinel = null; try { await s.release(); } catch (e) {} }
@@ -10513,9 +10907,9 @@
       return;
     }
     const text = [words, ...sentTray.map(a => a.markdown)].filter(Boolean).join('\n');
-    // A video waiting as a card: Send makes its draft page too, as its button does, and then
+    // A video waiting for its title in the panel: Send makes its draft page too, as its button does, and then
     // opens that page (Sky, 15 Oct); after what's typed is sent, since it leaves for PickiPedia.
-    const makeDraft = document.querySelector('#videoCards .vcard .make:not(:disabled)');
+    const makeDraft = document.querySelector('#videoPanel .make:not(:disabled)');
     const sendOn = () => { makeDraft.dataset.then = 'page'; makeDraft.click(); delete makeDraft.dataset.then; };
     if (!text && makeDraft) { sendOn(); return; }
     if (!text || !current) return;
