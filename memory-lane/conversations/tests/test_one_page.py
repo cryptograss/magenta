@@ -56,3 +56,16 @@ class OnePageTest(TestCase):
         # Under the section, not over it (Justin, 12 Nov): at the bottom of the page, its line on top.
         self.assertLess(html.index('id="sectionFrames"'), html.index('id="sectionActivity"'))
         self.assertIn('font-size: 12px; color: var(--muted); flex: none; border-top: 1px solid var(--line);', html)
+
+
+class MoodFolderLinkTest(TestCase):
+    """The Mood bar links the Mood's folder as a gallery on hunter (Justin, #uploads-and-embeds, 19 Nov); a
+    thread's is the folder of the Mood it came from, as mood_poller.mood_dir puts its sessions there."""
+
+    def test_the_bar_links_the_folder_of_the_root_mood(self):
+        from pathlib import Path
+        page = (Path(__file__).resolve().parents[1] / 'templates' / 'conversations' / 'moods.html').read_text()
+        self.assertIn('function moodFolder(m)', page)
+        self.assertIn('https://folders.hunter.cryptograss.live/', page)
+        self.assertIn('href="${moodFolder(m)}"', page)
+        self.assertIn('root.thread_of', page)
