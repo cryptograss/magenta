@@ -171,9 +171,9 @@ const boundaryTurn = makeTurn(
 foldMemo(boundaryTurn);
 const boundaryPreview = boundaryTurn.childNodes[0].childNodes.find(c => c.classList.contains('memo-preview'));
 
-// 4. Inline link ending right at the cut: ellipsis sits outside <a>, not inside link text.
+// 4. Inline link ending right at the 200-char cut: ellipsis sits outside <a>, not inside link text.
 const linkEndTurn = makeTurn(
-  el('p', '', 'x'.repeat(180) + ' ', el('a', 'wikilink', 'PickiPedia'), ' and more words after the link so total exceeds 220 chars easily indeed.')
+  el('p', '', 'x'.repeat(189) + ' ', el('a', 'wikilink', 'PickiPedia'), ' and more words after the link so total exceeds 220 chars easily indeed.')
 );
 foldMemo(linkEndTurn);
 const linkPreviewP = linkEndTurn.childNodes[0].childNodes.find(c => c.classList.contains('memo-preview')).childNodes[0];
