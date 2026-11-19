@@ -1626,10 +1626,15 @@
   }
   .turn .body audio { display: block; width: 100%; max-width: 420px; height: 36px; margin: 4px 0; }
   .turn .body .memo { font-size: 12.5px; color: var(--muted); }
-  /* A person's voice memo: the player, big, and its words folded under "Transcript" (Justin, 30 Oct). */
+  /* A person's voice memo: the player, big, the first ~200 characters in view, and any longer transcript folded
+     under "Full transcript" (Justin, 30 Oct; 19 Nov). */
   .turn .body.memoed audio { max-width: 520px; height: 48px; margin: 6px 0 2px; }
+  .turn .body .memo-preview { margin: 4px 0 2px; }
+  .turn .body .memo-preview > :last-child { margin-bottom: 0; }
+  .turn .body.memoed:has(> details.transcript[open]) > .memo-preview { display: none; }
   .turn .body details.transcript { margin: 2px 0 4px; }
   .turn .body details.transcript > summary { cursor: pointer; color: var(--accent); font-size: 13px; list-style: none; user-select: none; }
+  .turn .body details.transcript[open] > summary { margin-bottom: 4px; }
   .turn .body details.transcript > summary::-webkit-details-marker { display: none; }
   .turn .body details.transcript > summary::before { content: "▸"; display: inline-block; width: 1em; transition: transform .15s; }
   .turn .body details.transcript[open] > summary::before { transform: rotate(90deg); }
@@ -4023,22 +4028,106 @@
     a.replaceWith(box);
   });
 
-  // A person's voice memo: its player stands out, and what was said is folded under "Transcript", opened by the
-  // word or the chevron (Justin, 30 Oct: "these long voice memos are better left hidden"). What came before the
-  // player (words typed with it) stays in view; everything after it is the transcript.
+  // A person's voice memo: its player stands out, the first ~200 characters of what was said stay in view, and a
+  // longer transcript folds under "Full transcript", opened by the label or the chevron (Justin, 30 Oct; 19 Nov).
+  // What came before the player (words typed with it) stays in view; short memos stay wholly unfolded.
+  const MEMO_PREVIEW_CHARS = 200;
+  const MEMO_UNFOLDED_MAX = 220;
+  function trimMemoNode(node, budget) {
+    if (budget.left <= 0) { budget.cut = true; return null; }
+    if (node.nodeType === Node.TEXT_NODE) {
+      const raw = node.nodeValue || '';
+      if (!raw) return null;
+      if (raw.length <= budget.left) {
+        budget.left -= raw.length;
+        budget.seen += raw.length;
+        return document.createTextNode(raw);
+      }
+      const head = raw.slice(0, budget.left + 1);
+      const ws = head.search(/\s+\S*$/);
+      if (ws <= 0 && budget.seen > 0) {
+        budget.left = 0;
+        budget.cut = true;
+        return null;
+      }
+      const slice = ws >= Math.floor(budget.left * 0.6) ? head.slice(0, ws) : raw.slice(0, budget.left);
+      budget.left = 0;
+      budget.cut = true;
+      budget.seen += slice.length;
+      return document.createTextNode(slice);
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    const tag = node.tagName;
+    if (tag === 'IMG' || tag === 'VIDEO' || tag === 'AUDIO' || node.classList.contains('embed') || node.classList.contains('yarnbox')) {
+      budget.cut = true;
+      return null;
+    }
+    if (tag === 'A' || tag === 'CODE' || node.classList.contains('mention')) {
+      const len = (node.textContent || '').length;
+      if (len > budget.left && budget.seen > 0) {
+        budget.left = 0;
+        budget.cut = true;
+        return null;
+      }
+      budget.left = Math.max(0, budget.left - len);
+      budget.seen += len;
+      return node.cloneNode(true);
+    }
+    const clone = node.cloneNode(false);
+    for (const child of node.childNodes) {
+      if (budget.left <= 0) { budget.cut = true; break; }
+      const kept = trimMemoNode(child, budget);
+      if (kept) clone.appendChild(kept);
+    }
+    return clone.childNodes.length ? clone : null;
+  }
+  function addMemoEllipsis(root) {
+    let last = root;
+    while (last && last.lastChild) {
+      if (last.nodeType === Node.ELEMENT_NODE
+          && (last.tagName === 'A' || last.tagName === 'CODE' || last.classList.contains('mention'))) break;
+      last = last.lastChild;
+    }
+    if (!last || last === root) return;
+    if (last.nodeType === Node.TEXT_NODE) {
+      last.nodeValue = (last.nodeValue || '').replace(/[\s,;:.!-]+$/, '') + '…';
+    } else if (last.parentNode) {
+      last.parentNode.appendChild(document.createTextNode('…'));
+    }
+  }
   function foldMemo(el) {
     const body = el.querySelector(':scope > .body'), audio = body && body.querySelector(':scope > p > audio');
     if (!audio || body.querySelector(':scope > details.transcript')) return;
-    const rest = [];
-    for (let n = audio.parentElement.nextElementSibling; n; n = n.nextElementSibling) rest.push(n);
+    const rest = [], tailMedia = [];
+    for (let n = audio.parentElement.nextElementSibling; n; n = n.nextElementSibling) {
+      if (n.querySelector && n.querySelector('img, video, audio, .embed, .yarnbox') && !(n.textContent || '').trim()) tailMedia.push(n);
+      else rest.push(n);
+    }
     body.classList.add('memoed');
     if (!rest.length) return;
-    const words = rest.map(n => n.textContent).join(' ').trim().split(/\s+/).filter(Boolean).length;
+    const flat = rest.map(n => n.textContent).join(' ').replace(/\s+/g, ' ').trim();
+    if (flat.length <= MEMO_UNFOLDED_MAX) return;
+    const budget = { left: MEMO_PREVIEW_CHARS, seen: 0, cut: false };
+    const preview = document.createElement('div');
+    preview.className = 'memo-preview';
+    for (const n of rest) {
+      if (budget.left <= 0) { budget.cut = true; break; }
+      if (preview.childNodes.length) budget.left -= 1;
+      const kept = trimMemoNode(n, budget);
+      if (kept) preview.appendChild(kept);
+    }
+    if (!budget.cut) return;
+    const words = flat.split(/\s+/).filter(Boolean).length;
+    if (preview.childNodes.length) {
+      addMemoEllipsis(preview);
+      body.appendChild(preview);
+    }
     const fold = document.createElement('details');
     fold.className = 'transcript';
-    fold.innerHTML = `<summary>Transcript <small>· ${words.toLocaleString()} word${words === 1 ? '' : 's'}</small></summary>`;
+    fold.innerHTML = `<summary>Full transcript <small>· ${words.toLocaleString()} word${words === 1 ? '' : 's'}</small></summary>`;
     rest.forEach(n => fold.appendChild(n));
     body.appendChild(fold);
+    tailMedia.forEach(n => body.appendChild(n));
   }
   function turnEl(t, isNew) {
     const el = document.createElement('article');
@@ -9239,8 +9328,9 @@
         clearInterval(look);
         place()?.remove();
         if (voicePending && voicePending.sha === sha) {
-          const bodyEl = arrived.closest('.turn')?.querySelector('.body');
-          const clean = bodyEl ? (bodyEl.innerText || '').replace(/🎙\s*\[voice memo[^\]]*\]\([^)]*\)/, '').trim() : '';
+          const turnNode = arrived.closest('.turn');
+          const rawText = (turnNode && turnNode._text) || (turnNode?.querySelector('.body')?.innerText || '');
+          const clean = rawText.replace(/🎙\s*\[voice memo[^\]]*\]\([^)]*\)/, '').trim();
           const s = voicePending.seconds ? ` · ${clock(voicePending.seconds)}` : '';
           readLastDone = { who: viewer, mood: current, text: clean ? `🎙 voice memo${s}\n\n${clean}` : `🎙 voice memo${s}`, whenLabel: 'sent' };
           voicePending = null;
