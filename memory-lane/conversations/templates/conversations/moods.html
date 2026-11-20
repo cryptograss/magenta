@@ -3009,6 +3009,14 @@
   // else; ↩ handed back to its Mood; ⑂ forked.
   const threadMark = m => !m.forked_at || m.compacted ? '🌱' : m.incorporated ? '↩' : '⑂';
   // A thread's line: where it was opened from, forked or fresh, and closing it (archiving); a Mood's threads.
+  // A Mood's folder as a gallery on hunter (hunter-mood-folders, maybelle-config). A thread works in the
+  // folder of the Mood it came from, threads of threads too (mood_poller.mood_dir), so that's the one shown.
+  function moodFolder(m) {
+    let root = m;
+    for (let n = 0; root && root.thread_of && n < 50; n++) root = moods.find(x => x.slug === root.thread_of) || { slug: root.thread_of };
+    return `https://folders.hunter.cryptograss.live/${encodeURIComponent((root || m).slug)}/`;
+  }
+
   function threadLine(m) {
     const link = slug => `<a href="/moods/${encodeURIComponent(slug)}/">#${esc(slug)}</a>`;
     const parts = [];
@@ -3046,7 +3054,7 @@
         <button type="button" class="mtoggle" aria-expanded="${headOpen}" aria-label="The Mood's description, threads and people">${headOpen ? '▾' : '▸'}</button>
         <h1>${esc(m.title)}</h1>
         <span class="mdesc">${m.thread_of ? `${threadMark(m)} of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
-        <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}${m.thread_of && keyHolder ? `<button type="button" class="closethread" title="${isArchived(m.slug) ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${isArchived(m.slug) ? 'reopen' : 'close'}</button>` : ''}</span>
+        <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a><a href="${moodFolder(m)}" target="_blank" rel="noopener" title="The pictures, video, sound and PDFs left in this Mood's folder on hunter">folder</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}${m.thread_of && keyHolder ? `<button type="button" class="closethread" title="${isArchived(m.slug) ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${isArchived(m.slug) ? 'reopen' : 'close'}</button>` : ''}</span>
       </div>
       <div class="mbody"${headOpen ? '' : ' hidden'}>
         ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
