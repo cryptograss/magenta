@@ -17,8 +17,8 @@ checklist with real links (PickiPediaContent's <todo> tag); a list inside
     </todo>
 
 `task` is the one thing an item needs; `who` (a name, or several),
-`kind` (review, merge, deploy, edit, or anything), `link`, `note` and
-`done` are as they're useful. The page shows it beside the Mood
+`kind` (review, merge, deploy, edit, or anything), `link`, `note`,
+`priority` (1, the most needed, to 5) and `done` are as they're useful. The page shows it beside the Mood
 (views_moods.api_mood_todo); agents keep it current -- their instructions
 point them to it (Cryptograss:Moods/Instructions) -- adding what they leave someone to do,
 and ticking off what's been done.
@@ -81,6 +81,11 @@ def parse(text):
         items.append({'task': str(raw['task']).strip()[:500], 'who': [str(w)[:60] for w in who][:10],
                       'kind': str(raw.get('kind') or '').strip()[:40], 'link': str(raw.get('link') or '').strip()[:500],
                       'note': str(raw.get('note') or '').strip()[:1000], 'done': bool(raw.get('done'))})
+        # How much it's needed, 1 (the most) to 5 (R.J., 13 Nov: "priority ranges 1 - 5"): what's at a glance
+        # (services/glance.py) puts first. Only on an item that says so.
+        priority = raw.get('priority')
+        if isinstance(priority, int) and not isinstance(priority, bool) and 1 <= priority <= 5:
+            items[-1]['priority'] = priority
     return items
 
 

@@ -1423,6 +1423,36 @@ def api_wiki_preview(request):
 
 
 @require_GET
+def api_glance(request):
+    """At a glance (services/glance.py; R.J., 13 Nov): who's on what, what needs people, and what each person
+    means to do. ?window=day (7,200 blocks) or week. The same for everyone: the page puts its reader's own first."""
+    from .services import glance
+    return JsonResponse(glance.glance(request.GET.get('window') or 'day'))
+
+
+@require_POST
+def api_glance_intention(request):
+    """{"text"}: what you mean to do today or this week, for the pane (services/glance.py). Your own only, from
+    any device you're signed in on; empty clears it."""
+    from .services import glance, settings as knobs
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None or not device.entity.is_biological_human:
+        return JsonResponse({'error': 'sign in to say what you mean to do'}, status=401)
+    try:
+        text = json.loads(request.body).get('text')
+    except (ValueError, AttributeError):
+        return JsonResponse({'error': 'expected {"text": ...}'}, status=400)
+    try:
+        row = glance.intend(device.entity, text if text is not None else '')
+    except knobs.Invalid as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'name': device.entity_id, 'text': row.value, 'at': row.created_at.isoformat()})
+
+
+@require_GET
 @require_GET
 def api_mood_humans(request, slug):
     """The people pane under the to-do list (services/humans.py): who spoke here lately, then everyone else."""

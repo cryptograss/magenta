@@ -1804,13 +1804,81 @@
   #humans li time { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
   #humans hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; width: 100%; }
   #todoDone:not([data-n]) { display: none; }
+  /* At a glance (services/glance.py; R.J., 13 Nov): the pane's other leaf. Who's on what, what needs people. */
+  #paneTabs { display: flex; flex-direction: column; }
+  #todo.open #paneTabs { display: none; }
+  #glanceTab { writing-mode: vertical-rl; display: flex; gap: 6px; align-items: center; width: 28px; padding: 14px 0;
+               border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit;
+               font-size: 12.5px; letter-spacing: .04em; cursor: pointer; }
+  #glanceTab:hover { color: var(--accent); }
+  #todo.nolist #todoTab, #todo.nolist #toTodo { display: none; }
+  #todo.nolist #glanceTab { border-top: 0; }
+  #glanceBody { display: none; width: 300px; overflow-y: auto; padding: 12px 14px; font-size: 13.5px; }
+  #todo.open.glance #todoBody { display: none; }
+  #todo.open.glance #glanceBody { display: block; }
+  #glanceBody .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  #glanceBody .head b { flex: 1; }
+  #glanceBody .head a, #todoBody .head a#toGlance { color: var(--muted); font-size: 12px; cursor: pointer; }
+  #glanceBody .head button { border: 0; background: none; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; padding: 0 2px; }
+  #glanceBody .head button[aria-pressed="true"] { color: var(--accent); font-weight: 600; }
+  #glanceBody .head button#glanceClose { font-size: 14px; }
+  #glanceBody h4 { margin: 14px 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+                   color: var(--muted); display: flex; gap: 6px; align-items: baseline; }
+  #glanceBody h4 small { font-weight: 400; letter-spacing: 0; text-transform: none; margin-left: auto; }
+  #glanceBody h4 small a { color: inherit; }
+  #glanceBody ul { list-style: none; margin: 0; padding: 0; }
+  #glanceBody .none { color: var(--muted); font-size: 12.5px; }
+  #glanceBody .gbar { display: flex; height: 8px; width: var(--w, 100%); min-width: 6px; border-radius: 4px; overflow: hidden; background: var(--line); }
+  #glanceBody .gbar i { display: block; min-width: 2px; }
+  #glanceBody .gbar.all { height: 12px; }
+  #glanceWho { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 6px; font-size: 12.5px; }
+  #glanceWho span { white-space: nowrap; }
+  #glanceBody .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: var(--c); }
+  #glanceBody .cnt { color: var(--muted); font-size: 11.5px; margin-left: 3px; }
+  #glanceBody button.person { font: inherit; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink); }
+  #glanceBody button.person:hover { text-decoration: underline; }
+  #glanceProjects li { padding: 6px 0; border-top: 1px solid var(--line); }
+  #glanceProjects li .top { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+  #glanceProjects li .top a { color: var(--ink); font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #glanceProjects li .top a:hover { text-decoration: underline; }
+  #glanceProjects li .top time { margin-left: auto; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+  #glanceProjects li .on { margin-top: 4px; font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 0 8px; }
+  #glanceProjects li .open { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  #glanceProjects li .open b { color: var(--accent); }
+  #glanceProjects li .open a { color: inherit; }
+  #glanceBody .head a#toTodo { margin-left: 4px; padding-left: 10px; border-left: 1px solid var(--line); }
+  #glanceIntentions li { padding: 4px 0; border-top: 1px solid var(--line); }
+  #glanceIntentions li time { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+  #glanceIntentions li p { margin: 1px 0 0; overflow-wrap: anywhere; }
+  #glanceIntend { margin-top: 6px; display: flex; gap: 6px; align-items: flex-end; }
+  #glanceIntend textarea { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 5px 7px; border: 1px solid var(--line);
+                           border-radius: 6px; background: var(--bg); color: var(--ink); resize: vertical; }
+  #glanceIntend button, #glanceHave button { font: inherit; font-size: 12px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 12px;
+                                             background: none; color: var(--ink); cursor: pointer; }
+  #glanceIntend button:hover, #glanceHave button:hover { border-color: var(--accent); color: var(--accent); }
+  #glanceIntendSaid { color: var(--muted); font-size: 11.5px; min-height: 1em; }
+  #glanceHave { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 2px 0 8px; font-size: 12.5px; color: var(--muted); }
+  #glanceNeeds li { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+  #glanceNeeds li > div { flex: 1; min-width: 0; }
+  #glanceNeeds li .p { flex: none; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+                       color: var(--muted); border: 1px solid var(--line); }
+  #glanceNeeds li .p.set { color: var(--panel); background: var(--accent); border-color: var(--accent); }
+  #glanceNeeds li .task a { color: inherit; }
+  #glanceNeeds li .task { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  #glanceNeedsBy { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 6px; }
+  #glanceNeedsBy button { font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 12px; background: none; color: var(--ink); cursor: pointer; }
+  #glanceNeedsBy button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  #glanceNeeds li .meta { color: var(--muted); font-size: 12px; }
+  #glanceNeeds li .meta a { color: inherit; }
+  #glanceNeeds li .meta .you { color: var(--accent); font-weight: 600; }
+  #glanceNeeds li code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 4px; padding: 0 4px; }
 
   @media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
     /* A phone: the tab rides the right edge; open, the list lies over the Mood. */
     #todo { position: fixed; right: 0; top: 38%; z-index: 25; border: 1px solid var(--line); border-right: 0;
             border-radius: 8px 0 0 8px; box-shadow: -2px 2px 10px rgba(0,0,0,.12); }
     #todo.open { top: 44px; bottom: 0; border-radius: 0; }
-    #todoBody { width: min(320px, 88vw); }
+    #todoBody, #glanceBody { width: min(320px, 88vw); }
     header { flex-wrap: nowrap; gap: 8px; padding: 6px 12px; }
     header .brand small { display: none; }
     header .preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
@@ -2125,9 +2193,12 @@
     </div>
   </main>
   <aside id="todo" hidden aria-label="To do">
-    <button type="button" id="todoTab" data-tour="todo" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
+    <div id="paneTabs">
+      <button type="button" id="todoTab" data-tour="todo" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
+      <button type="button" id="glanceTab" title="At a glance: who's on what across every Mood, what each person means to do, and what needs people"><span>At a glance</span></button>
+    </div>
     <div id="todoBody">
-      <div class="head"><b><a id="todoPage" target="_blank" rel="noopener" title="The list's page on PickiPedia">To do</a></b><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
+      <div class="head"><b><a id="todoPage" target="_blank" rel="noopener" title="The list's page on PickiPedia">To do</a></b><a id="toGlance" role="button" tabindex="0" title="Who's on what across every Mood, and what needs people">at a glance</a><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
       <p class="note" id="todoNote"></p>
       <ul id="todoList"></ul>
       <details id="todoDone"><summary></summary><ul></ul></details>
@@ -2138,6 +2209,33 @@
         <ul id="humansHere"></ul>
         <hr id="humansRule" hidden>
         <ul id="humansElsewhere"></ul>
+      </div>
+    </div>
+    <!-- At a glance (services/glance.py; R.J., 13 Nov): every Mood at once. Who's on what, what each person means
+         to do, what needs people. The same in every Mood; where it's the pane's first leaf is GLANCE_FIRST. -->
+    <div id="glanceBody" aria-label="At a glance">
+      <div class="head"><b>At a glance</b>
+        <button type="button" data-window="day" title="The last 7,200 blocks">day</button><button type="button" data-window="week" title="The last 50,400 blocks">week</button>
+        <a id="toTodo" role="button" tabindex="0" title="This Mood's to-do list">to do</a>
+        <button type="button" id="glanceClose" aria-label="Close">✕</button></div>
+      <p class="none" id="glanceNote">Loading…</p>
+      <div id="glanceAll" hidden>
+        <span class="gbar all" id="glanceEveryone"></span>
+        <div id="glanceWho"></div>
+        <h4>Intentions <small id="glanceIntentWhen"></small></h4>
+        <ul id="glanceIntentions"></ul>
+        <form id="glanceIntend" hidden>
+          <textarea id="glanceIntendText" rows="2" maxlength="400" aria-label="What you mean to do" title="Shown here to everyone, as what you say in a Mood is, for a day (a week, on the week's view). Say it again to change it; say nothing to clear it. Ctrl+Enter says it." placeholder="What are you on today? A line or a few."></textarea>
+          <button type="submit">Say</button>
+        </form>
+        <div id="glanceIntendSaid" role="status"></div>
+        <h4>Who's on what <small id="glanceBlocks"></small></h4>
+        <ul id="glanceProjects"></ul>
+        <h4>Needs people <small><a href="/todo/" data-section="todo" id="glanceNeedsAll"></a></small></h4>
+        <div id="glanceHave" hidden title="Drafts a question to magent in the box below: send it, and it answers from what's open and what it knows of you">I have
+          <button type="button" data-have="an hour">an hour</button><button type="button" data-have="three hours">3 hours</button><button type="button" data-have="a day">a day</button></div>
+        <div id="glanceNeedsBy" role="group" aria-label="Whose"></div>
+        <ul id="glanceNeeds"></ul>
       </div>
     </div>
   </aside>
@@ -2800,7 +2898,11 @@
   function renderTodo(t) {
     todoShown = t;
     const open = t.items.filter(i => !i.done), done = t.items.filter(i => i.done);
-    todoEl.hidden = !t.exists && !viewer;  // no list yet: there to start one, for whoever can write here
+    // No list yet: its tab is there to start one, for whoever can write here. The pane stays for its other leaf.
+    const noList = !t.exists && !viewer, was = todoEl.classList.contains('nolist');
+    todoEl.hidden = false;
+    todoEl.classList.toggle('nolist', noList);
+    if (noList || was) showLeaf(leafOf(current));  // with no list, at a glance; with one again, this Mood's leaf
     todoEl.querySelector('#todoTab .n').textContent = open.length || '';
     todoEl.querySelector('#todoTab').setAttribute('aria-label', `To do: ${open.length} open`);
     document.getElementById('todoEdit').href = t.edit;
@@ -2906,6 +3008,146 @@
   });
   document.getElementById('humansGrip').addEventListener('dblclick', () => { humansEl.style.removeProperty('--humans-h'); store.set('humansHeight', 0); });
   setInterval(loadHumans, 60000);
+
+  // --- at a glance (services/glance.py; R.J., 13 Nov, #general): the pane's other leaf. Every Mood at once: who
+  //     said how much where, what each person means to do, and what waits on a person. ---------------------------
+  const GLANCE_FIRST = ['general'];  // where the pane opens to it, not the list (Justin, 13 Nov: "instead of 'todo'")
+  // People's colours in the bars: clear of the emergents' own (magenta, red, blue), and of each other.
+  const HUMAN_PALETTE = ['#c98a06', '#2a9d8f', '#6a994e', '#7b5ea7', '#8a5a44', '#5c677d', '#8a8f2a', '#3a7d44'];
+  let glanceWindow = store.get('glanceWindow', 'day'), glanceShown = null;
+  let glanceFor = null;  // whose needs are listed: a name, '' (nobody's: anyone's to take), '*' (everyone's); null, not yet chosen
+  const leafOf = slug => store.get('paneLeaf', {})[slug] || (GLANCE_FIRST.includes(slug) ? 'glance' : 'todo');
+  function showLeaf(leaf, chosen) {
+    if (todoEl.classList.contains('nolist')) leaf = 'glance';
+    todoEl.classList.toggle('glance', leaf === 'glance');
+    if (chosen && current) store.set('paneLeaf', { ...store.get('paneLeaf', {}), [current]: leaf });
+    if (leaf === 'glance') loadGlance(); else loadHumans();
+  }
+  // A person's colour: their icon's if they chose one, else one of a palette's by their name; an emergent's, its own.
+  function glanceColour(name, isHuman) {
+    if (!isHuman) return agentColor(name);
+    const own = (looks[name] || {}).colour || '';
+    if (/^#[0-9a-f]{6}$/.test(own)) return own;
+    let h = 0;
+    for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return HUMAN_PALETTE[h % HUMAN_PALETTE.length];
+  }
+  function renderGlance(d) {
+    glanceShown = d;
+    const isHuman = Object.fromEntries(d.people.map(p => [p.name, p.human]));
+    const person = n => isHuman[n] === false ? `<span style="color: ${agentColor(n)}">${esc(shown(n))}</span>`
+      : `<button type="button" class="person" data-person="${esc(n)}" title="${esc(shown(n))}: their card">${nameHtml(n)}</button>`;
+    const segments = said => said.map(s => `<i style="flex: ${s.n}; background: ${glanceColour(s.name, isHuman[s.name] !== false)}" title="${esc(shown(s.name))}: ${s.n}"></i>`).join('');
+    const dot = n => `<i class="dot" style="--c: ${glanceColour(n, isHuman[n] !== false)}"></i>`;
+    document.getElementById('glanceNote').hidden = true;
+    document.getElementById('glanceAll').hidden = false;
+    for (const b of glanceBody.querySelectorAll('button[data-window]')) b.setAttribute('aria-pressed', String(b.dataset.window === d.window));
+    const blocks = `the last ${d.blocks.toLocaleString()} blocks`;
+    document.getElementById('glanceBlocks').textContent = blocks;
+    document.getElementById('glanceIntentWhen').textContent = blocks;
+    // Everyone, in one bar: who said how much, everywhere. It's the key to each Mood's bar below.
+    document.getElementById('glanceEveryone').innerHTML = segments(d.people);
+    document.getElementById('glanceWho').innerHTML = d.people.map(p =>
+      `<span title="${esc(p.moods.map(m => '#' + m.slug + ' ' + m.n).join(', '))}">${dot(p.name)}${person(p.name)}<span class="cnt">${p.n}</span></span>`).join('')
+      || '<span class="none">Nobody has said anything in that time.</span>';
+    // What each person means to do, in their own words.
+    document.getElementById('glanceIntentions').innerHTML = d.intentions.map(i =>
+      `<li>${person(i.name)}<time title="${esc(stamp(i.at))}">${esc(blocksAgo(i.at))} blocks</time>`
+      + i.text.split('\n').map(line => `<p>${todoText(line)}</p>`).join('') + '</li>').join('')
+      || `<li class="none">Nobody has said yet${viewer ? ': be the first.' : '.'}</li>`;
+    const form = document.getElementById('glanceIntend'), box = document.getElementById('glanceIntendText');
+    form.hidden = !viewer;
+    const mine = d.intentions.find(i => i.name === viewer);
+    if (document.activeElement !== box && !box.dataset.dirty) box.value = mine ? mine.text : '';
+    // Each Mood that was talked in, its threads with it: a bar as long as its share of the busiest, cut by who spoke.
+    const most = Math.max(1, ...d.projects.map(p => p.total));
+    document.getElementById('glanceProjects').innerHTML = d.projects.map(p => {
+      const open = [];
+      if (p.needs) open.push(`<b>${p.needs}</b> open for people` + (p.waits_on.length ? ` (${p.waits_on.slice(0, 3).map(w => (w.name === viewer ? 'you' : esc(shown(w.name))) + ' ' + w.n).join(', ')})` : ''));
+      if (p.candidates) open.push(`<a href="/ramp/" data-section="ramp">${p.candidates} candidate branch${p.candidates === 1 ? '' : 'es'}</a>`);
+      if (p.threads) open.push(`${p.threads} thread${p.threads === 1 ? '' : 's'}`);
+      return `<li><div class="top"><a href="/moods/${esc(p.slug)}/">#${esc(p.title)}</a><span class="cnt">${p.total}</span>`
+        + `<time title="${esc(stamp(p.last_at))}: ${esc(shown(p.last_by))} spoke last">${esc(blocksAgo(p.last_at))} blocks</time></div>`
+        + `<span class="gbar" style="--w: ${Math.max(3, Math.round(100 * p.total / most))}%">${segments(p.said)}</span>`
+        + `<div class="on">${p.said.slice(0, 6).map(s => `<span>${person(s.name)}<span class="cnt">${s.n}</span></span>`).join('')}</div>`
+        + (open.length ? `<div class="open">${open.join(' · ')}</div>` : '') + '</li>';
+    }).join('') || '<li class="none">No Mood was talked in.</li>';
+    // What waits on a person, most needed first (asks, priorities, then what holds others up). A button for each
+    // person it waits on, and for everyone: the reader's own to begin with, if anything waits on them.
+    const waits = Object.fromEntries(d.needs_by.map(b => [b.name, b.n]));
+    if (glanceFor === null) glanceFor = viewer && waits[viewer] ? viewer : '*';
+    if (glanceFor !== '*' && !(glanceFor in waits)) glanceFor = '*';
+    const chip = (key, label, n) => `<button type="button" data-for="${esc(key)}" aria-pressed="${key === glanceFor}">${label}<span class="cnt">${n}</span></button>`;
+    document.getElementById('glanceNeedsBy').innerHTML = !d.needs_total ? '' : chip('*', 'everyone', d.needs_total)
+      + [...d.needs_by].sort((a, b) => (b.name === viewer) - (a.name === viewer))
+        .map(b => chip(b.name, b.name === '' ? 'anyone' : b.name === viewer ? 'you' : esc(shown(b.name)), b.n)).join('');
+    const needs = glanceFor === '*' ? d.needs : d.needs_for[glanceFor] || [];
+    document.getElementById('glanceNeeds').innerHTML = needs.map(n => {
+      const href = n.link ? linkOf(n.link) : '';
+      const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''}>${todoText(n.task, false)}</a>` : todoText(n.task);
+      const who = n.who.map(w => w === viewer ? '<span class="you">you</span>' : esc(shown(w))).join(', ') || (n.ask ? 'whoever can' : 'anyone');
+      return `<li><span class="p${n.priority ? ' set' : ''}" title="${n.ask ? 'An emergent is waiting on this now' : n.priority ? 'Priority ' + n.priority + ' of 5 (1 the most needed)' : 'No priority said'}">${n.ask ? '!' : n.priority || '·'}</span>`
+        + `<div><span class="task" title="${esc(n.task)}">${task}</span><div class="meta">${[esc(n.kind), who, `<a href="/moods/${esc(n.mood)}/">#${esc(n.mood_title)}</a>`].filter(Boolean).join(' · ')}</div></div></li>`;
+    }).join('') || '<li class="none">Nothing is waiting on anyone.</li>';
+    const total = glanceFor === '*' ? d.needs_total : waits[glanceFor] || 0;
+    document.getElementById('glanceNeedsAll').textContent = total > needs.length ? `all ${d.needs_total} on the to-do page` : '';
+    document.getElementById('glanceHave').hidden = !viewer;
+  }
+  async function loadGlance() {
+    // Not waiting on todoEl.hidden: a Mood's pane is hidden until its list first answers, and this is asked before.
+    if (!todoEl.classList.contains('open') || !todoEl.classList.contains('glance')) return;
+    try {
+      const r = await fetch('/api/glance/?window=' + encodeURIComponent(glanceWindow));
+      if (r.ok) renderGlance(await r.json());
+    } catch (e) {
+      if (!glanceShown) document.getElementById('glanceNote').textContent = "It couldn't be reached just now; it's asked for again in a minute.";
+    }
+  }
+  const glanceBody = document.getElementById('glanceBody');
+  document.getElementById('glanceTab').addEventListener('click', () => { showLeaf('glance', true); openTodo(true); loadGlance(); });
+  document.getElementById('todoTab').addEventListener('click', () => showLeaf('todo', true));
+  document.getElementById('glanceClose').addEventListener('click', () => openTodo(false));
+  for (const [id, leaf] of [['toGlance', 'glance'], ['toTodo', 'todo']]) {
+    const go = e => { if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return; e.preventDefault(); showLeaf(leaf, true); };
+    document.getElementById(id).addEventListener('click', go);
+    document.getElementById(id).addEventListener('keydown', go);
+  }
+  glanceBody.addEventListener('click', e => {
+    const w = e.target.closest('button[data-window]');
+    if (w) { glanceWindow = w.dataset.window; store.set('glanceWindow', glanceWindow); loadGlance(); return; }
+    const f = e.target.closest('button[data-for]');
+    if (f) { glanceFor = f.dataset.for; if (glanceShown) renderGlance(glanceShown); return; }
+    const p = e.target.closest('button.person');
+    if (p) { openPersonCard(p.dataset.person); return; }
+    // "I have an hour" (R.J., 13 Nov: "what's the best use of my time"): a question to magent, drafted, theirs to send.
+    const h = e.target.closest('button[data-have]');
+    if (h) {
+      sayBox.value = `@magent I have ${h.dataset.have}. What's the best use of it?`;
+      sayBox.dispatchEvent(new Event('input', { bubbles: true }));
+      if (matchMedia(PHONE).matches) openTodo(false);
+      sayBox.focus();
+    }
+  });
+  document.getElementById('glanceIntendText').addEventListener('input', e => { e.target.dataset.dirty = '1'; });
+  document.getElementById('glanceIntendText').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.target.form.requestSubmit(); }
+  });
+  document.getElementById('glanceIntend').addEventListener('submit', async e => {
+    e.preventDefault();
+    const box = document.getElementById('glanceIntendText'), said = document.getElementById('glanceIntendSaid');
+    try {
+      const r = await fetch('/api/glance/intention/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                                        body: JSON.stringify({ text: box.value }) });
+      const d = await r.json();
+      if (!r.ok) { said.textContent = d.error || "That couldn't be kept."; return; }
+      delete box.dataset.dirty;
+      said.textContent = d.text ? 'Said.' : 'Cleared.';
+      setTimeout(() => { said.textContent = ''; }, 4000);
+      loadGlance();
+    } catch (err) { said.textContent = "That couldn't be sent: try again."; }
+  });
+  setInterval(loadGlance, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadGlance(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadTodo(todoShown === null); });
 
   // --- the chain's height: with every live poll, from the watcher (services/chain_head); else from the explorer
@@ -6718,6 +6960,7 @@
     typingNow = []; renderTyping(); renderAsksOpen();
     agentsNow = {};  // nothing to compare with: a first drawing never glows
     renderAgents(agentsFor[slug] || {});
+    showLeaf(leafOf(slug));  // the pane's leaf here: the list, or at a glance (as last chosen here)
     loadTodo();
     // Primed in the background, never opened here: kept now, as an opened Mood is, and drawn from that.
     if (!drawn.get(slug) && !keptOf(slug) && primed.has(slug)) keep(slug, primed.get(slug), true);
