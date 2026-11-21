@@ -71,7 +71,63 @@ def type_of(item):
 
 
 def with_types(items):
-    return [{**item, 'type': type_of(item)} for item in items]
+    """Each item with its type, its headline (what a row shows of it) and its rank (where it stands among what's
+    needed)."""
+    out = []
+    for item in items:
+        typed = {**item, 'type': type_of(item)}
+        typed['headline'] = headline(typed)
+        typed['rank'] = list(rank(typed))
+        out.append(typed)
+    return out
+
+
+# --- headline, and how much it's needed: what a row shows, and where it stands -------------------------
+# Justin, 21 Nov, #at-a-glance: the lists "have become sufficiently unwieldy that I basically never look at them";
+# "I need sorting, filtration, obvious types, _realllly_ terse headlines". 203 items were open, their tasks 117
+# characters at the middle and 334 at the longest. A row is its type's glyph and a headline; the task as written
+# is a click away.
+
+HEADLINE_MAX = 56    # characters: about what a row of the pane holds
+HEADLINE_WHOLE = 44  # a task this short is its own headline
+HEADLINE_MIN = 14    # a cut leaves at least this much ("BETA: the pane's display selector", not "BETA")
+# The type's own verb, when a task opens with it: its glyph says it already ("Merge magenta:magent/foo" is 🪢 and
+# "magenta:magent/foo").
+LEADS = {'merge': ('merge',), 'deploy': ('redeploy', 'deploy'), 'verify': ('verify',), 'decide': ('decide',),
+         'review': ('review',)}
+_WIKILINK = re.compile(r'\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]')
+_CUT = re.compile(r': | \(|; |\. | — | – | - ')
+# What holds someone else up comes first; an emergent's own job, last.
+NEED_ORDER = ('merge', 'deploy', 'review', 'decide', 'verify', 'hands', 'make', 'work')
+UNRANKED = 6         # after every priority, 1 to 5
+
+
+def headline(item, limit=HEADLINE_MAX):
+    """The item in a few words, for a row: its task without wiki brackets and code marks, without its type's own
+    verb at the front, and cut at its first clause (a colon, a bracket, a full stop) or, failing one, at a word
+    with "…". Never longer than `limit`. A task of HEADLINE_WHOLE characters or fewer is left whole."""
+    text = _WIKILINK.sub(lambda m: (m.group(2) or m.group(1)).strip(), str(item.get('task') or '')).replace('`', '')
+    text = ' '.join(text.split())
+    first, _, rest = text.partition(' ')
+    if first.lower().rstrip(':') in LEADS.get(item.get('type') or type_of(item), ()) and len(rest) >= 3:
+        text = rest
+    if len(text) <= HEADLINE_WHOLE:
+        return text
+    for cut in _CUT.finditer(text):
+        if cut.start() > limit:
+            break
+        if cut.start() >= HEADLINE_MIN:
+            return text[:cut.start()].rstrip(' ,;:')
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rsplit(' ', 1)[0].rstrip(' ,;:(') + '…'
+
+
+def rank(item):
+    """Where an open item stands among what's needed, least first: its priority (1 the most needed, to 5), else
+    after them all; then its type, in NEED_ORDER."""
+    kind = item.get('type') or type_of(item)
+    return (item.get('priority') or UNRANKED, NEED_ORDER.index(kind) if kind in NEED_ORDER else len(NEED_ORDER))
 
 
 def summary(items):

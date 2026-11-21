@@ -113,14 +113,17 @@ def section(name):
 
 @section('todo')
 def todo_page(request):
-    """Every Mood's to-do items combined in reverse chronological order (services/todo.py).
-    Justin, 30 Oct: another page combining all to-dos across all Moods."""
+    """Every Mood's to-do items (services/todo.py), one line each: grouped, sorted and filtered on the page.
+    Justin, 30 Oct: another page combining all to-dos across all Moods; 21 Nov: "sorting, filtration, obvious
+    types, _realllly_ terse headlines"."""
     device = mood_auth.device_for(request)
     from .services import todo
+    from .services.mood_view import pickipedia_url
     state = todo.all_todos()
     return render(request, 'conversations/mood_todo.html', {
         'todos': state,
-        'viewer': device.entity_id if device else '',
+        'wiki': pickipedia_url(),
+        'viewer': device.entity_id if device else getattr(settings, 'PREVIEW_VIEWER', ''),
         'embed': True,
     })
 
@@ -327,7 +330,7 @@ def tidings_page(request):
         'stream': tidings.stream(state['pictures'], state['releases']),
         'order': order,
         'picture_cap': tidings.PICTURES,
-        'viewer': device.entity_id if device else '',
+        'viewer': device.entity_id if device else getattr(settings, 'PREVIEW_VIEWER', ''),
         'embed': True,
     })
 

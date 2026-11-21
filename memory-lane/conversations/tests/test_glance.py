@@ -97,6 +97,10 @@ class GlanceTest(TestCase):
         self.assertEqual(d['needs_total'], 4)
         ask, decide, merge, _ = d['needs']
         self.assertEqual((ask['ask'], ask['who'], ask['link']), (True, [], '/moods/interfaces/#m-abc'))
+        # A row is its type's glyph and a headline (Justin, 21 Nov): each need says both.
+        self.assertEqual((ask['type'], ask['headline']), ('merge', 'magent: magenta:magent/at-a-glance'))
+        self.assertEqual((decide['type'], decide['headline'], merge['type'], merge['headline']),
+                         ('decide', 'name the pane', 'merge', 'the graph'))
         self.assertEqual((decide['priority'], decide['who']), (2, ['rj']))
         self.assertEqual(merge['who'], ['justin'])            # jMyles, as he's called here
         (p,) = d['projects']

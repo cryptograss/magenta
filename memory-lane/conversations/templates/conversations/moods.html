@@ -1774,6 +1774,28 @@
   #todoBody li .meta .you { color: var(--accent); font-weight: 600; }
   #todoBody li .why { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
   #todoBody li .task a { color: inherit; }
+  /* A row is one line (Justin, 21 Nov: "obvious types, _realllly_ terse headlines"): its type's glyph, a headline
+     (services/todo_types.py, headline) and who. Pressed, it opens to the task as written, its note and its link. */
+  #todoBody li.row { display: block; padding: 0; }
+  #todoBody li.row .line { display: flex; gap: 6px; align-items: baseline; padding: 5px 0; cursor: pointer; }
+  #todoBody li.row .line:hover .hl, #todoBody li.row .line:focus-visible .hl { color: var(--accent); }
+  #todoBody li.row .line:focus-visible { outline: none; }
+  #todoBody li.row .ty { flex: none; width: 19px; text-align: center; }
+  #todoBody li.row .hl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+  #todoBody li.row .wh { flex: none; max-width: 34%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11.5px; }
+  #todoBody li.row .wh .you { color: var(--accent); font-weight: 600; }
+  #todoBody li.row .pr { flex: none; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 600; line-height: 16px;
+                         text-align: center; color: var(--panel); background: var(--accent); align-self: center; }
+  #todoBody li.row .more { display: none; padding: 0 0 7px 25px; }
+  #todoBody li.row.open .more { display: flex; gap: 8px; }
+  #todoBody li.row.open .hl { white-space: normal; font-weight: 600; }
+  #todoBody li.row .more > div { flex: 1; min-width: 0; }
+  #todoBody li.row.open a.todolink { opacity: .8; }
+  #todoFilter { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; flex: none; }
+  #todoFilter:empty { display: none; }
+  #todoFilter button { font: inherit; font-size: 12px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 12px; background: none; color: var(--ink); cursor: pointer; }
+  #todoFilter button .cnt { color: var(--muted); font-size: 11px; margin-left: 3px; }
+  #todoFilter button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   /* `code` in a task or its note; each item's own link (#), copied on a click, and the item it opens flashes. */
   #todoBody li code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 4px; padding: 0 4px; }
   #todoBody li > div { flex: 1; min-width: 0; }
@@ -1784,7 +1806,7 @@
   #todoBody li.flash { animation: flash 2.5s ease-out; }
   #todoDone { margin-top: 8px; color: var(--muted); }
   #todoDone summary { cursor: pointer; font-size: 12.5px; }
-  #todoDone li .task { text-decoration: line-through; }
+  #todoDone li .task, #todoDone li.row .hl { text-decoration: line-through; }
   /* People under the list: pinned to the column's foot, its height dragged from its top edge. */
   #todo.open #todoBody { display: flex; flex-direction: column; }
   #todoBody > #todoList, #todoBody > #todoDone, #todoBody > .note { flex: none; }
@@ -1864,6 +1886,8 @@
                        color: var(--muted); border: 1px solid var(--line); }
   #glanceNeeds li .p.set { color: var(--panel); background: var(--accent); border-color: var(--accent); }
   #glanceNeeds li .task a { color: inherit; }
+  #glanceNeeds li .ty { flex: none; width: 19px; text-align: center; }
+  #glanceNeeds li .meta .p { display: inline-block; margin-right: 5px; width: 16px; height: 16px; line-height: 16px; font-size: 10px; }
   #glanceNeeds li .task { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
   #glanceNeedsBy { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 6px; }
   #glanceNeedsBy button { font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 12px; background: none; color: var(--ink); cursor: pointer; }
@@ -2200,6 +2224,7 @@
     <div id="todoBody">
       <div class="head"><b><a id="todoPage" target="_blank" rel="noopener" title="The list's page on PickiPedia">To do</a></b><a id="toGlance" role="button" tabindex="0" title="Who's on what across every Mood, and what needs people">at a glance</a><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
       <p class="note" id="todoNote"></p>
+      <div id="todoFilter" role="group" aria-label="Show only"></div>
       <ul id="todoList"></ul>
       <details id="todoDone"><summary></summary><ul></ul></details>
       <!-- People, under the list (Justin, 3 Nov): who spoke here lately, then everyone else; its top edge drags. -->
@@ -2869,18 +2894,54 @@
   }
   // Each item's own name in a link (#todo-<its words>): stable while its words are.
   function todoId(it) { return 'todo-' + it.task.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60); }
+  // The to-do types (services/todo_types.py, TYPES): {type: [glyph, label, how it gets done]}, as the list or the
+  // glance last said them.
+  let todoTypes = {};
+  const todoGlyph = type => type === 'tools' ? ['🔨', 'tools', 'an emergent asks for a turn with its tools'] : todoTypes[type] || ['·', type || '', ''];
+  // One line: the type's glyph, the headline, who. The task as written (a link, if it has one), its note and its
+  // own link (#) are under it, shown when the line is pressed.
   function todoItem(it) {
     const who = it.who.map(n => n.toLowerCase() === viewer ? '<span class="you">you</span>' : esc(shown(n.toLowerCase())));
-    const meta = [it.merged ? 'merged' : it.closed ? 'closed, not merged' : it.kind, who.join(', ')].filter(Boolean).join(' · ');
+    const [glyph, label, about] = todoGlyph(it.type);
+    const written = it.kind && it.kind.toLowerCase() !== it.type ? ` (written “${esc(it.kind)}”)` : '';
+    const meta = [it.merged ? 'merged' : it.closed ? 'closed, not merged' : it.deployed ? 'deployed' : it.verified ? 'verified' : esc(label) + written,
+                  it.priority ? `priority ${it.priority} of 5` : '', who.join(', ')].filter(Boolean).join(' · ');
     // A task with a link is the link, as on PickiPedia (its <todo> tag), and one link whole: a [[page]]
     // inside it would be a link in a link, which browsers cut apart. The note is never wrapped.
     const href = it.link ? linkOf(it.link) : '';
     const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''} title="${esc(it.link)}">${todoText(it.task, false)}</a>`
       : todoText(it.task);
     const id = todoId(it);
-    return `<li id="${esc(id)}"><span class="box">${it.done ? '☑' : '☐'}</span><div><span class="task">${task}</span>`
+    return `<li id="${esc(id)}" class="row" data-type="${esc(it.type || '')}">`
+      + `<div class="line" role="button" tabindex="0" aria-expanded="false" title="${esc(it.task)}"><span class="ty" title="${esc(label)}: ${esc(about)}">${glyph}</span>`
+      + `<span class="hl">${esc(it.headline || it.task)}</span>`
+      + (it.priority && !it.done ? `<span class="pr" title="Priority ${it.priority} of 5 (1 the most needed)">${it.priority}</span>` : '')
+      + (who.length ? `<span class="wh">${who.join(', ')}</span>` : '') + '</div>'
+      + `<div class="more"><div><span class="task">${task}</span>`
       + (meta ? `<div class="meta">${meta}</div>` : '') + (it.note ? `<div class="why">${todoText(it.note)}</div>` : '') + '</div>'
-      + `<a class="todolink" href="#${esc(id)}" title="This item's link: click to copy">#</a></li>`;
+      + `<a class="todolink" href="#${esc(id)}" title="This item's link: click to copy">#</a></div></li>`;
+  }
+  // Show only: yours, or one type (a button for each that's open here, with how many). Pressed again, all of them.
+  let todoOnly = { type: '', mine: false };
+  const todoMine = it => it.who.some(n => n.toLowerCase() === viewer);
+  function drawTodoList() {
+    const t = todoShown;
+    if (!t) return;
+    // Most needed first: a priority, then what holds someone else up (todo_types.rank); as the page has them, within that.
+    const open = t.items.filter(i => !i.done).map((it, n) => [it, n])
+      .sort(([a, i], [b, j]) => ((a.rank || [9, 9])[0] - (b.rank || [9, 9])[0]) || ((a.rank || [9, 9])[1] - (b.rank || [9, 9])[1]) || (i - j)).map(([it]) => it);
+    const counts = {};
+    for (const it of open) counts[it.type] = (counts[it.type] || 0) + 1;
+    const mine = viewer ? open.filter(todoMine).length : 0;
+    if (!counts[todoOnly.type]) todoOnly.type = '';
+    if (!mine) todoOnly.mine = false;
+    const chip = (attr, label, n, on, title) => `<button type="button" ${attr} aria-pressed="${on}" title="${esc(title)}">${label}<span class="cnt">${n}</span></button>`;
+    const kinds = Object.keys(todoTypes).filter(k => counts[k]);
+    document.getElementById('todoFilter').innerHTML = open.length < 4 ? ''
+      : (mine && mine < open.length ? chip('data-mine', 'you', mine, todoOnly.mine, 'Only what waits on you') : '')
+        + (kinds.length > 1 ? kinds.map(k => chip(`data-type="${esc(k)}"`, todoTypes[k][0], counts[k], todoOnly.type === k, `${todoTypes[k][1]}: ${todoTypes[k][2]}`)).join('') : '');
+    const shownOpen = open.filter(it => (!todoOnly.type || it.type === todoOnly.type) && (!todoOnly.mine || todoMine(it)));
+    document.getElementById('todoList').innerHTML = shownOpen.map(todoItem).join('');
   }
   // While a Mood's list is on its way: not the last Mood's list, and not "no list here" --
   // either reads as this Mood's, and the second as if there were nothing to do.
@@ -2890,13 +2951,16 @@
     todoEl.querySelector('#todoTab').setAttribute('aria-label', 'To do');
     document.getElementById('todoNote').textContent = note;
     document.getElementById('todoList').innerHTML = '';
+    document.getElementById('todoFilter').innerHTML = '';
     const fold = document.getElementById('todoDone');
     delete fold.dataset.n;
     fold.querySelector('summary').textContent = 'Done';
     fold.querySelector('ul').innerHTML = '';
   }
   function renderTodo(t) {
+    const wasOpen = [...todoEl.querySelectorAll('#todoBody li.row.open')].map(li => li.id);
     todoShown = t;
+    if (t.types) todoTypes = t.types;
     const open = t.items.filter(i => !i.done), done = t.items.filter(i => i.done);
     // No list yet: its tab is there to start one, for whoever can write here. The pane stays for its other leaf.
     const noList = !t.exists && !viewer, was = todoEl.classList.contains('nolist');
@@ -2910,23 +2974,30 @@
     document.getElementById('todoNote').textContent = t.error ? `The list couldn't be read: ${t.error}.`
       : !t.exists ? 'No list here yet: "edit" starts one on PickiPedia, as YAML between <todo> tags ("- task: ...").'
       : !t.items.length ? 'Nothing to do.' : '';
-    document.getElementById('todoList').innerHTML = open.map(todoItem).join('');
+    drawTodoList();
     const fold = document.getElementById('todoDone');
     if (done.length) fold.dataset.n = done.length; else delete fold.dataset.n;
     fold.querySelector('summary').textContent = `Done (${done.length})`;
     fold.querySelector('ul').innerHTML = done.map(todoItem).join('');
+    for (const id of wasOpen) { const li = document.getElementById(id); if (li) li.classList.add('open'); }
     showTodoItem();
   }
   // A link to one item (/moods/<slug>/#todo-…): the list opens, at it, and it flashes.
   let todoWanted = (location.hash.match(/^#(todo-[a-z0-9-]+)$/) || [])[1] || null;
   function showTodoItem() {
     if (!todoWanted) return;
-    const li = document.getElementById(todoWanted);
+    let li = document.getElementById(todoWanted);
+    if (!li && todoShown && (todoOnly.type || todoOnly.mine)) {  // it may be one the buttons have put aside
+      todoOnly = { type: '', mine: false };
+      drawTodoList();
+      li = document.getElementById(todoWanted);
+    }
     if (!li) return;
     todoWanted = null;
     openTodo(true);
     const fold = li.closest('details');
     if (fold) fold.open = true;
+    li.classList.add('open');
     li.scrollIntoView({ block: 'center' });
     li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash');
   }
@@ -2942,13 +3013,31 @@
     try { await navigator.clipboard.writeText(url); a.dataset.copied = ''; setTimeout(() => delete a.dataset.copied, 1500); }
     catch (err) { prompt('Copy this link:', url); }
   });
+  // A line opens to its task as written; again, it closes. What's open stays open when the list is drawn again.
+  function todoToggle(line) {
+    const open = line.parentElement.classList.toggle('open');
+    line.setAttribute('aria-expanded', String(open));
+  }
+  document.getElementById('todoBody').addEventListener('click', e => {
+    const line = e.target.closest('li.row .line');
+    if (line) { todoToggle(line); return; }
+    const b = e.target.closest('#todoFilter button');
+    if (!b) return;
+    if (b.dataset.mine !== undefined) todoOnly.mine = !todoOnly.mine;
+    else todoOnly.type = todoOnly.type === b.dataset.type ? '' : b.dataset.type;
+    drawTodoList();
+  });
+  document.getElementById('todoBody').addEventListener('keydown', e => {
+    const line = e.target.closest('li.row .line');
+    if (line && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); todoToggle(line); }
+  });
   let todoStamp = null;  // the server's word on when a list last may have changed (pollOnce)
   async function loadTodo(fresh) {
     const slug = current;
     if (!slug) return;
     const another = todoFor !== slug;  // a Mood just opened: what's shown is the last one's
     todoFor = slug;
-    if (another) renderTodoWaiting('Loading the list…');
+    if (another) { todoOnly = { type: '', mine: false }; renderTodoWaiting('Loading the list…'); }
     try {
       const r = await fetch(`/api/moods/${encodeURIComponent(slug)}/todo/${fresh ? '?fresh=1' : ''}`);
       if (!r.ok) throw new Error(r.status);
@@ -3034,6 +3123,7 @@
   }
   function renderGlance(d) {
     glanceShown = d;
+    if (d.types) todoTypes = d.types;
     const isHuman = Object.fromEntries(d.people.map(p => [p.name, p.human]));
     const person = n => isHuman[n] === false ? `<span style="color: ${agentColor(n)}">${esc(shown(n))}</span>`
       : `<button type="button" class="person" data-person="${esc(n)}" title="${esc(shown(n))}: their card">${nameHtml(n)}</button>`;
@@ -3084,10 +3174,14 @@
     const needs = glanceFor === '*' ? d.needs : d.needs_for[glanceFor] || [];
     document.getElementById('glanceNeeds').innerHTML = needs.map(n => {
       const href = n.link ? linkOf(n.link) : '';
-      const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''}>${todoText(n.task, false)}</a>` : todoText(n.task);
+      const line = esc(n.headline || n.task), [glyph, label, about] = todoGlyph(n.type);
+      const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''}>${line}</a>` : line;
       const who = n.who.map(w => w === viewer ? '<span class="you">you</span>' : esc(shown(w))).join(', ') || (n.ask ? 'whoever can' : 'anyone');
-      return `<li><span class="p${n.priority ? ' set' : ''}" title="${n.ask ? 'An emergent is waiting on this now' : n.priority ? 'Priority ' + n.priority + ' of 5 (1 the most needed)' : 'No priority said'}">${n.ask ? '!' : n.priority || '·'}</span>`
-        + `<div><span class="task" title="${esc(n.task)}">${task}</span><div class="meta">${[esc(n.kind), who, `<a href="/moods/${esc(n.mood)}/">#${esc(n.mood_title)}</a>`].filter(Boolean).join(' · ')}</div></div></li>`;
+      // Its type's glyph leads the row; a priority, or an emergent waiting now, is a mark before who.
+      const mark = n.ask ? '<span class="p set" title="An emergent is waiting on this now">!</span>'
+        : n.priority ? `<span class="p set" title="Priority ${n.priority} of 5 (1 the most needed)">${n.priority}</span>` : '';
+      return `<li><span class="ty" title="${esc(label)}: ${esc(about)}">${glyph}</span>`
+        + `<div><span class="task" title="${esc(n.task)}">${task}</span><div class="meta">${mark}${[who, `<a href="/moods/${esc(n.mood)}/">#${esc(n.mood_title)}</a>`].filter(Boolean).join(' · ')}</div></div></li>`;
     }).join('') || '<li class="none">Nothing is waiting on anyone.</li>';
     const total = glanceFor === '*' ? d.needs_total : waits[glanceFor] || 0;
     document.getElementById('glanceNeedsAll').textContent = total > needs.length ? `all ${d.needs_total} on the to-do page` : '';

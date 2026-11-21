@@ -18,7 +18,9 @@ checklist with real links (PickiPediaContent's <todo> tag); a list inside
 
 `task` is the one thing an item needs; `who` (a name, or several),
 `kind` (review, merge, deploy, edit, or anything), `link`, `note`,
-`priority` (1, the most needed, to 5) and `done` are as they're useful. The page shows it beside the Mood
+`priority` (1, the most needed, to 5) and `done` are as they're useful. A row shows an item as its type's glyph
+and a headline cut from its task (services/todo_types.py, headline): write the task so its first clause says
+it, and put the rest in `note`. The page shows it beside the Mood
 (views_moods.api_mood_todo); agents keep it current -- their instructions
 point them to it (Cryptograss:Moods/Instructions) -- adding what they leave someone to do,
 and ticking off what's been done.
@@ -189,6 +191,7 @@ def all_todos(http=None):
         return found
     from conversations.models import Mood
     from . import settings as knobs
+    from .glance import person_key
     archived = set(knobs.archived_slugs())
     moods = list(Mood.objects.all().order_by('slug'))
     all_items = []
@@ -216,6 +219,9 @@ def all_todos(http=None):
         for idx, it in enumerate(items):
             all_items.append({
                 **it,
+                # Who it waits on, as each is called here ("jMyles" and "JMyles" are justin), for the page's
+                # filter. Where it stands among what's needed is its 'rank' (todo_types.with_types), for its sort.
+                'who_keys': list(dict.fromkeys(person_key(w) for w in it.get('who') or [])),
                 'mood': m.slug,
                 'mood_title': m.title or m.slug,
                 'archived': m.slug in archived,
