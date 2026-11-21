@@ -58,6 +58,9 @@
   .row .pr { flex: none; width: 17px; height: 17px; border-radius: 50%; font-size: 10.5px; font-weight: 600; line-height: 17px;
              text-align: center; color: var(--panel); background: var(--accent); align-self: center; }
   .row .st { flex: none; font-size: 11.5px; color: var(--muted); }
+  /* 💬: the message that asked for it (an item's `said`), so the conversation behind a row is one click away. */
+  .row .sd { flex: none; font-size: 11px; text-decoration: none; opacity: .45; }
+  .row .sd:hover { opacity: 1; }
   .row .wh { flex: none; max-width: 30%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
   .row .wh .you { color: var(--accent); font-weight: 600; }
   .row .md { flex: none; max-width: 26%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
@@ -191,12 +194,15 @@
     const t = TYPES[it.type] || { emoji: '·', label: it.type || '', about: '' };
     const href = it.link ? linkOf(it.link) : '';
     const meta = [`${t.emoji} ${esc(t.label)}` + (it.kind && it.kind.toLowerCase() !== it.type ? ` (written “${esc(it.kind)}”)` : ''),
+                  it.said_url ? `<a href="${esc(it.said_url)}">what asked for it</a>` : '',
+                  it.long ? '<span title="Over 120 characters: shorten it, and put the rest in its note">long</span>' : '',
                   it.priority ? `priority ${it.priority} of 5` : '',
                   it.whoKeys.length ? 'waits on ' + it.whoKeys.map(whoName).join(', ') : 'anyone’s to take',
                   `<a href="/moods/${esc(it.mood)}/#${esc(itemId(it))}">#${esc(it.mood_title)}</a>`].filter(Boolean);
     return `<li class="row${it.isDone ? ' done' : ''}" data-n="${it.n}">`
       + `<div class="line" role="button" tabindex="0" aria-expanded="false" title="${esc(it.task)}">`
       + `<span class="ty" title="${esc(t.label)}: ${esc(t.about)}">${t.emoji}</span><span class="hl">${esc(it.headline || it.task)}</span>`
+      + (it.said_url ? `<a class="sd" href="${esc(it.said_url)}" title="The conversation that asked for this">💬</a>` : '')
       + (it.priority && !it.isDone ? `<span class="pr" title="Priority ${it.priority} of 5 (1 the most needed)">${it.priority}</span>` : '')
       + (it.isDone ? `<span class="st">${stateOf(it)}</span>` : '')
       // Who, unless the group or the filter says it already (one person's own, and theirs alone).
@@ -299,7 +305,11 @@
     const open = line.parentElement.classList.toggle('open');
     line.setAttribute('aria-expanded', String(open));
   }
-  $('todoGroups').addEventListener('click', e => { const line = e.target.closest('.row .line'); if (line) toggle(line); });
+  // A link on the line (the 💬 of what asked for it) is followed, not a press on the line.
+  $('todoGroups').addEventListener('click', e => {
+    const line = e.target.closest('.row .line');
+    if (line && !e.target.closest('a[href]')) toggle(line);
+  });
   $('todoGroups').addEventListener('keydown', e => {
     const line = e.target.closest('.row .line');
     if (line && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(line); }

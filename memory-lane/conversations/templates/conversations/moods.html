@@ -1782,6 +1782,9 @@
   #todoBody li.row .line:focus-visible { outline: none; }
   #todoBody li.row .ty { flex: none; width: 19px; text-align: center; }
   #todoBody li.row .hl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+  /* 💬: the message that asked for it (an item's `said`), so the conversation behind a row is one click away. */
+  #todoBody li.row .sd, #glanceNeeds li .sd { flex: none; font-size: 10.5px; text-decoration: none; opacity: .45; }
+  #todoBody li.row .sd:hover, #glanceNeeds li .sd:hover { opacity: 1; }
   #todoBody li.row .wh { flex: none; max-width: 34%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11.5px; }
   #todoBody li.row .wh .you { color: var(--accent); font-weight: 600; }
   #todoBody li.row .pr { flex: none; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 600; line-height: 16px;
@@ -2915,6 +2918,7 @@
     return `<li id="${esc(id)}" class="row" data-type="${esc(it.type || '')}">`
       + `<div class="line" role="button" tabindex="0" aria-expanded="false" title="${esc(it.task)}"><span class="ty" title="${esc(label)}: ${esc(about)}">${glyph}</span>`
       + `<span class="hl">${esc(it.headline || it.task)}</span>`
+      + (it.said_url ? `<a class="sd" href="${esc(it.said_url)}" title="The conversation that asked for this">💬</a>` : '')
       + (it.priority && !it.done ? `<span class="pr" title="Priority ${it.priority} of 5 (1 the most needed)">${it.priority}</span>` : '')
       + (who.length ? `<span class="wh">${who.join(', ')}</span>` : '') + '</div>'
       + `<div class="more"><div><span class="task">${task}</span>`
@@ -3020,7 +3024,8 @@
   }
   document.getElementById('todoBody').addEventListener('click', e => {
     const line = e.target.closest('li.row .line');
-    if (line) { todoToggle(line); return; }
+    // A link on the line (the 💬 of what asked for it) is followed, not a press on the line.
+    if (line) { if (!e.target.closest('a[href]')) todoToggle(line); return; }
     const b = e.target.closest('#todoFilter button');
     if (!b) return;
     if (b.dataset.mine !== undefined) todoOnly.mine = !todoOnly.mine;
@@ -3180,8 +3185,9 @@
       // Its type's glyph leads the row; a priority, or an emergent waiting now, is a mark before who.
       const mark = n.ask ? '<span class="p set" title="An emergent is waiting on this now">!</span>'
         : n.priority ? `<span class="p set" title="Priority ${n.priority} of 5 (1 the most needed)">${n.priority}</span>` : '';
+      const said = n.said_url ? ` <a class="sd" href="${esc(n.said_url)}" title="The conversation that asked for this">💬</a>` : '';
       return `<li><span class="ty" title="${esc(label)}: ${esc(about)}">${glyph}</span>`
-        + `<div><span class="task" title="${esc(n.task)}">${task}</span><div class="meta">${mark}${[who, `<a href="/moods/${esc(n.mood)}/">#${esc(n.mood_title)}</a>`].filter(Boolean).join(' · ')}</div></div></li>`;
+        + `<div><span class="task" title="${esc(n.task)}">${task}</span>${said}<div class="meta">${mark}${[who, `<a href="/moods/${esc(n.mood)}/">#${esc(n.mood_title)}</a>`].filter(Boolean).join(' · ')}</div></div></li>`;
     }).join('') || '<li class="none">Nothing is waiting on anyone.</li>';
     const total = glanceFor === '*' ? d.needs_total : waits[glanceFor] || 0;
     document.getElementById('glanceNeedsAll').textContent = total > needs.length ? `all ${d.needs_total} on the to-do page` : '';
