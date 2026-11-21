@@ -8310,7 +8310,8 @@
     if (slash) return { kind: 'command', start: 1, prefix: slash[1].toLowerCase() };
     const forAgent = upto.match(AGENT_COMMAND);
     if (forAgent) return { kind: 'command-agent', start: upto.length - forAgent[2].length, prefix: forAgent[2].toLowerCase() };
-    const y = upto.match(/^\/(?:clips?|yarn)(?:\s+forget)?\s+([a-z0-9_-]*)$/i);
+    // A clip plays wherever its line sits (Justin, 21 Nov), so names are suggested on any line, not only the first.
+    const y = upto.split('\n').pop().match(/^\/(?:clips?|yarn)(?:\s+forget)?\s+([a-z0-9_-]*)$/i);
     if (y) return { kind: 'clips', start: upto.length - y[1].length, prefix: y[1].toLowerCase() };
     const w = upto.match(/\[\[([^\[\]|\n]{1,100})$/);
     if (w) return { kind: 'wiki', start: upto.length - w[1].length, prefix: w[1] };
