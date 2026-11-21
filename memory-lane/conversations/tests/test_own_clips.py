@@ -86,10 +86,32 @@ class OwnClipsTest(TestCase):
                          f'/clips whole-point {link}\nand that\'s that')  # an agent's reply too
         with self.assertRaises(clips.Refused):
             clips.command('/clips nothing-saved\nwords', 'skyler')       # still a name it knows
-        # Its last line, after its words (blu, 28 Oct): moved to the top, the words under it.
+        # Its last line, after its words (blu, 28 Oct): where it stands, the words above it.
         self.assertEqual(clips.played_by("That's two of us.\n\n/clip whole-point"),
-                         f"/clips whole-point {link}\nThat's two of us.")
+                         f"That's two of us.\n\n/clips whole-point {link}")
         self.assertIsNone(clips.played_by('Use /clip whole-point like that.'))  # mid-sentence: words
+
+    def test_a_clip_in_the_middle_plays_where_it_sits(self):
+        # Justin, #connectome, 21 Nov 2026: "maybe we need to enable /clips to work in the middle of a
+        # message". blu had ended a write-up with a clip and then a merge ask, and nothing played.
+        link = self.make().json()['link']
+        said = 'Here it is.\n\n/clip whole-point\n\n<merge to="magenta:blu/thing"/>'
+        played = clips.played_by(said)
+        self.assertEqual(played, f'Here it is.\n\n/clips whole-point {link}\n\n<merge to="magenta:blu/thing"/>')
+        self.assertEqual(clips.command(said, 'skyler')[0], played)  # a person typing it, the same
+        html = render_html(played)
+        self.assertIn('data-own="1"', html)                                    # the clip, in its place
+        self.assertIn('<p>Here it is.</p>', html)                              # the words above it
+        self.assertLess(html.index('Here it is.'), html.index('data-own="1"'))
+        self.assertIn('magenta:blu/thing', html)                               # and the ask below it
+
+    def test_several_clips_each_play_and_a_fenced_one_does_not(self):
+        link = self.make().json()['link']
+        said = 'One:\n/clip whole-point\nand two:\n/clip whole-point\n\n```\n/clip whole-point\n```'
+        played = clips.played_by(said)
+        self.assertEqual(played.count(f'/clips whole-point {link}'), 2)
+        self.assertIn('```\n/clip whole-point\n```', played)                   # inside a fence: words
+        self.assertEqual(render_html(played).count('data-own="1"'), 2)
 
     def test_refused(self):
         self.make()
