@@ -64,6 +64,10 @@ See `FIREWALL_SETUP.md`, `SSH_ROUTING.md`, and other guides in this repo for det
 - Distributed identity verification
 - Cross-session collaboration patterns
 
+## License
+
+This repository is under the Rabbithole Bacon License — see [LICENSE.MD](LICENSE.MD).
+
 ---
 
 *Bridging traditional music with blockchain technology through love, innovation, and shared memory.*
