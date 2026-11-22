@@ -229,22 +229,12 @@ def hooks_page(request):
     return render(request, 'conversations/mood_hooks.html', {'state': wiki_hooks.state(), 'embed': True})
 
 
-# The traffic dashboards: GoAccess over each site's Caddy access log (maybelle-config, roles/goaccess), public.
-# Caddy answers /stats/ itself on magenta's name, so this section is /traffic/ (Justin, 12 Nov).
-TRAFFIC = (
-    {'name': 'magenta', 'host': 'magenta.cryptograss.live',
-     'what': 'This site: the Moods, Tidings, the ramp, and every poll the open tabs make.'},
-    {'name': 'PickiPedia', 'host': 'pickipedia.xyz',
-     'what': 'The wiki, and Rabbithole beside it.'},
-)
-
-
 @section('traffic')
 def traffic_page(request):
-    """Links to the traffic dashboards, with a few live numbers from each (Justin, #performance, 12 Nov: "a stats
-    page in the chevron menu, from which those are linked"). The numbers come to the reader's browser straight
-    from each dashboard's own WebSocket; nothing here is asked of the server."""
-    return render(request, 'conversations/mood_traffic.html', {'sites': TRAFFIC, 'embed': True})
+    """Each site's traffic in three windows, and the link to its whole dashboard (services/traffic.py; Justin,
+    #performance, 12 and 22 Nov). Caddy answers /stats/ itself on magenta's name, so this section is /traffic/."""
+    from .services import traffic
+    return render(request, 'conversations/mood_traffic.html', {'traffic': traffic.state(), 'embed': True})
 
 
 @section('verify')
@@ -527,6 +517,14 @@ def api_usage_kinds(request):
 def api_prompts(request):
     from .services import tidings
     return JsonResponse(tidings.prompts_state())
+
+
+@require_GET
+def api_traffic(request):
+    """Each site's traffic in three windows, as its own box counted it (services/traffic.py): what the stats
+    section draws, and what it asks again for while it's open."""
+    from .services import traffic
+    return JsonResponse(traffic.state())
 
 
 @require_GET
