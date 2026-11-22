@@ -33,18 +33,34 @@
   header nav { display: flex; gap: 12px; font-size: 13px; }
   header nav a { color: var(--muted); text-decoration: none; }
   header nav a:hover, header nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
-  .sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .tabs { display: flex; gap: 6px; margin: 0 0 14px; flex-wrap: wrap; }
+  .tabs button { font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+                 border: 1px solid var(--line); background: none; color: var(--muted); }
+  .tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .sites { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; align-items: start; }
   .site { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
   .site h2 { margin: 0 0 2px; font-size: 16px; }
+  .site h2 a { font-size: 12.5px; font-weight: 400; margin-left: 8px; }
   .site .what { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
-  .site .open { font-weight: 600; }
-  .nums { display: flex; gap: 18px; flex-wrap: wrap; margin: 6px 0 10px; }
+  .site .bad { color: var(--warn); font-size: 13px; }
+  .nums { display: flex; gap: 18px; flex-wrap: wrap; margin: 2px 0 10px; }
   .num b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
   .num span { color: var(--muted); font-size: 12px; }
-  .site ol { margin: 0; padding-left: 20px; font-size: 13px; }
-  .site ol li span { color: var(--muted); font-variant-numeric: tabular-nums; }
-  .site .state { color: var(--muted); font-size: 12px; margin-top: 8px; }
-  .site .state.bad { color: var(--warn); }
+  .num.people b { color: var(--accent); }
+  .bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--code); margin-bottom: 10px; }
+  .bar i { display: block; }
+  .bar i.people { background: var(--accent); }
+  .bar i.crawlers { background: var(--muted); }
+  .bar i.ours { background: var(--line); }
+  .list { margin: 0 0 10px; }
+  .list h3 { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+             margin: 10px 0 4px; font-weight: 600; }
+  .list ol { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+  .list li { display: flex; gap: 8px; justify-content: space-between; padding: 1px 0; }
+  .list li a, .list li span.what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .list li b { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
+  .list .none { color: var(--muted); font-size: 12.5px; }
+  .site .when { color: var(--muted); font-size: 12px; margin-top: 10px; }
   .kept { color: var(--muted); font-size: 13px; margin-top: 18px; }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
@@ -82,73 +98,108 @@
 </header>
 <main>
   <h1>Traffic</h1>
-  <p class="lede">Who comes to magenta and PickiPedia, and from where: counted from each site's own access log by
-    <a href="https://goaccess.io/" target="_blank" rel="noopener">GoAccess</a>, on the server. Nothing runs in a
-    reader's browser for it. Both dashboards are public.</p>
+  <p class="lede">Who comes to magenta and PickiPedia, what they read and where they came from: counted on each
+    server from its own access log, once a minute. Nothing runs in a reader's browser for it.</p>
+
+  <div class="tabs" role="group" aria-label="How far back">
+    {% for key, words in traffic.windows %}
+      <button type="button" data-window="{{ key }}" aria-pressed="{% if key == '24h' %}true{% else %}false{% endif %}">{{ words }}</button>
+    {% endfor %}
+  </div>
 
   <div class="sites">
-  {% for site in sites %}
+  {% for site in traffic.sites %}
     <section class="site" data-host="{{ site.host }}">
-      <h2>{{ site.name }}</h2>
+      <h2>{{ site.name }}<a href="https://{{ site.host }}/stats/" target="_blank" rel="noopener">whole dashboard ↗</a></h2>
       <p class="what">{{ site.what }}</p>
-      <a class="open" href="https://{{ site.host }}/stats/" target="_blank" rel="noopener">Open the dashboard ↗</a>
-      <div class="nums">
-        <div class="num"><b data-n="requests">–</b><span>requests</span></div>
-        <div class="num"><b data-n="visitors">–</b><span>visitors</span></div>
-        <div class="num"><b data-n="crawlers">–</b><span>of it crawlers</span></div>
-      </div>
-      <ol data-n="sites"></ol>
-      <div class="state">reading the dashboard…</div>
+      {% if site.error %}<p class="bad">{{ site.error }}</p>{% else %}<div class="body"></div>{% endif %}
+      <div class="when" data-updated="{{ site.updated }}"></div>
     </section>
   {% endfor %}
   </div>
 
-  <p class="kept">What they leave out, on purpose: visitors' addresses, query strings, full referring URLs and
-    search terms. Sign-in links and email tokens never reach the logs at all. A visitor is one address and browser
-    in a day, so each crawler counts as one. The logs themselves are kept 30 days on each server, then rolled off.
-    The configuration is <code>roles/goaccess</code> in maybelle-config.</p>
+  <p class="kept">A visit is someone heard again after half an hour's quiet. People, crawlers and ours are told
+    apart by the name the browser gives itself, so a crawler that lies is counted as a person. Links followed are
+    within the site itself: a click out to somewhere else is invisible to a server, and the only way to see one
+    would be a script in the reader's browser, which we don't do. Left out on purpose: addresses (a visitor is a
+    number made with a salt that changes daily), anything in a query string that isn't the page's name, and what
+    anyone typed into a search engine. The counts are <code>roles/goaccess</code> in maybelle-config.</p>
 </main>
+{{ traffic|json_script:"trafficNow" }}
 <script>
-// A few numbers from each dashboard, as it has them now: its own WebSocket (wss://host/stats/ws) sends the whole
-// of what it counts on connecting. Asked once on opening and every 30 s while this section is the one shown;
-// each time the socket is closed again, so a kept-but-hidden section holds nothing open.
+// The windows come from /api/traffic/, which memory-lane fetches from each box and keeps a minute. Drawn from
+// what the page was rendered with, then asked again every 60 s while this section is the one on screen.
 (function () {
-  const EVERY_MS = 30000;
+  const EVERY_MS = 60000;
+  const state = JSON.parse(document.getElementById('trafficNow').textContent);
+  let window_ = '24h';
   const fmt = n => Number(n || 0).toLocaleString();
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  function shown() {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const shown = () => {
     if (document.visibilityState !== 'visible') return false;
     try { return !(window.frameElement && window.frameElement.hidden); } catch (e) { return true; }
+  };
+
+  // A page or a followed link is on the site itself, so it links there; where someone came from is somewhere
+  // else, and links out.
+  const linkFor = (host, kind, what) =>
+    kind === 'from' ? 'https://' + what : 'https://' + host + what;
+
+  function list(host, title, kind, rows, unit, empty) {
+    if (!rows || !rows.length) return `<div class="list"><h3>${title}</h3><p class="none">${empty}</p></div>`;
+    return `<div class="list"><h3>${title}</h3><ol>` + rows.map(r =>
+      `<li><a href="${esc(linkFor(host, kind, r.what))}" target="_blank" rel="noopener" title="${esc(r.what)}">${esc(r.what)}</a>`
+      + `<b>${fmt(r.n)}${unit ? ' ' + unit : ''}</b></li>`).join('') + '</ol></div>';
   }
-  function read(card) {
-    const host = card.dataset.host;
-    const state = card.querySelector('.state');
-    let done = false;
-    const ws = new WebSocket(`wss://${host}/stats/ws`);
-    const give = (msg, bad) => { if (done) return; done = true; state.textContent = msg; state.classList.toggle('bad', !!bad); try { ws.close(); } catch (e) {} };
-    const timer = setTimeout(() => give('the dashboard didn\'t answer; open it to see', true), 10000);
-    ws.onerror = () => { clearTimeout(timer); give('the dashboard didn\'t answer; open it to see', true); };
-    ws.onmessage = e => {
-      clearTimeout(timer);
-      let d;
-      try { d = JSON.parse(e.data); } catch (err) { return give('the dashboard answered with something unreadable', true); }
-      const g = d.general || {};
-      const crawl = ((d.browsers && d.browsers.data) || []).find(b => b.data === 'Crawlers');
-      card.querySelector('[data-n="requests"]').textContent = fmt(g.total_requests);
-      card.querySelector('[data-n="visitors"]').textContent = fmt(g.unique_visitors);
-      card.querySelector('[data-n="crawlers"]').textContent = crawl ? `${parseFloat(crawl.hits.percent)}%` : '0%';
-      // Referring sites, the site itself left out: where readers came from.
-      const from = ((d.referring_sites && d.referring_sites.data) || []).filter(r => r.data !== host).slice(0, 5);
-      card.querySelector('[data-n="sites"]').innerHTML = from.length
-        ? from.map(r => `<li>${esc(r.data)} <span>· ${fmt(r.visitors.count)} visitor${r.visitors.count === 1 ? '' : 's'}</span></li>`).join('')
-        : '<li><span>no other site has sent anyone yet</span></li>';
-      give(g.start_date ? `counted since ${g.start_date}; as of ${new Date().toLocaleTimeString()}` : `as of ${new Date().toLocaleTimeString()}`);
-    };
+
+  function draw() {
+    for (const site of state.sites || []) {
+      const card = document.querySelector(`.site[data-host="${site.host}"]`);
+      if (!card) continue;
+      const when = card.querySelector('.when');
+      const body = card.querySelector('.body');
+      if (site.error || !body) { if (when) when.textContent = ''; continue; }
+      const w = (site.windows || {})[window_];
+      if (!w) { body.innerHTML = '<p class="bad">nothing counted for that long yet</p>'; continue; }
+      const req = w.requests || {}, vis = w.visits || {};
+      const all = (req.people || 0) + (req.crawlers || 0) + (req.ours || 0);
+      const share = k => all ? ((req[k] || 0) / all * 100).toFixed(0) : 0;
+      body.innerHTML =
+        `<div class="nums">
+           <div class="num people"><b>${fmt(vis.people)}</b><span>visits by people</span></div>
+           <div class="num"><b>${fmt(req.people)}</b><span>pages they asked for</span></div>
+           <div class="num"><b>${share('crawlers')}%</b><span>of it crawlers</span></div>
+           <div class="num"><b>${share('ours')}%</b><span>our own machinery</span></div>
+         </div>
+         <div class="bar" title="people ${share('people')}%, crawlers ${share('crawlers')}%, ours ${share('ours')}%">
+           <i class="people" style="width:${share('people')}%"></i>
+           <i class="crawlers" style="width:${share('crawlers')}%"></i>
+           <i class="ours" style="width:${share('ours')}%"></i>
+         </div>`
+        + list(site.host, 'Most read', 'page', w.pages, 'asks', 'nothing read yet')
+        + list(site.host, 'They came from', 'from', w.from, 'visits', 'nobody arrived from another site')
+        + list(site.host, 'Links they followed here', 'followed', w.followed, 'times', 'no links followed yet')
+        + list(site.host, 'Asked for, not there', 'page', w.missing, 'asks', 'nothing missing');
+      when.textContent = site.updated ? `counted up to ${new Date(site.updated).toLocaleTimeString()}` : '';
+    }
   }
-  const cards = [...document.querySelectorAll('.site[data-host]')];
-  const all = () => cards.forEach(read);
-  all();
-  setInterval(() => { if (shown()) all(); }, EVERY_MS);
+
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+    window_ = b.dataset.window;
+    document.querySelectorAll('.tabs button').forEach(o => o.setAttribute('aria-pressed', String(o === b)));
+    draw();
+  }));
+
+  async function again() {
+    try {
+      const r = await fetch('/api/traffic/');
+      if (!r.ok) return;
+      Object.assign(state, await r.json());
+      draw();
+    } catch (e) { /* the next one */ }
+  }
+  draw();
+  setInterval(() => { if (shown()) again(); }, EVERY_MS);
 })();
 </script>
 </body>
