@@ -61,7 +61,22 @@
   .list li b { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
   .list .none { color: var(--muted); font-size: 12.5px; }
   .site .when { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .site .since { color: var(--warn); font-size: 12.5px; margin: -2px 0 10px; }
   .kept { color: var(--muted); font-size: 13px; margin-top: 18px; }
+  /* What a description means, on hover and on tap: Justin asked for these (#performance, 22 Nov),
+     since "our own machinery" says nothing on its own. The words are in the page for a screen
+     reader too (.sr), not only in a style that paints them. */
+  .tip { position: relative; }
+  .tip.word { cursor: help; border-bottom: 1px dotted var(--muted); }
+  .tip:hover::after, .tip:focus::after, .tip:focus-visible::after {
+      content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 7px); z-index: 20;
+      width: max-content; max-width: 250px; white-space: normal; text-align: left;
+      font-size: 12px; line-height: 1.45; font-weight: 400; letter-spacing: normal; text-transform: none;
+      padding: 7px 9px; color: var(--ink); background: var(--panel);
+      border: 1px solid var(--line); border-radius: 7px; box-shadow: 0 6px 18px rgba(0, 0, 0, .3); }
+  .tip:focus { outline: none; }
+  .nums .num:last-child .tip::after { left: auto; right: 0; }   /* the last one would hang off the card */
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -99,11 +114,13 @@
 <main>
   <h1>Traffic</h1>
   <p class="lede">Who comes to magenta and PickiPedia, what they read and where they came from: counted on each
-    server from its own access log, once a minute. Nothing runs in a reader's browser for it.</p>
+    server from its own access log, once a minute. Nothing runs in a reader's browser for it.
+    Hover or tap anything underlined to see what it counts.</p>
 
   <div class="tabs" role="group" aria-label="How far back">
     {% for key, words in traffic.windows %}
-      <button type="button" data-window="{{ key }}" aria-pressed="{% if key == '24h' %}true{% else %}false{% endif %}">{{ words }}</button>
+      <button type="button" class="tip" data-window="{{ key }}" aria-pressed="{% if key == '24h' %}true{% else %}false{% endif %}"
+              data-tip="{{ words|capfirst }}, by the hour, in UTC. Each box counts from its own access log, so a window reaches back only as far as that box's own count — it says so underneath when it holds less.">{{ words }}</button>
     {% endfor %}
   </div>
 
@@ -145,11 +162,52 @@
   const linkFor = (host, kind, what) =>
     kind === 'from' ? 'https://' + what : 'https://' + host + what;
 
-  function list(host, title, kind, rows, unit, empty) {
-    if (!rows || !rows.length) return `<div class="list"><h3>${title}</h3><p class="none">${empty}</p></div>`;
-    return `<div class="list"><h3>${title}</h3><ol>` + rows.map(r =>
+  // What each description counts, in words (Justin, 22 Nov: "so it's obvious what the descriptions mean").
+  // Shown on hover and on tap, and in the page for a screen reader.
+  const TIPS = {
+    visits: 'A reader, counted once until half an hour goes by with nothing asked for. The only thing a log '
+          + 'has to go on is the name a browser gives itself, so a crawler that calls itself Chrome lands here.',
+    asked: 'Requests by people in this window: pages, not the stylesheets, scripts and images a page pulls in '
+         + 'with it, and not the stats pages themselves.',
+    crawlers: "Other people's robots, as a share of everything asked for: search engines, AI crawlers, feed "
+            + 'readers, scanners. Told apart by the name in the user agent.',
+    ours: 'Us, not readers: magenta’s own pollers and every open tab asking for news, each emergent’s '
+        + 'runner, the walks, the wiki’s MCP server, scripts and curl. Counted apart so it can’t '
+        + 'flatter the number of people.',
+    bar: 'Everything asked for in this window, split three ways: people, other people’s crawlers, and our '
+       + 'own machinery.',
+    pages: 'Most asked for, by anyone, people and robots alike. A wiki page keeps its title: '
+         + '/index.php?title=Doc_Watson is that page, not an undifferentiated "index.php".',
+    from: 'The site, and the post, a reader followed a link from, as their browser reported it. The host and '
+        + 'path are kept and the query string never is, so what someone typed into a search engine isn’t here.',
+    followed: 'Links inside the site that people followed, counted where they landed. A click out to another '
+            + 'site is invisible to a server: the only way to count one is a script in the reader’s browser, '
+            + 'which we don’t do.',
+    missing: 'Asked for and not there (404): broken links of ours, URLs that moved, and robots trying their luck.',
+  };
+  const tip = (label, key) =>
+    `<span class="tip word" tabindex="0" data-tip="${esc(TIPS[key])}">${esc(label)}`
+    + `<i class="sr"> — ${esc(TIPS[key])}</i></span>`;
+
+  function list(host, title, key, kind, rows, unit, empty) {
+    const head = `<h3>${tip(title, key)}</h3>`;
+    if (!rows || !rows.length) return `<div class="list">${head}<p class="none">${empty}</p></div>`;
+    return `<div class="list">${head}<ol>` + rows.map(r =>
       `<li><a href="${esc(linkFor(host, kind, r.what))}" target="_blank" rel="noopener" title="${esc(r.what)}">${esc(r.what)}</a>`
       + `<b>${fmt(r.n)}${unit ? ' ' + unit : ''}</b></li>`).join('') + '</ol></div>';
+  }
+
+  // How far back this box's own count reaches. Until it reaches past the window, a longer window holds the
+  // same numbers as a shorter one -- which is exactly what Justin saw on the day this shipped.
+  const when = iso => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  function since(site, w) {
+    if (w.full !== false || !w.since) return '';
+    const hours = w.hours === 1 ? 'one hour' : `${w.hours} hours`;
+    const more = site.catching_up
+      ? ` Still reading ${fmt(site.catching_up)} rolled log${site.catching_up === 1 ? '' : 's'} behind it, a `
+        + 'minute apart, so the day and the week fill as it goes.'
+      : ' Anything longer than that holds the same numbers until the count catches up with it.';
+    return `<p class="since">Counted here only since ${esc(when(w.since))} — ${hours} of it.${more}</p>`;
   }
 
   function draw() {
@@ -166,20 +224,24 @@
       const share = k => all ? ((req[k] || 0) / all * 100).toFixed(0) : 0;
       body.innerHTML =
         `<div class="nums">
-           <div class="num people"><b>${fmt(vis.people)}</b><span>visits by people</span></div>
-           <div class="num"><b>${fmt(req.people)}</b><span>pages they asked for</span></div>
-           <div class="num"><b>${share('crawlers')}%</b><span>of it crawlers</span></div>
-           <div class="num"><b>${share('ours')}%</b><span>our own machinery</span></div>
+           <div class="num people"><b>${fmt(vis.people)}</b><span>${tip('visits by people', 'visits')}</span></div>
+           <div class="num"><b>${fmt(req.people)}</b><span>${tip('pages they asked for', 'asked')}</span></div>
+           <div class="num"><b>${share('crawlers')}%</b><span>${tip('of it crawlers', 'crawlers')}</span></div>
+           <div class="num"><b>${share('ours')}%</b><span>${tip('our own machinery', 'ours')}</span></div>
          </div>
-         <div class="bar" title="people ${share('people')}%, crawlers ${share('crawlers')}%, ours ${share('ours')}%">
-           <i class="people" style="width:${share('people')}%"></i>
-           <i class="crawlers" style="width:${share('crawlers')}%"></i>
-           <i class="ours" style="width:${share('ours')}%"></i>
+         <div class="tip" tabindex="0" data-tip="${esc(TIPS.bar)}">
+           <div class="bar" role="img"
+                aria-label="people ${share('people')}%, crawlers ${share('crawlers')}%, our own machinery ${share('ours')}%">
+             <i class="people" style="width:${share('people')}%"></i>
+             <i class="crawlers" style="width:${share('crawlers')}%"></i>
+             <i class="ours" style="width:${share('ours')}%"></i>
+           </div>
          </div>`
-        + list(site.host, 'Most read', 'page', w.pages, 'asks', 'nothing read yet')
-        + list(site.host, 'They came from', 'from', w.from, 'visits', 'nobody arrived from another site')
-        + list(site.host, 'Links they followed here', 'followed', w.followed, 'times', 'no links followed yet')
-        + list(site.host, 'Asked for, not there', 'page', w.missing, 'asks', 'nothing missing');
+        + since(site, w)
+        + list(site.host, 'Most read', 'pages', 'page', w.pages, 'asks', 'nothing read yet')
+        + list(site.host, 'They came from', 'from', 'from', w.from, 'visits', 'nobody arrived from another site')
+        + list(site.host, 'Links they followed here', 'followed', 'followed', w.followed, 'times', 'no links followed yet')
+        + list(site.host, 'Asked for, not there', 'missing', 'page', w.missing, 'asks', 'nothing missing');
       when.textContent = site.updated ? `counted up to ${new Date(site.updated).toLocaleTimeString()}` : '';
     }
   }

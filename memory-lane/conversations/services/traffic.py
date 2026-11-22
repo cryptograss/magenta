@@ -67,4 +67,8 @@ def _one(http, host):
         return {'error': f'couldn’t read it from {host}'}
     if not isinstance(body, dict) or not isinstance(body.get('windows'), dict):
         return {'error': f'{host} answered with something unreadable'}
-    return {'updated': body.get('updated', ''), 'windows': body['windows']}
+    # `since` and `catching_up`: how far back the box's own count reaches, and whether it is still
+    # reading the rolled logs behind it. A window holding an hour would otherwise read exactly like a
+    # quiet week (Justin, #performance, 22 Nov), and each window carries its own `since` and `full`.
+    return {'updated': body.get('updated', ''), 'windows': body['windows'],
+            'since': body.get('since') or '', 'catching_up': body.get('catching_up') or 0}
