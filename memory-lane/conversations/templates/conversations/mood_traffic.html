@@ -135,8 +135,10 @@
   {% endfor %}
   </div>
 
-  <p class="kept">A visit is someone heard again after half an hour's quiet. People, crawlers and ours are told
-    apart by the name the browser gives itself, so a crawler that lies is counted as a person. Links followed are
+  <p class="kept">A visit is someone heard again after half an hour's quiet. Only a browser is counted as a
+    person: every browser says so in its user agent, and a program that fetches a page says something else or
+    says nothing. A scraper that sends a browser's user agent is counted as a person all the same, and no log
+    can tell the difference &mdash; but it shows up by name under <em>who asked</em>. Links followed are
     within the site itself: a click out to somewhere else is invisible to a server, and the only way to see one
     would be a script in the reader's browser, which we don't do. Left out on purpose: addresses (a visitor is a
     number made with a salt that changes daily), anything in a query string that isn't the page's name, and what
@@ -166,11 +168,12 @@
   // Shown on hover and on tap, and in the page for a screen reader.
   const TIPS = {
     visits: 'A reader, counted once until half an hour goes by with nothing asked for. The only thing a log '
-          + 'has to go on is the name a browser gives itself, so a crawler that calls itself Chrome lands here.',
+          + 'has to go on is the name a browser gives itself, so a scraper that calls itself Chrome lands here '
+          + '— look under “who asked” for what the programs are.',
     asked: 'Requests by people in this window: pages, not the stylesheets, scripts and images a page pulls in '
          + 'with it, and not the stats pages themselves.',
-    crawlers: "Other people's robots, as a share of everything asked for: search engines, AI crawlers, feed "
-            + 'readers, scanners. Told apart by the name in the user agent.',
+    crawlers: "Robots, as a share of everything asked for: search engines, AI crawlers, feed readers, scanners, "
+            + 'and any other program that isn’t ours — anything whose user agent isn’t a browser’s.',
     ours: 'Us, not readers: magenta’s own pollers and every open tab asking for news, each emergent’s '
         + 'runner, the walks, the wiki’s MCP server, scripts and curl. Counted apart so it can’t '
         + 'flatter the number of people.',
@@ -184,17 +187,26 @@
             + 'site is invisible to a server: the only way to count one is a script in the reader’s browser, '
             + 'which we don’t do.',
     missing: 'Asked for and not there (404): broken links of ours, URLs that moved, and robots trying their luck.',
+    clients: 'The programs behind the asks, by the name each gives itself: mwclient, Googlebot, curl, a '
+           + 'library. Everything here is counted, the stylesheets and images of a page included, since the '
+           + 'question is who is making the box work. People are never named one at a time — a browser’s '
+           + 'user agent beside what it asked for is most of a fingerprint — so every browser is “a browser”.',
   };
   const tip = (label, key) =>
     `<span class="tip word" tabindex="0" data-tip="${esc(TIPS[key])}">${esc(label)}`
     + `<i class="sr"> — ${esc(TIPS[key])}</i></span>`;
 
+  // `kind` says what a row is, and so where it links. A client is a program's name rather than somewhere to
+  // go, so it is the one list whose rows are plain text.
   function list(host, title, key, kind, rows, unit, empty) {
     const head = `<h3>${tip(title, key)}</h3>`;
     if (!rows || !rows.length) return `<div class="list">${head}<p class="none">${empty}</p></div>`;
-    return `<div class="list">${head}<ol>` + rows.map(r =>
-      `<li><a href="${esc(linkFor(host, kind, r.what))}" target="_blank" rel="noopener" title="${esc(r.what)}">${esc(r.what)}</a>`
-      + `<b>${fmt(r.n)}${unit ? ' ' + unit : ''}</b></li>`).join('') + '</ol></div>';
+    return `<div class="list">${head}<ol>` + rows.map(r => {
+      const name = kind
+        ? `<a href="${esc(linkFor(host, kind, r.what))}" target="_blank" rel="noopener" title="${esc(r.what)}">${esc(r.what)}</a>`
+        : `<span class="what" title="${esc(r.what)}">${esc(r.what)}</span>`;
+      return `<li>${name}<b>${fmt(r.n)}${unit ? ' ' + unit : ''}</b></li>`;
+    }).join('') + '</ol></div>';
   }
 
   // How far back this box's own count reaches. Until it reaches past the window, a longer window holds the
@@ -241,7 +253,8 @@
         + list(site.host, 'Most read', 'pages', 'page', w.pages, 'asks', 'nothing read yet')
         + list(site.host, 'They came from', 'from', 'from', w.from, 'visits', 'nobody arrived from another site')
         + list(site.host, 'Links they followed here', 'followed', 'followed', w.followed, 'times', 'no links followed yet')
-        + list(site.host, 'Asked for, not there', 'missing', 'page', w.missing, 'asks', 'nothing missing');
+        + list(site.host, 'Asked for, not there', 'missing', 'page', w.missing, 'asks', 'nothing missing')
+        + list(site.host, 'Who asked', 'clients', null, w.clients, 'asks', 'nobody yet');
       when.textContent = site.updated ? `counted up to ${new Date(site.updated).toLocaleTimeString()}` : '';
     }
   }

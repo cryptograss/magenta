@@ -22,6 +22,7 @@ def window(people=120, crawlers=300, ours=40, pages=(('/wiki/Doc_Watson', 90),),
         'from': [{'what': 'www.reddit.com/r/bluegrass/comments/1abcd/the_connectome/', 'n': 24}],
         'followed': [{'what': '/wiki/Main_Page', 'n': 12}],
         'missing': [{'what': '/wiki/No_Such_Page', 'n': 3}],
+        'clients': [{'what': 'mwclient', 'n': 1675265}, {'what': 'a browser', 'n': 41203}],
     }
 
 
@@ -162,14 +163,25 @@ class TrafficSectionTest(TestCase):
         html = self.client.get('/traffic/', {'embed': '1'}).content.decode()
         for described in ('visits by people', 'pages they asked for', 'of it crawlers',
                           'our own machinery', 'Most read', 'They came from',
-                          'Links they followed here', 'Asked for, not there'):
+                          'Links they followed here', 'Asked for, not there', 'Who asked'):
             self.assertIn(described, html)
         self.assertIn('TIPS = {', html)
-        for words in ('half an hour goes by', "Other people's robots", 'each emergent’s',
-                      'invisible to a server', 'keeps its title'):
+        for words in ('half an hour goes by', 'any other program that isn’t ours', 'each emergent’s',
+                      'invisible to a server', 'keeps its title',
+                      'by the name each gives itself'):      # who asked: the programs, named
             self.assertIn(words, html)
         self.assertIn('class="tip word"', html)                     # the underlined descriptions
         self.assertEqual(html.count('button type="button" class="tip"'), 3)   # and the three windows
+
+    def test_the_page_names_the_programs_and_never_a_person(self):
+        """Justin, 23 Nov, looking at a million api.php asks: "any notions". The answer was a program's
+        name, so the page carries it. A client is a name and not somewhere to go, so its row doesn't
+        link; a person is never named one at a time."""
+        html = self.client.get('/traffic/', {'embed': '1'}).content.decode()
+        self.assertIn("list(site.host, 'Who asked', 'clients', null, w.clients", html)
+        self.assertIn('"what": "mwclient"', html)
+        self.assertIn('"what": "a browser"', html)
+        self.assertIn('<span class="what" title=', html)      # named, not linked
 
     def test_the_page_can_say_how_far_back_a_box_has_counted(self):
         html = self.client.get('/traffic/', {'embed': '1'}).content.decode()
