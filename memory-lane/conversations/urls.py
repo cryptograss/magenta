@@ -126,6 +126,9 @@ urlpatterns = [
     path('api/moods/<slug:slug>/unfurl/<str:message_id>/', views_moods.api_unfurl, name='api_mood_unfurl'),
     path('api/moods/<slug:slug>/todo/', views_moods.api_mood_todo, name='api_mood_todo'),
     path('api/moods/<slug:slug>/humans/', views_moods.api_mood_humans, name='api_mood_humans'),
+    # At a glance (R.J., 13 Nov): who's on what, what needs people, what each person means to do.
+    path('api/glance/', views_moods.api_glance, name='api_glance'),
+    path('api/glance/intention/', views_moods.api_glance_intention, name='api_glance_intention'),
     path('api/github/hook/', views_moods.api_github_hook, name='api_github_hook'),
     path('api/wiki/hook/', views_moods.api_wiki_hook, name='api_wiki_hook'),
     path('api/wiki-hooks/', views_moods.api_wiki_hooks, name='api_wiki_hooks'),

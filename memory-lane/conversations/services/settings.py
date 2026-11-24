@@ -96,7 +96,11 @@ PERSON_KEYS = {
     'name_colours': ('', "A colour for each character of their name as written: 0-f, ANSI's sixteen, or '.' for none."),
     # And behind each, as a BBS's cell had its background (iCE colour: all sixteen) (Justin, 21 Oct: "had more colors").
     'name_backs': ('', "A background for each character of their name as written: 0-f, or '.' for none."),
+    # What they mean to do today or this week, in their own words (R.J., 13 Nov; services/glance.py). A new row each
+    # time they say it, so what they meant on other days stays.
+    'intention': ('', f"What they mean to do, in a few lines: at most {400} characters and {6} lines. Empty: none said."),
 }
+INTENTION_MAX, INTENTION_LINES = 400, 6
 NAME_ART_MAX = 30
 
 
@@ -359,6 +363,17 @@ def clean(key, value):
             raise Invalid('consider_usd_per_day: a number')
         if not 0 <= value <= 500:
             raise Invalid('consider_usd_per_day: from 0 to 500')
+        return value
+    if key == 'intention':
+        if not isinstance(value, str):
+            raise Invalid('intention: words')
+        lines = [' '.join(line.split()) for line in value.splitlines()]
+        lines = [re.sub(r'^[*\-•]\s*', '', line) for line in lines if line.strip('*-• ')]  # a pasted list's bullets
+        if len(lines) > INTENTION_LINES:
+            raise Invalid(f'intention: at most {INTENTION_LINES} lines')
+        value = '\n'.join(lines)
+        if len(value) > INTENTION_MAX:
+            raise Invalid(f'intention: at most {INTENTION_MAX} characters')
         return value
     raise Invalid(f'no such setting: {key}')
 
