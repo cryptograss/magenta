@@ -9676,13 +9676,16 @@
                   count(files.filter(f => /^audio\//.test(f.type)).length, 'recording', 'recordings')].filter(Boolean);
     shareCard.querySelector('.what').textContent = 'Shared: ' + (what.join(' · ') || 'nothing')
       + (shared.lost ? ` · ${count(shared.lost, 'file', 'files')} didn't come through: share again` : '');
-    shareHere.disabled = !viewer;
-    shareHere.textContent = viewer ? 'Add' : 'Sign in to add it';
-    shareHere.title = viewer ? 'Into the box, to send' : 'It waits here until you do';
+    // The card is up before the Moods are (offerShare, at the start): until one is open there is nowhere
+    // to add it to yet, and the button says so rather than looking broken.
+    shareHere.disabled = !viewer || !current;
+    shareHere.textContent = !viewer ? 'Sign in to add it' : current ? 'Add' : 'Opening…';
+    shareHere.title = !viewer ? 'It waits here until you do'
+      : current ? 'Into the box, to send' : 'It waits here while the Mood opens';
     // Which Mood: this one, or any other -- choosing one opens it, and Add puts it there.
     const into = shareCard.querySelector('.into');
-    into.hidden = !viewer;
     const choices = moods.filter(m => !m.archived || m.slug === current);
+    into.hidden = !viewer || !choices.length;
     shareMood.innerHTML = choices.map(m => `<option value="${esc(m.slug)}"${m.slug === current ? ' selected' : ''}>#${esc(m.slug)}</option>`).join('');
   }
   shareHere.addEventListener('click', async () => {
@@ -11447,6 +11450,10 @@
 
   (async function start() {
     await null;  // the rest of this script read first: what showSection uses is all there
+    // A share is shown at once, before anything is loaded: what came in is already kept (the service
+    // worker's IndexedDB, or the address), so nothing has to be waited on to say so. Justin, 23 Nov:
+    // "the app comes up and then seems to freeze for about 30s, and only then does the share bar come up."
+    if (sharing_) offerShare();
     // Loaded in the background: ready the moment it's wanted. Opened at a link's own address (from the
     // front page, or a #t- link elsewhere), it opens at that link's discussion.
     // Its order (?order=new) and a comment's #c- come along: a frame's own address opened on its own is
@@ -11466,16 +11473,23 @@
     const listed = loadMoods();
     listed.then(() => { loadTokens(); fetchBadges(); },  // not awaited: badges fill in when they come
                 () => setStatus('cannot reach memory-lane', 'stale'));
-    if (!initialSlug || sharing_) { try { await listed; } catch (e) { return; } }
+    // A share opens where you last were (the Mood opened last in this browser), and this browser remembers
+    // which that was: it opens straight away rather than waiting on the list, as an address with a Mood in
+    // it does. If the list then says that Mood is gone or archived, the first one is opened instead.
+    const sharedInto = sharing_ ? (store.get('kept', []).find(s => keptOf(s)) || null) : null;
+    if (!initialSlug && !sharedInto) { try { await listed; } catch (e) { return; } }
     await pullSeen();  // where you've read up to, on every device, before anything is counted
-    // A share opens where you last were (the Mood opened last in this browser), not at the top of the list.
-    const lastOpened = sharing_ && store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived));
+    if (sharedInto) listed.then(() => {
+      if (current === sharedInto && !moods.some(m => m.slug === sharedInto && !m.archived) && moods[0]) open(moods[0].slug, false);
+      else renderShare();  // the list is in: the card can now say which other Mood it could go to
+    }, () => {});
+    const lastOpened = sharing_ && (sharedInto || store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived)));
     const slug = initialSlug || lastOpened || (moods[0] && moods[0].slug);
     if (!slug) { inner.innerHTML = '<div class="empty">No Moods yet.</div>'; setStatus('live', 'live'); return; }
     const linked = location.hash.match(/^#m-([0-9a-f-]{36})$/);  // from a notification, or a link
     if (linked) await openAndReveal(slug, linked[1], false);
     else await open(slug, false);
-    if (sharing_) { history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/'); offerShare(); }
+    if (sharing_) history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/');
     setInterval(() => { poll(false); fetchBadges(); }, viewer ? POLL_MS : VISITOR_POLL_MS);
     if (new URLSearchParams(location.search).has('tour')) startTour();
   })();
