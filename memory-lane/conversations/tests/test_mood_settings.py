@@ -345,6 +345,17 @@ class SettingsAPITest(TestCase):
         self.assertEqual(shared['Location'], '/moods/?shared=here&title=Water+Tower&text=Have+a+listen&lost=1')
         self.assertEqual(self.client.get('/moods/share/')['Location'], '/moods/')
 
+    def test_a_share_is_shown_before_anything_is_loaded(self):
+        """Justin, 23 Nov 2026: the app "comes up and then seems to freeze for about 30s, and only then does
+        the share bar come up". What was shared is already kept, so the card goes up first of all, and the
+        Mood this browser last had open is opened without waiting for the list."""
+        page = self.client.get('/moods/').content.decode()
+        offered, listing = page.index('if (sharing_) offerShare();'), page.index('const listed = loadMoods();')
+        self.assertLess(offered, listing)  # the card, before the Moods are even asked for
+        waiting = page.index('if (!initialSlug && !sharedInto) { try { await listed; }')
+        self.assertLess(page.index('const sharedInto ='), waiting)  # and a share with a Mood kept doesn't wait
+        self.assertIn("shareHere.disabled = !viewer || !current;", page)  # nowhere to add it to until one is open
+
     def test_a_mood_never_takes_a_pages_address(self):
         self.assertEqual(Mood.free_slug('Share'), 'share-2')
         self.assertEqual(Mood.free_slug('Settings'), 'settings-2')
