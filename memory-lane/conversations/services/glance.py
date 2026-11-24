@@ -31,9 +31,6 @@ KEEP = 45            # seconds one window's answer is kept: every open pane asks
 NEEDS_TOP = 8        # needs sent, of them all; and
 NEEDS_EACH = 6       # of each person's own (and of nobody's: anyone's to take), for the page's "who" buttons
 NOT_SPEAKERS = ('system', 'tool-result', 'mood-poller', 'harness')
-# An open to-do item's place by its kind, when nothing gives it a priority: what holds someone else up comes first.
-KIND_ORDER = ('merge', 'deploy', 'review', 'decide', 'verify', 'hands', 'make')   # todo_types.TYPES' names
-UNRANKED = 6         # after every priority, 1 to 5
 INTENTION = 'intention'
 
 
@@ -98,21 +95,14 @@ def _candidates():
     return counts
 
 
-def _rank(item):
-    """Where an open to-do item stands among what's needed: its priority, 1 to 5, else after them all by its kind."""
-    priority = item.get('priority')
-    if priority:
-        return (priority, 0)
-    kind = (item.get('type') or item.get('kind') or '').lower()
-    return (UNRANKED, KIND_ORDER.index(kind) if kind in KIND_ORDER else len(KIND_ORDER))
-
-
 def needs(todos=None, asks=None):
-    """What waits on a person, most needed first: [{'mood', 'mood_title', 'task', 'kind', 'who', 'link',
-    'priority', 'ask'}]. `ask`: an emergent's open ask (its 'who' is empty: whoever can do it), which comes first.
+    """What waits on a person, most needed first: [{'mood', 'mood_title', 'task', 'headline', 'kind', 'type',
+    'who', 'link', 'priority', 'ask'}], each in its place by todo_types.rank (its priority, then its type). `ask`: an emergent's
+    open ask (its 'who' is empty: whoever can do it), which comes first.
     Not an emergent's own job (the to-do's type 'work'), nor an item that names emergents only."""
     from conversations.models import Mood, ThinkingEntity
     from . import settings as knobs
+    from .todo_types import HEADLINE_MAX
     if todos is None:
         from . import todo
         todos = todo.all_todos()
@@ -130,9 +120,12 @@ def needs(todos=None, asks=None):
             what = {'tools': 'a turn with its tools', 'merge': 'a merge', 'deploy': 'a redeploy'}.get(r.get('kind'), 'help')
             found.append({'mood': slug, 'mood_title': titles.get(slug, slug),
                           'task': f"{r.get('emergent', '')} asks for {what}: {r.get('for') or ''}".rstrip(': '),
+                          'headline': f"{r.get('emergent', '')}: {r.get('for') or what}"[:HEADLINE_MAX],
+                          'type': r.get('kind') or '',   # merge and deploy are to-do types too; tools is an ask's own
                           'kind': r.get('kind') or '', 'who': [], 'priority': None, 'ask': True,
                           'link': f"/moods/{slug}/#m-{r['id']}" if r.get('id') else f'/moods/{slug}/',
                           '_order': (0, 0, 0)})
+    from .todo_types import headline, rank, type_of
     for n, item in enumerate(todos.get('items') or []):
         if item.get('done') or item.get('merged') or item.get('archived'):
             continue
@@ -141,9 +134,10 @@ def needs(todos=None, asks=None):
             continue
         found.append({'mood': item.get('mood') or '', 'mood_title': item.get('mood_title') or item.get('mood') or '',
                       'task': item.get('task') or '', 'kind': item.get('kind') or item.get('type') or '',
+                      'type': item.get('type') or type_of(item), 'headline': item.get('headline') or headline(item),
                       'who': who,
                       'link': item.get('link') or '', 'priority': item.get('priority'), 'ask': False,
-                      '_order': (*_rank(item), n)})   # n: all_todos has them newest first
+                      '_order': (*rank(item), n)})   # n: all_todos has them newest first
     found.sort(key=lambda i: i['_order'])
     for item in found:
         del item['_order']

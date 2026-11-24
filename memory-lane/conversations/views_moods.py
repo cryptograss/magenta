@@ -1427,7 +1427,8 @@ def api_glance(request):
     """At a glance (services/glance.py; R.J., 13 Nov): who's on what, what needs people, and what each person
     means to do. ?window=day (7,200 blocks) or week. The same for everyone: the page puts its reader's own first."""
     from .services import glance
-    return JsonResponse(glance.glance(request.GET.get('window') or 'day'))
+    from .services.todo_types import TYPES
+    return JsonResponse({**glance.glance(request.GET.get('window') or 'day'), 'types': TYPES})
 
 
 @require_POST
@@ -1816,7 +1817,9 @@ def api_mood_todo(request, slug):
     if request.GET.get('fresh'):
         todo.forget(mood)
     # And what GitHub's webhook last said, and when: whether merges are being told at once.
-    return JsonResponse({**todo.for_mood(mood), 'hook': todo.last_heard(), 'hook_refused': todo.last_refused()})
+    from .services.todo_types import TYPES
+    return JsonResponse({**todo.for_mood(mood), 'types': TYPES, 'hook': todo.last_heard(),
+                         'hook_refused': todo.last_refused()})
 
 
 @csrf_exempt  # GitHub's call, proven by its signature, not a browser's session

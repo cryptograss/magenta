@@ -32,6 +32,47 @@ class TypeTest(TestCase):
         self.assertEqual(rows['decide']['open'], 1)
 
 
+class HeadlineTest(TestCase):
+    """A row is a glyph and a headline (Justin, 21 Nov, #at-a-glance: "_realllly_ terse headlines")."""
+
+    def line(self, task, kind=''):
+        return tt.with_types([{'task': task, 'kind': kind}])[0]['headline']
+
+    def test_a_short_task_is_its_own_headline(self):
+        self.assertEqual(self.line('Get into Backblaze', 'hands'), 'Get into Backblaze')
+        self.assertEqual(self.line('Gate gap: a removal is unchecked', 'verify'), 'Gate gap: a removal is unchecked')
+
+    def test_the_type_s_own_verb_is_left_to_its_glyph(self):
+        self.assertEqual(self.line('Merge magenta:magent/at-a-glance: the right pane\'s second leaf, who\'s on what',
+                                   'merge'), 'magenta:magent/at-a-glance')
+        self.assertEqual(self.line('Redeploy maybelle', 'deploy'), 'maybelle')
+        self.assertEqual(self.line('Decide: unpin all 11 Coconut remnants?', 'decide'), 'unpin all 11 Coconut remnants?')
+        self.assertEqual(self.line('Merge', 'merge'), 'Merge')                       # nothing else to show
+        self.assertEqual(self.line('Merge the two lists by hand', 'work'), 'Merge the two lists by hand')  # not a merge
+
+    def test_a_long_task_is_cut_at_its_first_clause(self):
+        self.assertEqual(self.line('Decide the burn element: naming, what a burn attaches to, and whether it ships '
+                                   'with epoch 1 or later', 'decide'), 'the burn element')
+        self.assertEqual(self.line("BETA: the pane's display selector (content / skin / header): one consistent "
+                                   'style, or drop the selector', 'decide'), "BETA: the pane's display selector")
+        self.assertEqual(self.line('Promote [[Candidate:Common.js]] to [[MediaWiki:Common.js|the live one]]: the '
+                                   'site-wide night toggle', 'merge'), 'Promote Candidate:Common.js to the live one')
+
+    def test_with_no_clause_it_is_cut_at_a_word(self):
+        line = self.line('Make a bot password for the connectome walk and put it in the vault as `connectome_walk`')
+        self.assertEqual(line, 'Make a bot password for the connectome walk and put it…')
+        self.assertLessEqual(len(line), tt.HEADLINE_MAX)
+        for task in ('x' * 300, 'word ' * 80, 'a: ' + 'b' * 200, ''):
+            self.assertLessEqual(len(self.line(task)), tt.HEADLINE_MAX)
+
+    def test_what_holds_someone_up_ranks_first_and_a_priority_before_all(self):
+        merge, decide, work, urgent = tt.with_types([
+            {'task': 'a', 'kind': 'merge'}, {'task': 'b', 'kind': 'decide'}, {'task': 'c', 'kind': 'code'},
+            {'task': 'd', 'kind': 'music', 'priority': 2}])
+        self.assertEqual(sorted([work, decide, urgent, merge], key=lambda i: i['rank']), [urgent, merge, decide, work])
+        self.assertEqual(set(tt.NEED_ORDER), set(tt.TYPES))
+
+
 class VerifyTest(TestCase):
 
     def setUp(self):
@@ -160,3 +201,23 @@ class PageTest(TestCase):
         self.assertIn('class="t-btn" data-type="deploy"', html)
         self.assertIn('class="t-btn none" data-type="merge"', html)   # none open: dimmed
         self.assertIn('🖥️ deploy', html)
+
+    def test_the_page_carries_each_item_s_headline_and_who_under_one_name(self):
+        cache.clear()
+        m = Mood.objects.create(slug='m1', title='Mood One')
+        page = ('<todo>\n- task: "Merge magenta:magent/foo: a long account of what it does and why it matters"\n'
+                '  who: jMyles, JMyles\n  kind: merge\n- task: Chart a song\n  kind: music\n</todo>')
+
+        class Wiki:
+            def get(self, url, params=None, **kwargs):
+                found = (params or {}).get('title') == 'Cryptograss:Moods/m1/todo'
+                return mock.Mock(status_code=200 if found else 404, text=page)
+        make, merge = todo.all_todos(http=Wiki())['items']   # newest first: the page's last
+        self.assertEqual((merge['headline'], merge['type'], merge['who_keys']), ('magenta:magent/foo', 'merge', ['justin']))
+        self.assertEqual((make['headline'], make['who_keys']), ('Chart a song', []))
+        self.assertLess(merge['rank'], make['rank'])
+        html = self.client.get('/todo/?embed=1').content.decode()
+        self.assertIn('id="todo-items"', html)                 # the items, for the page to group, sort and filter
+        self.assertIn('"headline": "magenta:magent/foo"', html)
+        self.assertIn('id="todoWhos"', html)
+        self.assertEqual(self.client.get(f'/api/moods/{m.slug}/todo/').json()['types']['merge'][0], '🪢')
