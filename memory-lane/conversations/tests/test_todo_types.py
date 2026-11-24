@@ -32,6 +32,43 @@ class TypeTest(TestCase):
         self.assertEqual(rows['decide']['open'], 1)
 
 
+class SaidTest(TestCase):
+    """Each item says which message asked for it, and is written short (Justin, 21 Nov, #at-a-glance: "a maximum
+    of 120 characters and a link to a message, so that the human can see the conversation that prompted the
+    todo")."""
+
+    UUID = '0b5f2e14-1c3d-4a7b-9e21-6f8a5c4d3b2a'
+
+    def said(self, value):
+        return tt.with_types([{'task': 'Merge it', 'said': value}])[0]['said_url']
+
+    def test_a_message_link_is_where_it_came_from(self):
+        self.assertEqual(self.said(f'#m-{self.UUID}'), f'/messages/{self.UUID}')
+        self.assertEqual(self.said(f'https://magenta.cryptograss.live/moods/interfaces/#m-{self.UUID}'),
+                         f'https://magenta.cryptograss.live/moods/interfaces/#m-{self.UUID}')
+        self.assertEqual(self.said(f'/moods/interfaces/#m-{self.UUID}'), f'/moods/interfaces/#m-{self.UUID}')
+
+    def test_an_id_on_its_own_or_cut_short_is_read_too(self):
+        self.assertEqual(self.said(self.UUID), f'/messages/{self.UUID}')
+        self.assertEqual(self.said('#m-0b5f2e14'), '/messages/0b5f2e14')
+        self.assertEqual(self.said(f'/messages/{self.UUID}'), f'/messages/{self.UUID}')
+
+    def test_nothing_to_go_to_is_empty(self):
+        for value in ('', None, 'because Justin asked', 'see the Mood'):
+            self.assertEqual(self.said(value), '', repr(value))
+
+    def test_a_task_past_120_characters_is_marked_long(self):
+        short = tt.with_types([{'task': 'x' * tt.TASK_MAX}])[0]
+        long = tt.with_types([{'task': 'x' * (tt.TASK_MAX + 1)}])[0]
+        self.assertFalse(short['long'])
+        self.assertTrue(long['long'])
+
+    def test_the_page_carries_said_and_long_to_a_row(self):
+        items = todo.parse('<todo>\n- task: Merge magenta:magent/foo\n  said: "#m-0b5f2e14"\n</todo>')
+        self.assertEqual(items[0]['said'], '#m-0b5f2e14')
+        self.assertEqual(tt.with_types(items)[0]['said_url'], '/messages/0b5f2e14')
+
+
 class HeadlineTest(TestCase):
     """A row is a glyph and a headline (Justin, 21 Nov, #at-a-glance: "_realllly_ terse headlines")."""
 

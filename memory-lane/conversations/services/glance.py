@@ -97,7 +97,7 @@ def _candidates():
 
 def needs(todos=None, asks=None):
     """What waits on a person, most needed first: [{'mood', 'mood_title', 'task', 'headline', 'kind', 'type',
-    'who', 'link', 'priority', 'ask'}], each in its place by todo_types.rank (its priority, then its type). `ask`: an emergent's
+    'who', 'link', 'said_url', 'priority', 'ask'}], each in its place by todo_types.rank (its priority, then its type). `ask`: an emergent's
     open ask (its 'who' is empty: whoever can do it), which comes first.
     Not an emergent's own job (the to-do's type 'work'), nor an item that names emergents only."""
     from conversations.models import Mood, ThinkingEntity
@@ -124,8 +124,9 @@ def needs(todos=None, asks=None):
                           'type': r.get('kind') or '',   # merge and deploy are to-do types too; tools is an ask's own
                           'kind': r.get('kind') or '', 'who': [], 'priority': None, 'ask': True,
                           'link': f"/moods/{slug}/#m-{r['id']}" if r.get('id') else f'/moods/{slug}/',
+                          'said_url': f"/messages/{r['id']}" if r.get('id') else '',
                           '_order': (0, 0, 0)})
-    from .todo_types import headline, rank, type_of
+    from .todo_types import headline, rank, said_url, type_of
     for n, item in enumerate(todos.get('items') or []):
         if item.get('done') or item.get('merged') or item.get('archived'):
             continue
@@ -137,6 +138,7 @@ def needs(todos=None, asks=None):
                       'type': item.get('type') or type_of(item), 'headline': item.get('headline') or headline(item),
                       'who': who,
                       'link': item.get('link') or '', 'priority': item.get('priority'), 'ask': False,
+                      'said_url': item.get('said_url') or said_url(item.get('said')),
                       '_order': (*rank(item), n)})   # n: all_todos has them newest first
     found.sort(key=lambda i: i['_order'])
     for item in found:

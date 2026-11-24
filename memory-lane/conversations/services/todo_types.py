@@ -71,12 +71,15 @@ def type_of(item):
 
 
 def with_types(items):
-    """Each item with its type, its headline (what a row shows of it) and its rank (where it stands among what's
+    """Each item with its type, its headline (what a row shows of it), where the message it came from is read
+    (`said_url`), whether its task runs past TASK_MAX (`long`), and its rank (where it stands among what's
     needed)."""
     out = []
     for item in items:
         typed = {**item, 'type': type_of(item)}
         typed['headline'] = headline(typed)
+        typed['said_url'] = said_url(item.get('said'))
+        typed['long'] = len(' '.join(str(item.get('task') or '').split())) > TASK_MAX
         typed['rank'] = list(rank(typed))
         out.append(typed)
     return out
@@ -87,6 +90,14 @@ def with_types(items):
 # "I need sorting, filtration, obvious types, _realllly_ terse headlines". 203 items were open, their tasks 117
 # characters at the middle and 334 at the longest. A row is its type's glyph and a headline; the task as written
 # is a click away.
+
+# An item is written short and says where it came from (Justin, 21 Nov, #at-a-glance: "structure todos such that
+# they have a maximum of 120 characters and a link to a message, so that the human can see the conversation that
+# prompted the todo in the first place"). `said` holds that message's link; a task over TASK_MAX is marked `long`,
+# so whoever next touches the list can see which ones to shorten.
+TASK_MAX = 120
+_SAID_ID = re.compile(r'(?:#m-|/messages/)([0-9a-f]{8}[0-9a-f-]*)', re.I)
+_BARE_ID = re.compile(r'^[0-9a-f]{8}[0-9a-f-]*$', re.I)
 
 HEADLINE_MAX = 56    # characters: about what a row of the pane holds
 HEADLINE_WHOLE = 44  # a task this short is its own headline
@@ -121,6 +132,20 @@ def headline(item, limit=HEADLINE_MAX):
     if len(text) <= limit:
         return text
     return text[:limit - 1].rsplit(' ', 1)[0].rstrip(' ,;:(') + '…'
+
+
+def said_url(said):
+    """Where to read the message an item came from: the permalink as written, or /messages/<id> for a '#m-<id>'
+    link or a bare message id. '' when there's nothing to go to."""
+    said = ' '.join(str(said or '').split())
+    if not said:
+        return ''
+    if said.startswith(('http://', 'https://', '/')):
+        return said
+    found = _SAID_ID.search(said)
+    if found:
+        return f'/messages/{found.group(1)}'
+    return f'/messages/{said}' if _BARE_ID.match(said) else ''
 
 
 def rank(item):

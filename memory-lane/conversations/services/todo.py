@@ -17,10 +17,17 @@ checklist with real links (PickiPediaContent's <todo> tag); a list inside
     </todo>
 
 `task` is the one thing an item needs; `who` (a name, or several),
-`kind` (review, merge, deploy, edit, or anything), `link`, `note`,
+`kind` (review, merge, deploy, edit, or anything), `link`, `note`, `said`,
 `priority` (1, the most needed, to 5) and `done` are as they're useful. A row shows an item as its type's glyph
 and a headline cut from its task (services/todo_types.py, headline): write the task so its first clause says
-it, and put the rest in `note`. The page shows it beside the Mood
+it, and put the rest in `note`.
+
+**Where it came from.** `said` is the link of the message that asked for it ("#m-<id>", or a permalink), so the
+conversation behind an item is one click from its row (Justin, 21 Nov, #at-a-glance). A task is written in
+TASK_MAX characters or fewer (120); a longer one is marked `long`, and what it says beyond its first clause
+belongs in `note`.
+
+The page shows it beside the Mood
 (views_moods.api_mood_todo); agents keep it current -- their instructions
 point them to it (Cryptograss:Moods/Instructions) -- adding what they leave someone to do,
 and ticking off what's been done.
@@ -45,7 +52,7 @@ from .repos import same
 PAGE = 'Cryptograss:Moods/{slug}/todo'
 FOR = 60          # seconds a list is kept before PickiPedia is asked again
 MAX_ITEMS = 200
-FIELDS = ('task', 'who', 'kind', 'link', 'note', 'done')
+FIELDS = ('task', 'who', 'kind', 'link', 'note', 'said', 'done')
 _PRE = re.compile(r'<(todo|pre)>\s*\n?(.*?)\n?\s*</\1>', re.S | re.I)
 
 
@@ -82,7 +89,8 @@ def parse(text):
         who = [w.strip() for w in (who.split(',') if isinstance(who, str) else who) if str(w).strip()]
         items.append({'task': str(raw['task']).strip()[:500], 'who': [str(w)[:60] for w in who][:10],
                       'kind': str(raw.get('kind') or '').strip()[:40], 'link': str(raw.get('link') or '').strip()[:500],
-                      'note': str(raw.get('note') or '').strip()[:1000], 'done': bool(raw.get('done'))})
+                      'note': str(raw.get('note') or '').strip()[:1000],
+                      'said': str(raw.get('said') or '').strip()[:500], 'done': bool(raw.get('done'))})
         # How much it's needed, 1 (the most) to 5 (R.J., 13 Nov: "priority ranges 1 - 5"): what's at a glance
         # (services/glance.py) puts first. Only on an item that says so.
         priority = raw.get('priority')
