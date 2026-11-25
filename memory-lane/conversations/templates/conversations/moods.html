@@ -1739,12 +1739,18 @@
   body.locked #composer, body.locked #typing { display: none !important; }
   header a.settings { font-size: 13px; color: var(--muted); }
   #suggest { display: none; position: absolute; bottom: 100%; left: 16px; margin-bottom: 4px; background: var(--panel);
-             border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.08); min-width: 180px; z-index: 5; }
+             border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.08); min-width: 180px; z-index: 5;
+             max-height: 52vh; overflow-y: auto; }  /* eight clips, each with its picture, are taller than a phone */
   #suggest.on { display: block; }
   #suggest div { padding: 5px 10px; cursor: pointer; font-size: 14px; }
   #suggest div.sel, #suggest div:hover { background: var(--accent-soft); }
   #suggest small { color: var(--muted); margin-left: 6px; }
   #suggest .emo { display: inline-block; width: 1.6em; font-size: 16px; }
+  /* A clip's own picture in the list, in place of what it's for (Justin, 25 Nov): the frame says which clip it is
+     faster than the words do. The row keeps its height whether the picture loads or not. */
+  #suggest div.clip { display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
+  #suggest img.shot { width: 92px; height: 52px; object-fit: cover; border-radius: 3px; background: var(--hover, rgba(128,128,128,.12)); flex: none; }
+  #suggest img.shot[hidden] { display: block; visibility: hidden; }
   #menu { display: none; font: inherit; font-size: 20px; line-height: 1; background: none; border: 0;
           color: var(--muted); cursor: pointer; padding: 0 2px; }
   /* A phone, either way up: narrow, or a touch screen this short (a phone on its side
@@ -8737,8 +8743,7 @@
         choices = titles.map(t => ({ insert: t + ']]', html: `<span class="emo">📖</span>${esc(t)}` }));
         if (!choices.length) return closeSuggest();
         chosen = Math.min(chosen, choices.length - 1);
-        suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
-        suggest.classList.add('on');
+        drawSuggest();
       }, wikiCache.has(prefix) ? 0 : 150);
       return;
     }
@@ -8753,22 +8758,24 @@
           html: `<span class="emo">🔗</span>${esc(l.title.slice(0, 80))}<small>${esc(l.host)}</small>` }));
         if (!choices.length) return closeSuggest();
         chosen = Math.min(chosen, choices.length - 1);
-        suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
-        suggest.classList.add('on');
+        drawSuggest();
       }, tidingCache.has(prefix) ? 0 : 150);
       return;
     }
     if (at.kind === 'clips') {
       const prefix = at.prefix;
       savedClips().then(clips => {
-        const still = wordAtCaret();
-        if (!still || still.kind !== 'clips' || still.prefix !== prefix) return;  // they've typed on
+        const same = wordAtCaret();
+        if (!same || same.kind !== 'clips' || same.prefix !== prefix) return;  // they've typed on
+        // The clip's own frame, not what it's for (Justin, 25 Nov): as the names are whittled down you see
+        // which clip each one is. What it's for is still there to hover (Magenta:Clips has it in full).
         choices = clips.filter(c => c.name.startsWith(prefix)).slice(0, 8)
-          .map(c => ({ insert: c.name, html: `<span class="emo">🎬</span>${esc(c.name)}<small>${esc(c.for || shown(c.by))}</small>` }));  // its use, from Magenta:Clips
+          .map(c => ({ insert: c.name, cls: 'clip', title: c.for || '',
+            html: (c.still ? `<img class="shot" src="${esc(c.still)}" data-clip="${esc(c.clip)}" alt="">`
+                           : `<span class="emo">🎬</span>`) + `<b>${esc(c.name)}</b>` }));
         if (!choices.length) return closeSuggest();
         chosen = Math.min(chosen, choices.length - 1);
-        suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
-        suggest.classList.add('on');
+        drawSuggest();
       });
       return;
     }
@@ -8818,8 +8825,7 @@
             .map(([name, char]) => ({ insert: char, html: `<span class="emo">${char}</span>:${esc(name)}:` }));
           if (!choices.length) return closeSuggest();
           chosen = Math.min(chosen, choices.length - 1);
-          suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
-          suggest.classList.add('on');
+          drawSuggest();
         }).catch(() => {});
         return;
       }
@@ -8840,7 +8846,24 @@
     }
     if (!choices.length) return closeSuggest();
     chosen = Math.min(chosen, choices.length - 1);
-    suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
+    drawSuggest();
+  }
+  // A clip's picture that won't load: Yarn's own address may be stopped by its Cloudflare, so the server is asked
+  // for it once (api_yarn keeps it, as a card does), and the space is held rather than the row jumping.
+  function drawSuggest() {
+    suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}${c.cls ? ' ' + c.cls : ''}"`
+      + `${c.title ? ` title="${esc(c.title)}"` : ''} data-i="${i}">${c.html}</div>`).join('');
+    suggest.querySelectorAll('img.shot').forEach(img => {
+      img.addEventListener('error', async () => {
+        if (img.dataset.asked) { img.hidden = true; return; }
+        img.dataset.asked = '1';
+        const got = await fetch(`/api/yarn/${img.dataset.clip}/`).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (got && /^\/moods\/media\/[0-9a-f]{64}\.(gif|jpg|png|webp)$/.test(got.still || '')) {
+          clipsCache = null;  // the next list asks for it again, with the picture kept
+          img.src = got.still;
+        } else img.hidden = true;
+      });
+    });
     suggest.classList.add('on');
   }
   function acceptSuggest(i) {

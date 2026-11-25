@@ -151,3 +151,36 @@ class MoodClipToolTest(TestCase):
         self.assertEqual(long, 'the-dude-abides-and-i-for-one-take-comfort-in-that-knowing-hes-out-there-taking')
         self.assertLessEqual(len(long), 80)
         self.assertEqual(self.tool.name_from('…', 'Old Crow 2019.mov'), 'old-crow-2019')
+
+
+class ClipPicturesTest(TestCase):
+    """/api/clips/ says each clip's picture, 'still', for the composer's list (Justin, 25 Nov)."""
+
+    def setUp(self):
+        cache.delete(clips.CACHE_KEY)
+        self.addCleanup(cache.delete, clips.CACHE_KEY)
+        ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        Mood.objects.create(slug='general')
+
+    def say(self, text):
+        _, token = mood_auth.enrol_device(ThinkingEntity.objects.get(name='justin'), 'test', tier='key')
+        client = Client(enforce_csrf_checks=False)
+        client.cookies[mood_auth.COOKIE] = token
+        return client.post('/api/moods/general/say/', json.dumps({'text': text}), content_type='application/json')
+
+    def clips_api(self):
+        return {c['name']: c for c in self.client.get('/api/clips/').json()['clips']}
+
+    def test_our_own_clips_picture_is_the_one_kept_here(self):
+        challenge = self.client.get('/api/auth/challenge/').json()['challenge']
+        body = {'challenge': challenge, 'signature': 'sig', 'name': 'whole-point', 'caption': 'The whole point.',
+                'video': base64.b64encode(MP4).decode(), 'still': base64.b64encode(JPEG).decode()}
+        with mock.patch.object(mood_auth, 'signer_of', return_value='justin'):
+            self.client.post('/api/clips/make/', json.dumps(body), content_type='application/json')
+        kept = YarnClip.objects.get(caption='The whole point.')
+        self.assertEqual(self.clips_api()['whole-point']['still'], kept.still.url)
+
+    def test_a_yarn_clips_picture_is_yarns_until_it_is_kept(self):
+        clip = 'ffb40a1a-a936-49ee-962a-ef53e0cb7237'
+        self.say(f'/clips save tony https://www.yarn.co/yarn-clip/{clip}')
+        self.assertEqual(self.clips_api()['tony']['still'], f'https://y.yarn.co/{clip}_text.gif')
