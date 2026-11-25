@@ -906,13 +906,24 @@ def api_clip_make(request):
 
 @require_GET
 def api_clips(request):
-    """The saved clips, by name, each with what it's for (Magenta:Clips): for the composer's /clips
-    suggestions and `magenta.sh clips list`."""
-    from .services import clips
+    """The saved clips, by name, each with what it's for (Magenta:Clips) and its picture, 'still': for the
+    composer's /clips suggestions, which show the picture rather than the words, and `magenta.sh clips list`.
+    A clip's picture is the one kept here; a Yarn clip whose picture isn't kept yet says Yarn's address for it,
+    which the composer asks for (api_yarn) when Yarn's own won't load."""
+    from .services import clips, yarn_kept
     said = clips.uses()
+    every = sorted(clips.every().items())
+    kept = yarn_kept.stills_of({c['clip'] for _, c in every})
+
+    def still_of(c):
+        if c['clip'] in kept:
+            return {'still': kept[c['clip']]}
+        return {} if c.get('link') else {'still': yarn_kept.STILLS[1].format(c['clip'])}
+
     return JsonResponse({'page': clips.PAGE, 'clips': [
-        {'name': n, 'by': c['by'], 'clip': c['clip'], 'link': clips.link_of(c), **({'for': said[n]} if n in said else {})}
-        for n, c in sorted(clips.every().items())]})
+        {'name': n, 'by': c['by'], 'clip': c['clip'], 'link': clips.link_of(c), **still_of(c),
+         **({'for': said[n]} if n in said else {})}
+        for n, c in every]})
 
 
 _MOBILE_AGENT = re.compile(r'Mobi|Android|iPhone|iPad|iPod', re.I)
