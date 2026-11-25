@@ -23,6 +23,7 @@ urlpatterns = [
     path('prompts/', views_settings.prompts_page, name='mood_prompts'),
     path('polls/', views_settings.polls_page, name='mood_polls'),
     path('todo/', views_settings.todo_page, name='mood_todo'),
+    path('deploys/', views_settings.deploys_page, name='mood_deploys'),
     path('faq/', views_settings.faq_page, name='faq'),
     path('moods/faq/', RedirectView.as_view(url='/faq/', permanent=True)),  # its first address
     path('verify/', views_settings.verify_page, name='mood_verify'),
@@ -104,6 +105,8 @@ urlpatterns = [
     path('api/emoji/', views_settings.api_emoji, name='api_emoji'),
     path('api/prompts/', views_settings.api_prompts, name='api_prompts'),
     path('api/todo/', views_settings.api_todo, name='api_todo'),
+    # /api/deploys/ is the deploy scripts' own (views_runner, below): this is the queue they feed.
+    path('api/deploy-queue/', views_settings.api_deploy_queue, name='api_deploy_queue'),
     path('api/verify/', views_settings.api_verify, name='api_verify'),
     path('api/usage/', views_settings.api_usage, name='api_usage'),
     path('api/usage/plan/', views_runner.api_plan, name='api_usage_plan'),

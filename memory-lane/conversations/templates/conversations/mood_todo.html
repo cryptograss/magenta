@@ -41,6 +41,16 @@
   .types button.active, .whos button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
   .types button.none { opacity: .5; }
   .stats { font-size: 12.5px; color: var(--muted); margin: 6px 0 10px; }
+  /* The deploy boxes (Justin, 25 Nov): shown while the deploy type is chosen. */
+  .deploystrip { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+  .deploystrip .dbox { font-size: 12.5px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 8px;
+                       background: var(--panel); color: var(--ink); font-weight: 600; text-decoration: none; }
+  .deploystrip .dbox:hover { border-color: var(--accent); }
+  .deploystrip .dbox.ready { border-color: var(--accent); }
+  .deploystrip .dbox .n { font-weight: 400; color: var(--muted); margin-left: 5px; }
+  .deploystrip .dbox.ready .n { color: var(--accent); }
+  .deploystrip .dbox .n.asks { font-style: italic; }
+  .deploystrip .dbox.all { color: var(--accent); font-weight: 500; }
   .stats a { cursor: pointer; }
   /* A group (a type, a Mood, a person): its name and how many, folding. A row is one line: the type's glyph, a
      headline (services/todo_types.py, headline), who, where. The task as written is a click away. */
@@ -97,6 +107,7 @@
     <a href="/polls/">polls</a>
     <a href="/prompts/">prompts</a>
     <a href="/todo/" aria-current="page">todo</a>
+    <a href="/deploys/">deploys</a>
     <a href="/ramp/">ramp</a>
     <a href="/tasks/">tasks</a>
     <a href="/journals/">journals</a>
@@ -138,6 +149,13 @@
       title="{{ t.about }}: {{ t.open }} open of {{ t.total }}">{{ t.emoji }} {{ t.label }}<span class="n">{{ t.open }}</span></button>{% endfor %}
   </div>
 
+  <!-- The deploy items as boxes, not as asks unaware of each other (Justin, #ramp, 25 Nov): one box for each
+       server, what has merged and waits for it, and how many of these items are about it. /deploys/ has it all. -->
+  <div class="deploystrip" id="deployStrip" hidden>
+    {% for box in queue.boxes %}<a class="dbox{% if box.ready %} ready{% endif %}" href="/deploys/#{{ box.name }}"
+      title="{{ box.about }}">{{ box.name }}<span class="n">{% if box.owed %}{{ box.owed|length }} merged, waiting{% else %}current{% endif %}</span>{% if box.asks %}<span class="n asks">{{ box.asks|length }} here</span>{% endif %}</a>{% endfor %}
+    <a class="dbox all" href="/deploys/">the whole queue →</a>
+  </div>
   <div class="stats" id="todoStats"></div>
   <div id="todoGroups">{% if not todos.items %}<p class="none">No to-do items found on PickiPedia.</p>{% endif %}</div>
 </main>
@@ -263,6 +281,8 @@
     const narrowed = shown.length !== all;
     $('todoStats').innerHTML = `${shown.length}${narrowed ? ' of ' + all : ''} ${state.status === 'all' ? '' : state.status + ' '}item${all === 1 ? '' : 's'}`
       + (narrowed ? ' · <a id="todoClear" role="button" tabindex="0">show them all</a>' : '');
+    const strip = $('deployStrip');
+    if (strip) strip.hidden = state.type !== 'deploy';
     if (!ITEMS.length) return;
     $('todoGroups').innerHTML = groupsOf(shown).map(g => {
       const list = `<ul class="todolist">${g.items.map(row).join('')}</ul>`;

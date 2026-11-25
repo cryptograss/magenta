@@ -166,6 +166,28 @@ class DeployTest(TestCase):
         self.assertEqual(tt._servers('Then redeploy hunter and pickipedia'), ['hunter', 'pickipedia'])
         self.assertEqual(tt._servers('Deploy MemoryCommitments from the cryptograss wallet'), [])
 
+    def test_the_pickipedia_box_is_named_pickipedia_vps_too(self):
+        # Three open items on 25 Nov 2026 said "Redeploy pickipedia-vps" -- the name of that box's deploy logic
+        # in maybelle-config. They named no server, so they could never tick themselves (Justin, #ramp).
+        self.assertEqual(tt._servers('Redeploy pickipedia-vps, for rabbithole:blu/fx-instruments'), ['pickipedia'])
+        item = self.item('Redeploy pickipedia-vps')
+        tt.note_seen('connectome', [item], now=1000)
+        self.assertEqual(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 1100}),
+                         'deployed')
+
+    def test_the_branch_it_waits_for_may_be_in_its_note(self):
+        # "Redeploy pickipedia-vps, so the soloist's card goes live", with "After rabbithole:blu/soloist-card
+        # merges" in the note: the note is where the branch is written.
+        item = {**self.item('Redeploy pickipedia, so the soloist card goes live'),
+                'note': 'After rabbithole:blu/soloist-card merges.'}
+        with mock.patch.object(tt, '_merge_time', lambda repo, branch: None):
+            self.assertIsNone(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 10 ** 10}))
+        with mock.patch.object(tt, '_merge_time', lambda repo, branch: ('h', 500)), \
+                mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: None):
+            self.assertIsNone(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 400}))
+            self.assertEqual(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 600}),
+                             'deployed')
+
     def test_naming_no_branch_it_counts_from_when_it_was_first_seen(self):
         item = self.item('Redeploy maybelle (migration 0053)')
         tt.note_seen('radicle', [item], now=1000)

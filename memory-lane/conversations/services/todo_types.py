@@ -222,7 +222,10 @@ def deployed(slug, item, runs=None, last_finished=None):
     if not wanted or re.search(r'(?<![\w/])#\d', text):  # no server, or a bare pull request number: a person's call
         return None
     finished = last_finished or srv.last_finished
-    branches = named_branches(text)
+    # The branches it waits for, from its note as well as its task: a list often reads "Redeploy pickipedia-vps,
+    # so the soloist's card goes live", with "After rabbithole:blu/soloist-card merges" in the note. Naming more
+    # branches can only hold an item open longer, never tick one early.
+    branches = named_branches(f"{text} {item.get('note') or ''}")
     if branches is None:
         return None  # a repository githouse doesn't hold
     if not branches:

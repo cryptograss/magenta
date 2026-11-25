@@ -67,8 +67,8 @@ def makers_offered():
 
 RECENT_BUNDLES = 8  # the newest bundles made, shown atop the instructions bundles section
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'traffic',
-            'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'deploys', 'ramp', 'tasks', 'journals', 'verify',
+            'hooks', 'traffic', 'settings')
 
 
 def _opened_on_its_own(request):
@@ -117,15 +117,38 @@ def todo_page(request):
     Justin, 30 Oct: another page combining all to-dos across all Moods; 21 Nov: "sorting, filtration, obvious
     types, _realllly_ terse headlines"."""
     device = mood_auth.device_for(request)
-    from .services import todo
+    from .services import deploys, todo
     from .services.mood_view import pickipedia_url
     state = todo.all_todos()
+    # The deploy items read as boxes, not as asks unaware of each other (Justin, 25 Nov): the strip above the
+    # list, shown when the deploy type is chosen; /deploys/ has the whole queue.
+    try:
+        queue = deploys.queue()
+    except Exception:  # noqa: BLE001 -- githouse unreadable: the list stands on its own
+        queue = {}
     return render(request, 'conversations/mood_todo.html', {
         'todos': state,
+        'queue': queue,
         'wiki': pickipedia_url(),
         'viewer': device.entity_id if device else getattr(settings, 'PREVIEW_VIEWER', ''),
         'embed': True,
     })
+
+
+@section('deploys')
+def deploys_page(request):
+    """The deploy queue: one box, at most, for each server, and what each is waiting for (services/deploys.py).
+    Justin, #ramp, 25 Nov: "deploys separated, and at-most one for each box? Show which PRs are already merged
+    and awaiting deploy?\""""
+    from .services import deploys
+    return render(request, 'conversations/mood_deploys.html', {'queue': deploys.queue(), 'embed': True})
+
+
+@require_GET
+def api_deploy_queue(request):
+    """The deploy queue: {"boxes", "owed", "ready", "asks"} (services/deploys.py)."""
+    from .services import deploys
+    return JsonResponse(deploys.queue())
 
 
 @require_GET
