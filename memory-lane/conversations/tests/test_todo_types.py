@@ -225,6 +225,25 @@ class DeployTest(TestCase):
             with mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: ['maybelle']):
                 self.assertEqual(tt.deployed('m', item, runs=runs), 'deployed')        # maybelle runs it
 
+    def test_a_note_saying_after_both_merges_waits_for_a_person(self):
+        # re, 26 Nov: branches are read from the task and the note, so the merge-word check reads both too --
+        # "Redeploy pickipedia-vps" with "after both merges" in the note is not ticked by any later deploy.
+        item = {**self.item('Redeploy pickipedia-vps'), 'note': 'after both merges'}
+        tt.note_seen('m', [item], now=1000)
+        self.assertIsNone(tt.deployed('m', item, runs={}, last_finished=lambda s: {'at_ts': 10 ** 10}))
+
+    def test_a_deploy_that_started_before_the_merge_is_not_read_as_carrying_it(self):
+        # re, 26 Nov: a deploy that began before a merge landed may finish after it (the pickipedia box clones
+        # mid-playbook), so the clock reads its start -- at_ts less took -- not its finish.
+        item = self.item('Redeploy pickipedia after pickipedia:magent/x merges')
+        with mock.patch('conversations.services.tools_ask.named_branches', lambda t: [('pickipedia', 'magent/x')]), \
+                mock.patch.object(tt, '_merge_time', lambda repo, branch: ('h', 500)), \
+                mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: None):
+            self.assertIsNone(tt.deployed(
+                'm', item, runs={}, last_finished=lambda s: {'at_ts': 700, 'took': 300}))  # started at 400
+            self.assertEqual(tt.deployed(
+                'm', item, runs={}, last_finished=lambda s: {'at_ts': 700, 'took': 100}), 'deployed')  # at 600
+
     def test_a_server_that_doesn_t_report_the_repository_needs_a_deploy_after_the_merge(self):
         item = self.item('Redeploy pickipedia after pickipedia:magent/x merges')
         with mock.patch('conversations.services.tools_ask.named_branches', lambda t: [('pickipedia', 'magent/x')]), \

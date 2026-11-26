@@ -179,6 +179,7 @@ def owed(server, runs=None, finished=None):
     """[{'repo', 'branch', 'commit', 'at', 'who', 'subject', 'link', 'by_time'}]: every merge waiting for this
     box's next deploy, newest first. by_time marks one read from the deploy's clock rather than its commit."""
     from . import githouse, ramp, servers as srv
+    from .todo_types import _started
     runs = ramp.running() if runs is None else runs
     last = (srv.last_finished(server) or {}) if finished is None else (finished or {})
     out = []
@@ -190,8 +191,11 @@ def owed(server, runs=None, finished=None):
             continue
         running = (runs.get(repo) or {}).get(server)
         by_time = not running
+        # A deploy that began before a merge landed may finish after it (the pickipedia box clones mid-playbook),
+        # so a merge is owed until a deploy *started* after it -- not one that merely finished after (re, 26 Nov).
+        since = _started(last) if by_time else None
         found = merges(repo, since_commit=running or '',
-                       since_ts=max(last.get('at_ts', 0), _month_ago()) if by_time else None)
+                       since_ts=max(since, _month_ago()) if by_time else None)
         for merge in found:
             if not _mine(server, repo, merge, held):
                 continue

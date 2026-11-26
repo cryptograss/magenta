@@ -89,6 +89,17 @@ class OwedTest(QueueTest):
         after = deploys.owed('pickipedia', runs={}, finished={'at_ts': when + 60})
         self.assertEqual(after, [])               # the deploy finished after the merge: it carried it
 
+    def test_a_deploy_that_started_before_a_merge_is_not_read_as_carrying_it(self):
+        # re, 26 Nov: the pickipedia box clones mid-playbook, so a deploy that began before a merge landed may
+        # finish after it, carrying nothing of it. The clock reads its start (at_ts - took), not its finish.
+        repo = Repo(self.mount, name='rabbithole')
+        merge_branch(repo, 'blu/one-bar', 'main', 'src/bar.js', 'bar')
+        when = int(git(repo.work, 'log', '-1', '--format=%ct', 'main'))
+        straddled = deploys.owed('pickipedia', runs={}, finished={'at_ts': when + 300, 'took': 600})
+        self.assertIn('blu/one-bar', [m['branch'] for m in straddled])  # started at when - 300: still owed
+        carried = deploys.owed('pickipedia', runs={}, finished={'at_ts': when + 300, 'took': 100})
+        self.assertEqual(carried, [])                                  # started at when + 200: carried it
+
     def test_a_maybelle_config_merge_is_the_box_s_only_if_it_touched_that_box(self):
         repo = Repo(self.mount, name='maybelle-config')
         git(repo.work, 'checkout', '-q', '-b', 'production')

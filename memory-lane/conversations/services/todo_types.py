@@ -229,12 +229,14 @@ def deployed(slug, item, runs=None, last_finished=None):
     if branches is None:
         return None  # a repository githouse doesn't hold
     if not branches:
-        if re.search(r'\bmerg', text, re.I):
+        # The note is read for branches, so it is read for this too: "Redeploy pickipedia-vps" with "after both
+        # merges" in the note waits on merges it names in words alone, not on any deploy that later finished.
+        if re.search(r'\bmerg', f"{text} {item.get('note') or ''}", re.I):
             return None  # waits on merges it doesn't name as repo:branch ("after both merges"): a person's call
         seen = first_seen(slug, text)
         if seen is None:
             return None
-        return 'deployed' if all((finished(s) or {}).get('at_ts', 0) > seen for s in wanted) else None
+        return 'deployed' if all(_started(finished(s)) > seen for s in wanted) else None
     runs = ramp.running() if runs is None else runs
     for repo, branch in branches:
         merged = _merge_time(repo, branch)
@@ -246,9 +248,17 @@ def deployed(slug, item, runs=None, last_finished=None):
             if live is not None and server in (runs.get(repo) or {}):
                 if server not in live:
                     return None
-            elif when is None or (finished(server) or {}).get('at_ts', 0) <= when:
+            elif when is None or _started(finished(server)) <= when:
                 return None
     return 'deployed'
+
+
+def _started(finished):
+    """When a finished deploy took its code: its start, read back from `took` (re, 26 Nov: a deploy that began
+    before a merge landed may finish after it -- the pickipedia box clones mid-playbook -- and its finish must
+    not be read as carrying that merge; with no `took` to read, the finish is all the event says)."""
+    found = (finished or {})
+    return found.get('at_ts', 0) - (found.get('took') or 0)
 
 
 # --- verify ------------------------------------------------------------------------------------------
