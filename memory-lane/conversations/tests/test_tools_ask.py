@@ -174,6 +174,12 @@ class AskTest(TestCase):
             self.assertEqual(named_branches('maybelle:re/a and pickipedia:magent/b/c'),
                              [('maybelle-config', 're/a'), ('pickipedia', 'magent/b/c')])
             self.assertEqual(named_branches('note: this one; see https://github.com/x/y'), [])
+            # A sentence's full stop is not part of the branch: git refuses a ref ending in one, and taking it
+            # made githouse say "no such branch", which reads as nothing left to wait for (magent, 27 Nov).
+            self.assertEqual(named_branches('After maybelle:magent/mood-preview-servers. Until then, by hand.'),
+                             [('maybelle-config', 'magent/mood-preview-servers')])
+            self.assertEqual(named_branches('magenta:re/a/b., then pickipedia:magent/c)'),
+                             [('magenta', 're/a/b'), ('pickipedia', 'magent/c')])
             self.assertEqual(named_branches('nonesuch:re/foo'), None)  # a repository githouse doesn't hold: can't say
             self.assertEqual(named_branches('nonesuch:re/foo and other:none/bar'), None)  # one unknown: can't say any
             self.say('re', '<merge to="magenta:re/foo"/>', 1)
