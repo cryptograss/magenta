@@ -124,7 +124,7 @@ def needs(todos=None, asks=None):
                           'type': r.get('kind') or '',   # merge and deploy are to-do types too; tools is an ask's own
                           'kind': r.get('kind') or '', 'who': [], 'priority': None, 'ask': True,
                           'link': f"/moods/{slug}/#m-{r['id']}" if r.get('id') else f'/moods/{slug}/',
-                          'said_url': f"/messages/{r['id']}" if r.get('id') else '',
+                          'said_url': '',   # an ask's own link is already its message: no second way there
                           '_order': (0, 0, 0)})
     from .todo_types import headline, rank, said_url, type_of
     for n, item in enumerate(todos.get('items') or []):

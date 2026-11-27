@@ -3240,9 +3240,10 @@
       // Its type's glyph leads the row; a priority, or an emergent waiting now, is a mark before who.
       const mark = n.ask ? '<span class="p set" title="An emergent is waiting on this now">!</span>'
         : n.priority ? `<span class="p set" title="Priority ${n.priority} of 5 (1 the most needed)">${n.priority}</span>` : '';
-      const said = n.said_url ? ` <a class="sd" href="${esc(n.said_url)}" title="The conversation that asked for this">💬</a>` : '';
+      // The 💬 goes in the meta line: the task above it is a clamped box, so a glyph after it falls to a line of its own.
+      const said = n.said_url ? `<a class="sd" href="${esc(n.said_url)}" title="The conversation that asked for this">💬</a>` : '';
       return `<li><span class="ty" title="${esc(label)}: ${esc(about)}">${glyph}</span>`
-        + `<div><span class="task" title="${esc(n.task)}">${task}</span>${said}<div class="meta">${mark}${[who, `<a href="/moods/${esc(n.mood)}/">#${esc(n.mood_title)}</a>`].filter(Boolean).join(' · ')}</div></div></li>`;
+        + `<div><span class="task" title="${esc(n.task)}">${task}</span><div class="meta">${mark}${[who, `<a href="/moods/${esc(n.mood)}/">#${esc(n.mood_title)}</a>`, said].filter(Boolean).join(' · ')}</div></div></li>`;
     }).join('') || '<li class="none">Nothing is waiting on anyone.</li>';
     const total = glanceFor === '*' ? d.needs_total : waits[glanceFor] || 0;
     document.getElementById('glanceNeedsAll').textContent = total > needs.length ? `all ${d.needs_total} on the to-do page` : '';
