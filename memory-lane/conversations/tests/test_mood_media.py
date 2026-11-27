@@ -34,10 +34,78 @@ class SniffAndStoreTest(TestCase):
         self.assertEqual(Media.objects.count(), 1)
         self.assertRegex(first.url, r'^/moods/media/[0-9a-f]{64}\.png$')
 
-    def test_too_big_or_not_an_image_is_refused(self):
-        with mock.patch.object(media, 'MAX_BYTES', 10):
+    def test_too_big_to_take_in_at_all_or_not_an_image_is_refused(self):
+        with mock.patch.object(media, 'MAX_SENT_BYTES', 10):
+            self.assertIsNone(media.store(PNG))
+        with mock.patch.object(media, 'MAX_BYTES', 10):   # over what we keep, and Pillow can't read it
             self.assertIsNone(media.store(PNG))
         self.assertIsNone(media.store(b'not an image at all'))
+
+
+def drawn(width, height, form='JPEG', alpha=False, frames=1, blocks=False, **how):
+    """A picture of that size, as bytes: a gradient (or, with blocks, flat bands, which compress as a
+    drawing does rather than as noise)."""
+    import io
+    from PIL import Image
+    made = Image.new('RGBA' if alpha else 'RGB', (width, height))
+    if blocks:
+        made.putdata([(40 * (x // 160 % 6), 30 * (y // 120 % 8), 90, 128 if alpha else 255)
+                      for y in range(height) for x in range(width)])
+    else:
+        made.putdata([((x * 7) % 256, (y * 5) % 256, (x + y) % 256, 128 if alpha else 255)
+                      for y in range(height) for x in range(width)])
+    out = io.BytesIO()
+    if frames > 1:
+        made.convert('P').save(out, form, save_all=True, append_images=[made.convert('P')] * (frames - 1), **how)
+    else:
+        made.save(out, form, **how)
+    return out.getvalue()
+
+
+class ShrinkToFitTest(TestCase):
+    """A picture bigger than we keep is shrunk on the way in, not refused (Justin, 27 Nov 2026:
+    "images larger than 8mb not allowed? They oughts be")."""
+
+    def test_a_photo_too_big_to_keep_is_shrunk_and_kept(self):
+        big = drawn(2400, 1800, quality=98)
+        with mock.patch.object(media, 'MAX_BYTES', len(big) // 3):
+            stored = media.store(big)
+        self.assertIsNotNone(stored)
+        self.assertEqual(stored.mime, 'image/jpeg')
+        self.assertLess(stored.size, len(big) // 3)
+        from PIL import Image
+        import io
+        with Image.open(io.BytesIO(stored.data)) as back:
+            self.assertLessEqual(max(back.size), 2400)          # smaller, and still the same picture
+            self.assertGreater(min(back.size), 200)
+
+    def test_one_that_already_fits_is_kept_byte_for_byte(self):
+        small = drawn(60, 40, quality=90)
+        self.assertEqual(media.fit_bytes(small, 'image/jpeg'), small)
+
+    def test_a_transparent_png_keeps_its_transparency(self):
+        see_through = drawn(2000, 1500, form='PNG', alpha=True, blocks=True)
+        fitted = media.fit_bytes(see_through, 'image/png', limit=len(see_through) // 2)
+        self.assertIsNotNone(fitted)
+        self.assertLessEqual(len(fitted), len(see_through) // 2)
+        from PIL import Image
+        import io
+        with Image.open(io.BytesIO(fitted)) as back:
+            self.assertIn(back.format, ('PNG', 'WEBP'))
+            self.assertIn('A', back.mode)                        # not flattened onto a background
+
+    def test_a_small_picture_that_is_still_too_heavy_is_shrunk_too(self):
+        # The steps are of the picture's own size: one already under any fixed width still comes down.
+        heavy = drawn(900, 700, quality=100)
+        fitted = media.fit_bytes(heavy, 'image/jpeg', limit=len(heavy) // 4)
+        self.assertIsNotNone(fitted)
+        self.assertLessEqual(len(fitted), len(heavy) // 4)
+
+    def test_a_moving_picture_is_left_alone(self):
+        moving = drawn(400, 300, form='GIF', frames=3)
+        self.assertIsNone(media.fit_bytes(moving, 'image/gif', limit=10))
+        with mock.patch.object(media, 'MAX_BYTES', 10):
+            self.assertIsNone(media.store(moving))
 
 
 class UploadAndServeTest(TestCase):
@@ -59,6 +127,35 @@ class UploadAndServeTest(TestCase):
 
     def test_writing_an_image_needs_a_device(self):
         self.assertEqual(self.post(PNG).status_code, 401)
+
+    def test_a_big_photo_goes_in_shrunk_and_says_so(self):
+        """Justin, 27 Nov 2026: a picture over the cap is taken and shrunk, and the composer is told."""
+        big = drawn(2400, 1800, quality=98)
+        with self.as_sky(), mock.patch.object(media, 'MAX_BYTES', len(big) // 3):
+            response = self.post(big)
+        self.assertEqual(response.status_code, 201)
+        said = response.json()
+        self.assertEqual((said['shrunk'], said['sent']), (True, len(big)))
+        self.assertLess(said['size'], len(big) // 3)
+        self.assertEqual(Media.objects.get().size, said['size'])
+
+    def test_one_that_already_fits_is_not_called_shrunk(self):
+        with self.as_sky():
+            said = self.post(PNG).json()
+        self.assertEqual((said['shrunk'], said['sent'], said['size']), (False, len(PNG), len(PNG)))
+
+    def test_bigger_than_we_will_even_take_in(self):
+        with self.as_sky(), mock.patch.object(media, 'MAX_SENT_BYTES', 64):
+            response = self.post(b'x' * 100)
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()['error'], 'larger than 0 MB')
+
+    def test_a_moving_picture_too_big_to_keep_says_why(self):
+        moving = drawn(400, 300, form='GIF', frames=3)
+        with self.as_sky(), mock.patch.object(media, 'MAX_BYTES', 10):
+            response = self.post(moving)
+        self.assertEqual(response.status_code, 413)
+        self.assertIn('a moving picture is kept as it is', response.json()['error'])
 
     def test_an_image_is_stored_and_served_back_safely(self):
         with self.as_sky():

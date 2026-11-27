@@ -9058,6 +9058,7 @@
     renderTray(); saveDraft(); showLicense();
     picturesSettled();
   }
+  const megabytes = n => (n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0) + ' MB';
   async function upload(file) {
     const a = { file, name: file.name || 'picture', preview: URL.createObjectURL(file), pct: 0, mood: current };
     tray.push(a); flying.add(a);
@@ -9066,6 +9067,8 @@
       const body = await sendPicture(file, pct => { a.pct = pct; attEl(a); renderSendWait(); }, a);
       if (a.dropped) return;
       Object.assign(a, { sha: body.sha, markdown: body.markdown, url: urlOf(body.markdown), mine: !!body.mine, pct: 100 });
+      // Too big to keep as it came, so it was shrunk on the way in (services/media.fit_bytes): said, not silent.
+      if (body.shrunk) showNote(`${a.name}: shrunk from ${megabytes(body.sent)} to ${megabytes(body.size)} to go in`);
       if (body.mine) { sharing.add(body.sha); licenseNow = body.license; }
       if (tray.includes(a)) { attEl(a); saveDraft(); showLicense(); }
       else keepInDraft(a);  // its Mood was left meanwhile: it waits in that Mood's draft

@@ -127,6 +127,10 @@ def api_media(request, slug):
     Content-Type. Answers with the markdown to put in a message. ?keep=location
     stores a JPEG or PNG with its metadata, where it was taken included; by
     default that's cut out (media.without_metadata).
+
+    A picture larger than media.MAX_BYTES is shrunk to fit rather than refused
+    (media.fit_bytes); the answer says what it was sent as and what was kept, so
+    whoever shared it is told.
     """
     from .services import media
     from .views_admin import locked_response
@@ -137,16 +141,23 @@ def api_media(request, slug):
     if device is None:
         return JsonResponse({'error': 'sign in to write'}, status=401)
     Mood.by_slug_or_404(slug)
-    if len(request.body) > media.MAX_BYTES:
-        return JsonResponse({'error': f'larger than {media.MAX_BYTES // (1024 * 1024)} MB'}, status=413)
+    if len(request.body) > media.MAX_SENT_BYTES:
+        return JsonResponse({'error': f'larger than {media.MAX_SENT_BYTES // (1024 * 1024)} MB'}, status=413)
     if not _under_limit(f'media:{device.pk}', MEDIA_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
+    sent = len(request.body)
     stored = media.store(request.body, added_by=device.entity, strip=request.GET.get('keep') != 'location')
     if stored is None:
+        if sent > media.MAX_BYTES and media.sniff(request.body):
+            return JsonResponse({'error': f'larger than {media.MAX_BYTES // (1024 * 1024)} MB and it '
+                                          "couldn't be shrunk (a moving picture is kept as it is)"}, status=413)
         return JsonResponse({'error': 'not a PNG, JPEG, GIF, WebP or HEIC image'}, status=400)
     # Their own: told it's CC BY-SA 4.0, with CC0 a press away (api_media_license).
     return JsonResponse({'url': stored.url, 'markdown': media.markdown(stored), 'sha': stored.sha256,
-                         'license': stored.license, 'mine': stored.added_by_id == device.entity_id}, status=201)
+                         'license': stored.license, 'mine': stored.added_by_id == device.entity_id,
+                         # Shrunk on the way in: the sizes, so the composer can say so.
+                         'sent': sent, 'size': stored.size, 'shrunk': stored.size < sent and sent > media.MAX_BYTES},
+                        status=201)
 
 
 @require_GET
