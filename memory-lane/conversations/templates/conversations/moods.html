@@ -1906,6 +1906,16 @@
   #glanceBody .gbar { display: flex; height: 8px; width: var(--w, 100%); min-width: 6px; border-radius: 4px; overflow: hidden; background: var(--line); }
   #glanceBody .gbar i { display: block; min-width: 2px; }
   #glanceBody .gbar.all { height: 12px; }
+  /* A fold (who's talking, intentions): its summary reads as an h4, and says what's inside while it's shut. */
+  #glanceBody details.fold { margin: 14px 0 0; }
+  #glanceBody details.fold > summary { cursor: pointer; display: flex; align-items: baseline; gap: 6px;
+                                       font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+                                       color: var(--muted); list-style-position: outside; }
+  /* A summary laid out as a flex row loses its own triangle, so it carries one. */
+  #glanceBody details.fold > summary::before { content: "▸"; display: inline-block; font-size: 10px; opacity: .7; transition: transform .15s; }
+  #glanceBody details.fold[open] > summary::before { transform: rotate(90deg); }
+  #glanceBody details.fold > summary:hover { color: var(--accent); }
+  #glanceBody details.fold > summary small { font-weight: 400; letter-spacing: 0; text-transform: none; margin-left: auto; }
   #glanceWho { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 6px; font-size: 12.5px; }
   #glanceWho span { white-space: nowrap; }
   #glanceBody .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: var(--c); }
@@ -2303,15 +2313,22 @@
         <button type="button" id="glanceClose" aria-label="Close">✕</button></div>
       <p class="none" id="glanceNote">Loading…</p>
       <div id="glanceAll" hidden>
-        <span class="gbar all" id="glanceEveryone"></span>
-        <div id="glanceWho"></div>
-        <h4>Intentions <small id="glanceIntentWhen"></small></h4>
+        <!-- Folded until asked for (R.J., 27 Nov, #at-a-glance: what the pane opens on is who's on what and what
+             needs people; the rest is a click). Each fold remembers how it was left, per browser. -->
+        <details id="glanceTalking" class="fold">
+          <summary>Who's talking <small id="glanceTalkingSum"></small></summary>
+          <span class="gbar all" id="glanceEveryone"></span>
+          <div id="glanceWho"></div>
+        </details>
+        <details id="glanceIntent" class="fold">
+          <summary>Intentions <small id="glanceIntentWhen"></small></summary>
         <ul id="glanceIntentions"></ul>
         <form id="glanceIntend" hidden>
           <textarea id="glanceIntendText" rows="2" maxlength="400" aria-label="What you mean to do" title="Shown here to everyone, as what you say in a Mood is, for a day (a week, on the week's view). Say it again to change it; say nothing to clear it. Ctrl+Enter says it." placeholder="What are you on today? A line or a few."></textarea>
           <button type="submit">Say</button>
         </form>
         <div id="glanceIntendSaid" role="status"></div>
+        </details>
         <h4>Who's on what <small id="glanceBlocks"></small></h4>
         <ul id="glanceProjects"></ul>
         <h4>Needs people <small><a href="/todo/" data-section="todo" id="glanceNeedsAll"></a></small></h4>
@@ -3194,7 +3211,10 @@
     for (const b of glanceBody.querySelectorAll('button[data-window]')) b.setAttribute('aria-pressed', String(b.dataset.window === d.window));
     const blocks = `the last ${d.blocks.toLocaleString()} blocks`;
     document.getElementById('glanceBlocks').textContent = blocks;
-    document.getElementById('glanceIntentWhen').textContent = blocks;
+    document.getElementById('glanceIntentWhen').textContent =
+      (d.intentions.length ? `${d.intentions.length} said · ` : 'nobody has said · ') + blocks;
+    document.getElementById('glanceTalkingSum').textContent =
+      (d.people.length ? `${d.people.length} ${d.people.length === 1 ? 'person' : 'people'} · ` : '') + blocks;
     // Everyone, in one bar: who said how much, everywhere. It's the key to each Mood's bar below.
     document.getElementById('glanceEveryone').innerHTML = segments(d.people);
     document.getElementById('glanceWho').innerHTML = d.people.map(p =>
@@ -3260,6 +3280,12 @@
     }
   }
   const glanceBody = document.getElementById('glanceBody');
+  // The pane opens on who's on what and what needs people; who's talking and intentions are a click (R.J., 27 Nov).
+  // Each fold remembers how it was left, in this browser.
+  for (const fold of glanceBody.querySelectorAll('details.fold')) {
+    fold.open = store.get('glanceFold.' + fold.id, false);
+    fold.addEventListener('toggle', () => store.set('glanceFold.' + fold.id, fold.open));
+  }
   document.getElementById('glanceTab').addEventListener('click', () => { showLeaf('glance', true); openTodo(true); loadGlance(); });
   document.getElementById('todoTab').addEventListener('click', () => showLeaf('todo', true));
   document.getElementById('glanceClose').addEventListener('click', () => openTodo(false));
