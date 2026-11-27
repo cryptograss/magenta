@@ -730,6 +730,28 @@ class ClaudeCodeWaker:
             cmd += ['--append-system-prompt', system]
         return cmd + ['--', prompt]
 
+    def environment(self):
+        """The environment a turn runs in: ours, and the settings a Mood needs
+        that a terminal doesn't.
+
+        Claude Code nudges an agent that has gone several tool calls without
+        saying anything: "The user hasn't heard from you in a while. As you
+        continue, keep them updated." In a terminal that is one line in a
+        scrollback. In a Mood every answer is a post, so a long piece of work
+        turns into a column of running commentary nobody asked for -- blu
+        answered the nudge five times while writing one journal entry, and
+        Justin asked what had happened (#connectome, 27 Nov 2026). The work
+        itself is already visible: the Mood shows each tool call as it goes.
+
+        CLAUDE_CODE_SILENT_TURN_REMINDER is read as a tri-state boolean --
+        "0", "false", "no" and "off" are all false -- and the gate returns the
+        environment's answer before it asks anything else, so this turns the
+        nudge off, both its every-few-turns and its timed form (checked
+        against the binary of Claude Code 2.1.x, the env table's triBool and
+        the gate that reads it).
+        """
+        return {**os.environ, 'CLAUDE_CODE_SILENT_TURN_REMINDER': '0'}
+
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, grant=(), budget=None, effort=None,
              model=None, full=False, stop=None, ultracode=False, system=None, cwd=None):
         """Run one turn; (new session id, its reply). `on_event` sees every
@@ -755,8 +777,9 @@ class ClaudeCodeWaker:
                            full=full, ultracode=ultracode, system=system)
         # Its own process group, so ending it ends everything it started: a
         # child left holding the output pipe would keep the turn open.
-        proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True)
+        proc = subprocess.Popen(cmd, cwd=cwd, env=self.environment(), stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
+                                start_new_session=True)
         stderr = []
         drain = threading.Thread(target=lambda: stderr.append(proc.stderr.read()), daemon=True)
         drain.start()

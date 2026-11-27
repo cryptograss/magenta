@@ -37,11 +37,13 @@ urlpatterns = [
     path('prompts/', views_settings.prompts_page, name='mood_prompts'),
     path('polls/', views_settings.polls_page, name='mood_polls'),
     path('todo/', views_settings.todo_page, name='mood_todo'),
+    path('deploys/', views_settings.deploys_page, name='mood_deploys'),
     path('faq/', views_settings.faq_page, name='faq'),
     path('moods/faq/', RedirectView.as_view(url='/faq/', permanent=True)),  # its first address
     path('verify/', views_settings.verify_page, name='mood_verify'),
     path('hooks/', views_settings.hooks_page, name='mood_hooks'),
-    path('traffic/', views_settings.traffic_page, name='mood_traffic'),  # /stats/ is Caddy's: the dashboards themselves
+    path('traffic/', views_settings.traffic_page, name='mood_traffic'),
+    path('api/traffic/', views_settings.api_traffic, name='api_traffic'),  # /stats/ is Caddy's: the dashboards themselves
     path('tasks/', views_settings.tasks_page, name='mood_tasks'),
     path('journals/', views_settings.journals_page, name='mood_journals'),
     path('ramp/', views_settings.ramp_page, name='mood_ramp'),
@@ -117,6 +119,8 @@ urlpatterns = [
     path('api/emoji/', views_settings.api_emoji, name='api_emoji'),
     path('api/prompts/', views_settings.api_prompts, name='api_prompts'),
     path('api/todo/', views_settings.api_todo, name='api_todo'),
+    # /api/deploys/ is the deploy scripts' own (views_runner, below): this is the queue they feed.
+    path('api/deploy-queue/', views_settings.api_deploy_queue, name='api_deploy_queue'),
     path('api/verify/', views_settings.api_verify, name='api_verify'),
     path('api/usage/', views_settings.api_usage, name='api_usage'),
     path('api/usage/plan/', views_runner.api_plan, name='api_usage_plan'),
@@ -139,6 +143,9 @@ urlpatterns = [
     path('api/moods/<mood:slug>/unfurl/<str:message_id>/', views_moods.api_unfurl, name='api_mood_unfurl'),
     path('api/moods/<mood:slug>/todo/', views_moods.api_mood_todo, name='api_mood_todo'),
     path('api/moods/<mood:slug>/humans/', views_moods.api_mood_humans, name='api_mood_humans'),
+    # At a glance (R.J., 13 Nov): who's on what, what needs people, what each person means to do.
+    path('api/glance/', views_moods.api_glance, name='api_glance'),
+    path('api/glance/intention/', views_moods.api_glance_intention, name='api_glance_intention'),
     path('api/github/hook/', views_moods.api_github_hook, name='api_github_hook'),
     path('api/wiki/hook/', views_moods.api_wiki_hook, name='api_wiki_hook'),
     path('api/wiki-hooks/', views_moods.api_wiki_hooks, name='api_wiki_hooks'),
@@ -183,6 +190,9 @@ urlpatterns = [
     path('api/tokens/', views_moods.api_tokens, name='api_tokens'),
     path('moods/media/<str:sha256>.<str:ext>', views_moods.media_file, name='mood_media'),
     path('moods/media/<str:sha256>.<str:ext>/preview', views_moods.media_preview, name='mood_media_preview'),
+    # The same picture under a size, for looking at: 100 KB as a Mood shows it, 800 KB as its
+    # lightbox opens it (services/media.SHOWN_AT).
+    path('moods/media/<str:sha256>.<str:ext>/fit/<int:kb>', views_moods.media_fit, name='mood_media_fit'),
     path('api/media/<str:sha256>/pickipedia/', views_auth.api_media_to_pickipedia, name='api_media_to_pickipedia'),
     path('api/moods/<mood:slug>/video/ticket/', views_auth.api_video_ticket, name='api_video_ticket'),
     path('api/moods/<mood:slug>/video/draft/', views_auth.api_video_draft, name='api_video_draft'),
@@ -192,6 +202,8 @@ urlpatterns = [
     path('api/media/<str:sha256>/license/', views_auth.api_media_license, name='api_media_license'),
     # Where media lived before Moods were Moods: the record's text still links here.
     path('motions/media/<str:sha256>.<str:ext>', views_moods.media_file, name='mood_media_before'),
+    path('motions/media/<str:sha256>.<str:ext>/fit/<int:kb>', views_moods.media_fit,
+         name='mood_media_fit_before'),
     path('api/wikilinks/', views_moods.api_wikilinks, name='api_wikilinks'),
     path('api/mentions/<slug:name>/', views_moods.api_mentions, name='api_mentions'),
     path('api/wiki/preview/', views_moods.api_wiki_preview, name='api_wiki_preview'),

@@ -356,9 +356,23 @@ def pickipedia_page(url):
 
 def _image(match):
     alt, url = match.group(1), match.group(2)
+    if _ours(url):
+        # A picture stored here is shown small and opened larger, neither of them the whole file:
+        # SHOWN_KB in the thread, LARGE_KB in the lightbox, the stored bytes behind "full size"
+        # (Justin, #interfaces, 27 Nov 2026). Made on the way out, views_moods.media_fit.
+        from .media import LARGE_KB, SHOWN_KB
+        return (f'<a class="img" href="{url}" data-full="{url}/fit/{LARGE_KB}" data-original="{url}">'
+                f'<img src="{url}/fit/{SHOWN_KB}" alt="{alt}" loading="lazy"></a>')
     if url.startswith('/') or _image_host_allowed(url):
         return f'<a class="img" href="{url}"><img src="{url}" alt="{alt}" loading="lazy"></a>'
     return f'<a href="{url}"{_OUT}>{alt or url}</a>'
+
+
+def _ours(url):
+    """A picture stored here, by its address alone: /moods/media/<sha256>.<ext> (or /motions/, as
+    they were addressed before Moods were Moods)."""
+    from .media import MEDIA_PATH
+    return bool(MEDIA_PATH.fullmatch(html.unescape(url)))
 
 
 def _image_host_allowed(url):
@@ -917,25 +931,46 @@ def _inline(text, mentionable=()):
 # The team's saved clips (services/clips.py) are posts too: a save or a
 # forget shows as one line, without the clip; a use shows just the clip (its
 # name stays in the record). '🎬 name <link>' is how uses were first posted.
+# A use sits on a line of its own, anywhere in the message (Justin, 21 Nov):
+# the clip is shown there, and the words either side are left where they are.
 _YARN_SAVED = re.compile(r'^/(?:clips|yarn) save ([a-z0-9][a-z0-9_-]{0,79}) (https?://\S+)$')
 _YARN_FORGOTTEN = re.compile(r'^/(?:clips|yarn) forget ([a-z0-9][a-z0-9_-]{0,79})$')
 _YARN_USED = re.compile(r'^(?:/clips|/yarn|🎬) [a-z0-9][a-z0-9_-]{0,79} (https://www\.yarn\.co/yarn-clip/[0-9a-f-]{36}'
                         r'|https?://[a-z0-9.-]+(?::\d+)?/clips/[0-9a-f-]{36}/?)$')
 
 
+def _clips_shown(plain):
+    """Each clip used on a line of its own ('/clips <name> <link>', services/clips.py) as its link alone, a
+    paragraph of its own where it stood: the card is drawn from the link (_link_url). Lines inside a fenced
+    code block are left as they are."""
+    if '/clip' not in plain and '/yarn' not in plain and '🎬' not in plain:
+        return plain
+    out, fenced = [], False
+    for line in plain.split('\n'):
+        if line.lstrip().startswith('```'):
+            fenced = not fenced
+        used = None if fenced else _YARN_USED.match(line.strip())
+        if not used:
+            out.append(line)
+            continue
+        if out and out[-1].strip():
+            out.append('')
+        out += [used[1], '']
+    while out and not out[-1].strip():
+        out.pop()
+    return '\n'.join(out)
+
+
 def render_html(text, mentionable=()):
     """Escape, then translate the markdown the agent writes into HTML."""
     plain = text.strip()
-    # A clip played on the first line may have words under it (services/clips.command): the clip, then them.
-    head, _, under = plain.partition('\n')
     saved, forgotten = _YARN_SAVED.match(plain), _YARN_FORGOTTEN.match(plain)
-    used = _YARN_USED.match(plain) or (_YARN_USED.match(head.strip()) if under.strip() else None)
     if saved:
         text = f'🎬 saved **{saved[1]}**'
     elif forgotten:
         text = f'🎬 forgot **{forgotten[1]}**'
-    elif used:
-        text = used[1] + (f'\n\n{under.strip()}' if used[0] != plain and under.strip() else '')
+    else:
+        text = _clips_shown(plain)
     text = html.escape(_PLACEHOLDER_CHARS.sub('', text), quote=True)
 
     def inline(s):

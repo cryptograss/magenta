@@ -657,8 +657,52 @@ def media_file(request, sha256, ext):
     return response
 
 
-PREVIEW_EDGE = 288  # a tidings thumbnail's longest side, in pixels
+PICTURE_MIMES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
+AS_IT_IS = 'as it is'  # media_fit: this picture is served as it was stored, not made smaller
 PREVIEW_CACHE_SECONDS = 7 * 86400  # kept made here; a browser keeps it for good (named by its hash, it never changes)
+
+
+@require_GET
+def media_fit(request, sha256, ext, kb):
+    """A stored picture under `kb` kilobytes: what a Mood shows (100) and what its lightbox opens
+    (800), made once and cached (services/media.shown_at). The stored bytes are untouched, and a
+    person who wants the picture whole follows "full size" to it, or to PickiPedia where it went.
+
+    Only the sizes we ask for: anyone could otherwise have the server make a hundred of each
+    picture. Named by the hash as the file itself is, so a browser may keep it for good.
+    """
+    from django.core.cache import cache
+    from django.http import HttpResponse
+
+    from .models import Media
+    from .services import media as pictures
+
+    if kb not in pictures.SHOWN_AT:
+        raise Http404('no such size')
+    item = Media.objects.filter(sha256=sha256).first()
+    if item is None or Media.EXTENSIONS.get(item.mime) != ext or item.mime not in PICTURE_MIMES:
+        raise Http404('no such image')
+    made = cache.get(f'media-fit:{sha256}:{kb}')
+    if made is None:
+        data = bytes(item.data)
+        body, mime = pictures.shown_at(data, item.mime, kb)
+        # One already under the budget, or one that can't be shrunk (an animation), is the file
+        # itself: sent there rather than kept a second time under another name.
+        made = AS_IT_IS if body is data else (body, mime)
+        cache.set(f'media-fit:{sha256}:{kb}', made, PREVIEW_CACHE_SECONDS)
+    if made == AS_IT_IS:
+        response = HttpResponseRedirect(item.url)
+        response['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return response
+    body, mime = made
+    response = HttpResponse(body, content_type=mime)
+    response['Cache-Control'] = 'public, max-age=31536000, immutable'
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    return response
+
+
+PREVIEW_EDGE = 288  # a tidings thumbnail's longest side, in pixels
 
 
 @require_GET
@@ -675,7 +719,7 @@ def media_preview(request, sha256, ext):
 
     item = Media.objects.filter(sha256=sha256).first()
     if (item is None or Media.EXTENSIONS.get(item.mime) != ext
-            or item.mime not in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')):
+            or item.mime not in PICTURE_MIMES):
         raise Http404('no such image')
     cached = cache.get(f'media-preview:{sha256}')
     if cached is None:
@@ -1423,6 +1467,37 @@ def api_wiki_preview(request):
 
 
 @require_GET
+def api_glance(request):
+    """At a glance (services/glance.py; R.J., 13 Nov): who's on what, what needs people, and what each person
+    means to do. ?window=day (7,200 blocks) or week. The same for everyone: the page puts its reader's own first."""
+    from .services import glance
+    from .services.todo_types import TYPES
+    return JsonResponse({**glance.glance(request.GET.get('window') or 'day'), 'types': TYPES})
+
+
+@require_POST
+def api_glance_intention(request):
+    """{"text"}: what you mean to do today or this week, for the pane (services/glance.py). Your own only, from
+    any device you're signed in on; empty clears it."""
+    from .services import glance, settings as knobs
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None or not device.entity.is_biological_human:
+        return JsonResponse({'error': 'sign in to say what you mean to do'}, status=401)
+    try:
+        text = json.loads(request.body).get('text')
+    except (ValueError, AttributeError):
+        return JsonResponse({'error': 'expected {"text": ...}'}, status=400)
+    try:
+        row = glance.intend(device.entity, text if text is not None else '')
+    except knobs.Invalid as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'name': device.entity_id, 'text': row.value, 'at': row.created_at.isoformat()})
+
+
+@require_GET
 @require_GET
 def api_mood_humans(request, slug):
     """The people pane under the to-do list (services/humans.py): who spoke here lately, then everyone else."""
@@ -1786,7 +1861,9 @@ def api_mood_todo(request, slug):
     if request.GET.get('fresh'):
         todo.forget(mood)
     # And what GitHub's webhook last said, and when: whether merges are being told at once.
-    return JsonResponse({**todo.for_mood(mood), 'hook': todo.last_heard(), 'hook_refused': todo.last_refused()})
+    from .services.todo_types import TYPES
+    return JsonResponse({**todo.for_mood(mood), 'types': TYPES, 'hook': todo.last_heard(),
+                         'hook_refused': todo.last_refused()})
 
 
 @csrf_exempt  # GitHub's call, proven by its signature, not a browser's session

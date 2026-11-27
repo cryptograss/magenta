@@ -108,7 +108,10 @@ def _by_kind(asks):
 _NAMED_PULL = re.compile(r'(?:\b([A-Za-z][\w.-]*)( ?))?#(\d+)\b')
 # A mergeable it names, <repo>:<branch> (Cryptograss:Moods/ramp/Plan, section 1): "magenta:re/foo". The branch
 # has a slash, its owner's prefix, so "note: this" and a URL's "https://" name nothing.
-_NAMED_BRANCH = re.compile(r'\b([A-Za-z][\w.-]*):([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+)')
+# A branch never ends in a dot (git refuses such a ref), so a sentence's full stop is not part of its name:
+# "After maybelle-config:magent/mood-preview-servers." named magent/mood-preview-servers. -- no such branch, which
+# githouse reads as gone, which reads as nothing left to wait for (magent, #ramp, 27 Nov).
+_NAMED_BRANCH = re.compile(r'\b([A-Za-z][\w.-]*):([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]*[A-Za-z0-9_-])+)')
 _REPOS = {'magenta': 'magenta', 'pr': 'magenta', 'maybelle': 'maybelle-config', 'maybelle-config': 'maybelle-config',
           'pickipedia': 'pickipedia', 'pickipedia-mcp': 'pickipedia-mcp', 'arthel': 'arthel', 'rabbithole': 'rabbithole'}
 
@@ -212,10 +215,18 @@ def with_thumbs(works):
     return works
 
 
+# What a redeploy ask calls a box, beyond its own name. The pickipedia box's deploy logic lives in
+# maybelle-config's pickipedia-vps/, and that is what the Moods' lists call it: three open items on 25 Nov 2026
+# said "Redeploy pickipedia-vps", named no server by this function, and so could never tick themselves.
+SERVER_ALIASES = {'pickipedia-vps': 'pickipedia', 'pickipedia_vps': 'pickipedia', 'pickipedia-box': 'pickipedia',
+                  'delivery_kid': 'delivery-kid', 'deliverykid': 'delivery-kid'}
+
+
 def named_servers(purpose):
-    """The servers (services/servers.py) a redeploy ask names, in order: "hunter and maybelle" -> both."""
+    """The servers (services/servers.py) a redeploy ask names, in order: "hunter and maybelle" -> both, and
+    "pickipedia-vps" -> pickipedia (SERVER_ALIASES)."""
     from .servers import SERVERS
-    words = re.findall(r'[\w-]+', (purpose or '').lower())
+    words = {SERVER_ALIASES.get(w, w) for w in re.findall(r'[\w-]+', (purpose or '').lower())}
     return [s['name'] for s in SERVERS if s['name'] in words]
 
 

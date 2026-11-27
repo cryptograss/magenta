@@ -71,7 +71,88 @@ def type_of(item):
 
 
 def with_types(items):
-    return [{**item, 'type': type_of(item)} for item in items]
+    """Each item with its type, its headline (what a row shows of it), where the message it came from is read
+    (`said_url`), whether its task runs past TASK_MAX (`long`), and its rank (where it stands among what's
+    needed)."""
+    out = []
+    for item in items:
+        typed = {**item, 'type': type_of(item)}
+        typed['headline'] = headline(typed)
+        typed['said_url'] = said_url(item.get('said'))
+        typed['long'] = len(' '.join(str(item.get('task') or '').split())) > TASK_MAX
+        typed['rank'] = list(rank(typed))
+        out.append(typed)
+    return out
+
+
+# --- headline, and how much it's needed: what a row shows, and where it stands -------------------------
+# Justin, 21 Nov, #at-a-glance: the lists "have become sufficiently unwieldy that I basically never look at them";
+# "I need sorting, filtration, obvious types, _realllly_ terse headlines". 203 items were open, their tasks 117
+# characters at the middle and 334 at the longest. A row is its type's glyph and a headline; the task as written
+# is a click away.
+
+# An item is written short and says where it came from (Justin, 21 Nov, #at-a-glance: "structure todos such that
+# they have a maximum of 120 characters and a link to a message, so that the human can see the conversation that
+# prompted the todo in the first place"). `said` holds that message's link; a task over TASK_MAX is marked `long`,
+# so whoever next touches the list can see which ones to shorten.
+TASK_MAX = 120
+_SAID_ID = re.compile(r'(?:#m-|/messages/)([0-9a-f]{8}[0-9a-f-]*)', re.I)
+_BARE_ID = re.compile(r'^[0-9a-f]{8}[0-9a-f-]*$', re.I)
+
+HEADLINE_MAX = 56    # characters: about what a row of the pane holds
+HEADLINE_WHOLE = 44  # a task this short is its own headline
+HEADLINE_MIN = 14    # a cut leaves at least this much ("BETA: the pane's display selector", not "BETA")
+# The type's own verb, when a task opens with it: its glyph says it already ("Merge magenta:magent/foo" is 🪢 and
+# "magenta:magent/foo").
+LEADS = {'merge': ('merge',), 'deploy': ('redeploy', 'deploy'), 'verify': ('verify',), 'decide': ('decide',),
+         'review': ('review',)}
+_WIKILINK = re.compile(r'\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]')
+_CUT = re.compile(r': | \(|; |\. | — | – | - ')
+# What holds someone else up comes first; an emergent's own job, last.
+NEED_ORDER = ('merge', 'deploy', 'review', 'decide', 'verify', 'hands', 'make', 'work')
+UNRANKED = 6         # after every priority, 1 to 5
+
+
+def headline(item, limit=HEADLINE_MAX):
+    """The item in a few words, for a row: its task without wiki brackets and code marks, without its type's own
+    verb at the front, and cut at its first clause (a colon, a bracket, a full stop) or, failing one, at a word
+    with "…". Never longer than `limit`. A task of HEADLINE_WHOLE characters or fewer is left whole."""
+    text = _WIKILINK.sub(lambda m: (m.group(2) or m.group(1)).strip(), str(item.get('task') or '')).replace('`', '')
+    text = ' '.join(text.split())
+    first, _, rest = text.partition(' ')
+    if first.lower().rstrip(':') in LEADS.get(item.get('type') or type_of(item), ()) and len(rest) >= 3:
+        text = rest
+    if len(text) <= HEADLINE_WHOLE:
+        return text
+    for cut in _CUT.finditer(text):
+        if cut.start() > limit:
+            break
+        if cut.start() >= HEADLINE_MIN:
+            return text[:cut.start()].rstrip(' ,;:')
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rsplit(' ', 1)[0].rstrip(' ,;:(') + '…'
+
+
+def said_url(said):
+    """Where to read the message an item came from: the permalink as written, or /messages/<id> for a '#m-<id>'
+    link or a bare message id. '' when there's nothing to go to."""
+    said = ' '.join(str(said or '').split())
+    if not said:
+        return ''
+    if said.startswith(('http://', 'https://', '/')):
+        return said
+    found = _SAID_ID.search(said)
+    if found:
+        return f'/messages/{found.group(1)}'
+    return f'/messages/{said}' if _BARE_ID.match(said) else ''
+
+
+def rank(item):
+    """Where an open item stands among what's needed, least first: its priority (1 the most needed, to 5), else
+    after them all; then its type, in NEED_ORDER."""
+    kind = item.get('type') or type_of(item)
+    return (item.get('priority') or UNRANKED, NEED_ORDER.index(kind) if kind in NEED_ORDER else len(NEED_ORDER))
 
 
 def summary(items):
@@ -141,16 +222,21 @@ def deployed(slug, item, runs=None, last_finished=None):
     if not wanted or re.search(r'(?<![\w/])#\d', text):  # no server, or a bare pull request number: a person's call
         return None
     finished = last_finished or srv.last_finished
-    branches = named_branches(text)
+    # The branches it waits for, from its note as well as its task: a list often reads "Redeploy pickipedia-vps,
+    # so the soloist's card goes live", with "After rabbithole:blu/soloist-card merges" in the note. Naming more
+    # branches can only hold an item open longer, never tick one early.
+    branches = named_branches(f"{text} {item.get('note') or ''}")
     if branches is None:
         return None  # a repository githouse doesn't hold
     if not branches:
-        if re.search(r'\bmerg', text, re.I):
+        # The note is read for branches, so it is read for this too: "Redeploy pickipedia-vps" with "after both
+        # merges" in the note waits on merges it names in words alone, not on any deploy that later finished.
+        if re.search(r'\bmerg', f"{text} {item.get('note') or ''}", re.I):
             return None  # waits on merges it doesn't name as repo:branch ("after both merges"): a person's call
         seen = first_seen(slug, text)
         if seen is None:
             return None
-        return 'deployed' if all((finished(s) or {}).get('at_ts', 0) > seen for s in wanted) else None
+        return 'deployed' if all(_started(finished(s)) > seen for s in wanted) else None
     runs = ramp.running() if runs is None else runs
     for repo, branch in branches:
         merged = _merge_time(repo, branch)
@@ -162,9 +248,17 @@ def deployed(slug, item, runs=None, last_finished=None):
             if live is not None and server in (runs.get(repo) or {}):
                 if server not in live:
                     return None
-            elif when is None or (finished(server) or {}).get('at_ts', 0) <= when:
+            elif when is None or _started(finished(server)) <= when:
                 return None
     return 'deployed'
+
+
+def _started(finished):
+    """When a finished deploy took its code: its start, read back from `took` (re, 26 Nov: a deploy that began
+    before a merge landed may finish after it -- the pickipedia box clones mid-playbook -- and its finish must
+    not be read as carrying that merge; with no `took` to read, the finish is all the event says)."""
+    found = (finished or {})
+    return found.get('at_ts', 0) - (found.get('took') or 0)
 
 
 # --- verify ------------------------------------------------------------------------------------------

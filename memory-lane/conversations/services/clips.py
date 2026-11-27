@@ -4,7 +4,7 @@ and each one also writes its row onto the page, or takes it off (write_page). Th
 name first. It plays a clip itself only when the page can't be read or written.
 
     /clips save <name> <yarn link>   saves a clip under a name (or one of our own clips' links)
-    /clips <name>                    posts the saved clip (lines after it: words of yours, under it)
+    /clips <name>                    posts the saved clip, where the line stands (words either side stay)
     /clips forget <name>             forgets a name
     /clips                           lists the names (to whoever asked; nothing posted)
 
@@ -19,7 +19,10 @@ who-saved-what come with it. '/clips tony' posts the clip itself, as
 '/clips tony <link>' -- shown as just the clip; the name stays in the record --
 so saving the name again later never changes what was already said.
 
-Agents play clips too: a reply of theirs that is only '/clips <name>' (or
+A clip plays wherever its line sits: on its own line in the middle of a message, the clip is shown there
+and the words either side are left alone (Justin, 21 Nov; play_lines). Several in one message each play.
+
+Agents play clips too: a line of a reply of theirs that is only '/clips <name>' (or
 '/clip <name>') is stored as the composer would post it (played_by, from the
 runner). Only playing: an agent's '/clips save' or 'forget' is just words,
 since the library is read back from people's posts alone.
@@ -54,7 +57,33 @@ COMMANDS = ('/clips', '/clip', '/yarn')  # /yarn: what it was first called; /cli
 USAGE = '/clips <name> posts a saved clip; /clips save <name> <yarn link>; /clips forget <name>; /clips lists them'
 
 
-AGENT_PLAY = re.compile(r"^/clips? ([a-z0-9][a-z0-9_'’-]{0,90})$", re.I)
+AGENT_PLAY = re.compile(r"^/(?:clips?|yarn) ([a-z0-9][a-z0-9_'’-]{0,90})$", re.I)
+_FENCE = re.compile(r'^\s*```')
+
+
+def play_lines(text, playable=None):
+    """`text` with every line that is only '/clip <name>' -- a name the library has -- turned into the clip
+    as the composer posts it, '/clips <name> <link>', where it stands. None when there is no such line.
+
+    A clip plays wherever it sits, not only as the whole message (Justin, #connectome, 21 Nov 2026: "maybe we
+    need to enable /clips to work in the middle of a message"; blu had ended a write-up with a clip and then a
+    merge ask, and nothing played). Several in one message each play, in their places. A line inside a fenced
+    code block is words, not a command."""
+    if not isinstance(text, str):
+        return None
+    playable = every() if playable is None else playable
+    out, fenced, changed = [], False, False
+    for line in text.split('\n'):
+        if _FENCE.match(line):
+            fenced = not fenced
+        played = None if fenced else AGENT_PLAY.match(line.strip())
+        found = playable.get(name_of(played[1])) if played else None
+        if found:
+            out.append(f'/clips {name_of(played[1])} {link_of(found)}')
+            changed = True
+        else:
+            out.append(line)
+    return '\n'.join(out) if changed else None
 
 
 class Refused(ValueError):
@@ -62,20 +91,10 @@ class Refused(ValueError):
 
 
 def played_by(text):
-    """An agent's reply whose first line is only '/clips <name>' (or '/clip <name>'): the clip, as the
-    composer posts it ('/clips <name> <link>'), and any lines after it as they were. None for anything
-    else, or a name not saved."""
-    first, _, rest = text.strip().partition('\n') if isinstance(text, str) else ('', '', '')
-    played = AGENT_PLAY.match(first.strip())
-    if not played and isinstance(text, str):
-        # On its own last line, after its words (blu, 28 Oct: "...then write the claim.\n\n/clip interesting"):
-        # the same clip, moved to the top, its words under it, as the page shows a clip with words.
-        lines = text.strip().split('\n')
-        last = AGENT_PLAY.match(lines[-1].strip()) if len(lines) > 1 else None
-        if last:
-            played, first, rest = last, lines[-1], '\n'.join(lines[:-1])
-    found = every().get(name_of(played[1])) if played else None
-    return f'/clips {name_of(played[1])} {link_of(found)}' + (f'\n{rest.strip()}' if rest.strip() else '') if found else None
+    """An agent's reply with '/clips <name>' (or '/clip <name>') on a line of its own: that line becomes the
+    clip, as the composer posts it ('/clips <name> <link>'), where it stands; the lines either side are left
+    as they were. None for anything else, or a name not saved."""
+    return play_lines(text)
 
 
 def clip_link(clip):
@@ -132,7 +151,8 @@ def command(text, who):
     Raises Refused, with what to do instead."""
     words = text.strip().split()
     if not words or words[0].lower() not in COMMANDS:
-        return text, ''
+        # A clip on a line of its own, anywhere in what they wrote, plays where it stands (Justin, 21 Nov).
+        return play_lines(text) or text, ''
     args = words[1:]
     # '/clips <name>' on its first line, and words of the sender's under it: the clip, then them (Justin, 24 Oct).
     first, _, rest = text.strip().partition('\n')
@@ -178,7 +198,7 @@ def command(text, who):
         name = name_of(args[0])
         if name not in playable:
             raise Refused(f'No clip called "{name}": save one with /clips save {name} <yarn link>')
-        return f'/clips {name} {link_of(playable[name])}' + (f'\n{rest.strip()}' if rest.strip() else ''), ''
+        return play_lines(text, playable), ''
 
     raise Refused(USAGE)
 

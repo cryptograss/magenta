@@ -1036,20 +1036,50 @@
   /* The license a picture of yours goes out under, said as it's attached (services/media.LICENSES). */
   #licenseBar { max-width: 760px; margin: 0 auto; padding: 6px 16px 0; font-size: 12.5px; color: var(--muted); }
   #licenseBar[hidden] { display: none; }
-  #videoBar { max-width: 760px; margin: 0 auto; padding: 6px 16px 0; font-size: 12.5px; color: var(--muted); }
-  #videoBar[hidden] { display: none; }
-  #videoBar .track { display: inline-block; vertical-align: middle; width: 120px; height: 4px; margin: 0 6px;
-                     background: var(--rule, #ddd); border-radius: 2px; overflow: hidden; }
-  #videoBar .fill { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
-  #videoBar button { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
+  /* A video on its way to being a Release: one block each, from sending to its Release page. On a
+     phone the one in front takes the bottom fifth of the screen (Justin, 19 Nov: "hard to see"). */
+  #videoPanel { max-width: 760px; margin: 0 auto; padding: 0 16px; max-height: 60vh; overflow-y: auto; }
+  #videoPanel[hidden] { display: none; }
+  #videoPanel .vp-item { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+                         font-size: 13px; background: var(--panel); }
+  #videoPanel .vp-head { display: flex; align-items: baseline; gap: 8px; }
+  #videoPanel .vp-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #videoPanel .vp-size { flex: none; color: var(--muted); font-size: 12px; }
+  #videoPanel .vp-x, #videoPanel .vp-cancel { flex: none; font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; }
+  #videoPanel .vp-cancel { color: var(--accent); text-decoration: underline; }
+  #videoPanel .vp-steps { display: flex; gap: 4px; list-style: none; margin: 7px 0 6px; padding: 0; font-size: 11px; }
+  #videoPanel .vp-steps li { flex: 1; min-width: 0; padding-top: 4px; border-top: 3px solid var(--line); color: var(--muted);
+                             text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #videoPanel .vp-steps li.done { border-color: var(--accent); }
+  #videoPanel .vp-steps li.now { border-color: var(--accent); color: var(--ink); font-weight: 700; }
+  #videoPanel .vp-steps li.now.bad { border-color: #c0392b; color: #c0392b; }
+  #videoPanel .vp-bar { height: 8px; margin: 2px 0 5px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  #videoPanel .vp-bar .fill { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  #videoPanel .vp-bar.wait .fill { opacity: .45; animation: vp-wait 1.4s ease-in-out infinite alternate; }
+  @keyframes vp-wait { from { opacity: .25; } to { opacity: .6; } }
+  @media (prefers-reduced-motion: reduce) { #videoPanel .vp-bar.wait .fill { animation: none; } }
+  #videoPanel .vp-what { font-variant-numeric: tabular-nums; }
+  #videoPanel .vp-warn { color: #c0392b; }
+  #videoPanel .vp-note { margin-top: 2px; color: var(--muted); font-size: 12px; }
+  #videoPanel .vp-note:empty { display: none; }
+  #videoPanel .vp-act { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
+  #videoPanel .vp-act:empty { display: none; }
+  #videoPanel .vp-act label { flex: 1 1 14em; min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #videoPanel .vp-act input { flex: 1; min-width: 0; font: inherit; padding: 3px 6px; }
+  #videoPanel .vp-act button { font: inherit; cursor: pointer; }
+  #videoPanel a.vp-go { color: var(--accent); }
+  @media (max-width: 720px), (pointer: coarse) {
+    #videoPanel .vp-item.first { min-height: 20vh; display: flex; flex-direction: column; justify-content: center; font-size: 15px; }
+    #videoPanel .vp-item.first .vp-bar { height: 14px; border-radius: 7px; }
+    #videoPanel .vp-item.first .vp-what b { font-size: 22px; }
+    #videoPanel .vp-item.first .vp-steps { font-size: 12px; }
+    #videoPanel .vp-item.first .vp-note { font-size: 13px; }
+    #videoPanel .vp-act input { font-size: 16px; padding: 7px 8px; }  /* 16px: iOS zooms the page on anything smaller */
+    #videoPanel .vp-act button, #videoPanel a.vp-go { min-height: 40px; padding: 6px 12px; font-size: 15px; }
+    #videoPanel a.vp-go { display: inline-flex; align-items: center; border: 1px solid var(--accent); border-radius: 8px; text-decoration: none; }
+    #videoPanel .vp-x, #videoPanel .vp-cancel { min-width: 36px; min-height: 32px; font-size: 15px; }
+  }
   .event .vprogress progress { width: 6em; height: 0.8em; vertical-align: middle; }
-  #videoCards { max-width: 760px; margin: 0 auto; padding: 0 16px; }
-  #videoCards .vcard { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; padding: 8px 10px;
-                       border: 1px solid var(--rule, #ddd); border-radius: 8px; font-size: 13px; }
-  #videoCards .vcard .name { font-weight: 600; }
-  #videoCards .vcard input { flex: 1 1 14em; min-width: 0; font: inherit; padding: 3px 6px; }
-  #videoCards .vcard .make { font: inherit; cursor: pointer; }
-  #videoCards .vcard .later { font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; }
   #licenseBar label { margin-left: 10px; white-space: nowrap; cursor: pointer; }
   #licenseBar button { font: inherit; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
   a.permalink:hover time { text-decoration: underline; }
@@ -1465,7 +1495,38 @@
   .turn .body .hearagain { font: inherit; font-size: 12.5px; color: var(--accent); background: none; border: 1px solid var(--line);
                            border-radius: 12px; padding: 1px 10px; margin: 2px 0 4px; cursor: pointer; }
   .turn .body .hearagain:disabled { color: var(--muted); cursor: default; }
-  .turn .body img { display: block; max-width: 100%; max-height: 420px; border-radius: 6px; border: 1px solid var(--line); }
+  .turn .body img { display: block; max-width: 100%; max-height: 260px; border-radius: 6px; border: 1px solid var(--line); cursor: zoom-in; }
+  /* Several pictures, in a message or in a run of them: a strip of tiles of one height, pressed to open
+     (Justin, 27 Nov 2026: "show it fairly small and then of course people can click to bring it up in a
+     lightbox modal ... let's show them in a gallery"). */
+  .turn .body .gallery { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+  .turn .body .gallery a.img { margin: 0; line-height: 0; }
+  .turn .body .gallery img { height: 132px; width: auto; max-width: 46vw; object-fit: cover; }
+  @media (min-width: 700px) { .turn .body .gallery img { height: 150px; max-width: 320px; } }
+  /* A run of nothing-but-pictures messages sits together, so it reads as one gallery. */
+  /* Messages in a row that are nothing but pictures: tiles of one height, pressed together, so the run
+     reads as one gallery. Each stays its own message, with its own link and its own ⋯. */
+  /* The run flows: each message is its own tile, side by side, wrapping as a gallery does. The first
+     keeps its heading, in the band above the tiles. */
+  .turn.picsonly:has(+ .turn.picsonly.cont), .turn.picsonly + .turn.picsonly.cont {
+    display: inline-block; vertical-align: top; position: relative; border-top: 0;
+    padding: 20px 0 2px 0; margin: 0 4px 0 0; }
+  .turn.picsonly:has(+ .turn.picsonly.cont) > .who { position: absolute; top: 0; left: 0; margin: 0; white-space: nowrap; }
+  .turn.picsonly:has(+ .turn.picsonly.cont) .body img,
+  .turn.picsonly + .turn.picsonly.cont .body img { height: 132px; width: auto; max-width: 46vw; object-fit: cover; }
+  @media (min-width: 700px) {
+    .turn.picsonly:has(+ .turn.picsonly.cont) .body img,
+    .turn.picsonly + .turn.picsonly.cont .body img { height: 150px; max-width: 320px; }
+  }
+  /* On a phone, two to a row, square-cropped: a gallery rather than a column of letterboxes. */
+  @media (max-width: 699px) {
+    .turn.picsonly:has(+ .turn.picsonly.cont), .turn.picsonly + .turn.picsonly.cont {
+      width: calc(50% - 8px); margin-left: 0; padding-left: 0; border-left-width: 0; }
+    .turn.picsonly:has(+ .turn.picsonly.cont) .body img,
+    .turn.picsonly + .turn.picsonly.cont .body img { width: 100%; height: 120px; max-width: none; }
+    .turn .body .gallery img { height: 120px; max-width: calc(50vw - 24px); }
+  }
+  .turn.picsonly .body a.img { margin: 0 0 2px; }
   /* A picture, large, over everything: its caption, and its page. */
   /* The small player that follows you (Justin, 3 Nov): a video playing on a Tidings page, carried along when
      you browse away, playing on from the same moment. Its title takes you back there; ✕ closes it; its bar
@@ -1501,10 +1562,15 @@
   #lightbox.whole .lbfoot { display: none; }
   #lightbox .lbfoot { color: #eee; font-size: 14px; text-align: center; max-width: 90vw; }
   #lightbox .lbfoot a { color: #ffb3d9; margin-left: 10px; white-space: nowrap; }
-  /* "→ PickiPedia" where the picture is seen whole: when a pickipedian use for it comes to mind. */
-  #lightbox .lbup { margin-left: 12px; font: inherit; font-size: 13px; padding: 4px 12px; border: 1px solid #ffb3d9; border-radius: 14px;
+  /* "→ PickiPedia" where the picture is seen whole: when a pickipedian use for it comes to mind.
+     "full size" beside it, which is a link, dressed the same (Justin, 27 Nov 2026: "a button there
+     for full size"). */
+  #lightbox .lbup, #lightbox .lbpage { margin-left: 12px; font: inherit; font-size: 13px; padding: 4px 12px;
+                    border: 1px solid #ffb3d9; border-radius: 14px;
                     background: rgba(255,255,255,.08); color: #ffb3d9; cursor: pointer; }
-  #lightbox .lbup:hover { background: rgba(255,179,217,.18); }
+  #lightbox .lbpage { text-decoration: none; }
+  #lightbox .lbpage:empty { display: none; }
+  #lightbox .lbup:hover, #lightbox .lbpage:hover { background: rgba(255,179,217,.18); }
   #lightbox .lbup[hidden] { display: none; }
   /* Who's in it (services/faces.py): a box on each face faces found, and under it the name someone
      here gave it, or whose it looks like, with a question mark, for a person to say yes to. */
@@ -1524,6 +1590,14 @@
                      background: rgba(255,255,255,.08); color: #8fe3a5; cursor: pointer; }
   #lightbox .lbwho[hidden] { display: none; }
   #lightbox .lbwho:disabled { opacity: .7; cursor: default; }
+  #lightbox .step { position: absolute; top: 50%; transform: translateY(-50%); font-size: 34px; line-height: 1; color: #fff;
+                    background: rgba(0,0,0,.35); border: 0; border-radius: 50%; width: 52px; height: 52px; cursor: pointer; }
+  #lightbox .step:hover { background: rgba(0,0,0,.6); }
+  #lightbox .step[hidden] { display: none; }
+  #lightbox .back { left: 10px; }
+  #lightbox .on { right: 10px; }
+  #lightbox .which { color: #ccc; font-size: 13px; margin-left: 10px; }
+  #lightbox .which[hidden] { display: none; }
   #lightbox .close { position: absolute; top: 10px; right: 14px; font-size: 26px; line-height: 1; color: #fff; background: none;
                      border: 0; cursor: pointer; padding: 6px; }
   .turn .body a.img, .work .thumbs a, .step-detail .shots a { cursor: zoom-in; }
@@ -1628,10 +1702,15 @@
   }
   .turn .body audio { display: block; width: 100%; max-width: 420px; height: 36px; margin: 4px 0; }
   .turn .body .memo { font-size: 12.5px; color: var(--muted); }
-  /* A person's voice memo: the player, big, and its words folded under "Transcript" (Justin, 30 Oct). */
+  /* A person's voice memo: the player, big, the first ~200 characters in view, and any longer transcript folded
+     under "Full transcript" (Justin, 30 Oct; 19 Nov). */
   .turn .body.memoed audio { max-width: 520px; height: 48px; margin: 6px 0 2px; }
+  .turn .body .memo-preview { margin: 4px 0 2px; }
+  .turn .body .memo-preview > :last-child { margin-bottom: 0; }
+  .turn .body.memoed:has(> details.transcript[open]) > .memo-preview { display: none; }
   .turn .body details.transcript { margin: 2px 0 4px; }
   .turn .body details.transcript > summary { cursor: pointer; color: var(--accent); font-size: 13px; list-style: none; user-select: none; }
+  .turn .body details.transcript[open] > summary { margin-bottom: 4px; }
   .turn .body details.transcript > summary::-webkit-details-marker { display: none; }
   .turn .body details.transcript > summary::before { content: "▸"; display: inline-block; width: 1em; transition: transform .15s; }
   .turn .body details.transcript[open] > summary::before { transform: rotate(90deg); }
@@ -1706,12 +1785,18 @@
   body.locked #composer, body.locked #typing { display: none !important; }
   header a.settings { font-size: 13px; color: var(--muted); }
   #suggest { display: none; position: absolute; bottom: 100%; left: 16px; margin-bottom: 4px; background: var(--panel);
-             border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.08); min-width: 180px; z-index: 5; }
+             border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.08); min-width: 180px; z-index: 5;
+             max-height: 52vh; overflow-y: auto; }  /* eight clips, each with its picture, are taller than a phone */
   #suggest.on { display: block; }
   #suggest div { padding: 5px 10px; cursor: pointer; font-size: 14px; }
   #suggest div.sel, #suggest div:hover { background: var(--accent-soft); }
   #suggest small { color: var(--muted); margin-left: 6px; }
   #suggest .emo { display: inline-block; width: 1.6em; font-size: 16px; }
+  /* A clip's own picture in the list, in place of what it's for (Justin, 25 Nov): the frame says which clip it is
+     faster than the words do. The row keeps its height whether the picture loads or not. */
+  #suggest div.clip { display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
+  #suggest img.shot { width: 92px; height: 52px; object-fit: cover; border-radius: 3px; background: var(--hover, rgba(128,128,128,.12)); flex: none; }
+  #suggest img.shot[hidden] { display: block; visibility: hidden; }
   #menu { display: none; font: inherit; font-size: 20px; line-height: 1; background: none; border: 0;
           color: var(--muted); cursor: pointer; padding: 0 2px; }
   /* A phone, either way up: narrow, or a touch screen this short (a phone on its side
@@ -1741,6 +1826,31 @@
   #todoBody li .meta .you { color: var(--accent); font-weight: 600; }
   #todoBody li .why { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
   #todoBody li .task a { color: inherit; }
+  /* A row is one line (Justin, 21 Nov: "obvious types, _realllly_ terse headlines"): its type's glyph, a headline
+     (services/todo_types.py, headline) and who. Pressed, it opens to the task as written, its note and its link. */
+  #todoBody li.row { display: block; padding: 0; }
+  #todoBody li.row .line { display: flex; gap: 6px; align-items: baseline; padding: 5px 0; cursor: pointer; }
+  #todoBody li.row .line:hover .hl, #todoBody li.row .line:focus-visible .hl { color: var(--accent); }
+  #todoBody li.row .line:focus-visible { outline: none; }
+  #todoBody li.row .ty { flex: none; width: 19px; text-align: center; }
+  #todoBody li.row .hl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+  /* 💬: the message that asked for it (an item's `said`), so the conversation behind a row is one click away. */
+  #todoBody li.row .sd, #glanceNeeds li .sd { flex: none; font-size: 10.5px; text-decoration: none; opacity: .45; }
+  #todoBody li.row .sd:hover, #glanceNeeds li .sd:hover { opacity: 1; }
+  #todoBody li.row .wh { flex: none; max-width: 34%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11.5px; }
+  #todoBody li.row .wh .you { color: var(--accent); font-weight: 600; }
+  #todoBody li.row .pr { flex: none; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 600; line-height: 16px;
+                         text-align: center; color: var(--panel); background: var(--accent); align-self: center; }
+  #todoBody li.row .more { display: none; padding: 0 0 7px 25px; }
+  #todoBody li.row.open .more { display: flex; gap: 8px; }
+  #todoBody li.row.open .hl { white-space: normal; font-weight: 600; }
+  #todoBody li.row .more > div { flex: 1; min-width: 0; }
+  #todoBody li.row.open a.todolink { opacity: .8; }
+  #todoFilter { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; flex: none; }
+  #todoFilter:empty { display: none; }
+  #todoFilter button { font: inherit; font-size: 12px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 12px; background: none; color: var(--ink); cursor: pointer; }
+  #todoFilter button .cnt { color: var(--muted); font-size: 11px; margin-left: 3px; }
+  #todoFilter button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   /* `code` in a task or its note; each item's own link (#), copied on a click, and the item it opens flashes. */
   #todoBody li code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 4px; padding: 0 4px; }
   #todoBody li > div { flex: 1; min-width: 0; }
@@ -1751,7 +1861,7 @@
   #todoBody li.flash { animation: flash 2.5s ease-out; }
   #todoDone { margin-top: 8px; color: var(--muted); }
   #todoDone summary { cursor: pointer; font-size: 12.5px; }
-  #todoDone li .task { text-decoration: line-through; }
+  #todoDone li .task, #todoDone li.row .hl { text-decoration: line-through; }
   /* People under the list: pinned to the column's foot, its height dragged from its top edge. */
   #todo.open #todoBody { display: flex; flex-direction: column; }
   #todoBody > #todoList, #todoBody > #todoDone, #todoBody > .note { flex: none; }
@@ -1771,13 +1881,83 @@
   #humans li time { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
   #humans hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; width: 100%; }
   #todoDone:not([data-n]) { display: none; }
+  /* At a glance (services/glance.py; R.J., 13 Nov): the pane's other leaf. Who's on what, what needs people. */
+  #paneTabs { display: flex; flex-direction: column; }
+  #todo.open #paneTabs { display: none; }
+  #glanceTab { writing-mode: vertical-rl; display: flex; gap: 6px; align-items: center; width: 28px; padding: 14px 0;
+               border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: inherit;
+               font-size: 12.5px; letter-spacing: .04em; cursor: pointer; }
+  #glanceTab:hover { color: var(--accent); }
+  #todo.nolist #todoTab, #todo.nolist #toTodo { display: none; }
+  #todo.nolist #glanceTab { border-top: 0; }
+  #glanceBody { display: none; width: 300px; overflow-y: auto; padding: 12px 14px; font-size: 13.5px; }
+  #todo.open.glance #todoBody { display: none; }
+  #todo.open.glance #glanceBody { display: block; }
+  #glanceBody .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  #glanceBody .head b { flex: 1; }
+  #glanceBody .head a, #todoBody .head a#toGlance { color: var(--muted); font-size: 12px; cursor: pointer; }
+  #glanceBody .head button { border: 0; background: none; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; padding: 0 2px; }
+  #glanceBody .head button[aria-pressed="true"] { color: var(--accent); font-weight: 600; }
+  #glanceBody .head button#glanceClose { font-size: 14px; }
+  #glanceBody h4 { margin: 14px 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+                   color: var(--muted); display: flex; gap: 6px; align-items: baseline; }
+  #glanceBody h4 small { font-weight: 400; letter-spacing: 0; text-transform: none; margin-left: auto; }
+  #glanceBody h4 small a { color: inherit; }
+  #glanceBody ul { list-style: none; margin: 0; padding: 0; }
+  #glanceBody .none { color: var(--muted); font-size: 12.5px; }
+  #glanceBody .gbar { display: flex; height: 8px; width: var(--w, 100%); min-width: 6px; border-radius: 4px; overflow: hidden; background: var(--line); }
+  #glanceBody .gbar i { display: block; min-width: 2px; }
+  #glanceBody .gbar.all { height: 12px; }
+  #glanceWho { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 6px; font-size: 12.5px; }
+  #glanceWho span { white-space: nowrap; }
+  #glanceBody .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: var(--c); }
+  #glanceBody .cnt { color: var(--muted); font-size: 11.5px; margin-left: 3px; }
+  #glanceBody button.person { font: inherit; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink); }
+  #glanceBody button.person:hover { text-decoration: underline; }
+  #glanceProjects li { padding: 6px 0; border-top: 1px solid var(--line); }
+  #glanceProjects li .top { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+  #glanceProjects li .top a { color: var(--ink); font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #glanceProjects li .top a:hover { text-decoration: underline; }
+  #glanceProjects li .top time { margin-left: auto; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+  #glanceProjects li .on { margin-top: 4px; font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 0 8px; }
+  #glanceProjects li .open { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  #glanceProjects li .open b { color: var(--accent); }
+  #glanceProjects li .open a { color: inherit; }
+  #glanceBody .head a#toTodo { margin-left: 4px; padding-left: 10px; border-left: 1px solid var(--line); }
+  #glanceIntentions li { padding: 4px 0; border-top: 1px solid var(--line); }
+  #glanceIntentions li time { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+  #glanceIntentions li p { margin: 1px 0 0; overflow-wrap: anywhere; }
+  #glanceIntend { margin-top: 6px; display: flex; gap: 6px; align-items: flex-end; }
+  #glanceIntend textarea { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 5px 7px; border: 1px solid var(--line);
+                           border-radius: 6px; background: var(--bg); color: var(--ink); resize: vertical; }
+  #glanceIntend button, #glanceHave button { font: inherit; font-size: 12px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 12px;
+                                             background: none; color: var(--ink); cursor: pointer; }
+  #glanceIntend button:hover, #glanceHave button:hover { border-color: var(--accent); color: var(--accent); }
+  #glanceIntendSaid { color: var(--muted); font-size: 11.5px; min-height: 1em; }
+  #glanceHave { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 2px 0 8px; font-size: 12.5px; color: var(--muted); }
+  #glanceNeeds li { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+  #glanceNeeds li > div { flex: 1; min-width: 0; }
+  #glanceNeeds li .p { flex: none; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+                       color: var(--muted); border: 1px solid var(--line); }
+  #glanceNeeds li .p.set { color: var(--panel); background: var(--accent); border-color: var(--accent); }
+  #glanceNeeds li .task a { color: inherit; }
+  #glanceNeeds li .ty { flex: none; width: 19px; text-align: center; }
+  #glanceNeeds li .meta .p { display: inline-block; margin-right: 5px; width: 16px; height: 16px; line-height: 16px; font-size: 10px; }
+  #glanceNeeds li .task { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  #glanceNeedsBy { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 6px; }
+  #glanceNeedsBy button { font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 12px; background: none; color: var(--ink); cursor: pointer; }
+  #glanceNeedsBy button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  #glanceNeeds li .meta { color: var(--muted); font-size: 12px; }
+  #glanceNeeds li .meta a { color: inherit; }
+  #glanceNeeds li .meta .you { color: var(--accent); font-weight: 600; }
+  #glanceNeeds li code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 4px; padding: 0 4px; }
 
   @media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
     /* A phone: the tab rides the right edge; open, the list lies over the Mood. */
     #todo { position: fixed; right: 0; top: 38%; z-index: 25; border: 1px solid var(--line); border-right: 0;
             border-radius: 8px 0 0 8px; box-shadow: -2px 2px 10px rgba(0,0,0,.12); }
     #todo.open { top: 44px; bottom: 0; border-radius: 0; }
-    #todoBody { width: min(320px, 88vw); }
+    #todoBody, #glanceBody { width: min(320px, 88vw); }
     header { flex-wrap: nowrap; gap: 8px; padding: 6px 12px; }
     header .brand small { display: none; }
     header .preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
@@ -1789,7 +1969,7 @@
                      -webkit-mask: url(/moods/mark-96.png) center / contain no-repeat; mask: url(/moods/mark-96.png) center / contain no-repeat; }
     #navHome b { display: block; color: var(--accent); font-size: 15px; }
     #navHome small { display: block; color: var(--muted); font-size: 12px; }
-    header .block { display: none; }
+    /* The block shows on a phone too: it's in the ▾ menu now, which has the room (Justin, 18 Nov: "where do I see it?"). */
     header .crumb::before { content: none; }
     header .crumb.moods, header .sections { display: none; }  /* ☰ is the Moods; the account menu has the rest */
     header .crumb:not(.moods):not(:empty) { flex-shrink: 1; min-width: 0; }
@@ -1851,7 +2031,7 @@
   <span class="crumb" id="crumb"></span>
   <!-- Not a <nav>: the page's nav rule is the Moods pane's (190 px wide, scrolling, a border), and took these
        too -- "status" cut off, a scrollbar (Justin, 21 Oct). -->
-  <span class="sections" role="navigation" aria-label="Sections"><a href="/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/ramp/" data-section="ramp" title="The ramp: every open candidate branch, the last few merged">ramp</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" popovertarget="sectionsMoreMenu" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" popover><a href="/prompts/" data-section="prompts">prompts</a><a href="/status/" data-section="status">status</a><a href="/todo/" data-section="todo">todo</a><a href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a><a href="https://pickipedia.xyz/wiki/Magenta:Clips" target="_blank" rel="noopener" title="The team's clips, and when each one fits (Magenta:Clips)">clips</a><a href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a><a href="/traffic/" data-section="traffic" title="Traffic: who comes to magenta and PickiPedia, and from where (public dashboards, no addresses)">stats</a></div></span></span>
+  <span class="sections" role="navigation" aria-label="Sections"><a href="/tidings/" data-section="tidings" data-tour="nav-tidings">tidings<span class="badge soft" data-badge="tidings" hidden></span><span class="badge" data-badge="comments" hidden></span></a><a href="/polls/" data-section="polls" data-tour="nav-polls" title="Polls & Plebiscites: every Mood's polls">polls</a><a href="/ramp/" data-section="ramp" title="The ramp: every open candidate branch, the last few merged">ramp</a><span class="morewrap"><button id="sectionsMoreBtn" type="button" class="morebtn" popovertarget="sectionsMoreMenu" title="More sections">▾</button><div id="sectionsMoreMenu" class="moremenu" popover><a href="/prompts/" data-section="prompts">prompts</a><a href="/status/" data-section="status">status</a><a href="/todo/" data-section="todo">todo</a><a href="/deploys/" data-section="deploys" title="The deploy queue: one box for each server, and what has merged and waits for it">deploys</a><a href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a><a href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a><a href="https://pickipedia.xyz/wiki/Magenta:Clips" target="_blank" rel="noopener" title="The team's clips, and when each one fits (Magenta:Clips)">clips</a><a href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a><a href="/hooks/" data-section="hooks" title="What happens here when a page changes on PickiPedia: the hooks, the push and the log">wiki hooks</a><a href="/traffic/" data-section="traffic" title="Traffic: who comes to magenta and PickiPedia, and from where (public dashboards, no addresses)">stats</a></div></span></span>
   {% if preview_label %}<span class="preview" title="A branch's code, not production; see the label for which record">{{ preview_label }}</span>{% endif %}
   <span class="grow"></span>
   <!-- The block, the servers and the bloom, in one drop-down (Justin, 3 Nov): folded, a dot for how the servers are. -->
@@ -1924,6 +2104,7 @@
       <!-- The rest of the header's sections, which a phone hides (Skyler, 8 Nov: "I cant seem to find ... the options at the top"). -->
       <a class="settings phone" href="/ramp/" data-section="ramp" title="The ramp: every open pull request and githouse branch, the last few merged">ramp</a>
       <a class="settings phone" href="/todo/" data-section="todo">todo</a>
+      <a class="settings phone" href="/deploys/" data-section="deploys" title="The deploy queue: one box for each server, and what has merged and waits for it">deploys</a>
       <a class="settings phone" href="/tasks/" data-section="tasks" title="Every emergent's tasks: what each page says, when each last ran">tasks</a>
       <a class="settings phone" href="/journals/" data-section="journals" title="The emergents' journals, newest entries first">journals</a>
       <a class="settings phone" href="/verify/" data-section="verify" title="The wiki pages the emergents are told from (the bundle's segments), and which wait for a verify">instructions bundles</a>
@@ -1935,7 +2116,8 @@
   <a class="gear" href="/settings/" data-section="settings" title="Settings: how each emergent carries itself in each Mood" aria-label="Settings">⚙</a>
 </header>
 <div id="lightbox" hidden role="dialog" aria-label="Picture"><button type="button" class="close" aria-label="Close">✕</button>
-  <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
+  <button type="button" class="step back" aria-label="The one before" hidden>‹</button><button type="button" class="step on" aria-label="The next one" hidden>›</button>
+  <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><span class="which" hidden></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
 <datalist id="facePeople"></datalist>
 <div id="devicesBox" hidden role="dialog" aria-label="Your devices">
   <div class="head"><b id="devicesTitle">Your devices</b> <button type="button" id="devicesClose">close</button></div>
@@ -2065,9 +2247,11 @@
     <div id="activity"><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button>
-      <label id="stripLocation" title="Phone photos carry where and when they were taken (GPS), and the camera. They go with the picture unless this is ticked; ticked, all of it is removed before anyone sees it (a HEIC photo's carried into its JPEG)."><input type="checkbox"> Remove photo details (place, time, camera)</label></div>
-    <div id="videoCards"></div>
-    <div id="videoBar" hidden><span class="what"></span><span class="track"><span class="fill"></span></span><span class="pct"></span> <button type="button" id="videoCancel">cancel</button></div>
+      <label id="stripLocation" title="Phone photos carry where and when they were taken (GPS), and the camera. They go with the picture unless this is ticked; ticked, all of it is removed before anyone sees it (a HEIC photo's carried into its JPEG)."><input type="checkbox"> Remove photo details (place, time, camera)</label>
+      <label id="picSize" title="How big the picture goes up: taken down to this on its long side before it is sent, here in your browser. Some photos don't need to be huge (Justin, 27 Nov 2026).">at most <select aria-label="How big a picture goes up">
+        <option value="0">full size</option><option value="2560">2560 px</option><option value="1600">1600 px</option><option value="1200">1200 px</option><option value="800">800 px</option>
+      </select></label></div>
+    <div id="videoPanel" hidden aria-live="polite"></div>
     <div id="shareCard" hidden><span class="what"></span><label class="into">into <select id="shareMood" aria-label="Which Mood it goes to"></select></label><button type="button" id="shareHere"></button><button type="button" id="shareDrop" title="Don't share it" aria-label="Don't share it">✕</button></div>
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
     <form id="composer" data-tour="composer" autocomplete="off">
@@ -2093,10 +2277,14 @@
     </div>
   </main>
   <aside id="todo" hidden aria-label="To do">
-    <button type="button" id="todoTab" data-tour="todo" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
+    <div id="paneTabs">
+      <button type="button" id="todoTab" data-tour="todo" title="What the people here have to do: a list kept on PickiPedia"><span>To do</span><b class="n"></b></button>
+      <button type="button" id="glanceTab" title="At a glance: who's on what across every Mood, what each person means to do, and what needs people"><span>At a glance</span></button>
+    </div>
     <div id="todoBody">
-      <div class="head"><b><a id="todoPage" target="_blank" rel="noopener" title="The list's page on PickiPedia">To do</a></b><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
+      <div class="head"><b><a id="todoPage" target="_blank" rel="noopener" title="The list's page on PickiPedia">To do</a></b><a id="toGlance" role="button" tabindex="0" title="Who's on what across every Mood, and what needs people">at a glance</a><a id="todoEdit" target="_blank" rel="noopener" title="The list is YAML on PickiPedia: anyone can edit it">edit</a><button type="button" id="todoClose" aria-label="Close the to-do list">✕</button></div>
       <p class="note" id="todoNote"></p>
+      <div id="todoFilter" role="group" aria-label="Show only"></div>
       <ul id="todoList"></ul>
       <details id="todoDone"><summary></summary><ul></ul></details>
       <!-- People, under the list (Justin, 3 Nov): who spoke here lately, then everyone else; its top edge drags. -->
@@ -2106,6 +2294,33 @@
         <ul id="humansHere"></ul>
         <hr id="humansRule" hidden>
         <ul id="humansElsewhere"></ul>
+      </div>
+    </div>
+    <!-- At a glance (services/glance.py; R.J., 13 Nov): every Mood at once. Who's on what, what each person means
+         to do, what needs people. The same in every Mood; where it's the pane's first leaf is GLANCE_FIRST. -->
+    <div id="glanceBody" aria-label="At a glance">
+      <div class="head"><b>At a glance</b>
+        <button type="button" data-window="day" title="The last 7,200 blocks">day</button><button type="button" data-window="week" title="The last 50,400 blocks">week</button>
+        <a id="toTodo" role="button" tabindex="0" title="This Mood's to-do list">to do</a>
+        <button type="button" id="glanceClose" aria-label="Close">✕</button></div>
+      <p class="none" id="glanceNote">Loading…</p>
+      <div id="glanceAll" hidden>
+        <span class="gbar all" id="glanceEveryone"></span>
+        <div id="glanceWho"></div>
+        <h4>Intentions <small id="glanceIntentWhen"></small></h4>
+        <ul id="glanceIntentions"></ul>
+        <form id="glanceIntend" hidden>
+          <textarea id="glanceIntendText" rows="2" maxlength="400" aria-label="What you mean to do" title="Shown here to everyone, as what you say in a Mood is, for a day (a week, on the week's view). Say it again to change it; say nothing to clear it. Ctrl+Enter says it." placeholder="What are you on today? A line or a few."></textarea>
+          <button type="submit">Say</button>
+        </form>
+        <div id="glanceIntendSaid" role="status"></div>
+        <h4>Who's on what <small id="glanceBlocks"></small></h4>
+        <ul id="glanceProjects"></ul>
+        <h4>Needs people <small><a href="/todo/" data-section="todo" id="glanceNeedsAll"></a></small></h4>
+        <div id="glanceHave" hidden title="Drafts a question to magent in the box below: send it, and it answers from what's open and what it knows of you">I have
+          <button type="button" data-have="an hour">an hour</button><button type="button" data-have="three hours">3 hours</button><button type="button" data-have="a day">a day</button></div>
+        <div id="glanceNeedsBy" role="group" aria-label="Whose"></div>
+        <ul id="glanceNeeds"></ul>
       </div>
     </div>
   </aside>
@@ -2740,18 +2955,55 @@
   }
   // Each item's own name in a link (#todo-<its words>): stable while its words are.
   function todoId(it) { return 'todo-' + it.task.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60); }
+  // The to-do types (services/todo_types.py, TYPES): {type: [glyph, label, how it gets done]}, as the list or the
+  // glance last said them.
+  let todoTypes = {};
+  const todoGlyph = type => type === 'tools' ? ['🔨', 'tools', 'an emergent asks for a turn with its tools'] : todoTypes[type] || ['·', type || '', ''];
+  // One line: the type's glyph, the headline, who. The task as written (a link, if it has one), its note and its
+  // own link (#) are under it, shown when the line is pressed.
   function todoItem(it) {
     const who = it.who.map(n => n.toLowerCase() === viewer ? '<span class="you">you</span>' : esc(shown(n.toLowerCase())));
-    const meta = [it.merged ? 'merged' : it.closed ? 'closed, not merged' : it.kind, who.join(', ')].filter(Boolean).join(' · ');
+    const [glyph, label, about] = todoGlyph(it.type);
+    const written = it.kind && it.kind.toLowerCase() !== it.type ? ` (written “${esc(it.kind)}”)` : '';
+    const meta = [it.merged ? 'merged' : it.closed ? 'closed, not merged' : it.deployed ? 'deployed' : it.verified ? 'verified' : esc(label) + written,
+                  it.priority ? `priority ${it.priority} of 5` : '', who.join(', ')].filter(Boolean).join(' · ');
     // A task with a link is the link, as on PickiPedia (its <todo> tag), and one link whole: a [[page]]
     // inside it would be a link in a link, which browsers cut apart. The note is never wrapped.
     const href = it.link ? linkOf(it.link) : '';
     const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''} title="${esc(it.link)}">${todoText(it.task, false)}</a>`
       : todoText(it.task);
     const id = todoId(it);
-    return `<li id="${esc(id)}"><span class="box">${it.done ? '☑' : '☐'}</span><div><span class="task">${task}</span>`
+    return `<li id="${esc(id)}" class="row" data-type="${esc(it.type || '')}">`
+      + `<div class="line" role="button" tabindex="0" aria-expanded="false" title="${esc(it.task)}"><span class="ty" title="${esc(label)}: ${esc(about)}">${glyph}</span>`
+      + `<span class="hl">${esc(it.headline || it.task)}</span>`
+      + (it.said_url ? `<a class="sd" href="${esc(it.said_url)}" title="The conversation that asked for this">💬</a>` : '')
+      + (it.priority && !it.done ? `<span class="pr" title="Priority ${it.priority} of 5 (1 the most needed)">${it.priority}</span>` : '')
+      + (who.length ? `<span class="wh">${who.join(', ')}</span>` : '') + '</div>'
+      + `<div class="more"><div><span class="task">${task}</span>`
       + (meta ? `<div class="meta">${meta}</div>` : '') + (it.note ? `<div class="why">${todoText(it.note)}</div>` : '') + '</div>'
-      + `<a class="todolink" href="#${esc(id)}" title="This item's link: click to copy">#</a></li>`;
+      + `<a class="todolink" href="#${esc(id)}" title="This item's link: click to copy">#</a></div></li>`;
+  }
+  // Show only: yours, or one type (a button for each that's open here, with how many). Pressed again, all of them.
+  let todoOnly = { type: '', mine: false };
+  const todoMine = it => it.who.some(n => n.toLowerCase() === viewer);
+  function drawTodoList() {
+    const t = todoShown;
+    if (!t) return;
+    // Most needed first: a priority, then what holds someone else up (todo_types.rank); as the page has them, within that.
+    const open = t.items.filter(i => !i.done).map((it, n) => [it, n])
+      .sort(([a, i], [b, j]) => ((a.rank || [9, 9])[0] - (b.rank || [9, 9])[0]) || ((a.rank || [9, 9])[1] - (b.rank || [9, 9])[1]) || (i - j)).map(([it]) => it);
+    const counts = {};
+    for (const it of open) counts[it.type] = (counts[it.type] || 0) + 1;
+    const mine = viewer ? open.filter(todoMine).length : 0;
+    if (!counts[todoOnly.type]) todoOnly.type = '';
+    if (!mine) todoOnly.mine = false;
+    const chip = (attr, label, n, on, title) => `<button type="button" ${attr} aria-pressed="${on}" title="${esc(title)}">${label}<span class="cnt">${n}</span></button>`;
+    const kinds = Object.keys(todoTypes).filter(k => counts[k]);
+    document.getElementById('todoFilter').innerHTML = open.length < 4 ? ''
+      : (mine && mine < open.length ? chip('data-mine', 'you', mine, todoOnly.mine, 'Only what waits on you') : '')
+        + (kinds.length > 1 ? kinds.map(k => chip(`data-type="${esc(k)}"`, todoTypes[k][0], counts[k], todoOnly.type === k, `${todoTypes[k][1]}: ${todoTypes[k][2]}`)).join('') : '');
+    const shownOpen = open.filter(it => (!todoOnly.type || it.type === todoOnly.type) && (!todoOnly.mine || todoMine(it)));
+    document.getElementById('todoList').innerHTML = shownOpen.map(todoItem).join('');
   }
   // While a Mood's list is on its way: not the last Mood's list, and not "no list here" --
   // either reads as this Mood's, and the second as if there were nothing to do.
@@ -2761,15 +3013,22 @@
     todoEl.querySelector('#todoTab').setAttribute('aria-label', 'To do');
     document.getElementById('todoNote').textContent = note;
     document.getElementById('todoList').innerHTML = '';
+    document.getElementById('todoFilter').innerHTML = '';
     const fold = document.getElementById('todoDone');
     delete fold.dataset.n;
     fold.querySelector('summary').textContent = 'Done';
     fold.querySelector('ul').innerHTML = '';
   }
   function renderTodo(t) {
+    const wasOpen = [...todoEl.querySelectorAll('#todoBody li.row.open')].map(li => li.id);
     todoShown = t;
+    if (t.types) todoTypes = t.types;
     const open = t.items.filter(i => !i.done), done = t.items.filter(i => i.done);
-    todoEl.hidden = !t.exists && !viewer;  // no list yet: there to start one, for whoever can write here
+    // No list yet: its tab is there to start one, for whoever can write here. The pane stays for its other leaf.
+    const noList = !t.exists && !viewer, was = todoEl.classList.contains('nolist');
+    todoEl.hidden = false;
+    todoEl.classList.toggle('nolist', noList);
+    if (noList || was) showLeaf(leafOf(current));  // with no list, at a glance; with one again, this Mood's leaf
     todoEl.querySelector('#todoTab .n').textContent = open.length || '';
     todoEl.querySelector('#todoTab').setAttribute('aria-label', `To do: ${open.length} open`);
     document.getElementById('todoEdit').href = t.edit;
@@ -2777,23 +3036,30 @@
     document.getElementById('todoNote').textContent = t.error ? `The list couldn't be read: ${t.error}.`
       : !t.exists ? 'No list here yet: "edit" starts one on PickiPedia, as YAML between <todo> tags ("- task: ...").'
       : !t.items.length ? 'Nothing to do.' : '';
-    document.getElementById('todoList').innerHTML = open.map(todoItem).join('');
+    drawTodoList();
     const fold = document.getElementById('todoDone');
     if (done.length) fold.dataset.n = done.length; else delete fold.dataset.n;
     fold.querySelector('summary').textContent = `Done (${done.length})`;
     fold.querySelector('ul').innerHTML = done.map(todoItem).join('');
+    for (const id of wasOpen) { const li = document.getElementById(id); if (li) li.classList.add('open'); }
     showTodoItem();
   }
   // A link to one item (/moods/<slug>/#todo-…): the list opens, at it, and it flashes.
   let todoWanted = (location.hash.match(/^#(todo-[a-z0-9-]+)$/) || [])[1] || null;
   function showTodoItem() {
     if (!todoWanted) return;
-    const li = document.getElementById(todoWanted);
+    let li = document.getElementById(todoWanted);
+    if (!li && todoShown && (todoOnly.type || todoOnly.mine)) {  // it may be one the buttons have put aside
+      todoOnly = { type: '', mine: false };
+      drawTodoList();
+      li = document.getElementById(todoWanted);
+    }
     if (!li) return;
     todoWanted = null;
     openTodo(true);
     const fold = li.closest('details');
     if (fold) fold.open = true;
+    li.classList.add('open');
     li.scrollIntoView({ block: 'center' });
     li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash');
   }
@@ -2809,13 +3075,32 @@
     try { await navigator.clipboard.writeText(url); a.dataset.copied = ''; setTimeout(() => delete a.dataset.copied, 1500); }
     catch (err) { prompt('Copy this link:', url); }
   });
+  // A line opens to its task as written; again, it closes. What's open stays open when the list is drawn again.
+  function todoToggle(line) {
+    const open = line.parentElement.classList.toggle('open');
+    line.setAttribute('aria-expanded', String(open));
+  }
+  document.getElementById('todoBody').addEventListener('click', e => {
+    const line = e.target.closest('li.row .line');
+    // A link on the line (the 💬 of what asked for it) is followed, not a press on the line.
+    if (line) { if (!e.target.closest('a[href]')) todoToggle(line); return; }
+    const b = e.target.closest('#todoFilter button');
+    if (!b) return;
+    if (b.dataset.mine !== undefined) todoOnly.mine = !todoOnly.mine;
+    else todoOnly.type = todoOnly.type === b.dataset.type ? '' : b.dataset.type;
+    drawTodoList();
+  });
+  document.getElementById('todoBody').addEventListener('keydown', e => {
+    const line = e.target.closest('li.row .line');
+    if (line && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); todoToggle(line); }
+  });
   let todoStamp = null;  // the server's word on when a list last may have changed (pollOnce)
   async function loadTodo(fresh) {
     const slug = current;
     if (!slug) return;
     const another = todoFor !== slug;  // a Mood just opened: what's shown is the last one's
     todoFor = slug;
-    if (another) renderTodoWaiting('Loading the list…');
+    if (another) { todoOnly = { type: '', mine: false }; renderTodoWaiting('Loading the list…'); }
     try {
       const r = await fetch(`/api/moods/${encodeURIComponent(slug)}/todo/${fresh ? '?fresh=1' : ''}`);
       if (!r.ok) throw new Error(r.status);
@@ -2875,6 +3160,152 @@
   });
   document.getElementById('humansGrip').addEventListener('dblclick', () => { humansEl.style.removeProperty('--humans-h'); store.set('humansHeight', 0); });
   setInterval(loadHumans, 60000);
+
+  // --- at a glance (services/glance.py; R.J., 13 Nov, #general): the pane's other leaf. Every Mood at once: who
+  //     said how much where, what each person means to do, and what waits on a person. ---------------------------
+  const GLANCE_FIRST = ['general'];  // where the pane opens to it, not the list (Justin, 13 Nov: "instead of 'todo'")
+  // People's colours in the bars: clear of the emergents' own (magenta, red, blue), and of each other.
+  const HUMAN_PALETTE = ['#c98a06', '#2a9d8f', '#6a994e', '#7b5ea7', '#8a5a44', '#5c677d', '#8a8f2a', '#3a7d44'];
+  let glanceWindow = store.get('glanceWindow', 'day'), glanceShown = null;
+  let glanceFor = null;  // whose needs are listed: a name, '' (nobody's: anyone's to take), '*' (everyone's); null, not yet chosen
+  const leafOf = slug => store.get('paneLeaf', {})[slug] || (GLANCE_FIRST.includes(slug) ? 'glance' : 'todo');
+  function showLeaf(leaf, chosen) {
+    if (todoEl.classList.contains('nolist')) leaf = 'glance';
+    todoEl.classList.toggle('glance', leaf === 'glance');
+    if (chosen && current) store.set('paneLeaf', { ...store.get('paneLeaf', {}), [current]: leaf });
+    if (leaf === 'glance') loadGlance(); else loadHumans();
+  }
+  // A person's colour: their icon's if they chose one, else one of a palette's by their name; an emergent's, its own.
+  function glanceColour(name, isHuman) {
+    if (!isHuman) return agentColor(name);
+    const own = (looks[name] || {}).colour || '';
+    if (/^#[0-9a-f]{6}$/.test(own)) return own;
+    let h = 0;
+    for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return HUMAN_PALETTE[h % HUMAN_PALETTE.length];
+  }
+  function renderGlance(d) {
+    glanceShown = d;
+    if (d.types) todoTypes = d.types;
+    const isHuman = Object.fromEntries(d.people.map(p => [p.name, p.human]));
+    const person = n => isHuman[n] === false ? `<span style="color: ${agentColor(n)}">${esc(shown(n))}</span>`
+      : `<button type="button" class="person" data-person="${esc(n)}" title="${esc(shown(n))}: their card">${nameHtml(n)}</button>`;
+    const segments = said => said.map(s => `<i style="flex: ${s.n}; background: ${glanceColour(s.name, isHuman[s.name] !== false)}" title="${esc(shown(s.name))}: ${s.n}"></i>`).join('');
+    const dot = n => `<i class="dot" style="--c: ${glanceColour(n, isHuman[n] !== false)}"></i>`;
+    document.getElementById('glanceNote').hidden = true;
+    document.getElementById('glanceAll').hidden = false;
+    for (const b of glanceBody.querySelectorAll('button[data-window]')) b.setAttribute('aria-pressed', String(b.dataset.window === d.window));
+    const blocks = `the last ${d.blocks.toLocaleString()} blocks`;
+    document.getElementById('glanceBlocks').textContent = blocks;
+    document.getElementById('glanceIntentWhen').textContent = blocks;
+    // Everyone, in one bar: who said how much, everywhere. It's the key to each Mood's bar below.
+    document.getElementById('glanceEveryone').innerHTML = segments(d.people);
+    document.getElementById('glanceWho').innerHTML = d.people.map(p =>
+      `<span title="${esc(p.moods.map(m => '#' + m.slug + ' ' + m.n).join(', '))}">${dot(p.name)}${person(p.name)}<span class="cnt">${p.n}</span></span>`).join('')
+      || '<span class="none">Nobody has said anything in that time.</span>';
+    // What each person means to do, in their own words.
+    document.getElementById('glanceIntentions').innerHTML = d.intentions.map(i =>
+      `<li>${person(i.name)}<time title="${esc(stamp(i.at))}">${esc(blocksAgo(i.at))} blocks</time>`
+      + i.text.split('\n').map(line => `<p>${todoText(line)}</p>`).join('') + '</li>').join('')
+      || `<li class="none">Nobody has said yet${viewer ? ': be the first.' : '.'}</li>`;
+    const form = document.getElementById('glanceIntend'), box = document.getElementById('glanceIntendText');
+    form.hidden = !viewer;
+    const mine = d.intentions.find(i => i.name === viewer);
+    if (document.activeElement !== box && !box.dataset.dirty) box.value = mine ? mine.text : '';
+    // Each Mood that was talked in, its threads with it: a bar as long as its share of the busiest, cut by who spoke.
+    const most = Math.max(1, ...d.projects.map(p => p.total));
+    document.getElementById('glanceProjects').innerHTML = d.projects.map(p => {
+      const open = [];
+      if (p.needs) open.push(`<b>${p.needs}</b> open for people` + (p.waits_on.length ? ` (${p.waits_on.slice(0, 3).map(w => (w.name === viewer ? 'you' : esc(shown(w.name))) + ' ' + w.n).join(', ')})` : ''));
+      if (p.candidates) open.push(`<a href="/ramp/" data-section="ramp">${p.candidates} candidate branch${p.candidates === 1 ? '' : 'es'}</a>`);
+      if (p.threads) open.push(`${p.threads} thread${p.threads === 1 ? '' : 's'}`);
+      return `<li><div class="top"><a href="/moods/${esc(p.slug)}/">#${esc(p.title)}</a><span class="cnt">${p.total}</span>`
+        + `<time title="${esc(stamp(p.last_at))}: ${esc(shown(p.last_by))} spoke last">${esc(blocksAgo(p.last_at))} blocks</time></div>`
+        + `<span class="gbar" style="--w: ${Math.max(3, Math.round(100 * p.total / most))}%">${segments(p.said)}</span>`
+        + `<div class="on">${p.said.slice(0, 6).map(s => `<span>${person(s.name)}<span class="cnt">${s.n}</span></span>`).join('')}</div>`
+        + (open.length ? `<div class="open">${open.join(' · ')}</div>` : '') + '</li>';
+    }).join('') || '<li class="none">No Mood was talked in.</li>';
+    // What waits on a person, most needed first (asks, priorities, then what holds others up). A button for each
+    // person it waits on, and for everyone: the reader's own to begin with, if anything waits on them.
+    const waits = Object.fromEntries(d.needs_by.map(b => [b.name, b.n]));
+    if (glanceFor === null) glanceFor = viewer && waits[viewer] ? viewer : '*';
+    if (glanceFor !== '*' && !(glanceFor in waits)) glanceFor = '*';
+    const chip = (key, label, n) => `<button type="button" data-for="${esc(key)}" aria-pressed="${key === glanceFor}">${label}<span class="cnt">${n}</span></button>`;
+    document.getElementById('glanceNeedsBy').innerHTML = !d.needs_total ? '' : chip('*', 'everyone', d.needs_total)
+      + [...d.needs_by].sort((a, b) => (b.name === viewer) - (a.name === viewer))
+        .map(b => chip(b.name, b.name === '' ? 'anyone' : b.name === viewer ? 'you' : esc(shown(b.name)), b.n)).join('');
+    const needs = glanceFor === '*' ? d.needs : d.needs_for[glanceFor] || [];
+    document.getElementById('glanceNeeds').innerHTML = needs.map(n => {
+      const href = n.link ? linkOf(n.link) : '';
+      const line = esc(n.headline || n.task), [glyph, label, about] = todoGlyph(n.type);
+      const task = href ? `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''}>${line}</a>` : line;
+      const who = n.who.map(w => w === viewer ? '<span class="you">you</span>' : esc(shown(w))).join(', ') || (n.ask ? 'whoever can' : 'anyone');
+      // Its type's glyph leads the row; a priority, or an emergent waiting now, is a mark before who.
+      const mark = n.ask ? '<span class="p set" title="An emergent is waiting on this now">!</span>'
+        : n.priority ? `<span class="p set" title="Priority ${n.priority} of 5 (1 the most needed)">${n.priority}</span>` : '';
+      const said = n.said_url ? ` <a class="sd" href="${esc(n.said_url)}" title="The conversation that asked for this">💬</a>` : '';
+      return `<li><span class="ty" title="${esc(label)}: ${esc(about)}">${glyph}</span>`
+        + `<div><span class="task" title="${esc(n.task)}">${task}</span>${said}<div class="meta">${mark}${[who, `<a href="/moods/${esc(n.mood)}/">#${esc(n.mood_title)}</a>`].filter(Boolean).join(' · ')}</div></div></li>`;
+    }).join('') || '<li class="none">Nothing is waiting on anyone.</li>';
+    const total = glanceFor === '*' ? d.needs_total : waits[glanceFor] || 0;
+    document.getElementById('glanceNeedsAll').textContent = total > needs.length ? `all ${d.needs_total} on the to-do page` : '';
+    document.getElementById('glanceHave').hidden = !viewer;
+  }
+  async function loadGlance() {
+    // Not waiting on todoEl.hidden: a Mood's pane is hidden until its list first answers, and this is asked before.
+    if (!todoEl.classList.contains('open') || !todoEl.classList.contains('glance')) return;
+    try {
+      const r = await fetch('/api/glance/?window=' + encodeURIComponent(glanceWindow));
+      if (r.ok) renderGlance(await r.json());
+    } catch (e) {
+      if (!glanceShown) document.getElementById('glanceNote').textContent = "It couldn't be reached just now; it's asked for again in a minute.";
+    }
+  }
+  const glanceBody = document.getElementById('glanceBody');
+  document.getElementById('glanceTab').addEventListener('click', () => { showLeaf('glance', true); openTodo(true); loadGlance(); });
+  document.getElementById('todoTab').addEventListener('click', () => showLeaf('todo', true));
+  document.getElementById('glanceClose').addEventListener('click', () => openTodo(false));
+  for (const [id, leaf] of [['toGlance', 'glance'], ['toTodo', 'todo']]) {
+    const go = e => { if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return; e.preventDefault(); showLeaf(leaf, true); };
+    document.getElementById(id).addEventListener('click', go);
+    document.getElementById(id).addEventListener('keydown', go);
+  }
+  glanceBody.addEventListener('click', e => {
+    const w = e.target.closest('button[data-window]');
+    if (w) { glanceWindow = w.dataset.window; store.set('glanceWindow', glanceWindow); loadGlance(); return; }
+    const f = e.target.closest('button[data-for]');
+    if (f) { glanceFor = f.dataset.for; if (glanceShown) renderGlance(glanceShown); return; }
+    const p = e.target.closest('button.person');
+    if (p) { openPersonCard(p.dataset.person); return; }
+    // "I have an hour" (R.J., 13 Nov: "what's the best use of my time"): a question to magent, drafted, theirs to send.
+    const h = e.target.closest('button[data-have]');
+    if (h) {
+      sayBox.value = `@magent I have ${h.dataset.have}. What's the best use of it?`;
+      sayBox.dispatchEvent(new Event('input', { bubbles: true }));
+      if (matchMedia(PHONE).matches) openTodo(false);
+      sayBox.focus();
+    }
+  });
+  document.getElementById('glanceIntendText').addEventListener('input', e => { e.target.dataset.dirty = '1'; });
+  document.getElementById('glanceIntendText').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.target.form.requestSubmit(); }
+  });
+  document.getElementById('glanceIntend').addEventListener('submit', async e => {
+    e.preventDefault();
+    const box = document.getElementById('glanceIntendText'), said = document.getElementById('glanceIntendSaid');
+    try {
+      const r = await fetch('/api/glance/intention/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+                                                        body: JSON.stringify({ text: box.value }) });
+      const d = await r.json();
+      if (!r.ok) { said.textContent = d.error || "That couldn't be kept."; return; }
+      delete box.dataset.dirty;
+      said.textContent = d.text ? 'Said.' : 'Cleared.';
+      setTimeout(() => { said.textContent = ''; }, 4000);
+      loadGlance();
+    } catch (err) { said.textContent = "That couldn't be sent: try again."; }
+  });
+  setInterval(loadGlance, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadGlance(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadTodo(todoShown === null); });
 
   // --- the chain's height: with every live poll, from the watcher (services/chain_head); else from the explorer
@@ -2978,6 +3409,14 @@
   // else; ↩ handed back to its Mood; ⑂ forked.
   const threadMark = m => !m.forked_at || m.compacted ? '🌱' : m.incorporated ? '↩' : '⑂';
   // A thread's line: where it was opened from, forked or fresh, and closing it (archiving); a Mood's threads.
+  // A Mood's folder as a gallery on hunter (hunter-mood-folders, maybelle-config). A thread works in the
+  // folder of the Mood it came from, threads of threads too (mood_poller.mood_dir), so that's the one shown.
+  function moodFolder(m) {
+    let root = m;
+    for (let n = 0; root && root.thread_of && n < 50; n++) root = moods.find(x => x.slug === root.thread_of) || { slug: root.thread_of };
+    return `https://folders.hunter.cryptograss.live/${encodeURIComponent((root || m).slug)}/`;
+  }
+
   function threadLine(m) {
     const link = slug => `<a href="/moods/${encodeURIComponent(slug)}/">#${esc(slug)}</a>`;
     const parts = [];
@@ -3015,7 +3454,7 @@
         <button type="button" class="mtoggle" aria-expanded="${headOpen}" aria-label="The Mood's description, threads and people">${headOpen ? '▾' : '▸'}</button>
         <h1>${esc(m.title)}</h1>
         <span class="mdesc">${m.thread_of ? `${threadMark(m)} of #${esc(m.thread_of)}${m.description ? ' · ' : ''}` : ''}${esc(m.description || '')}</span>
-        <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}${m.thread_of && keyHolder ? `<button type="button" class="closethread" title="${isArchived(m.slug) ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${isArchived(m.slug) ? 'reopen' : 'close'}</button>` : ''}</span>
+        <span class="macts"><a href="/moods/${encodeURIComponent(m.slug)}/instructions/" title="What magent is told here: its instructions, this Mood's settings, what each wake says">instructions</a><a href="${moodFolder(m)}" target="_blank" rel="noopener" title="The pictures, video, sound and PDFs left in this Mood's folder on hunter">folder</a>${keyHolder ? `<button type="button" class="newthread" title="Open a thread from here: a Mood of its own, its emergents forked from where they are here, or fresh">⑂ thread</button>` : ''}${m.thread_of && keyHolder ? `<button type="button" class="closethread" title="${isArchived(m.slug) ? 'Open it again' : 'Close it: archived, still readable, a mention still answered'}">${isArchived(m.slug) ? 'reopen' : 'close'}</button>` : ''}</span>
       </div>
       <div class="mbody"${headOpen ? '' : ' hidden'}>
         ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
@@ -3263,6 +3702,7 @@
   const LIGHTBOX_LINKS = '.turn .body a.img, .work .thumbs a, .step-detail .shots a';
   function closeLightbox(byBack) {
     if (lightbox.hidden) return;
+    lightbox._among = null;
     lightbox.hidden = true;
     lightbox.classList.remove('whole');
     lightbox.querySelector('img').removeAttribute('src');
@@ -3273,20 +3713,63 @@
   window.addEventListener('popstate', () => closeLightbox(true));
   lightbox.querySelector('img').addEventListener('click', e => { e.stopPropagation(); lightbox.classList.toggle('whole'); });
   // {full: the picture, href: its page (or the file), alt, caption, onwiki: its PickiPedia page if it's there,
+  // original: the file itself where what's shown is a made-smaller copy of it (services/media.SHOWN_AT),
   // upload: what "→ PickiPedia" sends it up as, if it may go}: from the thread, or from Tidings' frame.
+  // The pictures a clicked one is among: the ones beside it in its message, and in the messages of
+  // nothing-but-pictures it runs with -- so ‹ › step through the whole gallery (Justin, 27 Nov 2026).
+  function picturesAround(a) {
+    const turn = a.closest('.turn');
+    if (!turn) return [a];
+    let first = turn;
+    while (first.classList.contains('picsonly') && first.previousElementSibling
+           && first.previousElementSibling.classList.contains('picsonly')
+           && first.classList.contains('cont')) first = first.previousElementSibling;
+    const among = [];
+    for (let t = first; t; t = t.nextElementSibling) {
+      if (t !== first && !(t.classList.contains('picsonly') && t.classList.contains('cont'))) break;
+      among.push(...t.querySelectorAll('.body a.img'));
+      if (!t.classList.contains('picsonly')) break;
+    }
+    return among.includes(a) ? among : [a];
+  }
+  function stepTo(i) {
+    const among = lightbox._among || [];
+    if (!among.length) return;
+    const a = among[(i + among.length) % among.length];
+    if (a) a.click();
+  }
+  lightbox.querySelector('.back').addEventListener('click', e => { e.stopPropagation(); stepTo(lightbox._at - 1); });
+  lightbox.querySelector('.on').addEventListener('click', e => { e.stopPropagation(); stepTo(lightbox._at + 1); });
+  document.addEventListener('keydown', e => {
+    if (lightbox.hidden || !(lightbox._among || []).length) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); stepTo(lightbox._at - 1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); stepTo(lightbox._at + 1); }
+  });
   function openPicture(o) {
+    // Where it sits among the others, if it was opened from the thread: ‹ › and "3 of 7".
+    const among = o.among || [];
+    lightbox._among = among.length > 1 ? among : [];
+    lightbox._at = o.at || 0;
+    lightbox.querySelector('.back').hidden = lightbox.querySelector('.on').hidden = !lightbox._among.length;
+    const which = lightbox.querySelector('.which');
+    which.hidden = !lightbox._among.length;
+    which.textContent = lightbox._among.length ? `${lightbox._at + 1} of ${lightbox._among.length}` : '';
     lightbox.querySelector('img').src = o.full;
     lightbox.querySelector('img').alt = o.alt || '';
     lightbox.querySelector('.lbcap').textContent = o.caption || '';
     const page = lightbox.querySelector('.lbpage');
-    page.href = o.onwiki || o.href || o.full;
+    page.href = o.onwiki || o.original || o.href || o.full;
     const host = new URL(page.href, location.href).hostname;
-    page.textContent = o.onwiki ? 'its page on PickiPedia ↗' : !o.href || o.href === o.full ? 'the picture itself ↗'
+    // What's shown here is at most SHOWN_AT[LARGE_KB]; "full size" is the picture whole -- on
+    // PickiPedia where it went, else the file itself (Justin, 27 Nov 2026).
+    page.textContent = o.onwiki ? 'full size on PickiPedia ↗' : o.original ? 'full size ↗'
+      : !o.href || o.href === o.full ? 'the picture itself ↗'
       : host.endsWith('wikimedia.org') ? 'its page on Commons ↗' : 'its page on PickiPedia ↗';
     lightbox._upload = o.upload || null;
     lightbox.querySelector('.lbup').hidden = !lightbox._upload;
     lightbox.classList.remove('whole');
-    whoIsIn(o.full);
+    lightbox._src = o.original || o.full;  // the file's own address: whose faces these are
+    whoIsIn(lightbox._src);
     if (lightbox.hidden) history.pushState({ ...(history.state || {}), lightbox: true }, '', location.href);
     lightbox.hidden = false;
   }
@@ -3298,10 +3781,12 @@
     const next = a.nextElementSibling;
     // Under the picture in the thread: "→ PickiPedia" (here too), or where it already is on the wiki.
     const topp = next && next.classList.contains('topp') ? next : null;
-    openPicture({ full: a.dataset.full || a.href, href: a.href, alt: img ? img.alt : '',
+    const among = a.closest('.turn') ? picturesAround(a) : [];
+    openPicture({ full: a.dataset.full || a.href, href: a.href, original: a.dataset.original || '',
+                  alt: img ? img.alt : '',
                   caption: next && next.classList.contains('caption') ? next.textContent : '',
                   onwiki: next && next.classList.contains('onwiki') ? next.href : '',
-                  upload: topp && uploadOf(topp) });
+                  upload: topp && uploadOf(topp), among, at: Math.max(0, among.indexOf(a)) });
   });
   lightbox.querySelector('.lbup').addEventListener('click', e => {
     e.stopPropagation();
@@ -3394,7 +3879,7 @@
       };
       input.addEventListener('keydown', ev => {
         if (ev.key === 'Enter' && !composing(ev)) { ev.preventDefault(); go(); }
-        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); whoIsIn(lightbox.querySelector('img').src); }
+        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); whoIsIn(lightbox._src); }
       });
       tag.querySelector('.ok').addEventListener('click', ev => { ev.stopPropagation(); go(); });
     }
@@ -4026,23 +4511,137 @@
     a.replaceWith(box);
   });
 
-  // A person's voice memo: its player stands out, and what was said is folded under "Transcript", opened by the
-  // word or the chevron (Justin, 30 Oct: "these long voice memos are better left hidden"). What came before the
-  // player (words typed with it) stays in view; everything after it is the transcript.
+  // A person's voice memo: its player stands out, the first ~200 characters of what was said stay in view, and a
+  // longer transcript folds under "Full transcript", opened by the label or the chevron (Justin, 30 Oct; 19 Nov).
+  // What came before the player (words typed with it) stays in view; short memos stay wholly unfolded.
+  const MEMO_PREVIEW_CHARS = 200;
+  const MEMO_UNFOLDED_MAX = 220;
+  function trimMemoNode(node, budget) {
+    if (budget.left <= 0) { budget.cut = true; return null; }
+    if (node.nodeType === Node.TEXT_NODE) {
+      const raw = node.nodeValue || '';
+      if (!raw) return null;
+      if (raw.length <= budget.left) {
+        budget.left -= raw.length;
+        budget.seen += raw.length;
+        return document.createTextNode(raw);
+      }
+      const head = raw.slice(0, budget.left + 1);
+      const ws = head.search(/\s+\S*$/);
+      if (ws <= 0 && budget.seen > 0) {
+        budget.left = 0;
+        budget.cut = true;
+        return null;
+      }
+      const slice = ws >= Math.floor(budget.left * 0.6) ? head.slice(0, ws) : raw.slice(0, budget.left);
+      budget.left = 0;
+      budget.cut = true;
+      budget.seen += slice.length;
+      return document.createTextNode(slice);
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    const tag = node.tagName;
+    if (tag === 'IMG' || tag === 'VIDEO' || tag === 'AUDIO' || node.classList.contains('embed') || node.classList.contains('yarnbox')) {
+      budget.cut = true;
+      return null;
+    }
+    if (tag === 'A' || tag === 'CODE' || node.classList.contains('mention')) {
+      const len = (node.textContent || '').length;
+      if (len > budget.left && budget.seen > 0) {
+        budget.left = 0;
+        budget.cut = true;
+        return null;
+      }
+      budget.left = Math.max(0, budget.left - len);
+      budget.seen += len;
+      return node.cloneNode(true);
+    }
+    const clone = node.cloneNode(false);
+    for (const child of node.childNodes) {
+      if (budget.left <= 0) { budget.cut = true; break; }
+      const kept = trimMemoNode(child, budget);
+      if (kept) clone.appendChild(kept);
+    }
+    return clone.childNodes.length ? clone : null;
+  }
+  function addMemoEllipsis(root) {
+    let last = root;
+    while (last && last.lastChild) {
+      if (last.nodeType === Node.ELEMENT_NODE
+          && (last.tagName === 'A' || last.tagName === 'CODE' || last.classList.contains('mention'))) break;
+      last = last.lastChild;
+    }
+    if (!last || last === root) return;
+    if (last.nodeType === Node.TEXT_NODE) {
+      last.nodeValue = (last.nodeValue || '').replace(/[\s,;:.!-]+$/, '') + '…';
+    } else if (last.parentNode) {
+      last.parentNode.appendChild(document.createTextNode('…'));
+    }
+  }
   function foldMemo(el) {
     const body = el.querySelector(':scope > .body'), audio = body && body.querySelector(':scope > p > audio');
     if (!audio || body.querySelector(':scope > details.transcript')) return;
-    const rest = [];
-    for (let n = audio.parentElement.nextElementSibling; n; n = n.nextElementSibling) rest.push(n);
+    const rest = [], tailMedia = [];
+    for (let n = audio.parentElement.nextElementSibling; n; n = n.nextElementSibling) {
+      if (n.querySelector && n.querySelector('img, video, audio, .embed, .yarnbox') && !(n.textContent || '').trim()) tailMedia.push(n);
+      else rest.push(n);
+    }
     body.classList.add('memoed');
     if (!rest.length) return;
-    const words = rest.map(n => n.textContent).join(' ').trim().split(/\s+/).filter(Boolean).length;
+    const flat = rest.map(n => n.textContent).join(' ').replace(/\s+/g, ' ').trim();
+    if (flat.length <= MEMO_UNFOLDED_MAX) return;
+    const budget = { left: MEMO_PREVIEW_CHARS, seen: 0, cut: false };
+    const preview = document.createElement('div');
+    preview.className = 'memo-preview';
+    for (const n of rest) {
+      if (budget.left <= 0) { budget.cut = true; break; }
+      if (preview.childNodes.length) budget.left -= 1;
+      const kept = trimMemoNode(n, budget);
+      if (kept) preview.appendChild(kept);
+    }
+    if (!budget.cut) return;
+    const words = flat.split(/\s+/).filter(Boolean).length;
+    if (preview.childNodes.length) {
+      addMemoEllipsis(preview);
+      body.appendChild(preview);
+    }
     const fold = document.createElement('details');
     fold.className = 'transcript';
-    fold.innerHTML = `<summary>Transcript <small>· ${words.toLocaleString()} word${words === 1 ? '' : 's'}</small></summary>`;
+    fold.innerHTML = `<summary>Full transcript <small>· ${words.toLocaleString()} word${words === 1 ? '' : 's'}</small></summary>`;
     rest.forEach(n => fold.appendChild(n));
     body.appendChild(fold);
+    tailMedia.forEach(n => body.appendChild(n));
   }
+  // Pictures in a message: shown small, and several of them as one strip of tiles, each pressed to
+  // open large (Justin, 27 Nov 2026). A paragraph holding nothing but pictures is one of theirs; words
+  // around them keep their place, and only the pictures that stand together are gathered.
+  function picsOnly(p) {
+    return p.tagName === 'P' && p.querySelector('a.img')
+      && ![...p.childNodes].some(n => (n.nodeType === 3 && n.textContent.trim())
+                                   || (n.nodeType === 1 && !n.matches('a.img, br')));
+  }
+  function galleryise(el) {
+    const body = el.querySelector('.body');
+    if (!body) return;
+    const blocks = [...body.children];
+    let run = [];
+    const gather = () => {
+      if (run.length > 1 || (run.length === 1 && run[0].querySelectorAll('a.img').length > 1)) {
+        const strip = document.createElement('div');
+        strip.className = 'gallery';
+        run[0].before(strip);
+        for (const p of run) { for (const a of p.querySelectorAll('a.img')) strip.append(a); p.remove(); }
+      }
+      run = [];
+    };
+    for (const block of blocks) picsOnly(block) ? run.push(block) : gather();
+    gather();
+    // A message that is nothing but pictures: one of a run reads as a gallery with the next (CSS .picsonly).
+    if (body.querySelector('a.img') && ![...body.children].some(b => !b.classList.contains('gallery') && !picsOnly(b))) {
+      el.classList.add('picsonly');
+    }
+  }
+
   function turnEl(t, isNew) {
     const el = document.createElement('article');
     const at = new Date(t.created_at).getTime();
@@ -4104,6 +4703,7 @@
       + (cont ? edited : '');
     if (t.deleted) el.classList.add('deleted');
     markEmoji(el.querySelector('.body'));
+    galleryise(el);
     el._text = t.text; el._at = t.created_at;
     el._links = t.links || []; el._tidings = t.tidings || [];
     el.dataset.sender = t.sender;
@@ -4899,7 +5499,7 @@
     }
     if (e.type === 'release-draft') {  // a video sent to delivery-kid, with its draft page (services/delivery_kid.py)
       el.className = 'event';
-      if (e.draft && videoWaiting) videoWaiting.drop(e.draft);  // its page is made: no more card
+      if (e.draft && videoWaiting) videoWaiting.paged(e.draft, e.page, e.title);  // its page is made: the panel moves on a step
       el.innerHTML = `🎬 <b>${esc(shown(e.by || 'someone'))}</b> sent a video to delivery-kid: `
         + `<a href="${esc(e.page || '#')}" target="_blank" rel="noopener">${esc(e.title || 'its ReleaseDraft')}</a>`
         + ` · title it, review it and finalize it there · ${esc(stamp(e.created_at))}`
@@ -6579,7 +7179,7 @@
     mergeSheetsFollow();  // a merge sheet opened here shows; another Mood's waits for it
     recordPath(slug);
     sayHere(slug);  // shown here to everyone, and gone from where they were
-    renderVideoCards();  // the videos waiting for a draft page are per Mood
+    renderVideoPanel();  // the videos on their way are per Mood
     renderShare();  // a share waiting says which Mood it would go to
     restoreDraft();
     showLicense();  // pictures in the draft left behind aren't in this one
@@ -6601,6 +7201,7 @@
     typingNow = []; renderTyping(); renderAsksOpen();
     agentsNow = {};  // nothing to compare with: a first drawing never glows
     renderAgents(agentsFor[slug] || {});
+    showLeaf(leafOf(slug));  // the pane's leaf here: the list, or at a glance (as last chosen here)
     loadTodo();
     // Primed in the background, never opened here: kept now, as an opened Mood is, and drawn from that.
     if (!drawn.get(slug) && !keptOf(slug) && primed.has(slug)) keep(slug, primed.get(slug), true);
@@ -8193,7 +8794,8 @@
     if (slash) return { kind: 'command', start: 1, prefix: slash[1].toLowerCase() };
     const forAgent = upto.match(AGENT_COMMAND);
     if (forAgent) return { kind: 'command-agent', start: upto.length - forAgent[2].length, prefix: forAgent[2].toLowerCase() };
-    const y = upto.match(/^\/(?:clips?|yarn)(?:\s+forget)?\s+([a-z0-9_-]*)$/i);
+    // A clip plays wherever its line sits (Justin, 21 Nov), so names are suggested on any line, not only the first.
+    const y = upto.split('\n').pop().match(/^\/(?:clips?|yarn)(?:\s+forget)?\s+([a-z0-9_-]*)$/i);
     if (y) return { kind: 'clips', start: upto.length - y[1].length, prefix: y[1].toLowerCase() };
     const w = upto.match(/\[\[([^\[\]|\n]{1,100})$/);
     if (w) return { kind: 'wiki', start: upto.length - w[1].length, prefix: w[1] };
@@ -8276,8 +8878,7 @@
         choices = titles.map(t => ({ insert: t + ']]', html: `<span class="emo">📖</span>${esc(t)}` }));
         if (!choices.length) return closeSuggest();
         chosen = Math.min(chosen, choices.length - 1);
-        suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
-        suggest.classList.add('on');
+        drawSuggest();
       }, wikiCache.has(prefix) ? 0 : 150);
       return;
     }
@@ -8292,22 +8893,24 @@
           html: `<span class="emo">🔗</span>${esc(l.title.slice(0, 80))}<small>${esc(l.host)}</small>` }));
         if (!choices.length) return closeSuggest();
         chosen = Math.min(chosen, choices.length - 1);
-        suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
-        suggest.classList.add('on');
+        drawSuggest();
       }, tidingCache.has(prefix) ? 0 : 150);
       return;
     }
     if (at.kind === 'clips') {
       const prefix = at.prefix;
       savedClips().then(clips => {
-        const still = wordAtCaret();
-        if (!still || still.kind !== 'clips' || still.prefix !== prefix) return;  // they've typed on
+        const same = wordAtCaret();
+        if (!same || same.kind !== 'clips' || same.prefix !== prefix) return;  // they've typed on
+        // The clip's own frame, not what it's for (Justin, 25 Nov): as the names are whittled down you see
+        // which clip each one is. What it's for is still there to hover (Magenta:Clips has it in full).
         choices = clips.filter(c => c.name.startsWith(prefix)).slice(0, 8)
-          .map(c => ({ insert: c.name, html: `<span class="emo">🎬</span>${esc(c.name)}<small>${esc(c.for || shown(c.by))}</small>` }));  // its use, from Magenta:Clips
+          .map(c => ({ insert: c.name, cls: 'clip', title: c.for || '',
+            html: (c.still ? `<img class="shot" src="${esc(c.still)}" data-clip="${esc(c.clip)}" alt="">`
+                           : `<span class="emo">🎬</span>`) + `<b>${esc(c.name)}</b>` }));
         if (!choices.length) return closeSuggest();
         chosen = Math.min(chosen, choices.length - 1);
-        suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
-        suggest.classList.add('on');
+        drawSuggest();
       });
       return;
     }
@@ -8363,8 +8966,7 @@
             .map(([name, char]) => ({ insert: char, html: `<span class="emo">${char}</span>:${esc(name)}:` }));
           if (!choices.length) return closeSuggest();
           chosen = Math.min(chosen, choices.length - 1);
-          suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
-          suggest.classList.add('on');
+          drawSuggest();
         }).catch(() => {});
         return;
       }
@@ -8385,7 +8987,24 @@
     }
     if (!choices.length) return closeSuggest();
     chosen = Math.min(chosen, choices.length - 1);
-    suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}" data-i="${i}">${c.html}</div>`).join('');
+    drawSuggest();
+  }
+  // A clip's picture that won't load: Yarn's own address may be stopped by its Cloudflare, so the server is asked
+  // for it once (api_yarn keeps it, as a card does), and the space is held rather than the row jumping.
+  function drawSuggest() {
+    suggest.innerHTML = choices.map((c, i) => `<div class="${i === chosen ? 'sel' : ''}${c.cls ? ' ' + c.cls : ''}"`
+      + `${c.title ? ` title="${esc(c.title)}"` : ''} data-i="${i}">${c.html}</div>`).join('');
+    suggest.querySelectorAll('img.shot').forEach(img => {
+      img.addEventListener('error', async () => {
+        if (img.dataset.asked) { img.hidden = true; return; }
+        img.dataset.asked = '1';
+        const got = await fetch(`/api/yarn/${img.dataset.clip}/`).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (got && /^\/moods\/media\/[0-9a-f]{64}\.(gif|jpg|png|webp)$/.test(got.still || '')) {
+          clipsCache = null;  // the next list asks for it again, with the picture kept
+          img.src = got.still;
+        } else img.hidden = true;
+      });
+    });
     suggest.classList.add('on');
   }
   function acceptSuggest(i) {
@@ -8580,14 +9199,62 @@
     renderTray(); saveDraft(); showLicense();
     picturesSettled();
   }
+  const megabytes = n => (n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0) + ' MB';
+  // How big a picture goes up: taken down to this on its long side here, before it is sent, so a phone
+  // sends less and a photo that needn't be huge isn't (Justin, 27 Nov 2026). Remembered per browser.
+  // Done with a canvas, so only what a browser can draw is touched: a HEIC goes up as it is, and the
+  // server turns it into a JPEG (services/media.py). A moving GIF is left alone: drawing it stills it.
+  const picSizeSel = document.querySelector('#picSize select');
+  try { picSizeSel.value = localStorage.getItem('pic-max-edge') || '0'; } catch (e) {}
+  if (!picSizeSel.value) picSizeSel.value = '0';
+  function picEdge() { return Number(picSizeSel.value) || 0; }
+  async function atMost(file, edge) {
+    if (!edge || !/^image\/(jpeg|png|webp)$/.test(file.type || '')) return file;
+    try {
+      const drawn = await createImageBitmap(file);
+      if (Math.max(drawn.width, drawn.height) <= edge) { drawn.close(); return file; }
+      const scale = edge / Math.max(drawn.width, drawn.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(drawn.width * scale));
+      canvas.height = Math.max(1, Math.round(drawn.height * scale));
+      canvas.getContext('2d').drawImage(drawn, 0, 0, canvas.width, canvas.height);
+      drawn.close();
+      const type = file.type === 'image/png' ? 'image/png' : file.type;  // a PNG keeps any transparency
+      const smaller = await new Promise(done => canvas.toBlob(done, type, 0.85));
+      if (!smaller || smaller.size >= file.size) return file;  // no smaller for the trouble: as it was
+      return new File([smaller], file.name || 'picture', { type });
+    } catch (e) { return file; }  // a picture this browser can't draw goes up as it is
+  }
+  // Pictures already in the box, sent again the way that's now chosen (the size, or the photo details).
+  async function resendTray() {
+    for (const a of tray.filter(x => x.mine && x.file && x.markdown)) {
+      try {
+        const body = await sendPicture(await atMost(a.file, picEdge()), null, null, a.mood);
+        sharing.delete(a.sha);
+        sharing.add(body.sha);
+        Object.assign(a, { sha: body.sha, markdown: body.markdown, url: urlOf(body.markdown) });
+        if (licenseNow !== body.license) {  // the new copy goes out under the license already chosen
+          await fetch(`/api/media/${body.sha}/license/`, { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify({ license: licenseNow }) });
+        }
+      } catch (e) { showError('image: ' + e.message); }
+    }
+    saveDraft(); showLicense(); renderTray();
+  }
+  picSizeSel.addEventListener('change', async () => {
+    try { localStorage.setItem('pic-max-edge', picSizeSel.value); } catch (e) {}
+    await resendTray();
+  });
   async function upload(file) {
     const a = { file, name: file.name || 'picture', preview: URL.createObjectURL(file), pct: 0, mood: current };
     tray.push(a); flying.add(a);
     renderTray();
     try {
-      const body = await sendPicture(file, pct => { a.pct = pct; attEl(a); renderSendWait(); }, a);
+      const body = await sendPicture(await atMost(file, picEdge()), pct => { a.pct = pct; attEl(a); renderSendWait(); }, a);
       if (a.dropped) return;
       Object.assign(a, { sha: body.sha, markdown: body.markdown, url: urlOf(body.markdown), mine: !!body.mine, pct: 100 });
+      // Too big to keep as it came, so it was shrunk on the way in (services/media.fit_bytes): said, not silent.
+      if (body.shrunk) showNote(`${a.name}: shrunk from ${megabytes(body.sent)} to ${megabytes(body.size)} to go in`);
       if (body.mine) { sharing.add(body.sha); licenseNow = body.license; }
       if (tray.includes(a)) { attEl(a); saveDraft(); showLicense(); }
       else keepInDraft(a);  // its Mood was left meanwhile: it waits in that Mood's draft
@@ -8609,12 +9276,12 @@
     store.set('draft:' + a.mood, d);
   }
   // Sent as the bytes go, so it can say how far it's got (fetch can't).
-  function sendPicture(file, onProgress, holder) {
+  function sendPicture(file, onProgress, holder, intoMood) {
     const keep = stripBox.checked ? '' : '?keep=location';
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       if (holder) holder.xhr = xhr;
-      xhr.open('POST', '/api/moods/' + encodeURIComponent((holder && holder.mood) || current) + '/media/' + keep);
+      xhr.open('POST', '/api/moods/' + encodeURIComponent((holder && holder.mood) || intoMood || current) + '/media/' + keep);
       xhr.setRequestHeader('X-CSRFToken', csrf());
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
       xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(Math.round(100 * e.loaded / e.total)); };
@@ -8638,19 +9305,7 @@
   try { stripBox.checked = localStorage.getItem('keep-location') === '0'; } catch (e) {}
   stripBox.addEventListener('change', async () => {
     try { localStorage.setItem('keep-location', stripBox.checked ? '0' : '1'); } catch (e) {}
-    for (const a of tray.filter(x => x.mine && x.file && x.markdown)) {
-      try {
-        const body = await sendPicture(a.file);
-        sharing.delete(a.sha);
-        sharing.add(body.sha);
-        Object.assign(a, { sha: body.sha, markdown: body.markdown, url: urlOf(body.markdown) });
-        if (licenseNow !== body.license) {  // the new copy goes out under the license already chosen
-          await fetch(`/api/media/${body.sha}/license/`, { method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify({ license: licenseNow }) });
-        }
-      } catch (e) { showError('image: ' + e.message); }
-    }
-    saveDraft(); showLicense();
+    await resendTray();
   });
   // Pictures of yours in the box go out CC BY-SA 4.0 unless you make them CC0:
   // said here as they're attached, and changeable until sent (api_media_license).
@@ -8701,63 +9356,285 @@
   function videosIn(list) {
     return dkUpload ? [...(list || [])].filter(f => /^video\//.test(f.type) || (!f.type && VIDEO_NAME.test(f.name || ''))) : [];
   }
-  const videoBar = document.getElementById('videoBar');
-  let videoSending = null;  // the upload under way, if any: one at a time
-  function videoSays(what, pct) {
-    videoBar.hidden = false;
-    videoBar.querySelector('.what').textContent = what;
-    videoBar.querySelector('.track').style.display = pct == null ? 'none' : '';
-    videoBar.querySelector('.fill').style.width = (pct || 0) + '%';
-    videoBar.querySelector('.pct').textContent = pct == null ? '' : pct + '%';
-  }
+  function sizeOf(n) { return n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(n / 1e6)) + ' MB'; }
   function dkError(xhr) {
     try {
-      const body = JSON.parse(xhr.responseText);
+      const body = typeof xhr.body === 'object' && xhr.body ? xhr.body : JSON.parse(xhr.responseText);
       const d = body.detail ?? body;
       return (d && (d.error || d.message)) || (typeof d === 'string' ? d : JSON.stringify(d)).slice(0, 200);
-    } catch (e) { return `${xhr.status} ${xhr.statusText}`.trim() || 'no answer'; }
+    } catch (e) { return `${xhr.status} ${xhr.statusText || ''}`.trim() || 'no answer'; }
   }
-  function sizeOf(n) { return n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(n / 1e6)) + ' MB'; }
+  // <video-uploader>
+  // A video sent to delivery-kid in pieces (its routes/upload.py). As one request, a 940 MB video from
+  // a phone was lost whole to any dropped connection, locked screen or restart of delivery-kid (Justin,
+  // 19 Nov: "The connection dropped before it was all sent", most of the time). In pieces, what has
+  // arrived stays: after a drop it asks delivery-kid how much is there and carries on from that byte,
+  // for as long as it takes, until it's all there or someone cancels.
+  // Everything it touches is handed in, so it runs the same under test (tests/test_video_upload.py).
+  //   file: a File/Blob · url: delivery-kid's /draft-content · draft: its id there
+  //   headers(): the upload token's headers now · renew(): a fresh token, after a 401
+  //   wait(ms): resolves after ms, or sooner when the connection may be back
+  //   says(state, bytes, detail): 'sending' | 'waiting' | 'checking', for the panel
+  function videoUploader({ file, url, draft, headers, renew, wait, says, XHR, piece = 8 * 1024 * 1024, stall = 45000 }) {
+    let cancelled = false, live = null, received = 0, renewed = false;
+    const at = path => `${url}/${encodeURIComponent(draft)}/upload${path}`;
+    const fatal = (message) => Object.assign(new Error(message), { fatal: true });
+    // One request. Resolves {status, body}; rejects (not fatal) when the connection fails or goes
+    // quiet for `stall` ms, which a half-open connection on a phone does without ever erroring.
+    function ask(method, to, body, sent) {
+      return new Promise((resolve, reject) => {
+        const xhr = live = new XHR();
+        let quiet = null;
+        const heard = () => { clearTimeout(quiet); quiet = setTimeout(() => { xhr.abort(); }, stall); };
+        const over = () => { clearTimeout(quiet); if (live === xhr) live = null; };
+        xhr.open(method, to);
+        for (const [k, v] of Object.entries(headers() || {})) xhr.setRequestHeader(k, v);
+        if (xhr.upload) xhr.upload.addEventListener('progress', e => { heard(); if (sent) sent(e.loaded); });
+        xhr.addEventListener('progress', heard);
+        xhr.addEventListener('load', () => {
+          over();
+          let answer = {};
+          try { answer = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+          resolve({ status: xhr.status, body: answer });
+        });
+        xhr.addEventListener('error', () => { over(); reject(new Error('the connection dropped')); });
+        xhr.addEventListener('abort', () => { over(); reject(cancelled ? fatal('cancelled') : new Error('the connection went quiet')); });
+        heard();
+        xhr.send(body ?? null);
+      });
+    }
+    const refused = r => fatal(`delivery-kid said ${r.status}: ${dkError(r)}`);
+    // What only waiting can fix: delivery-kid restarting (502-504 from its proxy), or busy.
+    const passing = r => r.status === 0 || r.status === 429 || r.status >= 500;
+    async function unlocked(r) {  // a 401: the token ran out mid-upload. One fresh one, then it's a refusal.
+      if (r.status !== 401 || renewed || !renew) return false;
+      renewed = true;
+      await renew();
+      return true;
+    }
+    async function where() {
+      const r = await ask('GET', at(''));
+      if (r.status === 200 && typeof r.body.received === 'number') return r.body.received;
+      if (passing(r)) throw new Error(`delivery-kid answered ${r.status}`);
+      if (await unlocked(r)) return where();
+      throw refused(r);
+    }
+    async function run(from = 0) {
+      received = from;
+      let tries = 0;
+      for (;;) {
+        if (cancelled) throw fatal('cancelled');
+        try {
+          if (received >= file.size) {
+            says('checking', received);
+            const r = await ask('POST', at('/complete'));
+            if (r.status === 200) return r.body;
+            if (r.status === 409 && typeof r.body.detail?.received === 'number') { received = r.body.detail.received; continue; }
+            if (passing(r)) throw new Error(`delivery-kid answered ${r.status}`);
+            if (await unlocked(r)) continue;
+            throw refused(r);
+          }
+          const base = received;
+          says('sending', base);
+          const r = await ask('POST', at(`?name=${encodeURIComponent(file.name || 'video')}&size=${file.size}&offset=${base}`),
+                              file.slice(base, base + piece), loaded => says('sending', Math.min(file.size, base + loaded)));
+          if (r.status === 200 && typeof r.body.received === 'number') { received = r.body.received; tries = 0; renewed = false; continue; }
+          if (r.status === 409) {
+            const d = r.body.detail || {};
+            if (d.status === 'uploaded') { received = file.size; continue; }  // it finished; only the answer was lost
+            if (d.status) throw refused(r);                                    // finalizing, finalized: not ours to add to
+            received = typeof d.received === 'number' ? d.received : await where();
+            continue;
+          }
+          if (passing(r)) throw new Error(`delivery-kid answered ${r.status}`);
+          if (await unlocked(r)) continue;
+          throw refused(r);
+        } catch (e) {
+          if (e.fatal || cancelled) throw cancelled ? fatal('cancelled') : e;
+          // Nothing more is sent until delivery-kid has said how much arrived: asked after a wait that
+          // grows while it stays away (1 s, 2, 4, 8, then every 15).
+          for (;;) {
+            tries++;
+            says('waiting', received, { tries, why: e.message });
+            await wait(Math.min(15000, 1000 * 2 ** Math.min(tries - 1, 4)));
+            if (cancelled) throw fatal('cancelled');
+            try { received = await where(); break; } catch (e2) { if (e2.fatal) throw e2; }
+          }
+        }
+      }
+    }
+    return { run, where, cancel() { cancelled = true; live?.abort(); }, get received() { return received; } };
+  }
+  // </video-uploader>
+  const videoPanel = document.getElementById('videoPanel');
+  let videoSending = null;  // the upload under way, if any: one at a time
+  // Resolves after ms, or as soon as the connection may be back: the network says so, or the page is looked at again.
+  function videoWait(ms) {
+    return new Promise(resolve => {
+      const done = () => { clearTimeout(t); removeEventListener('online', done); document.removeEventListener('visibilitychange', seen); resolve(); };
+      const seen = () => { if (!document.hidden) done(); };
+      const t = setTimeout(done, ms);
+      addEventListener('online', done);
+      document.addEventListener('visibilitychange', seen);
+    });
+  }
+  // An upload that a reload, a crash or a closed tab cut short: delivery-kid still has what arrived, and
+  // this browser remembers which draft it was, so picking the same file again carries on from there.
+  const videoLeftOff = {
+    KEY: 'dk-sending',
+    get() { try { return JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch (e) { return null; } },
+    set(v) { try { v ? localStorage.setItem(this.KEY, JSON.stringify(v)) : localStorage.removeItem(this.KEY); } catch (e) {} },
+    fits(file) { const v = this.get(); return v && v.name === (file.name || 'video') && v.size === file.size ? v : null; },
+  };
+  async function videoTicket() {
+    const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/video/ticket/', { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+    const ticket = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(ticket.error || r.status);
+    return ticket;
+  }
+  function dkAsk(method, to, headers) {  // a small request to delivery-kid: {status, body}, or a rejection when it can't be reached
+    return fetch(to, { method, headers }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+  }
+  // As one request, as before: for a delivery-kid that doesn't take pieces yet.
+  function sendVideoWhole(file, ticket, draft, sending) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      sending.cancel = () => xhr.abort();
+      xhr.open('POST', ticket.url);
+      for (const [k, v] of Object.entries(ticket.headers || {})) xhr.setRequestHeader(k, v);
+      if (draft) xhr.setRequestHeader('X-Draft-Id', draft);
+      xhr.upload.addEventListener('progress', e => { if (e.lengthComputable) videoSays('sending', e.loaded); });
+      xhr.upload.addEventListener('load', () => videoSays('checking', file.size));
+      xhr.addEventListener('load', () => {
+        if (xhr.status !== 200) return reject(new Error(`delivery-kid said ${xhr.status}: ${dkError(xhr)}`));
+        try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(new Error("delivery-kid's answer wasn't readable")); }
+      });
+      xhr.addEventListener('error', () => reject(new Error('the connection dropped before it was all sent')));
+      xhr.addEventListener('abort', () => reject(new Error('cancelled')));
+      const form = new FormData();
+      form.append('files', file);
+      xhr.send(form);
+    });
+  }
   async function sendVideo(file) {
     if (videoSending) { showError('video: one at a time; this one waits until the last is in'); return; }
     const name = file.name || 'video';
-    videoSending = {};
-    videoSays(`Sending ${name} (${sizeOf(file.size)}) to delivery-kid…`, 0);
+    const sending = videoSending = { name, size: file.size, mood: current, state: 'sending', sent: 0, marks: [], began: Date.now() };
+    syncScreenWake();  // the screen stays on: a locked phone stops sending
+    renderVideoPanel();
+    let draft = null, headers = null, dk = null, mine = false;
     try {
-      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/video/ticket/', {
-        method: 'POST', headers: { 'X-CSRFToken': csrf() } });
-      const ticket = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(ticket.error || r.status);
-      const draft = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        videoSending.xhr = xhr;
-        xhr.open('POST', ticket.url);
-        for (const [k, v] of Object.entries(ticket.headers || {})) xhr.setRequestHeader(k, v);
-        xhr.upload.addEventListener('progress', e => {
-          if (e.lengthComputable) videoSays(`Sending ${name}: ${sizeOf(e.loaded)} of ${sizeOf(e.total)}`, Math.round(100 * e.loaded / e.total));
+      let ticket = await videoTicket();
+      headers = () => ticket.headers || {};
+      dk = ticket.url;
+      // Carrying on an upload this browser was cut off from, if delivery-kid still has it; else a new draft.
+      let from = 0, pieces = false;
+      const before = videoLeftOff.fits(file);
+      if (before) {
+        const r = await dkAsk('GET', `${ticket.url}/${before.draft}/upload`, headers()).catch(() => null);
+        if (r && r.status === 200 && r.body.resumable && ['awaiting_upload', 'uploading', 'upload_failed'].includes(r.body.status)
+            && (!r.body.name || (r.body.name === name && r.body.size === file.size))) {
+          draft = before.draft; from = r.body.received || 0; pieces = true;
+        }
+      }
+      if (!draft) {
+        const old = videoLeftOff.get();  // a different file, or one delivery-kid no longer has: its leftovers go
+        if (old) dkAsk('DELETE', `${ticket.url}/${old.draft}`, headers()).catch(() => {});
+        videoLeftOff.set(null);
+        const made = await dkAsk('POST', ticket.url + '/init', headers()).catch(() => null);
+        if (made && made.status === 200 && made.body.draft_id) {
+          draft = made.body.draft_id;
+          const r = await dkAsk('GET', `${ticket.url}/${draft}/upload`, headers()).catch(() => null);
+          pieces = !!(r && r.status === 200 && r.body.resumable);
+        } else if (made && made.status >= 400 && made.status < 500 && ![404, 405].includes(made.status)) {
+          throw new Error(`delivery-kid said ${made.status}: ${dkError(made)}`);
+        }
+      }
+      sending.draft = draft;
+      sending.pieces = pieces;
+      let answer;
+      if (pieces) {
+        videoLeftOff.set({ draft, name, size: file.size, mood: sending.mood, sent: from, at: Date.now() });
+        mine = true;
+        const up = videoUploader({
+          file, url: ticket.url, draft, headers, wait: videoWait, XHR: XMLHttpRequest,
+          renew: async () => { ticket = await videoTicket(); },
+          says: videoSays,
         });
-        xhr.upload.addEventListener('load', () => videoSays(`${name} is on delivery-kid; it's looking it over…`, null));
-        xhr.addEventListener('load', () => {
-          if (xhr.status !== 200) return reject(new Error(`delivery-kid said ${xhr.status}: ${dkError(xhr)}`));
-          try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(new Error("delivery-kid's answer wasn't readable")); }
-        });
-        xhr.addEventListener('error', () => reject(new Error('the connection dropped before it was all sent')));
-        xhr.addEventListener('abort', () => reject(new Error('cancelled')));
-        const form = new FormData();
-        form.append('files', file);
-        xhr.send(form);
-      });
-      // In: a card under the box, and PickiPedia only when they ask for it (Sky, 12 Oct:
-      // being sent there the moment it landed was too abrupt). Kept in this browser, so
-      // a reload or a send in between doesn't lose it.
+        sending.cancel = () => up.cancel();
+        answer = await up.run(from);
+      } else {
+        answer = await sendVideoWhole(file, ticket, draft, sending);
+      }
+      // In: its title, and PickiPedia only when they ask for it (Sky, 12 Oct: being sent there the
+      // moment it landed was too abrupt). Kept in this browser, so a reload or a send in between doesn't lose it.
       videoSending = null;
-      videoBar.hidden = true;
-      videoWaiting.add({ draft: draft.draft_id, name, title: name.replace(/\.[^.]+$/, ''), mood: current });
+      videoLeftOff.set(null);
+      syncScreenWake();
+      videoWaiting.add({ draft: answer.draft_id, name, size: file.size, title: name.replace(/\.[^.]+$/, ''), mood: sending.mood, at: Date.now() });
     } catch (e) {
       videoSending = null;
-      videoBar.hidden = true;
-      showError('video: ' + e.message);
+      syncScreenWake();
+      // Cancelled: their choice, so what went up is deleted and nothing sits on delivery-kid without a page.
+      if (e.message === 'cancelled' && draft && dk) dkAsk('DELETE', `${dk}/${draft}`, headers()).catch(() => {});
+      // In pieces, a dropped connection never ends up here (it waits and carries on): this is a refusal, or a
+      // cancel, and there is nothing left to carry on with.
+      if (mine) videoLeftOff.set(null);
+      renderVideoPanel();
+      if (e.message !== 'cancelled') showError('video: ' + e.message);
     }
+  }
+  // What the panel says while a video goes up: in place, many times a second, without redrawing it.
+  function videoSays(state, bytes, detail) {
+    const s = videoSending;
+    if (!s) return;
+    const now = Date.now();
+    if (s.state !== state) { s.state = state; s.marks = []; }
+    s.sent = bytes; s.detail = detail || null;
+    if (state === 'sending') {
+      s.marks.push([now, bytes]);
+      while (s.marks.length > 2 && now - s.marks[0][0] > 12000) s.marks.shift();
+      if (s.pieces && now - (s.noted || 0) > 4000) {  // for the card a reload would show
+        s.noted = now;
+        const left = videoLeftOff.get();
+        if (left && left.draft === s.draft) videoLeftOff.set({ ...left, sent: bytes });
+      }
+    }
+    const el = videoPanel.querySelector('.vp-item.sending');
+    if (!el) return renderVideoPanel();
+    const pct = s.size ? Math.min(100, Math.floor(100 * bytes / s.size)) : 0;
+    el.querySelector('.vp-bar').classList.toggle('wait', state === 'waiting');
+    el.querySelector('.vp-bar .fill').style.width = pct + '%';
+    el.querySelector('.vp-what').innerHTML = videoSendingSays(s, pct);
+    el.querySelector('.vp-note').textContent = videoSendingNote(s);
+  }
+  function timeLeft(seconds) {
+    if (!isFinite(seconds) || seconds <= 0) return '';
+    if (seconds < 50) return 'under a minute left';
+    const m = Math.round(seconds / 60);
+    return m < 60 ? `about ${m} min left` : `about ${Math.floor(m / 60)} h ${m % 60} min left`;
+  }
+  function videoSendingSays(s, pct) {
+    if (s.state === 'checking') return `<b>100%</b> · all of it is on delivery-kid; it's looking it over…`;
+    const of = `${esc(sizeOf(s.sent))} of ${esc(sizeOf(s.size))}`;
+    if (s.state === 'waiting') {
+      // Whose side it's on, as far as can be told: this device's connection, or delivery-kid not answering.
+      const why = navigator.onLine === false ? 'no connection' : /answered 5\d\d/.test(s.detail?.why || '') ? "delivery-kid isn't answering" : 'the connection dropped';
+      return `<b>${pct}%</b> · ${of} · <span class="vp-warn">${why}: waiting to carry on</span>`;
+    }
+    let rate = '';
+    if (s.marks.length > 1) {
+      const [t0, b0] = s.marks[0], [t1, b1] = s.marks[s.marks.length - 1];
+      const perSec = t1 > t0 ? (b1 - b0) / ((t1 - t0) / 1000) : 0;
+      if (perSec > 0) rate = ` · ${(perSec / 1e6).toFixed(perSec < 1e6 ? 2 : 1)} MB/s` + (timeLeft((s.size - s.sent) / perSec) ? ` · ${timeLeft((s.size - s.sent) / perSec)}` : '');
+    }
+    return `<b>${pct}%</b> · ${of}${rate}`;
+  }
+  function videoSendingNote(s) {
+    if (s.state === 'checking') return '';
+    if (!s.pieces) return 'Keep this page open and the screen on until it is in.';
+    if (s.state === 'waiting') return `${sizeOf(s.sent)} is safe on delivery-kid. It carries on by itself, from there.`;
+    return 'Keep this page open. If the connection drops, it carries on from where it stopped.';
   }
   // How each 🎬 line's video is coming along on delivery-kid (services/delivery_kid.progress): viewing
   // only, finalizing stays on its ReleaseDraft page. Asked often while it encodes, now and then while
@@ -8803,53 +9680,196 @@
       return ` · ${esc(p.status || '')}`;
     },
   };
-  // Videos on delivery-kid still waiting for their ReleaseDraft page: a card each, for this Mood.
+  // A video of yours from this browser, after it's on delivery-kid: followed in the panel until its Release
+  // page exists. Kept per Mood, in this browser.
   var videoWaiting = {  // var: the thread may render a 🎬 line, or switch Moods, before this line has run
     KEY: 'dk-waiting',
-    all() { try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch (e) { return []; } },
-    save(list) { try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {} renderVideoCards(); },
+    all() {
+      try {
+        const now = Date.now();  // a finished one is forgotten after a day; anything after two weeks
+        return JSON.parse(localStorage.getItem(this.KEY) || '[]')
+          .filter(w => !(w.doneAt && now - w.doneAt > 864e5) && !(w.at && now - w.at > 14 * 864e5));
+      } catch (e) { return []; }
+    },
+    save(list) { try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {} renderVideoPanel(); },
     add(v) { this.save(this.all().filter(w => w.draft !== v.draft).concat([v])); },
     drop(draft) { if (this.all().some(w => w.draft === draft)) this.save(this.all().filter(w => w.draft !== draft)); },
+    // Its draft page is made (its 🎬 line has come): from here it's followed, not titled.
+    paged(draft, page, title) {
+      const list = this.all(), mine = list.find(w => w.draft === draft);
+      if (!mine || mine.page) return;
+      Object.assign(mine, { page: page || '', title: title || mine.title });
+      this.save(list);
+    },
+    // What delivery-kid says of it now. Redrawn only when that changes.
+    heard(draft, p) {
+      const list = this.all(), mine = list.find(w => w.draft === draft);
+      if (!mine) return;
+      const was = JSON.stringify(mine.p || null);
+      mine.p = { status: p.status, message: p.message || '', progress: typeof p.progress === 'number' ? p.progress : null,
+                 queue_ahead: p.queue_ahead || 0, release: p.release || '' };
+      if (['finalized', 'gone'].includes(p.status) && !mine.doneAt) mine.doneAt = Date.now();
+      if (JSON.stringify(mine.p) === was) return;
+      try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {}
+      renderVideoPanel();
+    },
+    retitle(draft, title) {  // typed, not yet sent: kept, without redrawing the box being typed in
+      const list = this.all(), mine = list.find(w => w.draft === draft);
+      if (mine) { mine.title = title; try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {} }
+    },
   };
-  function renderVideoCards() {
-    const box = document.getElementById('videoCards');
-    if (!box || !videoWaiting) return;
-    box.innerHTML = '';
-    for (const v of videoWaiting.all().filter(w => w.mood === current)) {
-      const card = document.createElement('div');
-      card.className = 'vcard';
-      card.innerHTML = `🎬 <span class="name"></span> is on delivery-kid. Its title: <input type="text" maxlength="200">`
-        + `<button type="button" class="make" title="Or press Send, which then opens the draft page">Make its draft page on PickiPedia</button>`
-        + `<button type="button" class="later" title="Forget this card. The video stays on delivery-kid, without a draft page.">✕</button>`;
-      card.querySelector('.name').textContent = v.name;
-      const title = card.querySelector('input');
-      title.value = v.title || '';
-      card.querySelector('.make').addEventListener('click', async ev => {
-        ev.target.disabled = true;
-        ev.target.textContent = 'Off to PickiPedia…';
-        try {
-          const r = await fetch('/api/moods/' + encodeURIComponent(v.mood) + '/video/draft/', { method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-            body: JSON.stringify({ draft: v.draft, title: title.value, then: ev.target.dataset.then }) });
-          const body = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(body.error || r.status);
-          saveDraft();
-          location.href = body.go;  // back here once the page is written; its 🎬 line clears this card
-        } catch (e) {
-          ev.target.disabled = false;
-          ev.target.textContent = 'Make its draft page on PickiPedia';
-          showError('video: ' + e.message);
-        }
-      });
-      card.querySelector('.later').addEventListener('click', () => {
-        if (confirm(`Forget ${v.name}? It stays on delivery-kid, but without a draft page nobody can finalize it from there.`)) videoWaiting.drop(v.draft);
-      });
-      box.appendChild(card);
-    }
+  // The five steps a video takes, and which one it's on: 0 sending, 1 its draft page, 2 finalizing (a
+  // person's press, on PickiPedia), 3 encoding and pinning, 4 its Release page.
+  const VIDEO_STEPS = ['Send', 'Draft page', 'Finalize', 'Encode', 'Release'];
+  function videoSteps(now, bad) {
+    return '<ol class="vp-steps">' + VIDEO_STEPS.map((label, i) =>
+      `<li class="${i < now ? 'done' : i === now ? (bad ? 'now bad' : 'now') : ''}">${label}</li>`).join('') + '</ol>';
   }
-  renderVideoCards();
-  document.getElementById('videoCancel').addEventListener('click', () => videoSending?.xhr?.abort());
-  // Leaving mid-upload loses it: say so first.
+  function videoItemHtml(v) {
+    const p = v.p || {}, head = (extra = '') => `<div class="vp-head"><span class="vp-name">🎬 ${esc(v.title || v.name)}</span>`
+      + (v.size ? `<span class="vp-size">${esc(sizeOf(v.size))}</span>` : '') + extra + `</div>`;
+    const x = title => `<button type="button" class="vp-x" title="${esc(title)}" aria-label="${esc(title)}">✕</button>`;
+    const page = v.page ? `<a class="vp-go" href="${esc(v.page)}" target="_blank" rel="noopener">Open its draft page</a>` : '';
+    if (!v.page) {
+      return head(x('Forget this one. The video stays on delivery-kid, without a draft page.')) + videoSteps(1)
+        + `<div class="vp-what"><b>It's on delivery-kid.</b> Next: its draft page on PickiPedia.</div>`
+        + `<div class="vp-act"><label>Its title: <input type="text" maxlength="200" value="${esc(v.title || '')}"></label>`
+        + `<button type="button" class="make" title="Or press Send, which then opens the draft page">Make its draft page</button></div>`;
+    }
+    if (p.status === 'finalized') {
+      return head(x('Done: take it off this panel')) + videoSteps(5)
+        + `<div class="vp-what"><b>Pinned.</b> ` + (p.release ? `<a class="vp-go" href="${esc(p.release)}" target="_blank" rel="noopener">Its Release page</a>` : 'Its Release page is on its way.') + `</div>`
+        + `<div class="vp-note">PickiPedia's bot writes the Release page a minute or two after the pin.</div>`;
+    }
+    if (p.status === 'finalizing') {
+      const waiting = p.queue_ahead ? `Queued: ${Number(p.queue_ahead)} ahead of it.` : esc(p.message || 'Encoding…');
+      const pct = typeof p.progress === 'number' && !p.queue_ahead ? Math.max(0, Math.min(100, Math.round(p.progress))) : null;
+      return head() + videoSteps(3)
+        + `<div class="vp-bar${pct == null ? ' wait' : ''}"><span class="fill" style="width:${pct == null ? 100 : pct}%"></span></div>`
+        + `<div class="vp-what">${pct == null ? '' : `<b>${pct}%</b> · `}${waiting}</div>`
+        + `<div class="vp-note">delivery-kid does this by itself: this page can be closed.</div>`;
+    }
+    if (p.status === 'finalize_failed') {
+      return head(x('Take it off this panel')) + videoSteps(3, true)
+        + `<div class="vp-what"><span class="vp-warn"><b>Finalizing failed.</b></span> ${esc(p.message || '')}</div><div class="vp-act">${page}</div>`;
+    }
+    if (p.status === 'gone') {
+      return head(x('Take it off this panel')) + videoSteps(2, true)
+        + `<div class="vp-what">Its files were deleted from delivery-kid (abandoned).</div>`;
+    }
+    return head(x('Take it off this panel. Its draft page stays.')) + videoSteps(2)
+      + `<div class="vp-what"><b>Its draft page is made.</b> Next: finalize it there, which starts the encoding.</div><div class="vp-act">${page}</div>`;
+  }
+  function renderVideoPanel() {
+    if (!videoWaiting || !videoPanel) return;  // videoWaiting first: it's the var, and the rest may not have run yet
+    const items = [];
+    const s = videoSending;
+    if (s && s.mood === current) {
+      const pct = s.size ? Math.min(100, Math.floor(100 * (s.sent || 0) / s.size)) : 0;
+      items.push({ cls: 'sending', html: `<div class="vp-head"><span class="vp-name">🎬 ${esc(s.name)}</span><span class="vp-size">${esc(sizeOf(s.size))}</span>`
+        + `<button type="button" class="vp-cancel">cancel</button></div>` + videoSteps(0)
+        + `<div class="vp-bar${s.state === 'waiting' ? ' wait' : ''}"><span class="fill" style="width:${pct}%"></span></div>`
+        + `<div class="vp-what">${videoSendingSays(s, pct)}</div><div class="vp-note">${esc(videoSendingNote(s))}</div>` });
+    }
+    const left = !s && videoLeftOff.get();
+    if (left && left.mood === current) {
+      const pct = left.size ? Math.min(100, Math.floor(100 * (left.sent || 0) / left.size)) : 0;
+      items.push({ cls: 'leftoff', html: `<div class="vp-head"><span class="vp-name">🎬 ${esc(left.name)}</span><span class="vp-size">${esc(sizeOf(left.size))}</span>`
+        + `<button type="button" class="vp-x" title="Don't carry on: delete what arrived" aria-label="Don't carry on: delete what arrived">✕</button></div>` + videoSteps(0)
+        + `<div class="vp-bar wait"><span class="fill" style="width:${pct}%"></span></div>`
+        + `<div class="vp-what"><b>Stopped at about ${pct}%.</b> What arrived is kept on delivery-kid.</div>`
+        + `<div class="vp-act"><button type="button" class="vp-again">Add the same file again to carry on</button></div>` });
+    }
+    for (const v of videoWaiting.all().filter(w => w.mood === current)) items.push({ cls: 'waiting', draft: v.draft, html: videoItemHtml(v) });
+    // Typing a title isn't to be interrupted by a redraw that changes nothing.
+    const drawn = JSON.stringify(items.map(i => [i.cls, i.draft, i.cls === 'sending' ? '' : i.html]));
+    videoPanel.hidden = !items.length;
+    if (videoPanel.dataset.drawn === drawn) return;
+    videoPanel.dataset.drawn = drawn;
+    videoPanel.innerHTML = '';
+    items.forEach((item, n) => {
+      const el = document.createElement('div');
+      el.className = `vp-item ${item.cls}${n === 0 ? ' first' : ''}`;
+      if (item.draft) el.dataset.draft = item.draft;
+      el.innerHTML = item.html;
+      videoPanel.appendChild(el);
+    });
+    videoFollow.look();
+  }
+  videoPanel.addEventListener('input', e => {
+    const item = e.target.closest('.vp-item.waiting');
+    if (item && e.target.matches('input[type=text]')) videoWaiting.retitle(item.dataset.draft, e.target.value);
+  });
+  videoPanel.addEventListener('click', async e => {
+    const item = e.target.closest('.vp-item');
+    if (!item) return;
+    if (e.target.closest('.vp-cancel')) {
+      if (confirm(`Stop sending ${videoSending?.name || 'it'}? What has gone up is deleted.`)) videoSending?.cancel?.();
+      return;
+    }
+    if (e.target.closest('.vp-again')) { fileInput.click(); return; }
+    const v = videoWaiting.all().find(w => w.draft === item.dataset.draft);
+    if (e.target.closest('.vp-x')) {
+      if (item.classList.contains('leftoff')) {
+        const left = videoLeftOff.get();
+        if (!left || !confirm(`Don't carry on with ${left.name}? What arrived is deleted from delivery-kid.`)) return;
+        videoLeftOff.set(null);
+        renderVideoPanel();
+        try { const t = await videoTicket(); await dkAsk('DELETE', `${t.url}/${left.draft}`, t.headers || {}); } catch (err) {}
+        return;
+      }
+      if (v && !v.page && !confirm(`Forget ${v.name}? It stays on delivery-kid, but without a draft page nobody can finalize it from there.`)) return;
+      if (v) videoWaiting.drop(v.draft);
+      return;
+    }
+    const make = e.target.closest('.make');
+    if (make && v) {
+      make.disabled = true;
+      make.textContent = 'Off to PickiPedia…';
+      try {
+        const r = await fetch('/api/moods/' + encodeURIComponent(v.mood) + '/video/draft/', { method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+          body: JSON.stringify({ draft: v.draft, title: item.querySelector('input').value, then: make.dataset.then }) });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error || r.status);
+        saveDraft();
+        location.href = body.go;  // back here once the page is written; its 🎬 line moves this on a step
+      } catch (err) {
+        make.disabled = false;
+        make.textContent = 'Make its draft page';
+        showError('video: ' + err.message);
+      }
+    }
+  });
+  // Asks how each of this browser's videos with a draft page is coming along, for the panel: often while
+  // one encodes, now and then while one waits for its finalize, and not at all while the page is hidden.
+  const videoFollow = {
+    timer: null, asking: false,
+    due() { return videoWaiting.all().filter(w => w.mood === current && w.page && !['finalized', 'gone', 'finalize_failed'].includes(w.p?.status)); },
+    look() {
+      if (this.timer || this.asking || document.hidden || !this.due().length) return;
+      this.timer = setTimeout(() => this.ask(), 50);
+    },
+    async ask() {
+      this.timer = null;
+      this.asking = true;
+      let soon = false;
+      for (const v of this.due()) {
+        try {
+          const r = await fetch('/api/moods/' + encodeURIComponent(v.mood) + '/video/' + encodeURIComponent(v.draft) + '/progress/');
+          if (!r.ok) continue;
+          const p = await r.json();
+          videoWaiting.heard(v.draft, p);
+          if (p.status === 'finalizing') soon = true;
+        } catch (e) {}
+      }
+      this.asking = false;
+      if (this.due().length && !document.hidden) this.timer = setTimeout(() => this.ask(), soon ? 5000 : 30000);
+    },
+  };
+  document.addEventListener('visibilitychange', () => videoFollow.look());
+  renderVideoPanel();
+  // Leaving mid-upload stops it: say so first. (In pieces, what arrived is kept; the same file carries on.)
   window.addEventListener('beforeunload', e => { if (videoSending) { e.preventDefault(); e.returnValue = ''; } });
   if (dkUpload) {
     // video/* alone isn't enough everywhere: Sky's Mac greyed out videos in the
@@ -9199,13 +10219,16 @@
                   count(files.filter(f => /^audio\//.test(f.type)).length, 'recording', 'recordings')].filter(Boolean);
     shareCard.querySelector('.what').textContent = 'Shared: ' + (what.join(' · ') || 'nothing')
       + (shared.lost ? ` · ${count(shared.lost, 'file', 'files')} didn't come through: share again` : '');
-    shareHere.disabled = !viewer;
-    shareHere.textContent = viewer ? 'Add' : 'Sign in to add it';
-    shareHere.title = viewer ? 'Into the box, to send' : 'It waits here until you do';
+    // The card is up before the Moods are (offerShare, at the start): until one is open there is nowhere
+    // to add it to yet, and the button says so rather than looking broken.
+    shareHere.disabled = !viewer || !current;
+    shareHere.textContent = !viewer ? 'Sign in to add it' : current ? 'Add' : 'Opening…';
+    shareHere.title = !viewer ? 'It waits here until you do'
+      : current ? 'Into the box, to send' : 'It waits here while the Mood opens';
     // Which Mood: this one, or any other -- choosing one opens it, and Add puts it there.
     const into = shareCard.querySelector('.into');
-    into.hidden = !viewer;
     const choices = moods.filter(m => !m.archived || m.slug === current);
+    into.hidden = !viewer || !choices.length;
     shareMood.innerHTML = choices.map(m => `<option value="${esc(m.slug)}"${m.slug === current ? ' selected' : ''}>#${esc(m.slug)}</option>`).join('');
   }
   shareHere.addEventListener('click', async () => {
@@ -9254,8 +10277,9 @@
         clearInterval(look);
         place()?.remove();
         if (voicePending && voicePending.sha === sha) {
-          const bodyEl = arrived.closest('.turn')?.querySelector('.body');
-          const clean = bodyEl ? (bodyEl.innerText || '').replace(/🎙\s*\[voice memo[^\]]*\]\([^)]*\)/, '').trim() : '';
+          const turnNode = arrived.closest('.turn');
+          const rawText = (turnNode && turnNode._text) || (turnNode?.querySelector('.body')?.innerText || '');
+          const clean = rawText.replace(/🎙\s*\[voice memo[^\]]*\]\([^)]*\)/, '').trim();
           const s = voicePending.seconds ? ` · ${clock(voicePending.seconds)}` : '';
           readLastDone = { who: viewer, mood: current, text: clean ? `🎙 voice memo${s}\n\n${clean}` : `🎙 voice memo${s}`, whenLabel: 'sent' };
           voicePending = null;
@@ -9539,7 +10563,7 @@
   // zeroes the microphone stream mid-sentence (Justin, #connectome, 16 Nov: cut to 0.0 at 0:13.3).
   let wakeSentinel = null, wakeWanted = false;
   async function syncScreenWake() {
-    const want = !!(readRecording || document.body.classList.contains('voice-mode'));
+    const want = !!(readRecording || document.body.classList.contains('voice-mode') || videoSending);  // a locked phone stops sending a video
     wakeWanted = want;
     if (!want) {
       if (wakeSentinel) { const s = wakeSentinel; wakeSentinel = null; try { await s.release(); } catch (e) {} }
@@ -10438,9 +11462,9 @@
       return;
     }
     const text = [words, ...sentTray.map(a => a.markdown)].filter(Boolean).join('\n');
-    // A video waiting as a card: Send makes its draft page too, as its button does, and then
+    // A video waiting for its title in the panel: Send makes its draft page too, as its button does, and then
     // opens that page (Sky, 15 Oct); after what's typed is sent, since it leaves for PickiPedia.
-    const makeDraft = document.querySelector('#videoCards .vcard .make:not(:disabled)');
+    const makeDraft = document.querySelector('#videoPanel .make:not(:disabled)');
     const sendOn = () => { makeDraft.dataset.then = 'page'; makeDraft.click(); delete makeDraft.dataset.then; };
     if (!text && makeDraft) { sendOn(); return; }
     if (!text || !current) return;
@@ -10631,7 +11655,7 @@
   // --- one page: the Moods, and tidings, prompts, status and settings beside them -------------------
   // Each section is its own page, loaded into a frame the first time it's shown and kept: going back and
   // forth loads nothing again, and the Moods stay as they were (Justin, 21 Oct). The address says which.
-  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'traffic', 'settings'];
+  const SECTIONS = ['tidings', 'polls', 'prompts', 'status', 'todo', 'deploys', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'traffic', 'settings'];
   const sectionFrames = document.getElementById('sectionFrames');
   // The address follows the Tidings frame while it shows (Justin, 4 Nov): a tiding opened from the list is
   // its own address, to reload or share, and ‹ Tidings back to the list is /tidings/ again.
@@ -10655,7 +11679,7 @@
   const sectionPending = {};
   // A data section's kept copy rots while you're away (Justin, 29 Oct: the prompts were "way outta date"):
   // one shown again after STALE_MS is redrawn behind the scenes and takes its place when it's in, seen or not.
-  const DATA_SECTIONS = new Set(['prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks']);
+  const DATA_SECTIONS = new Set(['prompts', 'status', 'todo', 'deploys', 'ramp', 'tasks', 'journals', 'verify', 'hooks']);
   const STALE_MS = 60000;
   function refreshSection(name, swapOpen) {
     const old = sectionFrames.querySelector(`iframe[data-section="${name}"]:not([data-fresh])`);
@@ -10839,7 +11863,7 @@
     const here = name === 'tidings' || name === 'ramp' ? location.pathname + location.search + location.hash : location.pathname;
     if (push && here !== url) history.pushState({ section: name, slug: current }, '', url);
     const moreBtn = document.getElementById('sectionsMoreBtn');
-    if (moreBtn) moreBtn.classList.toggle('active', ['prompts', 'status', 'todo', 'verify'].includes(name));
+    if (moreBtn) moreBtn.classList.toggle('active', ['prompts', 'status', 'todo', 'deploys', 'verify'].includes(name));
     setTitle();
     fitHeader();
   }
@@ -10969,6 +11993,10 @@
 
   (async function start() {
     await null;  // the rest of this script read first: what showSection uses is all there
+    // A share is shown at once, before anything is loaded: what came in is already kept (the service
+    // worker's IndexedDB, or the address), so nothing has to be waited on to say so. Justin, 23 Nov:
+    // "the app comes up and then seems to freeze for about 30s, and only then does the share bar come up."
+    if (sharing_) offerShare();
     // Loaded in the background: ready the moment it's wanted. Opened at a link's own address (from the
     // front page, or a #t- link elsewhere), it opens at that link's discussion.
     // Its order (?order=new) and a comment's #c- come along: a frame's own address opened on its own is
@@ -10988,16 +12016,23 @@
     const listed = loadMoods();
     listed.then(() => { loadTokens(); fetchBadges(); },  // not awaited: badges fill in when they come
                 () => setStatus('cannot reach memory-lane', 'stale'));
-    if (!initialSlug || sharing_) { try { await listed; } catch (e) { return; } }
+    // A share opens where you last were (the Mood opened last in this browser), and this browser remembers
+    // which that was: it opens straight away rather than waiting on the list, as an address with a Mood in
+    // it does. If the list then says that Mood is gone or archived, the first one is opened instead.
+    const sharedInto = sharing_ ? (store.get('kept', []).find(s => keptOf(s)) || null) : null;
+    if (!initialSlug && !sharedInto) { try { await listed; } catch (e) { return; } }
     await pullSeen();  // where you've read up to, on every device, before anything is counted
-    // A share opens where you last were (the Mood opened last in this browser), not at the top of the list.
-    const lastOpened = sharing_ && store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived));
+    if (sharedInto) listed.then(() => {
+      if (current === sharedInto && !moods.some(m => m.slug === sharedInto && !m.archived) && moods[0]) open(moods[0].slug, false);
+      else renderShare();  // the list is in: the card can now say which other Mood it could go to
+    }, () => {});
+    const lastOpened = sharing_ && (sharedInto || store.get('kept', []).find(s => moods.some(m => m.slug === s && !m.archived)));
     const slug = initialSlug || lastOpened || (moods[0] && moods[0].slug);
     if (!slug) { inner.innerHTML = '<div class="empty">No Moods yet.</div>'; setStatus('live', 'live'); return; }
     const linked = location.hash.match(/^#m-([0-9a-f-]{36})$/);  // from a notification, or a link
     if (linked) await openAndReveal(slug, linked[1], false);
     else await open(slug, false);
-    if (sharing_) { history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/'); offerShare(); }
+    if (sharing_) history.replaceState({ slug }, '', '/moods/' + encodeURIComponent(slug) + '/');
     setInterval(() => { poll(false); fetchBadges(); }, viewer ? POLL_MS : VISITOR_POLL_MS);
     if (new URLSearchParams(location.search).has('tour')) startTour();
   })();

@@ -60,6 +60,13 @@ def kept_of(clips):
     return {str(y.clip): y.media.url for y in YarnClip.objects.select_related('media').filter(clip__in=list(clips))}
 
 
+def stills_of(clips):
+    """{clip: still URL} for those of `clips` whose picture is kept here: one question for a list of them."""
+    from conversations.models import YarnClip
+    return {str(y.clip): y.still.url for y in YarnClip.objects.select_related('still').filter(clip__in=list(clips))
+            if y.still_id}
+
+
 def _is_mp4(data):
     return len(data) > 12 and data[4:8] == b'ftyp'
 

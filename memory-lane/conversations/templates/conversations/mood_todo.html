@@ -21,47 +21,67 @@
   .lede { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
-  .controls input[type="search"] { flex: 1; min-width: 200px; font: inherit; font-size: 13px; padding: 5px 8px;
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .controls input[type="search"] { flex: 1; min-width: 160px; font: inherit; font-size: 13px; padding: 5px 8px;
                                    border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
   .controls select { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line);
-                     border-radius: 6px; background: var(--panel); color: var(--ink); }
+                     border-radius: 6px; background: var(--panel); color: var(--ink); max-width: 100%; }
+  .controls label { font-size: 12px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; }
   .filters { display: flex; gap: 4px; }
   .filters button { font: inherit; font-size: 12.5px; padding: 4px 10px; border: 1px solid var(--line);
                     border-radius: 6px; background: var(--panel); color: var(--muted); cursor: pointer; }
   .filters button:hover { color: var(--ink); border-color: var(--accent); }
   .filters button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
-  /* By type (Justin, 14 Nov): one button each, its open count; another click on it shows every type again. */
-  .types { display: flex; flex-wrap: wrap; gap: 4px; margin: -6px 0 14px; }
-  .types button { font: inherit; font-size: 12.5px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px;
+  /* By type (Justin, 14 Nov) and by who (21 Nov): one button each, its count; another click on it shows them all again. */
+  .types, .whos { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; align-items: center; }
+  .types button, .whos button { font: inherit; font-size: 12.5px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px;
                   background: var(--panel); color: var(--ink); cursor: pointer; }
-  .types button .n { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 3px; }
-  .types button:hover { border-color: var(--accent); }
-  .types button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .types button .n, .whos button .n { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 4px; }
+  .types button:hover, .whos button:hover { border-color: var(--accent); }
+  .types button.active, .whos button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
   .types button.none { opacity: .5; }
-  .chip.typechip { color: var(--ink); }
-  .stats { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
-  .todolist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .todoitem { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line);
-              border-radius: 8px; background: var(--panel); font-size: 13.5px; }
-  .todoitem.done { opacity: .7; }
-  .todoitem .statusicon { flex: none; font-size: 15px; line-height: 1.2; width: 20px; text-align: center; }
-  .todoitem .statusicon.is-done { color: var(--ok); }
-  .todoitem .statusicon.is-merged { color: var(--accent); }
-  .todoitem .statusicon.is-open { color: var(--muted); opacity: .45; }
-  .todoitem .content { flex: 1; min-width: 0; }
-  .todoitem .taskline { font-weight: 500; }
-  .todoitem.done .taskline { text-decoration: line-through; }
-  .todoitem .chips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: middle; }
-  .chip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px;
-          border: 1px solid var(--line); background: var(--bg); color: var(--muted); line-height: 1.2; }
-  .chip.moodchip { font-weight: 600; color: var(--ink); text-decoration: none; }
-  .chip.moodchip:hover { border-color: var(--accent); color: var(--accent); }
-  .chip.whochip { color: var(--accent); }
-  .chip.kindchip { font-style: italic; }
-  .todoitem .noteline { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .todoitem .linkline { font-size: 12px; margin-top: 3px; }
+  .stats { font-size: 12.5px; color: var(--muted); margin: 6px 0 10px; }
+  /* The deploy boxes (Justin, 25 Nov): shown while the deploy type is chosen. */
+  .deploystrip { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+  .deploystrip .dbox { font-size: 12.5px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 8px;
+                       background: var(--panel); color: var(--ink); font-weight: 600; text-decoration: none; }
+  .deploystrip .dbox:hover { border-color: var(--accent); }
+  .deploystrip .dbox.ready { border-color: var(--accent); }
+  .deploystrip .dbox .n { font-weight: 400; color: var(--muted); margin-left: 5px; }
+  .deploystrip .dbox.ready .n { color: var(--accent); }
+  .deploystrip .dbox .n.asks { font-style: italic; }
+  .deploystrip .dbox.all { color: var(--accent); font-weight: 500; }
+  .stats a { cursor: pointer; }
+  /* A group (a type, a Mood, a person): its name and how many, folding. A row is one line: the type's glyph, a
+     headline (services/todo_types.py, headline), who, where. The task as written is a click away. */
+  details.group { margin: 0 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+  details.group > summary { cursor: pointer; padding: 6px 10px; font-weight: 600; font-size: 13px; list-style-position: inside; }
+  details.group > summary .n { color: var(--muted); font-weight: 400; margin-left: 6px; font-variant-numeric: tabular-nums; }
+  details.group > summary .about { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
+  .todolist { list-style: none; margin: 0; padding: 0; }
+  .row { border-top: 1px solid var(--line); }
+  .row .line { display: flex; gap: 8px; align-items: baseline; padding: 3px 10px; cursor: pointer; font-size: 13.5px; }
+  .row .line:hover, .row .line:focus-visible { background: var(--accent-soft); outline: none; }
+  .row .ty { flex: none; width: 20px; text-align: center; }
+  .row .hl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .row.done .hl { text-decoration: line-through; color: var(--muted); font-weight: 400; }
+  .row .pr { flex: none; width: 17px; height: 17px; border-radius: 50%; font-size: 10.5px; font-weight: 600; line-height: 17px;
+             text-align: center; color: var(--panel); background: var(--accent); align-self: center; }
+  .row .st { flex: none; font-size: 11.5px; color: var(--muted); }
+  /* 💬: the message that asked for it (an item's `said`), so the conversation behind a row is one click away. */
+  .row .sd { flex: none; font-size: 11px; text-decoration: none; opacity: .45; }
+  .row .sd:hover { opacity: 1; }
+  .row .wh { flex: none; max-width: 30%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
+  .row .wh .you { color: var(--accent); font-weight: 600; }
+  .row .md { flex: none; max-width: 26%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
+  .row .more { display: none; padding: 2px 10px 9px 38px; font-size: 13px; overflow-wrap: anywhere; }
+  .row.open .more { display: block; }
+  .row.open .hl { white-space: normal; }
+  .row .more .note { color: var(--muted); margin-top: 3px; }
+  .row .more .meta { color: var(--muted); font-size: 12px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .row .more code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); border-radius: 4px; padding: 0 4px; }
   .none { color: var(--muted); font-size: 13px; text-align: center; padding: 30px 0; }
+  @media (max-width: 560px) { main { padding: 12px 8px 60px; } .row .md { display: none; } .row .wh { max-width: 34%; } }
 </style>
 {% if embed %}<!-- Inside the one page (views_settings.section): its bar is that page's; a link here into magenta
      goes there, which opens it without loading anything again. -->
@@ -87,6 +107,7 @@
     <a href="/polls/">polls</a>
     <a href="/prompts/">prompts</a>
     <a href="/todo/" aria-current="page">todo</a>
+    <a href="/deploys/">deploys</a>
     <a href="/ramp/">ramp</a>
     <a href="/tasks/">tasks</a>
     <a href="/journals/">journals</a>
@@ -98,108 +119,222 @@
 </header>
 <main>
   <h1>To-do</h1>
-  <p class="lede">Every Mood's to-do items, newest first. Merges, deploys and verifies tick themselves the moment
-    they're finished; the rest are ticked by hand.</p>
+  <p class="lede">Every Mood's to-do items, one line each: its type, a headline, who it waits on, where. Click a line
+    for the task as written. Merges, deploys and verifies tick themselves; the rest are ticked by hand.</p>
 
   <div class="controls">
     <input type="search" id="todoSearch" placeholder="Filter by task, person, or note…" aria-label="Filter tasks">
     <select id="todoMoodFilter" aria-label="Filter by Mood">
       <option value="">All Moods ({{ todos.moods|length }})</option>
       {% for m in todos.moods %}
-      <option value="{{ m.slug }}">{{ m.title }} ({{ m.count }})</option>
+      <option value="{{ m.slug }}">{{ m.title }} ({{ m.open }})</option>
       {% endfor %}
     </select>
+    <label>group <select id="todoGroup" aria-label="Group by">
+      <option value="type">by type</option><option value="mood">by Mood</option><option value="who">by who</option><option value="">not at all</option>
+    </select></label>
+    <label>sort <select id="todoSort" aria-label="Sort by">
+      <option value="need">most needed</option><option value="new">newest</option><option value="old">oldest</option>
+    </select></label>
     <div class="filters" role="group" aria-label="Status filter">
-      <button type="button" class="f-btn" data-filter="all">All ({{ todos.total }})</button>
       <button type="button" class="f-btn active" data-filter="open">Open ({{ todos.open }})</button>
       <button type="button" class="f-btn" data-filter="done">Done ({{ todos.done }})</button>
+      <button type="button" class="f-btn" data-filter="all">All ({{ todos.total }})</button>
     </div>
   </div>
 
+  <div class="whos" id="todoWhos" role="group" aria-label="Who it waits on"></div>
   <div class="types" role="group" aria-label="Type filter">
     {% for t in todos.types %}<button type="button" class="t-btn{% if not t.open %} none{% endif %}" data-type="{{ t.type }}"
       title="{{ t.about }}: {{ t.open }} open of {{ t.total }}">{{ t.emoji }} {{ t.label }}<span class="n">{{ t.open }}</span></button>{% endfor %}
   </div>
 
-  <div class="stats" id="todoStats">Showing {{ todos.total }} tasks</div>
-
-  <ul class="todolist" id="todoList">
-    {% for item in todos.items %}
-    <li class="todoitem{% if item.done or item.merged %} done{% endif %}"
-        data-mood="{{ item.mood }}" data-type="{{ item.type }}"
-        data-status="{% if item.done or item.merged %}done{% else %}open{% endif %}"
-        data-search="{{ item.task|lower }} {{ item.note|lower }} {% for w in item.who %}{{ w|lower }} {% endfor %}#{{ item.mood }}">
-      <span class="statusicon {% if item.merged %}is-merged{% elif item.done %}is-done{% else %}is-open{% endif %}"
-            title="{% if item.merged %}Merged{% elif item.closed %}Closed, not merged{% elif item.deployed %}Deployed: the server runs it{% elif item.verified %}Verified: no bot edit waits on the page{% elif item.done %}Done{% else %}Open{% endif %}">
-        {% if item.merged %}🔀{% elif item.closed %}✕{% elif item.deployed %}🖥️{% elif item.verified %}✅{% elif item.done %}✓{% else %}○{% endif %}
-      </span>
-      <div class="content">
-        <div>
-          <span class="taskline">{{ item.task }}</span>
-          <span class="chips">
-            <a class="chip moodchip" href="/moods/{{ item.mood }}/">#{{ item.mood_title }}</a>
-            {% for w in item.who %}<span class="chip whochip">{{ w }}</span>{% endfor %}
-            {% for t in todos.types %}{% if t.type == item.type %}<span class="chip typechip" title="{{ t.about }}{% if item.kind and item.kind|lower != t.type %} (written as “{{ item.kind }}”){% endif %}">{{ t.emoji }} {{ t.label }}</span>{% endif %}{% endfor %}
-          </span>
-        </div>
-        {% if item.note %}<div class="noteline">{{ item.note }}</div>{% endif %}
-        {% if item.link %}<div class="linkline"><a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.link }}</a></div>{% endif %}
-      </div>
-    </li>
-    {% empty %}
-    <li class="none">No to-do items found on PickiPedia.</li>
-    {% endfor %}
-  </ul>
+  <!-- The deploy items as boxes, not as asks unaware of each other (Justin, #ramp, 25 Nov): one box for each
+       server, what has merged and waits for it, and how many of these items are about it. /deploys/ has it all. -->
+  <div class="deploystrip" id="deployStrip" hidden>
+    {% for box in queue.boxes %}<a class="dbox{% if box.ready %} ready{% endif %}" href="/deploys/#{{ box.name }}"
+      title="{{ box.about }}">{{ box.name }}<span class="n">{% if box.owed %}{{ box.owed|length }} merged, waiting{% else %}current{% endif %}</span>{% if box.asks %}<span class="n asks">{{ box.asks|length }} here</span>{% endif %}</a>{% endfor %}
+    <a class="dbox all" href="/deploys/">the whole queue →</a>
+  </div>
+  <div class="stats" id="todoStats"></div>
+  <div id="todoGroups">{% if not todos.items %}<p class="none">No to-do items found on PickiPedia.</p>{% endif %}</div>
 </main>
+{{ todos.items|json_script:"todo-items" }}
+{{ todos.types|json_script:"todo-types" }}
 <script>
 (() => {
-  const searchInput = document.getElementById('todoSearch');
-  const moodFilter = document.getElementById('todoMoodFilter');
-  const filterBtns = document.querySelectorAll('.f-btn');
-  const items = document.querySelectorAll('.todoitem');
-  const stats = document.getElementById('todoStats');
-  const typeBtns = document.querySelectorAll('.t-btn');
-  let currentFilter = 'open', currentType = '';
-
-  function applyFilters() {
-    const q = (searchInput.value || '').trim().toLowerCase();
-    const mood = moodFilter.value;
-    let visible = 0;
-
-    items.forEach(el => {
-      const matchSearch = !q || el.dataset.search.includes(q);
-      const matchMood = !mood || el.dataset.mood === mood;
-      const matchStatus = currentFilter === 'all' || el.dataset.status === currentFilter;
-      const matchType = !currentType || el.dataset.type === currentType;
-      const show = matchSearch && matchMood && matchStatus && matchType;
-      el.style.display = show ? '' : 'none';
-      if (show) visible++;
-    });
-
-    stats.textContent = `Showing ${visible} of ${items.length} tasks`;
-  }
-
-  searchInput.addEventListener('input', applyFilters);
-  moodFilter.addEventListener('change', applyFilters);
-
-  filterBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      filterBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter = btn.dataset.filter;
-      applyFilters();
-    });
+  // Drawn here from the list (services/todo.py, all_todos): grouped, sorted and filtered without asking again.
+  // What's chosen is kept (localStorage), since this page is drawn afresh behind the scenes each minute.
+  const ITEMS = JSON.parse(document.getElementById('todo-items').textContent);
+  const TYPES = Object.fromEntries(JSON.parse(document.getElementById('todo-types').textContent).map(t => [t.type, t]));
+  const NEED = ['merge', 'deploy', 'review', 'decide', 'verify', 'hands', 'make', 'work'];  // todo_types.NEED_ORDER
+  const viewer = "{{ viewer|escapejs }}";
+  const WIKI = "{{ wiki|escapejs }}";
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const $ = id => document.getElementById(id);
+  ITEMS.forEach((it, n) => {
+    it.n = n;  // as all_todos has them: newest first
+    it.isDone = !!(it.done || it.merged);
+    it.whoKeys = it.who_keys && it.who_keys.length ? it.who_keys : (it.who || []).map(w => w.toLowerCase());
+    it.search = [it.task, it.note, it.headline, it.kind, it.type, (it.who || []).join(' '), it.whoKeys.join(' '), '#' + it.mood].join(' ').toLowerCase();
   });
-  // One type at a time; pressed again, every type. Kept in the address (#type=deploy), so a link opens on it.
-  function setType(type) {
-    currentType = type;
-    typeBtns.forEach(b => b.classList.toggle('active', b.dataset.type === type));
-    history.replaceState(null, '', type ? '#type=' + type : location.pathname + location.search);
-    applyFilters();
-  }
-  typeBtns.forEach(btn => btn.addEventListener('click', () => setType(currentType === btn.dataset.type ? '' : btn.dataset.type)));
+
+  const KEY = 'magenta.todoPage';
+  let state = { status: 'open', type: '', who: null, mood: '', group: 'type', sort: 'need' };
+  try { state = { ...state, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch (e) {}
   const asked = (location.hash.match(/^#type=([a-z]+)$/) || [])[1];
-  if (asked) setType(asked); else applyFilters();
+  // A link to one type shows everyone's. Not when it's the type already chosen here: that's this page drawn again.
+  if (asked && asked !== state.type) { state.type = asked; state.who = '*'; state.status = 'open'; state.mood = ''; }
+  // Whose: the reader's own to begin with, if anything waits on them; '*' is everyone's, '' nobody's (anyone's to take).
+  if (state.who === null) state.who = viewer && ITEMS.some(it => !it.isDone && it.whoKeys.includes(viewer)) ? viewer : '*';
+  const keep = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+
+  function linkOf(link) {
+    if (/^https?:\/\//i.test(link) || link.startsWith('/')) return link;
+    if (/^#[\w-]+$/.test(link)) return '/moods/' + link.slice(1) + '/';
+    return link ? `${WIKI}/wiki/${encodeURIComponent(link.replace(/ /g, '_'))}` : '';
+  }
+  // `code`, and [[Page]] or [[Page|label]] as a link to the page, as PickiPedia's <todo> shows them.
+  function rich(text) {
+    const codes = [];
+    let h = esc(text).replace(/`([^`\n]+)`/g, (_, c) => `\x01${codes.push('<code>' + c + '</code>') - 1}\x01`);
+    h = h.replace(/\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]/g, (whole, title, label) => {
+      const name = title.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
+      return name ? `<a href="${esc(linkOf(name))}" target="_blank" rel="noopener">${(label || '').trim() || esc(name)}</a>` : whole;
+    });
+    return h.replace(/\x01(\d+)\x01/g, (_, i) => codes[+i]);
+  }
+  const itemId = it => 'todo-' + it.task.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);  // as the Mood's pane names it
+  const whoName = w => w === viewer ? '<span class="you">you</span>' : esc(w);
+  const stateOf = it => it.merged ? 'merged' : it.closed ? 'closed' : it.deployed ? 'deployed' : it.verified ? 'verified' : it.isDone ? 'done' : '';
+
+  function row(it) {
+    const t = TYPES[it.type] || { emoji: '·', label: it.type || '', about: '' };
+    const href = it.link ? linkOf(it.link) : '';
+    const meta = [`${t.emoji} ${esc(t.label)}` + (it.kind && it.kind.toLowerCase() !== it.type ? ` (written “${esc(it.kind)}”)` : ''),
+                  it.said_url ? `<a href="${esc(it.said_url)}">what asked for it</a>` : '',
+                  it.long ? '<span title="Over 120 characters: shorten it, and put the rest in its note">long</span>' : '',
+                  it.priority ? `priority ${it.priority} of 5` : '',
+                  it.whoKeys.length ? 'waits on ' + it.whoKeys.map(whoName).join(', ') : 'anyone’s to take',
+                  `<a href="/moods/${esc(it.mood)}/#${esc(itemId(it))}">#${esc(it.mood_title)}</a>`].filter(Boolean);
+    return `<li class="row${it.isDone ? ' done' : ''}" data-n="${it.n}">`
+      + `<div class="line" role="button" tabindex="0" aria-expanded="false" title="${esc(it.task)}">`
+      + `<span class="ty" title="${esc(t.label)}: ${esc(t.about)}">${t.emoji}</span><span class="hl">${esc(it.headline || it.task)}</span>`
+      + (it.said_url ? `<a class="sd" href="${esc(it.said_url)}" title="The conversation that asked for this">💬</a>` : '')
+      + (it.priority && !it.isDone ? `<span class="pr" title="Priority ${it.priority} of 5 (1 the most needed)">${it.priority}</span>` : '')
+      + (it.isDone ? `<span class="st">${stateOf(it)}</span>` : '')
+      // Who, unless the group or the filter says it already (one person's own, and theirs alone).
+      + (state.group !== 'who' && it.whoKeys.length && !(it.whoKeys.length === 1 && it.whoKeys[0] === state.who)
+         ? `<span class="wh">${it.whoKeys.map(whoName).join(', ')}</span>` : '')
+      + (state.group !== 'mood' ? `<span class="md">#${esc(it.mood_title)}</span>` : '') + '</div>'
+      + `<div class="more"><div>${rich(it.task)}</div>` + (it.note ? `<div class="note">${rich(it.note)}</div>` : '')
+      + (href ? `<div><a href="${esc(href)}" target="_blank" rel="noopener">${esc(it.link)}</a></div>` : '')
+      + `<div class="meta">${meta.map(m => `<span>${m}</span>`).join('')}</div></div></li>`;
+  }
+
+  const sorts = {
+    need: (a, b) => (a.rank[0] - b.rank[0]) || (a.rank[1] - b.rank[1]) || (a.n - b.n),
+    new: (a, b) => a.n - b.n,
+    old: (a, b) => b.n - a.n,
+  };
+  function groupsOf(items) {
+    if (!state.group) return [{ key: '', label: '', items }];
+    const by = new Map();
+    const put = (key, it) => { if (!by.has(key)) by.set(key, []); by.get(key).push(it); };
+    for (const it of items) {
+      if (state.group === 'type') put(it.type, it);
+      else if (state.group === 'mood') put(it.mood, it);
+      else for (const w of (it.whoKeys.length ? it.whoKeys : [''])) put(w, it);
+    }
+    const groups = [...by].map(([key, list]) => {
+      if (state.group === 'type') { const t = TYPES[key] || {}; return { key, label: `${t.emoji || ''} ${esc(t.label || key)}`, about: t.about, items: list, at: NEED.indexOf(key) }; }
+      if (state.group === 'mood') return { key, label: '#' + esc(list[0].mood_title), items: list, at: -list.length };
+      return { key, label: key === '' ? 'anyone’s to take' : key === viewer ? 'you' : esc(key), items: list,
+               at: key === viewer ? -1e9 : key === '' ? 1e9 : -list.length };
+    });
+    return groups.sort((a, b) => (a.at - b.at) || String(a.key).localeCompare(String(b.key)));
+  }
+
+  function draw() {
+    const q = ($('todoSearch').value || '').trim().toLowerCase();
+    const inStatus = it => state.status === 'all' || (state.status === 'done') === it.isDone;
+    const inWho = it => state.who === '*' || (state.who === '' ? !it.whoKeys.length : it.whoKeys.includes(state.who));
+    const base = ITEMS.filter(it => inStatus(it) && (!state.mood || it.mood === state.mood) && (!q || it.search.includes(q)));
+    // The who buttons count what the other filters leave of each person's; the type buttons, what the chosen person's are.
+    const typed = base.filter(it => !state.type || it.type === state.type);
+    const counts = new Map();
+    for (const it of typed) for (const w of (it.whoKeys.length ? it.whoKeys : [''])) counts.set(w, (counts.get(w) || 0) + 1);
+    const people = [...counts].sort((a, b) => (b[0] === viewer) - (a[0] === viewer) || (a[0] === '') - (b[0] === '') || b[1] - a[1]);
+    if (state.who !== '*' && !counts.has(state.who)) people.unshift([state.who, 0]);
+    const chip = (key, label, n) => `<button type="button" data-who="${esc(key)}" class="${key === state.who ? 'active' : ''}">${label}<span class="n">${n}</span></button>`;
+    $('todoWhos').innerHTML = chip('*', 'everyone', typed.length)
+      + people.map(([w, n]) => chip(w, w === '' ? 'anyone' : w === viewer ? 'you' : esc(w), n)).join('');
+    const mine = base.filter(inWho);
+    document.querySelectorAll('.t-btn').forEach(b => {
+      const n = mine.filter(it => it.type === b.dataset.type).length;
+      b.querySelector('.n').textContent = n;
+      b.classList.toggle('none', !n);
+      b.classList.toggle('active', b.dataset.type === state.type);
+    });
+    const shown = mine.filter(it => !state.type || it.type === state.type).sort(sorts[state.sort] || sorts.need);
+    const all = ITEMS.filter(inStatus).length;
+    const narrowed = shown.length !== all;
+    $('todoStats').innerHTML = `${shown.length}${narrowed ? ' of ' + all : ''} ${state.status === 'all' ? '' : state.status + ' '}item${all === 1 ? '' : 's'}`
+      + (narrowed ? ' · <a id="todoClear" role="button" tabindex="0">show them all</a>' : '');
+    const strip = $('deployStrip');
+    if (strip) strip.hidden = state.type !== 'deploy';
+    if (!ITEMS.length) return;
+    $('todoGroups').innerHTML = groupsOf(shown).map(g => {
+      const list = `<ul class="todolist">${g.items.map(row).join('')}</ul>`;
+      return state.group ? `<details class="group" open data-group="${esc(g.key)}"><summary>${g.label}<span class="n">${g.items.length}</span>`
+        + (g.about ? `<span class="about">${esc(g.about)}</span>` : '') + `</summary>${list}</details>`
+        : `<details class="group" open><summary>All<span class="n">${g.items.length}</span></summary>${list}</details>`;
+    }).join('') || '<p class="none">Nothing here: nothing is left by these filters.</p>';
+  }
+  function set(change) { Object.assign(state, change); keep(); sync(); draw(); }
+  function sync() {
+    $('todoMoodFilter').value = state.mood; $('todoGroup').value = state.group; $('todoSort').value = state.sort;
+    if ($('todoMoodFilter').value !== state.mood) state.mood = '';  // a Mood with no list any more
+    document.querySelectorAll('.f-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === state.status));
+  }
+
+  $('todoSearch').addEventListener('input', draw);
+  $('todoMoodFilter').addEventListener('change', e => set({ mood: e.target.value }));
+  $('todoGroup').addEventListener('change', e => set({ group: e.target.value }));
+  $('todoSort').addEventListener('change', e => set({ sort: e.target.value }));
+  document.querySelectorAll('.f-btn').forEach(b => b.addEventListener('click', () => set({ status: b.dataset.filter })));
+  // One type at a time; pressed again, every type. In the address too (#type=deploy), so a link opens on it.
+  document.querySelectorAll('.t-btn').forEach(b => b.addEventListener('click', () => {
+    const type = state.type === b.dataset.type ? '' : b.dataset.type;
+    history.replaceState(null, '', type ? '#type=' + type : location.pathname + location.search);
+    set({ type });
+  }));
+  $('todoWhos').addEventListener('click', e => {
+    const b = e.target.closest('button[data-who]');
+    if (b) set({ who: state.who === b.dataset.who ? '*' : b.dataset.who });
+  });
+  function clear() {
+    $('todoSearch').value = '';
+    history.replaceState(null, '', location.pathname + location.search);
+    set({ type: '', who: '*', mood: '' });
+  }
+  $('todoStats').addEventListener('click', e => { if (e.target.id === 'todoClear') clear(); });
+  $('todoStats').addEventListener('keydown', e => { if (e.target.id === 'todoClear' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); clear(); } });
+  // A line opens to its task as written, its note and its link; again, it closes.
+  function toggle(line) {
+    const open = line.parentElement.classList.toggle('open');
+    line.setAttribute('aria-expanded', String(open));
+  }
+  // A link on the line (the 💬 of what asked for it) is followed, not a press on the line.
+  $('todoGroups').addEventListener('click', e => {
+    const line = e.target.closest('.row .line');
+    if (line && !e.target.closest('a[href]')) toggle(line);
+  });
+  $('todoGroups').addEventListener('keydown', e => {
+    const line = e.target.closest('.row .line');
+    if (line && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(line); }
+  });
+  sync(); draw();
 })();
 </script>
 </body>

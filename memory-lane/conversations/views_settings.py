@@ -67,8 +67,8 @@ def makers_offered():
 
 RECENT_BUNDLES = 8  # the newest bundles made, shown atop the instructions bundles section
 
-SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'ramp', 'tasks', 'journals', 'verify', 'hooks', 'traffic',
-            'settings')
+SECTIONS = ('tidings', 'polls', 'prompts', 'status', 'todo', 'deploys', 'ramp', 'tasks', 'journals', 'verify',
+            'hooks', 'traffic', 'settings')
 
 
 def _opened_on_its_own(request):
@@ -113,16 +113,42 @@ def section(name):
 
 @section('todo')
 def todo_page(request):
-    """Every Mood's to-do items combined in reverse chronological order (services/todo.py).
-    Justin, 30 Oct: another page combining all to-dos across all Moods."""
+    """Every Mood's to-do items (services/todo.py), one line each: grouped, sorted and filtered on the page.
+    Justin, 30 Oct: another page combining all to-dos across all Moods; 21 Nov: "sorting, filtration, obvious
+    types, _realllly_ terse headlines"."""
     device = mood_auth.device_for(request)
-    from .services import todo
+    from .services import deploys, todo
+    from .services.mood_view import pickipedia_url
     state = todo.all_todos()
+    # The deploy items read as boxes, not as asks unaware of each other (Justin, 25 Nov): the strip above the
+    # list, shown when the deploy type is chosen; /deploys/ has the whole queue.
+    try:
+        queue = deploys.queue()
+    except Exception:  # noqa: BLE001 -- githouse unreadable: the list stands on its own
+        queue = {}
     return render(request, 'conversations/mood_todo.html', {
         'todos': state,
-        'viewer': device.entity_id if device else '',
+        'queue': queue,
+        'wiki': pickipedia_url(),
+        'viewer': device.entity_id if device else getattr(settings, 'PREVIEW_VIEWER', ''),
         'embed': True,
     })
+
+
+@section('deploys')
+def deploys_page(request):
+    """The deploy queue: one box, at most, for each server, and what each is waiting for (services/deploys.py).
+    Justin, #ramp, 25 Nov: "deploys separated, and at-most one for each box? Show which PRs are already merged
+    and awaiting deploy?\""""
+    from .services import deploys
+    return render(request, 'conversations/mood_deploys.html', {'queue': deploys.queue(), 'embed': True})
+
+
+@require_GET
+def api_deploy_queue(request):
+    """The deploy queue: {"boxes", "owed", "ready", "asks"} (services/deploys.py)."""
+    from .services import deploys
+    return JsonResponse(deploys.queue())
 
 
 @require_GET
@@ -229,22 +255,12 @@ def hooks_page(request):
     return render(request, 'conversations/mood_hooks.html', {'state': wiki_hooks.state(), 'embed': True})
 
 
-# The traffic dashboards: GoAccess over each site's Caddy access log (maybelle-config, roles/goaccess), public.
-# Caddy answers /stats/ itself on magenta's name, so this section is /traffic/ (Justin, 12 Nov).
-TRAFFIC = (
-    {'name': 'magenta', 'host': 'magenta.cryptograss.live',
-     'what': 'This site: the Moods, Tidings, the ramp, and every poll the open tabs make.'},
-    {'name': 'PickiPedia', 'host': 'pickipedia.xyz',
-     'what': 'The wiki, and Rabbithole beside it.'},
-)
-
-
 @section('traffic')
 def traffic_page(request):
-    """Links to the traffic dashboards, with a few live numbers from each (Justin, #performance, 12 Nov: "a stats
-    page in the chevron menu, from which those are linked"). The numbers come to the reader's browser straight
-    from each dashboard's own WebSocket; nothing here is asked of the server."""
-    return render(request, 'conversations/mood_traffic.html', {'sites': TRAFFIC, 'embed': True})
+    """Each site's traffic in three windows, and the link to its whole dashboard (services/traffic.py; Justin,
+    #performance, 12 and 22 Nov). Caddy answers /stats/ itself on magenta's name, so this section is /traffic/."""
+    from .services import traffic
+    return render(request, 'conversations/mood_traffic.html', {'traffic': traffic.state(), 'embed': True})
 
 
 @section('verify')
@@ -327,7 +343,7 @@ def tidings_page(request):
         'stream': tidings.stream(state['pictures'], state['releases']),
         'order': order,
         'picture_cap': tidings.PICTURES,
-        'viewer': device.entity_id if device else '',
+        'viewer': device.entity_id if device else getattr(settings, 'PREVIEW_VIEWER', ''),
         'embed': True,
     })
 
@@ -527,6 +543,14 @@ def api_usage_kinds(request):
 def api_prompts(request):
     from .services import tidings
     return JsonResponse(tidings.prompts_state())
+
+
+@require_GET
+def api_traffic(request):
+    """Each site's traffic in three windows, as its own box counted it (services/traffic.py): what the stats
+    section draws, and what it asks again for while it's open."""
+    from .services import traffic
+    return JsonResponse(traffic.state())
 
 
 @require_GET
