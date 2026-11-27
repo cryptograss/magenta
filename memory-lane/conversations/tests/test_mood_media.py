@@ -62,6 +62,22 @@ def drawn(width, height, form='JPEG', alpha=False, frames=1, blocks=False, **how
     return out.getvalue()
 
 
+class PicturesInTheThreadTest(TestCase):
+    """Justin, 27 Nov 2026: a picture is shown fairly small and opens in the lightbox; several in a row,
+    in one message or across messages, are a gallery; and how big one goes up can be chosen first."""
+
+    def test_the_page_carries_the_gallery_and_the_size_choice(self):
+        page = self.client.get('/moods/').content.decode()
+        self.assertIn('.turn .body img { display: block; max-width: 100%; max-height: 260px;', page)  # small
+        self.assertIn('.turn .body .gallery {', page)                      # several in a message: a strip
+        self.assertIn('.turn.picsonly + .turn.picsonly.cont', page)        # several messages in a row: a grid
+        self.assertIn('function galleryise(el)', page)
+        self.assertIn('function picturesAround(a)', page)                  # the lightbox steps through them
+        self.assertIn("id=\"picSize\"", page)                             # how big it goes up, chosen first
+        self.assertIn('async function atMost(file, edge)', page)
+        self.assertIn("localStorage.getItem('pic-max-edge')", page)
+
+
 class ShrinkToFitTest(TestCase):
     """A picture bigger than we keep is shrunk on the way in, not refused (Justin, 27 Nov 2026:
     "images larger than 8mb not allowed? They oughts be")."""

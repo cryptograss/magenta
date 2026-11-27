@@ -1493,7 +1493,38 @@
   .turn .body .hearagain { font: inherit; font-size: 12.5px; color: var(--accent); background: none; border: 1px solid var(--line);
                            border-radius: 12px; padding: 1px 10px; margin: 2px 0 4px; cursor: pointer; }
   .turn .body .hearagain:disabled { color: var(--muted); cursor: default; }
-  .turn .body img { display: block; max-width: 100%; max-height: 420px; border-radius: 6px; border: 1px solid var(--line); }
+  .turn .body img { display: block; max-width: 100%; max-height: 260px; border-radius: 6px; border: 1px solid var(--line); cursor: zoom-in; }
+  /* Several pictures, in a message or in a run of them: a strip of tiles of one height, pressed to open
+     (Justin, 27 Nov 2026: "show it fairly small and then of course people can click to bring it up in a
+     lightbox modal ... let's show them in a gallery"). */
+  .turn .body .gallery { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+  .turn .body .gallery a.img { margin: 0; line-height: 0; }
+  .turn .body .gallery img { height: 132px; width: auto; max-width: 46vw; object-fit: cover; }
+  @media (min-width: 700px) { .turn .body .gallery img { height: 150px; max-width: 320px; } }
+  /* A run of nothing-but-pictures messages sits together, so it reads as one gallery. */
+  /* Messages in a row that are nothing but pictures: tiles of one height, pressed together, so the run
+     reads as one gallery. Each stays its own message, with its own link and its own ⋯. */
+  /* The run flows: each message is its own tile, side by side, wrapping as a gallery does. The first
+     keeps its heading, in the band above the tiles. */
+  .turn.picsonly:has(+ .turn.picsonly.cont), .turn.picsonly + .turn.picsonly.cont {
+    display: inline-block; vertical-align: top; position: relative; border-top: 0;
+    padding: 20px 0 2px 0; margin: 0 4px 0 0; }
+  .turn.picsonly:has(+ .turn.picsonly.cont) > .who { position: absolute; top: 0; left: 0; margin: 0; white-space: nowrap; }
+  .turn.picsonly:has(+ .turn.picsonly.cont) .body img,
+  .turn.picsonly + .turn.picsonly.cont .body img { height: 132px; width: auto; max-width: 46vw; object-fit: cover; }
+  @media (min-width: 700px) {
+    .turn.picsonly:has(+ .turn.picsonly.cont) .body img,
+    .turn.picsonly + .turn.picsonly.cont .body img { height: 150px; max-width: 320px; }
+  }
+  /* On a phone, two to a row, square-cropped: a gallery rather than a column of letterboxes. */
+  @media (max-width: 699px) {
+    .turn.picsonly:has(+ .turn.picsonly.cont), .turn.picsonly + .turn.picsonly.cont {
+      width: calc(50% - 8px); margin-left: 0; padding-left: 0; border-left-width: 0; }
+    .turn.picsonly:has(+ .turn.picsonly.cont) .body img,
+    .turn.picsonly + .turn.picsonly.cont .body img { width: 100%; height: 120px; max-width: none; }
+    .turn .body .gallery img { height: 120px; max-width: calc(50vw - 24px); }
+  }
+  .turn.picsonly .body a.img { margin: 0 0 2px; }
   /* A picture, large, over everything: its caption, and its page. */
   /* The small player that follows you (Justin, 3 Nov): a video playing on a Tidings page, carried along when
      you browse away, playing on from the same moment. Its title takes you back there; ✕ closes it; its bar
@@ -1552,6 +1583,14 @@
                      background: rgba(255,255,255,.08); color: #8fe3a5; cursor: pointer; }
   #lightbox .lbwho[hidden] { display: none; }
   #lightbox .lbwho:disabled { opacity: .7; cursor: default; }
+  #lightbox .step { position: absolute; top: 50%; transform: translateY(-50%); font-size: 34px; line-height: 1; color: #fff;
+                    background: rgba(0,0,0,.35); border: 0; border-radius: 50%; width: 52px; height: 52px; cursor: pointer; }
+  #lightbox .step:hover { background: rgba(0,0,0,.6); }
+  #lightbox .step[hidden] { display: none; }
+  #lightbox .back { left: 10px; }
+  #lightbox .on { right: 10px; }
+  #lightbox .which { color: #ccc; font-size: 13px; margin-left: 10px; }
+  #lightbox .which[hidden] { display: none; }
   #lightbox .close { position: absolute; top: 10px; right: 14px; font-size: 26px; line-height: 1; color: #fff; background: none;
                      border: 0; cursor: pointer; padding: 6px; }
   .turn .body a.img, .work .thumbs a, .step-detail .shots a { cursor: zoom-in; }
@@ -2069,7 +2108,8 @@
   <a class="gear" href="/settings/" data-section="settings" title="Settings: how each emergent carries itself in each Mood" aria-label="Settings">⚙</a>
 </header>
 <div id="lightbox" hidden role="dialog" aria-label="Picture"><button type="button" class="close" aria-label="Close">✕</button>
-  <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
+  <button type="button" class="step back" aria-label="The one before" hidden>‹</button><button type="button" class="step on" aria-label="The next one" hidden>›</button>
+  <div class="lbpic"><img alt=""><div class="lbfaces"></div></div><div class="lbfoot"><span class="lbcap"></span><span class="which" hidden></span><a class="lbpage" target="_blank" rel="noopener"></a><button type="button" class="lbwho" hidden>👤 Who's in it?</button><button type="button" class="lbup" hidden>→ PickiPedia</button></div></div>
 <datalist id="facePeople"></datalist>
 <div id="devicesBox" hidden role="dialog" aria-label="Your devices">
   <div class="head"><b id="devicesTitle">Your devices</b> <button type="button" id="devicesClose">close</button></div>
@@ -2199,7 +2239,10 @@
     <div id="activity"><span id="activityText"></span><button type="button" id="stopBtn" title="Stop it, as Esc does in a terminal (Esc in the message box does the same). What was said stays; add to it and it reads both." hidden>■ stop</button></div>
     <div class="hush" id="hush"></div>
     <div id="licenseBar" hidden><span class="what"></span> <button type="button" id="licenseFlip"></button>
-      <label id="stripLocation" title="Phone photos carry where and when they were taken (GPS), and the camera. They go with the picture unless this is ticked; ticked, all of it is removed before anyone sees it (a HEIC photo's carried into its JPEG)."><input type="checkbox"> Remove photo details (place, time, camera)</label></div>
+      <label id="stripLocation" title="Phone photos carry where and when they were taken (GPS), and the camera. They go with the picture unless this is ticked; ticked, all of it is removed before anyone sees it (a HEIC photo's carried into its JPEG)."><input type="checkbox"> Remove photo details (place, time, camera)</label>
+      <label id="picSize" title="How big the picture goes up: taken down to this on its long side before it is sent, here in your browser. Some photos don't need to be huge (Justin, 27 Nov 2026).">at most <select aria-label="How big a picture goes up">
+        <option value="0">full size</option><option value="2560">2560 px</option><option value="1600">1600 px</option><option value="1200">1200 px</option><option value="800">800 px</option>
+      </select></label></div>
     <div id="videoPanel" hidden aria-live="polite"></div>
     <div id="shareCard" hidden><span class="what"></span><label class="into">into <select id="shareMood" aria-label="Which Mood it goes to"></select></label><button type="button" id="shareHere"></button><button type="button" id="shareDrop" title="Don't share it" aria-label="Don't share it">✕</button></div>
     <div id="replying" hidden><span class="what"></span><button type="button" id="replyCancel" title="Don't reply (Esc)" aria-label="Cancel the reply">✕</button></div>
@@ -3650,6 +3693,7 @@
   const LIGHTBOX_LINKS = '.turn .body a.img, .work .thumbs a, .step-detail .shots a';
   function closeLightbox(byBack) {
     if (lightbox.hidden) return;
+    lightbox._among = null;
     lightbox.hidden = true;
     lightbox.classList.remove('whole');
     lightbox.querySelector('img').removeAttribute('src');
@@ -3661,7 +3705,45 @@
   lightbox.querySelector('img').addEventListener('click', e => { e.stopPropagation(); lightbox.classList.toggle('whole'); });
   // {full: the picture, href: its page (or the file), alt, caption, onwiki: its PickiPedia page if it's there,
   // upload: what "→ PickiPedia" sends it up as, if it may go}: from the thread, or from Tidings' frame.
+  // The pictures a clicked one is among: the ones beside it in its message, and in the messages of
+  // nothing-but-pictures it runs with -- so ‹ › step through the whole gallery (Justin, 27 Nov 2026).
+  function picturesAround(a) {
+    const turn = a.closest('.turn');
+    if (!turn) return [a];
+    let first = turn;
+    while (first.classList.contains('picsonly') && first.previousElementSibling
+           && first.previousElementSibling.classList.contains('picsonly')
+           && first.classList.contains('cont')) first = first.previousElementSibling;
+    const among = [];
+    for (let t = first; t; t = t.nextElementSibling) {
+      if (t !== first && !(t.classList.contains('picsonly') && t.classList.contains('cont'))) break;
+      among.push(...t.querySelectorAll('.body a.img'));
+      if (!t.classList.contains('picsonly')) break;
+    }
+    return among.includes(a) ? among : [a];
+  }
+  function stepTo(i) {
+    const among = lightbox._among || [];
+    if (!among.length) return;
+    const a = among[(i + among.length) % among.length];
+    if (a) a.click();
+  }
+  lightbox.querySelector('.back').addEventListener('click', e => { e.stopPropagation(); stepTo(lightbox._at - 1); });
+  lightbox.querySelector('.on').addEventListener('click', e => { e.stopPropagation(); stepTo(lightbox._at + 1); });
+  document.addEventListener('keydown', e => {
+    if (lightbox.hidden || !(lightbox._among || []).length) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); stepTo(lightbox._at - 1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); stepTo(lightbox._at + 1); }
+  });
   function openPicture(o) {
+    // Where it sits among the others, if it was opened from the thread: ‹ › and "3 of 7".
+    const among = o.among || [];
+    lightbox._among = among.length > 1 ? among : [];
+    lightbox._at = o.at || 0;
+    lightbox.querySelector('.back').hidden = lightbox.querySelector('.on').hidden = !lightbox._among.length;
+    const which = lightbox.querySelector('.which');
+    which.hidden = !lightbox._among.length;
+    which.textContent = lightbox._among.length ? `${lightbox._at + 1} of ${lightbox._among.length}` : '';
     lightbox.querySelector('img').src = o.full;
     lightbox.querySelector('img').alt = o.alt || '';
     lightbox.querySelector('.lbcap').textContent = o.caption || '';
@@ -3685,10 +3767,11 @@
     const next = a.nextElementSibling;
     // Under the picture in the thread: "→ PickiPedia" (here too), or where it already is on the wiki.
     const topp = next && next.classList.contains('topp') ? next : null;
+    const among = a.closest('.turn') ? picturesAround(a) : [];
     openPicture({ full: a.dataset.full || a.href, href: a.href, alt: img ? img.alt : '',
                   caption: next && next.classList.contains('caption') ? next.textContent : '',
                   onwiki: next && next.classList.contains('onwiki') ? next.href : '',
-                  upload: topp && uploadOf(topp) });
+                  upload: topp && uploadOf(topp), among, at: Math.max(0, among.indexOf(a)) });
   });
   lightbox.querySelector('.lbup').addEventListener('click', e => {
     e.stopPropagation();
@@ -4514,6 +4597,36 @@
     body.appendChild(fold);
     tailMedia.forEach(n => body.appendChild(n));
   }
+  // Pictures in a message: shown small, and several of them as one strip of tiles, each pressed to
+  // open large (Justin, 27 Nov 2026). A paragraph holding nothing but pictures is one of theirs; words
+  // around them keep their place, and only the pictures that stand together are gathered.
+  function picsOnly(p) {
+    return p.tagName === 'P' && p.querySelector('a.img')
+      && ![...p.childNodes].some(n => (n.nodeType === 3 && n.textContent.trim())
+                                   || (n.nodeType === 1 && !n.matches('a.img, br')));
+  }
+  function galleryise(el) {
+    const body = el.querySelector('.body');
+    if (!body) return;
+    const blocks = [...body.children];
+    let run = [];
+    const gather = () => {
+      if (run.length > 1 || (run.length === 1 && run[0].querySelectorAll('a.img').length > 1)) {
+        const strip = document.createElement('div');
+        strip.className = 'gallery';
+        run[0].before(strip);
+        for (const p of run) { for (const a of p.querySelectorAll('a.img')) strip.append(a); p.remove(); }
+      }
+      run = [];
+    };
+    for (const block of blocks) picsOnly(block) ? run.push(block) : gather();
+    gather();
+    // A message that is nothing but pictures: one of a run reads as a gallery with the next (CSS .picsonly).
+    if (body.querySelector('a.img') && ![...body.children].some(b => !b.classList.contains('gallery') && !picsOnly(b))) {
+      el.classList.add('picsonly');
+    }
+  }
+
   function turnEl(t, isNew) {
     const el = document.createElement('article');
     const at = new Date(t.created_at).getTime();
@@ -4575,6 +4688,7 @@
       + (cont ? edited : '');
     if (t.deleted) el.classList.add('deleted');
     markEmoji(el.querySelector('.body'));
+    galleryise(el);
     el._text = t.text; el._at = t.created_at;
     el._links = t.links || []; el._tidings = t.tidings || [];
     el.dataset.sender = t.sender;
@@ -9059,12 +9173,57 @@
     picturesSettled();
   }
   const megabytes = n => (n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0) + ' MB';
+  // How big a picture goes up: taken down to this on its long side here, before it is sent, so a phone
+  // sends less and a photo that needn't be huge isn't (Justin, 27 Nov 2026). Remembered per browser.
+  // Done with a canvas, so only what a browser can draw is touched: a HEIC goes up as it is, and the
+  // server turns it into a JPEG (services/media.py). A moving GIF is left alone: drawing it stills it.
+  const picSizeSel = document.querySelector('#picSize select');
+  try { picSizeSel.value = localStorage.getItem('pic-max-edge') || '0'; } catch (e) {}
+  if (!picSizeSel.value) picSizeSel.value = '0';
+  function picEdge() { return Number(picSizeSel.value) || 0; }
+  async function atMost(file, edge) {
+    if (!edge || !/^image\/(jpeg|png|webp)$/.test(file.type || '')) return file;
+    try {
+      const drawn = await createImageBitmap(file);
+      if (Math.max(drawn.width, drawn.height) <= edge) { drawn.close(); return file; }
+      const scale = edge / Math.max(drawn.width, drawn.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(drawn.width * scale));
+      canvas.height = Math.max(1, Math.round(drawn.height * scale));
+      canvas.getContext('2d').drawImage(drawn, 0, 0, canvas.width, canvas.height);
+      drawn.close();
+      const type = file.type === 'image/png' ? 'image/png' : file.type;  // a PNG keeps any transparency
+      const smaller = await new Promise(done => canvas.toBlob(done, type, 0.85));
+      if (!smaller || smaller.size >= file.size) return file;  // no smaller for the trouble: as it was
+      return new File([smaller], file.name || 'picture', { type });
+    } catch (e) { return file; }  // a picture this browser can't draw goes up as it is
+  }
+  // Pictures already in the box, sent again the way that's now chosen (the size, or the photo details).
+  async function resendTray() {
+    for (const a of tray.filter(x => x.mine && x.file && x.markdown)) {
+      try {
+        const body = await sendPicture(await atMost(a.file, picEdge()), null, null, a.mood);
+        sharing.delete(a.sha);
+        sharing.add(body.sha);
+        Object.assign(a, { sha: body.sha, markdown: body.markdown, url: urlOf(body.markdown) });
+        if (licenseNow !== body.license) {  // the new copy goes out under the license already chosen
+          await fetch(`/api/media/${body.sha}/license/`, { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify({ license: licenseNow }) });
+        }
+      } catch (e) { showError('image: ' + e.message); }
+    }
+    saveDraft(); showLicense(); renderTray();
+  }
+  picSizeSel.addEventListener('change', async () => {
+    try { localStorage.setItem('pic-max-edge', picSizeSel.value); } catch (e) {}
+    await resendTray();
+  });
   async function upload(file) {
     const a = { file, name: file.name || 'picture', preview: URL.createObjectURL(file), pct: 0, mood: current };
     tray.push(a); flying.add(a);
     renderTray();
     try {
-      const body = await sendPicture(file, pct => { a.pct = pct; attEl(a); renderSendWait(); }, a);
+      const body = await sendPicture(await atMost(file, picEdge()), pct => { a.pct = pct; attEl(a); renderSendWait(); }, a);
       if (a.dropped) return;
       Object.assign(a, { sha: body.sha, markdown: body.markdown, url: urlOf(body.markdown), mine: !!body.mine, pct: 100 });
       // Too big to keep as it came, so it was shrunk on the way in (services/media.fit_bytes): said, not silent.
@@ -9090,12 +9249,12 @@
     store.set('draft:' + a.mood, d);
   }
   // Sent as the bytes go, so it can say how far it's got (fetch can't).
-  function sendPicture(file, onProgress, holder) {
+  function sendPicture(file, onProgress, holder, intoMood) {
     const keep = stripBox.checked ? '' : '?keep=location';
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       if (holder) holder.xhr = xhr;
-      xhr.open('POST', '/api/moods/' + encodeURIComponent((holder && holder.mood) || current) + '/media/' + keep);
+      xhr.open('POST', '/api/moods/' + encodeURIComponent((holder && holder.mood) || intoMood || current) + '/media/' + keep);
       xhr.setRequestHeader('X-CSRFToken', csrf());
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
       xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(Math.round(100 * e.loaded / e.total)); };
@@ -9119,19 +9278,7 @@
   try { stripBox.checked = localStorage.getItem('keep-location') === '0'; } catch (e) {}
   stripBox.addEventListener('change', async () => {
     try { localStorage.setItem('keep-location', stripBox.checked ? '0' : '1'); } catch (e) {}
-    for (const a of tray.filter(x => x.mine && x.file && x.markdown)) {
-      try {
-        const body = await sendPicture(a.file);
-        sharing.delete(a.sha);
-        sharing.add(body.sha);
-        Object.assign(a, { sha: body.sha, markdown: body.markdown, url: urlOf(body.markdown) });
-        if (licenseNow !== body.license) {  // the new copy goes out under the license already chosen
-          await fetch(`/api/media/${body.sha}/license/`, { method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }, body: JSON.stringify({ license: licenseNow }) });
-        }
-      } catch (e) { showError('image: ' + e.message); }
-    }
-    saveDraft(); showLicense();
+    await resendTray();
   });
   // Pictures of yours in the box go out CC BY-SA 4.0 unless you make them CC0:
   // said here as they're attached, and changeable until sent (api_media_license).
