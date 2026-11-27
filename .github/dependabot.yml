@@ -1,0 +1,39 @@
+# Dependabot: one pull request per wave, not one per package (Justin, #ramp, 15 Nov: "a boatload of
+# dependency CBs open across moods and from dependabot").
+#
+# magenta has no scheduled version updates — only GitHub's security updates, which arrive whether or
+# not this file exists. Two things here:
+#   - open-pull-requests-limit: 0 keeps it that way: it turns version updates off, and security
+#     updates have their own cap of 10, which that limit does not touch.
+#   - the group gathers each wave of security updates for a directory into a single pull request,
+#     so requirements.txt is resolved once instead of several times against itself.
+# applies-to matters: a group without it covers version updates only, which are off here.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/memory-lane"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: "pip"
+    directory: "/memory-lane/faces"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: "pip"
+    directory: "/memory-lane/scrubber"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
