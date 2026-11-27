@@ -176,6 +176,9 @@ urlpatterns = [
     path('api/tokens/', views_moods.api_tokens, name='api_tokens'),
     path('moods/media/<str:sha256>.<str:ext>', views_moods.media_file, name='mood_media'),
     path('moods/media/<str:sha256>.<str:ext>/preview', views_moods.media_preview, name='mood_media_preview'),
+    # The same picture under a size, for looking at: 100 KB as a Mood shows it, 800 KB as its
+    # lightbox opens it (services/media.SHOWN_AT).
+    path('moods/media/<str:sha256>.<str:ext>/fit/<int:kb>', views_moods.media_fit, name='mood_media_fit'),
     path('api/media/<str:sha256>/pickipedia/', views_auth.api_media_to_pickipedia, name='api_media_to_pickipedia'),
     path('api/moods/<slug:slug>/video/ticket/', views_auth.api_video_ticket, name='api_video_ticket'),
     path('api/moods/<slug:slug>/video/draft/', views_auth.api_video_draft, name='api_video_draft'),
@@ -185,6 +188,8 @@ urlpatterns = [
     path('api/media/<str:sha256>/license/', views_auth.api_media_license, name='api_media_license'),
     # Where media lived before Moods were Moods: the record's text still links here.
     path('motions/media/<str:sha256>.<str:ext>', views_moods.media_file, name='mood_media_before'),
+    path('motions/media/<str:sha256>.<str:ext>/fit/<int:kb>', views_moods.media_fit,
+         name='mood_media_fit_before'),
     path('api/wikilinks/', views_moods.api_wikilinks, name='api_wikilinks'),
     path('api/mentions/<slug:name>/', views_moods.api_mentions, name='api_mentions'),
     path('api/wiki/preview/', views_moods.api_wiki_preview, name='api_wiki_preview'),

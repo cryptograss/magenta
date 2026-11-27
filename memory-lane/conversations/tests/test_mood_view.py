@@ -64,7 +64,7 @@ class RenderHtmlTest(TestCase):
                    'ul': set(), 'ol': set(), 'li': set(), 'h4': set(), 'table': set(), 'thead': set(),
                    'tbody': set(), 'tr': set(), 'th': set(), 'td': set(),
                    'a': {'href', 'class', 'target', 'rel', 'data-yarn', 'data-who', 'data-mood', 'data-reveal', 'data-full',
-                         'data-kept', 'data-still'},
+                         'data-original', 'data-kept', 'data-still'},
                    'span': {'class', 'data-who'},
                    'img': {'src', 'alt', 'loading'},
                    'video': {'controls', 'preload', 'playsinline', 'src', 'poster', 'data-hls', 'data-src'},
@@ -81,8 +81,10 @@ class RenderHtmlTest(TestCase):
                         case.assertEqual(value, fixed[name], (source, out))
                     if name == 'data-yarn':  # the page builds a player from it
                         case.assertRegex(value, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', (source, out))
-                    if name in ('href', 'src', 'poster', 'data-full'):  # decoded: entities are fine
-                        case.assertRegex(value, r'^(https?://|/moods/media/[0-9a-f]{64}\.(png|jpg|gif|webp)$'
+                    # A picture's own address, or the same picture under a size to look at (/fit/<kb>).
+                    if name in ('href', 'src', 'poster', 'data-full', 'data-original'):  # decoded: entities are fine
+                        case.assertRegex(value, r'^(https?://|/(moods|motions)/media/[0-9a-f]{64}\.(png|jpg|gif|webp)'
+                                                r'(/fit/(100|800))?$'
                                                 r'|/moods/[a-z0-9-]+/(#m-[0-9a-f-]{36})?$)', (source, out))
                     if name in ('data-hls', 'data-src'):  # the page plays it: delivery-kid's gateway, nothing else
                         case.assertRegex(value, r'^https://ipfs\.delivery-kid\.cryptograss\.live/ipfs/[A-Za-z0-9]{46,64}'
