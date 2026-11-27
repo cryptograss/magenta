@@ -108,7 +108,10 @@ def _by_kind(asks):
 _NAMED_PULL = re.compile(r'(?:\b([A-Za-z][\w.-]*)( ?))?#(\d+)\b')
 # A mergeable it names, <repo>:<branch> (Cryptograss:Moods/ramp/Plan, section 1): "magenta:re/foo". The branch
 # has a slash, its owner's prefix, so "note: this" and a URL's "https://" name nothing.
-_NAMED_BRANCH = re.compile(r'\b([A-Za-z][\w.-]*):([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+)')
+# A branch never ends in a dot (git refuses such a ref), so a sentence's full stop is not part of its name:
+# "After maybelle-config:magent/mood-preview-servers." named magent/mood-preview-servers. -- no such branch, which
+# githouse reads as gone, which reads as nothing left to wait for (magent, #ramp, 27 Nov).
+_NAMED_BRANCH = re.compile(r'\b([A-Za-z][\w.-]*):([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]*[A-Za-z0-9_-])+)')
 _REPOS = {'magenta': 'magenta', 'pr': 'magenta', 'maybelle': 'maybelle-config', 'maybelle-config': 'maybelle-config',
           'pickipedia': 'pickipedia', 'pickipedia-mcp': 'pickipedia-mcp', 'arthel': 'arthel', 'rabbithole': 'rabbithole'}
 
