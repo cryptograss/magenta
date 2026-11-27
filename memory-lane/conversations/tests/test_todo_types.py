@@ -166,6 +166,28 @@ class DeployTest(TestCase):
         self.assertEqual(tt._servers('Then redeploy hunter and pickipedia'), ['hunter', 'pickipedia'])
         self.assertEqual(tt._servers('Deploy MemoryCommitments from the cryptograss wallet'), [])
 
+    def test_the_pickipedia_box_is_named_pickipedia_vps_too(self):
+        # Three open items on 25 Nov 2026 said "Redeploy pickipedia-vps" -- the name of that box's deploy logic
+        # in maybelle-config. They named no server, so they could never tick themselves (Justin, #ramp).
+        self.assertEqual(tt._servers('Redeploy pickipedia-vps, for rabbithole:blu/fx-instruments'), ['pickipedia'])
+        item = self.item('Redeploy pickipedia-vps')
+        tt.note_seen('connectome', [item], now=1000)
+        self.assertEqual(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 1100}),
+                         'deployed')
+
+    def test_the_branch_it_waits_for_may_be_in_its_note(self):
+        # "Redeploy pickipedia-vps, so the soloist's card goes live", with "After rabbithole:blu/soloist-card
+        # merges" in the note: the note is where the branch is written.
+        item = {**self.item('Redeploy pickipedia, so the soloist card goes live'),
+                'note': 'After rabbithole:blu/soloist-card merges.'}
+        with mock.patch.object(tt, '_merge_time', lambda repo, branch: None):
+            self.assertIsNone(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 10 ** 10}))
+        with mock.patch.object(tt, '_merge_time', lambda repo, branch: ('h', 500)), \
+                mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: None):
+            self.assertIsNone(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 400}))
+            self.assertEqual(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 600}),
+                             'deployed')
+
     def test_naming_no_branch_it_counts_from_when_it_was_first_seen(self):
         item = self.item('Redeploy maybelle (migration 0053)')
         tt.note_seen('radicle', [item], now=1000)
@@ -202,6 +224,25 @@ class DeployTest(TestCase):
                 self.assertIsNone(tt.deployed('m', item, runs=runs))                   # merged, maybelle runs older
             with mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: ['maybelle']):
                 self.assertEqual(tt.deployed('m', item, runs=runs), 'deployed')        # maybelle runs it
+
+    def test_a_note_saying_after_both_merges_waits_for_a_person(self):
+        # re, 26 Nov: branches are read from the task and the note, so the merge-word check reads both too --
+        # "Redeploy pickipedia-vps" with "after both merges" in the note is not ticked by any later deploy.
+        item = {**self.item('Redeploy pickipedia-vps'), 'note': 'after both merges'}
+        tt.note_seen('m', [item], now=1000)
+        self.assertIsNone(tt.deployed('m', item, runs={}, last_finished=lambda s: {'at_ts': 10 ** 10}))
+
+    def test_a_deploy_that_started_before_the_merge_is_not_read_as_carrying_it(self):
+        # re, 26 Nov: a deploy that began before a merge landed may finish after it (the pickipedia box clones
+        # mid-playbook), so the clock reads its start -- at_ts less took -- not its finish.
+        item = self.item('Redeploy pickipedia after pickipedia:magent/x merges')
+        with mock.patch('conversations.services.tools_ask.named_branches', lambda t: [('pickipedia', 'magent/x')]), \
+                mock.patch.object(tt, '_merge_time', lambda repo, branch: ('h', 500)), \
+                mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: None):
+            self.assertIsNone(tt.deployed(
+                'm', item, runs={}, last_finished=lambda s: {'at_ts': 700, 'took': 300}))  # started at 400
+            self.assertEqual(tt.deployed(
+                'm', item, runs={}, last_finished=lambda s: {'at_ts': 700, 'took': 100}), 'deployed')  # at 600
 
     def test_a_server_that_doesn_t_report_the_repository_needs_a_deploy_after_the_merge(self):
         item = self.item('Redeploy pickipedia after pickipedia:magent/x merges')

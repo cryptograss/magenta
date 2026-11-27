@@ -351,7 +351,9 @@ def stamp():
 def forget_all():
     """Every Mood's list asked again (githouse merged something: its items tick at their next look)."""
     from conversations.models import Mood
+    from . import deploys
     cache.delete_many([f'todo:{slug}' for slug in Mood.objects.values_list('slug', flat=True)] + ['todo:all_moods'])
+    deploys.forget()  # and the deploy queue: both callers -- a merge, a finished deploy -- change what it says
     changed()
 
 
