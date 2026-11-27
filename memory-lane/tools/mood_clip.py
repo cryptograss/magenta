@@ -13,6 +13,7 @@ up to 480 lines, with the subtitle burned in along the bottom as Yarn's are; a s
 is its card's picture. Then it's signed with your SSH key (who you are, as `magenta.sh login`) and
 sent to memory-lane, which keeps it and saves it as "/clips save <name> <its link>" from you: said in
 no Mood, unless --mood names one to say it in (Justin, 7 Nov: no need to announce it in #general).
+Its row lands on Magenta:Clips, which is the list of what plays: write there what it's for.
 From then on /clips <name> plays it, for people and agents alike.
 
 Its name, unless --name gives one: the subtitle's words, whole, up to 80 characters

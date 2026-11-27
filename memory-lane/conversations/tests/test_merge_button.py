@@ -83,6 +83,26 @@ class MergeButtonTest(TestCase):
         self.assertEqual((seen['commit'], seen['into'], seen['can']), (self.head, 'production', True))
         self.assertIn('re: the fix', seen['log'])
         self.assertIn('fix.py | 1 +', seen['stat'])
+        self.assertEqual(seen['conflicts'], [])  # clean: the sheet offers Merge now
+
+    def test_the_sheet_names_a_conflict_githouse_would_refuse(self):
+        # production changes a.txt one way, re/clash the other (Justin, 13 Nov: clips-page-row refused, the
+        # sheet silent). The sheet measures against the branch the deploys come from, which is production.
+        work = self.dir / 'clash'
+        git('clone', '--quiet', str(self.githouse / 'magenta.git'), str(work))
+        git('checkout', '--quiet', '-b', 're/clash', 'origin/production', cwd=work)
+        (work / 'a.txt').write_text('theirs\n')
+        git('commit', '--quiet', '-am', 'theirs', cwd=work)
+        git('push', '--quiet', 'origin', 'HEAD:re/clash', cwd=work)
+        git('checkout', '--quiet', '-B', 'm', 'origin/production', cwd=work)
+        (work / 'a.txt').write_text('ours\n')
+        git('commit', '--quiet', '-am', 'ours', cwd=work)
+        before = git('rev-parse', 'origin/production', cwd=work)
+        git('push', '--quiet', 'origin', 'HEAD:production', cwd=work)
+        self.addCleanup(git, '--git-dir', str(self.githouse / 'magenta.git'), 'update-ref', 'refs/heads/production',
+                        before)
+        self.as_('justin')
+        self.assertEqual(self.preview(branch='re/clash').json()['conflicts'], ['a.txt'])
 
     def test_a_press_is_an_order_signed_by_memory_lane_for_the_presser(self):
         self.as_('justin')

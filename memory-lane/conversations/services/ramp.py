@@ -95,7 +95,29 @@ def cards():
         cache.set(CARDS_KEY, found, 30)
         return found
     cache.set(CARDS_KEY, found, CARDS_FOR)
+    cache.set(CARDS_KEY + ':kept', found, None)
     return found
+
+
+def cards_fast():
+    """cards(), serving the last good copy at once and refreshing off-request once CARDS_FOR has passed."""
+    found = cache.get(CARDS_KEY)
+    if found is not None:
+        return found
+    kept = cache.get(CARDS_KEY + ':kept')
+    if kept is not None and BUILD_IN_BACKGROUND:
+        if cache.add(CARDS_KEY + ':building', 1, 60):
+            from .todo import _in_background
+            _in_background(_refresh_cards)
+        return kept
+    return cards()
+
+
+def _refresh_cards():
+    try:
+        cards()
+    finally:
+        cache.delete(CARDS_KEY + ':building')
 
 
 # --- githouse's copy ---------------------------------------------------------------------------------
@@ -156,16 +178,25 @@ def _base(refs, wanted='', repo=''):
     return ''
 
 
-def _size(repo, base, head):
-    """{'commits', 'files', 'added', 'removed'} of head beyond base, or {}."""
+def _size(repo, base, head, base_sha=''):
+    """{'commits', 'files', 'added', 'removed'} of head beyond base, or {}. Cached by the two commits' ids,
+    which never change: otherwise a board build spawns two git processes per open candidate (~90 runs)."""
     from .githouse import _git
     if not base or not head:
         return {}
+    key = f'ramp:size:{repo.name}:{base_sha}:{head}' if base_sha else ''
+    if key:
+        kept = cache.get(key)
+        if kept is not None:
+            return kept
     count = _git(repo, 'rev-list', '--count', f'refs/heads/{base}..{head}').strip()
     stat = _git(repo, 'diff', '--shortstat', f'refs/heads/{base}...{head}')
     number = lambda word: int((re.search(rf'(\d+) {word}', stat) or [0, 0])[1])
-    return {'commits': int(count or 0), 'files': number('file'), 'added': number('insertion'),
-            'removed': number('deletion')}
+    out = {'commits': int(count or 0), 'files': number('file'), 'added': number('insertion'),
+           'removed': number('deletion')}
+    if key:
+        cache.set(key, out, CLASH_FOR)
+    return out
 
 
 def _when(unix):
@@ -441,12 +472,34 @@ def test_runs():
         except (requests.RequestException, ValueError) as e:
             log.warning('ramp: branch tests: %s', e)
     cache.set(TESTS_KEY, found, TESTS_FOR)
+    cache.set(TESTS_KEY + ':kept', found, None)
     return found
 
 
-def with_tests(items):
+def test_runs_fast():
+    """test_runs(), serving the last copy at once and refreshing off-request once TESTS_FOR has passed."""
+    found = cache.get(TESTS_KEY)
+    if found is not None:
+        return found
+    kept = cache.get(TESTS_KEY + ':kept')
+    if kept is not None and BUILD_IN_BACKGROUND:
+        if cache.add(TESTS_KEY + ':building', 1, 30):
+            from .todo import _in_background
+            _in_background(_refresh_tests)
+        return kept
+    return test_runs()
+
+
+def _refresh_tests():
+    try:
+        test_runs()
+    finally:
+        cache.delete(TESTS_KEY + ':building')
+
+
+def with_tests(items, fast=False):
     """The items, each with 'tests': its head commit's newest branch-tests run, or None."""
-    runs = test_runs()
+    runs = test_runs_fast() if fast else test_runs()
     for item in items:
         item['tests'] = runs.get((item.get('repo'), item.get('head')))
     return items
@@ -574,7 +627,9 @@ def board(now=None, stale_ok=False):
         if head:
             item['head'] = head[0]
             item['pushed'] = _when(head[1]) or item['pushed']
-            item['size'] = _size(held[repo_name], _base(refs[repo_name], item['base'], repo_name), head[0])
+            base_name = _base(refs[repo_name], item['base'], repo_name)
+            base_sha = (refs[repo_name].get(f'refs/heads/{base_name}') or ('',))[0]
+            item['size'] = _size(held[repo_name], base_name, head[0], base_sha)
             if githouse.commit_merged(repo_name, head[0]):
                 item['state'] = 'merged'  # githouse knows before the card is looked at again
         carded.add((repo_name, item['branch']))
@@ -587,10 +642,11 @@ def board(now=None, stale_ok=False):
             if githouse_owned(branch) or (name, branch) in carded:
                 continue
             base = _base(found, '', name)
+            base_sha = (found.get(f'refs/heads/{base}') or ('',))[0]
             items.append({'repo': name, 'number': None, 'title': subject, 'url': '', 'author': branch.split('/')[0],
                           'branch': branch, 'base': base, 'state': 'pushed', 'worked_on_by': '', 'moods': [],
                           'deploy': '', 'opened': None, 'pushed': _when(unix), 'head': sha,
-                          'size': _size(held[name], base, sha), 'held': True})
+                          'size': _size(held[name], base, sha, base_sha), 'held': True})
     items = [i for i in items if i['state'] != 'merged'] + [i for i in items if i['state'] == 'merged']
     said = mentions(items, now)
     try:
@@ -730,9 +786,10 @@ def with_people(items):
 
 def with_blocks(items, now=None):
     """Each item's push in blocks ago (Justin, 9 Nov, #ramp: "show 'pushed' as blocks ago"): 'pushed_block', the
-    block at the push (eth_blocks' anchors), and 'pushed_ago', the head now less that. The head is tasks.head's,
-    else the one the block bar fetched; with neither, nothing is guessed: the page shows the time."""
+    block at the push (eth_blocks' anchors), and 'pushed_ago', the head now less that. The head is tasks.head's
+    (the watcher's, while it's feeding us), else the one the block bar fetched; with neither, nothing is guessed: the page shows the time."""
     from conversations.models import BlockAnchor
+    from . import chain_head
     from .eth_blocks import SECONDS_PER_SLOT, BlockClock
     from .tasks import head
     now = now or datetime.now(timezone.utc)
@@ -752,7 +809,9 @@ def with_blocks(items, now=None):
         if not pushed:
             continue
         block = clock.block_at(int(pushed.timestamp()))
-        if block is None:  # after the newest anchor: its 12-second slots, as tasks.head counts them
+        if block is None:  # after the newest anchor: the watcher's rows, block by block (services/chain_head)
+            block = chain_head.block_at(int(pushed.timestamp()))
+        if block is None:  # nor those: its 12-second slots, as tasks.head counts them
             block = top - max(0, int((now - pushed).total_seconds())) // SECONDS_PER_SLOT
         i['pushed_block'], i['pushed_ago'] = block, max(0, top - block)
         i['pushed_ago_said'] = f"{i['pushed_ago']:,}"

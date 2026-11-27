@@ -17,8 +17,17 @@ checklist with real links (PickiPediaContent's <todo> tag); a list inside
     </todo>
 
 `task` is the one thing an item needs; `who` (a name, or several),
-`kind` (review, merge, deploy, edit, or anything), `link`, `note` and
-`done` are as they're useful. The page shows it beside the Mood
+`kind` (review, merge, deploy, edit, or anything), `link`, `note`, `said`,
+`priority` (1, the most needed, to 5) and `done` are as they're useful. A row shows an item as its type's glyph
+and a headline cut from its task (services/todo_types.py, headline): write the task so its first clause says
+it, and put the rest in `note`.
+
+**Where it came from.** `said` is the link of the message that asked for it ("#m-<id>", or a permalink), so the
+conversation behind an item is one click from its row (Justin, 21 Nov, #at-a-glance). A task is written in
+TASK_MAX characters or fewer (120); a longer one is marked `long`, and what it says beyond its first clause
+belongs in `note`.
+
+The page shows it beside the Mood
 (views_moods.api_mood_todo); agents keep it current -- their instructions
 point them to it (Cryptograss:Moods/Instructions) -- adding what they leave someone to do,
 and ticking off what's been done.
@@ -43,7 +52,7 @@ from .repos import same
 PAGE = 'Cryptograss:Moods/{slug}/todo'
 FOR = 60          # seconds a list is kept before PickiPedia is asked again
 MAX_ITEMS = 200
-FIELDS = ('task', 'who', 'kind', 'link', 'note', 'done')
+FIELDS = ('task', 'who', 'kind', 'link', 'note', 'said', 'done')
 _PRE = re.compile(r'<(todo|pre)>\s*\n?(.*?)\n?\s*</\1>', re.S | re.I)
 
 
@@ -80,7 +89,13 @@ def parse(text):
         who = [w.strip() for w in (who.split(',') if isinstance(who, str) else who) if str(w).strip()]
         items.append({'task': str(raw['task']).strip()[:500], 'who': [str(w)[:60] for w in who][:10],
                       'kind': str(raw.get('kind') or '').strip()[:40], 'link': str(raw.get('link') or '').strip()[:500],
-                      'note': str(raw.get('note') or '').strip()[:1000], 'done': bool(raw.get('done'))})
+                      'note': str(raw.get('note') or '').strip()[:1000],
+                      'said': str(raw.get('said') or '').strip()[:500], 'done': bool(raw.get('done'))})
+        # How much it's needed, 1 (the most) to 5 (R.J., 13 Nov: "priority ranges 1 - 5"): what's at a glance
+        # (services/glance.py) puts first. Only on an item that says so.
+        priority = raw.get('priority')
+        if isinstance(priority, int) and not isinstance(priority, bool) and 1 <= priority <= 5:
+            items[-1]['priority'] = priority
     return items
 
 
@@ -96,7 +111,7 @@ def _raw(title, http):
     return response.text
 
 
-def for_mood(mood, http=None):
+def for_mood(mood, http=None, by='', previous_items=None):
     """{'page', 'edit', 'items', 'error'?}: the Mood's list (under its name now, or one it had), kept a minute."""
     key = f'todo:{mood.slug}'
     found = cache.get(key)
@@ -123,10 +138,15 @@ def for_mood(mood, http=None):
         except Unreadable as e:
             error = str(e)
     items = with_merges(items, http)
+    from .todo_types import with_closes
+    items = with_closes(mood.slug, items)  # typed; deploys and verifies done once finished (services/todo_types.py)
     if text is not None and not error:
-        from .todo_ticks import tick_later  # merged, but open on the page: a bot ticks it there too
+        from . import ticker
+        ticker.note_todos(mood.slug, items, by=by, previous_items=previous_items)
+        from .todo_ticks import tick_later  # done here, but open on the page: a bot ticks it there too
         for item in items:
-            if item.get('merged') or item.get('closed'):
+            if (item.get('merged') or item.get('closed') or item.get('verified') or item.get('deployed')) \
+                    and item.get('link'):
                 tick_later(title, item['link'])
     page = f"{pickipedia_url()}/wiki/{quote(title.replace(' ', '_'))}"
     found = {'page': page, 'edit': f'{page}?action=edit', 'exists': text is not None, 'items': items,
@@ -179,6 +199,7 @@ def all_todos(http=None):
         return found
     from conversations.models import Mood
     from . import settings as knobs
+    from .glance import person_key
     archived = set(knobs.archived_slugs())
     moods = list(Mood.objects.all().order_by('slug'))
     all_items = []
@@ -206,6 +227,9 @@ def all_todos(http=None):
         for idx, it in enumerate(items):
             all_items.append({
                 **it,
+                # Who it waits on, as each is called here ("jMyles" and "JMyles" are justin), for the page's
+                # filter. Where it stands among what's needed is its 'rank' (todo_types.with_types), for its sort.
+                'who_keys': list(dict.fromkeys(person_key(w) for w in it.get('who') or [])),
                 'mood': m.slug,
                 'mood_title': m.title or m.slug,
                 'archived': m.slug in archived,
@@ -216,8 +240,10 @@ def all_todos(http=None):
     open_count = sum(1 for it in all_items if not it.get('done') and not it.get('merged'))
     done_count = sum(1 for it in all_items if it.get('done') or it.get('merged'))
 
+    from .todo_types import summary
     result = {
         'items': all_items,
+        'types': summary(all_items),
         'total': len(all_items),
         'open': open_count,
         'done': done_count,
@@ -325,7 +351,9 @@ def stamp():
 def forget_all():
     """Every Mood's list asked again (githouse merged something: its items tick at their next look)."""
     from conversations.models import Mood
+    from . import deploys
     cache.delete_many([f'todo:{slug}' for slug in Mood.objects.values_list('slug', flat=True)] + ['todo:all_moods'])
+    deploys.forget()  # and the deploy queue: both callers -- a merge, a finished deploy -- change what it says
     changed()
 
 

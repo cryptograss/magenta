@@ -276,6 +276,29 @@ class AskDotsTest(RampTest):
         self.assertEqual(built, [1])                         # one rebuild started, not one a call
         self.assertGreater(ramp.board()['built'], clock.time() - 60)   # the page itself still gets a fresh one
 
+    def test_ramp_page_serves_aged_board_at_once_and_rebuilds_synchronously_after_merge(self):
+        import time as clock
+        old = clock.time() - 3600
+        cache.set(ramp.KEY, {**ramp.board(), 'built': old}, None)
+        rebuilt = []
+        with mock.patch.object(ramp, '_rebuild', lambda: rebuilt.append(1)), \
+                mock.patch.object(ramp, 'clashes', side_effect=AssertionError('must not block /ramp/ on aged board')):
+            resp = self.client.get('/ramp/?embed=1', HTTP_SEC_FETCH_DEST='iframe')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(rebuilt, [1])
+        # After ramp.changed() ('built': 0), /ramp/ rebuilds synchronously so a just-merged branch is gone.
+        cache.set(ramp.KEY, {**cache.get(ramp.KEY), 'built': 0}, None)
+        self.assertEqual(self.client.get('/ramp/?embed=1', HTTP_SEC_FETCH_DEST='iframe').status_code, 200)
+        self.assertGreater(cache.get(ramp.KEY)['built'], clock.time() - 60)
+
+    def test_size_is_cached_by_base_and_head_commits(self):
+        from conversations.services import githouse
+        held = githouse.repository('magenta')
+        base_sha = git(self.repo.work, 'rev-parse', 'main')
+        first = ramp._size(held, 'main', self.foo, base_sha)
+        with mock.patch('conversations.services.githouse._git', side_effect=AssertionError('must read cache')):
+            self.assertEqual(ramp._size(held, 'main', self.foo, base_sha), first)
+
     def test_any_emergents_colour(self):
         self.assertEqual(front.agent_colour('blu'), '#1976d2')
         self.assertIn(front.agent_colour('someone-new'), front.AGENT_PALETTE)
@@ -327,6 +350,16 @@ class BranchTestsTest(TestCase):
         self.runs([self.build(1, 'magenta', 'a' * 40, 'FAILURE')])
         items = ramp.with_tests([{'repo': 'magenta', 'head': 'a' * 40}, {'repo': 'magenta', 'head': 'd' * 40}])
         self.assertEqual([i['tests'] and i['tests']['state'] for i in items], ['failed', None])
+
+    def test_stale_ok_serves_kept_runs_without_waiting_on_jenkins(self):
+        found, _ = self.runs([self.build(1, 'magenta', 'a' * 40, 'SUCCESS')])
+        cache.delete(ramp.TESTS_KEY)
+        bg = []
+        with mock.patch.object(ramp, 'BUILD_IN_BACKGROUND', True), \
+                mock.patch('conversations.services.todo._in_background', lambda fn, *a: bg.append(fn)), \
+                mock.patch('requests.get', side_effect=AssertionError('must not block on Jenkins')):
+            self.assertEqual(ramp.test_runs_fast(), found)
+        self.assertEqual(len(bg), 1)
 
 
 class ClashTest(TestCase):

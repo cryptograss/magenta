@@ -127,6 +127,10 @@ def api_media(request, slug):
     Content-Type. Answers with the markdown to put in a message. ?keep=location
     stores a JPEG or PNG with its metadata, where it was taken included; by
     default that's cut out (media.without_metadata).
+
+    A picture larger than media.MAX_BYTES is shrunk to fit rather than refused
+    (media.fit_bytes); the answer says what it was sent as and what was kept, so
+    whoever shared it is told.
     """
     from .services import media
     from .views_admin import locked_response
@@ -137,16 +141,23 @@ def api_media(request, slug):
     if device is None:
         return JsonResponse({'error': 'sign in to write'}, status=401)
     Mood.by_slug_or_404(slug)
-    if len(request.body) > media.MAX_BYTES:
-        return JsonResponse({'error': f'larger than {media.MAX_BYTES // (1024 * 1024)} MB'}, status=413)
+    if len(request.body) > media.MAX_SENT_BYTES:
+        return JsonResponse({'error': f'larger than {media.MAX_SENT_BYTES // (1024 * 1024)} MB'}, status=413)
     if not _under_limit(f'media:{device.pk}', MEDIA_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
+    sent = len(request.body)
     stored = media.store(request.body, added_by=device.entity, strip=request.GET.get('keep') != 'location')
     if stored is None:
+        if sent > media.MAX_BYTES and media.sniff(request.body):
+            return JsonResponse({'error': f'larger than {media.MAX_BYTES // (1024 * 1024)} MB and it '
+                                          "couldn't be shrunk (a moving picture is kept as it is)"}, status=413)
         return JsonResponse({'error': 'not a PNG, JPEG, GIF, WebP or HEIC image'}, status=400)
     # Their own: told it's CC BY-SA 4.0, with CC0 a press away (api_media_license).
     return JsonResponse({'url': stored.url, 'markdown': media.markdown(stored), 'sha': stored.sha256,
-                         'license': stored.license, 'mine': stored.added_by_id == device.entity_id}, status=201)
+                         'license': stored.license, 'mine': stored.added_by_id == device.entity_id,
+                         # Shrunk on the way in: the sizes, so the composer can say so.
+                         'sent': sent, 'size': stored.size, 'shrunk': stored.size < sent and sent > media.MAX_BYTES},
+                        status=201)
 
 
 @require_GET
@@ -298,6 +309,7 @@ def api_say(request, slug):
         note = f'announced in {announce.spread(message, device.entity_id, announced)} other Moods'
     if text.startswith('/clips '):
         clips.forget_cached()  # the library has a new save, or one fewer
+        clips.page_later(text, device.entity_id)  # and Magenta:Clips has its row, or not
     from .services import yarn_kept
     yarn_kept.keep_later(text)  # a Yarn clip said here is fetched once, now, and played from here
     return JsonResponse({'id': str(message.id), **({'note': note} if note else {})}, status=201)
@@ -897,6 +909,7 @@ def api_clip_make(request):
                                    timestamp=int(time.time() * 1000), source_file=WEB_SOURCE,
                                    client_version='magenta-cli/clips')
     clips.forget_cached()
+    clips.page_later(saved.content, signer)  # its row on Magenta:Clips
     return JsonResponse({'name': name, 'link': link, 'mood': mood.slug if mood else None,
                          'url': request.build_absolute_uri(f'/moods/{mood.slug}/#m-{saved.id}') if mood else None},
                         status=201)
@@ -904,13 +917,24 @@ def api_clip_make(request):
 
 @require_GET
 def api_clips(request):
-    """The saved clips, by name, each with what it's for (Magenta:Clips): for the composer's /clips
-    suggestions and `magenta.sh clips list`."""
-    from .services import clips
+    """The saved clips, by name, each with what it's for (Magenta:Clips) and its picture, 'still': for the
+    composer's /clips suggestions, which show the picture rather than the words, and `magenta.sh clips list`.
+    A clip's picture is the one kept here; a Yarn clip whose picture isn't kept yet says Yarn's address for it,
+    which the composer asks for (api_yarn) when Yarn's own won't load."""
+    from .services import clips, yarn_kept
     said = clips.uses()
+    every = sorted(clips.every().items())
+    kept = yarn_kept.stills_of({c['clip'] for _, c in every})
+
+    def still_of(c):
+        if c['clip'] in kept:
+            return {'still': kept[c['clip']]}
+        return {} if c.get('link') else {'still': yarn_kept.STILLS[1].format(c['clip'])}
+
     return JsonResponse({'page': clips.PAGE, 'clips': [
-        {'name': n, 'by': c['by'], 'clip': c['clip'], 'link': clips.link_of(c), **({'for': said[n]} if n in said else {})}
-        for n, c in sorted(clips.every().items())]})
+        {'name': n, 'by': c['by'], 'clip': c['clip'], 'link': clips.link_of(c), **still_of(c),
+         **({'for': said[n]} if n in said else {})}
+        for n, c in every]})
 
 
 _MOBILE_AGENT = re.compile(r'Mobi|Android|iPhone|iPad|iPod', re.I)
@@ -1885,7 +1909,14 @@ def api_narrate(request):
             return JsonResponse({'error': f'{agent.name} is not at work there now'}, status=409)
         steps = ToolUse.objects.filter(mood=mood, sender=agent, is_sidechain=False,
                                        timestamp__gte=int(doing['since'] * 1000)).count()
-        still = (max(1, int((time.time() - doing['since']) // 60)), steps)
+        from .services import chain_head
+        from .views_moods import SECONDS_PER_BLOCK
+        # How long, in blocks, as we keep time (Justin, 17 Nov: "a 'blocks since' in these messages"): counted
+        # from the chain's head where the watcher has the blocks, else 12 s a block (his fallback).
+        blocks = chain_head.blocks_since(doing['since'])
+        if blocks is None:
+            blocks = int((time.time() - doing['since']) // SECONDS_PER_BLOCK)
+        still = (max(1, blocks), steps)
     waiting = str(body.get('waiting') or '')
     if waiting and not re.fullmatch(r'[\w.-]+(?:,\s*[\w.-]+)*', waiting):
         return JsonResponse({'error': 'waiting: emergents\' names'}, status=400)

@@ -817,6 +817,12 @@ class RealProcessTest(TestCase):
             's-old', 'prompt', new_session_id='s-new')
         self.assertEqual(reply, 'looked')
 
+    def test_a_long_turn_of_different_calls_runs_to_its_end(self):
+        # Justin, #interfaces, 13 Nov: four long turns ended at 150 calls that day, none of them a loop.
+        _, reply = self.waker(self.screenshots([f'page {i}' for i in range(400)])).wake(
+            's-old', 'prompt', new_session_id='s-new')
+        self.assertEqual(reply, 'looked')
+
     def test_the_same_call_with_the_same_answer_still_ends_the_turn(self):
         with self.assertRaisesRegex(RuntimeError, 'tool loop: mcp__playwright__browser_take_screenshot called 3'):
             self.waker(self.screenshots(['same page'] * 6)).wake('s-old', 'prompt', new_session_id='s-new')
@@ -2513,6 +2519,17 @@ class NewMoodTest(TestCase):
                    only_poller=True).poll_once()
         self.assertEqual(waker.woken, [])
 
+    def test_a_turn_is_not_nudged_to_narrate_itself(self):
+        # Claude Code's silent-turn nudge asks an agent that has gone quiet to
+        # keep the user updated; in a Mood each of those lands as a post (blu,
+        # five of them in one journal entry, #connectome, 27 Nov 2026).
+        env = ClaudeCodeWaker(claude='claude').environment()
+        self.assertEqual(env['CLAUDE_CODE_SILENT_TURN_REMINDER'], '0')
+        # Everything else the turn needs is still there: its key, its PATH.
+        for name in ('PATH', 'HOME'):
+            if name in os.environ:
+                self.assertEqual(env[name], os.environ[name])
+
     def test_the_command_for_a_new_session_resumes_nothing(self):
         cmd = ClaudeCodeWaker(claude='claude').command(None, 'n-1', 'hi')
         self.assertNotIn('--resume', cmd)
@@ -3661,3 +3678,35 @@ class WakeFooterAsksTest(TestCase):
         for tag in ('<tools to=', '<merge to=', '<deploy to='):
             self.assertIn(tag, body)
         self.assertIn('mention the agent', body)
+
+
+class FailureWhyTest(TestCase):
+    """The failed dot's one line says what went wrong, not where Node threw (re, 15 Nov: magent's two dots read
+    'pi exited 1 without settling: node:events:497', the error itself four lines further down)."""
+
+    NODE = ('pi exited 1 without settling: node:events:497\n'
+            "      throw er; // Unhandled 'error' event\n"
+            '      ^\n\n'
+            'Error: connect ECONNREFUSED 127.0.0.1:1\n'
+            '    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1631:16)\n'
+            "Emitted 'error' event on Socket instance at:\n")
+
+    def test_a_node_crash_says_its_error(self):
+        from poller.mood_poller import failure_why
+        self.assertEqual(failure_why(RuntimeError(self.NODE)),
+                         'pi exited 1 without settling: Error: connect ECONNREFUSED 127.0.0.1:1')
+
+    def test_a_script_location_and_a_typed_error(self):
+        from poller.mood_poller import failure_why
+        e = RuntimeError('pi exited 1 without settling: /usr/local/lib/x/cli.js:12\nthrow e\n\n'
+                         "TypeError: Cannot read properties of undefined (reading 'content')\n    at f (cli.js:1:2)")
+        self.assertEqual(failure_why(e), "pi exited 1 without settling: TypeError: Cannot read properties of "
+                                         "undefined (reading 'content')")
+
+    def test_anything_else_is_its_first_line(self):
+        from poller.mood_poller import failure_why
+        self.assertEqual(failure_why(RuntimeError('pi exited 143 without settling: tool loop: x\nmore')),
+                         'pi exited 143 without settling: tool loop: x')
+        self.assertEqual(failure_why(RuntimeError('pi exited 1 without settling: node:events:497\n  ^')),
+                         'pi exited 1 without settling: node:events:497')  # no error line: as it was
+        self.assertEqual(failure_why(RuntimeError('')), 'it failed to run')

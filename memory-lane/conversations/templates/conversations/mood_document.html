@@ -5,14 +5,10 @@
 <meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ doc.title }} · magenta</title>
+{% include "conversations/_theme.html" %}
 <style>
-  :root {
-    --bg: #fbfaf7; --panel: #ffffff; --ink: #1f1d1a; --muted: #6b6560;
-    --line: #e6e1d8; --accent: #b8106b; --accent-soft: #fbe7f1; --glow: rgba(255,103,253,.18);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #161417; --panel: #1f1c20; --ink: #ece7e1; --muted: #a39b93;
-            --line: #36313a; --accent: #ef5aa6; --accent-soft: #3a1a2b; --glow: rgba(255,103,253,.10); }
+  :root {  /* this page's own; the shared colours are in _theme.html */
+    --glow: light-dark(rgba(255,103,253,.18), rgba(255,103,253,.10));
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }

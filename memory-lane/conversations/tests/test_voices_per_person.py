@@ -203,7 +203,29 @@ class SpeakerEndpointsTest(TestCase):
                                        stop_reason='tool_use', content={}, tool_name='Bash', tool_id=f't{i}')
             said = ask()
         self.assertEqual(said.status_code, 200)
-        self.assertEqual(fake.asked[-1][2]['json']['text'], 'Magent is still thinking: 3 minutes in, 3 steps so far.')
+        self.assertEqual(fake.asked[-1][2]['json']['text'], 'Magent is still thinking: 15 blocks in, 3 steps so far.')
+
+    def test_still_thinking_counts_the_blocks_where_the_watcher_has_them(self):
+        # Justin, 17 Nov: "I'd rather have it actually count blocks." With the chain's head on hand
+        # (services/chain_head), the count is blocks landed since the turn began, not time over 12 s:
+        # here blocks 9 s apart, so it says 21 where the clock alone would say 15.
+        import time
+        from django.utils import timezone
+        from conversations.models import ChainHead, ToolUse
+        fake = FakeQuartet()
+        client = self.client_for(self.justin)
+        now = int(time.time() * 1000)
+        Message.objects.create(id=uuid.uuid4(), sender=self.justin, mood=self.mood, timestamp=now - 190_000,
+                               content='@magent have a look', source_file='mood-web')
+        ToolUse.objects.create(id=uuid.uuid4(), sender=self.magent, mood=self.mood, timestamp=now - 185_000,
+                               stop_reason='tool_use', content={}, tool_name='Bash', tool_id='t0')
+        for k in range(23):
+            ChainHead.objects.create(number=1000 + k, timestamp=now // 1000 - 200 + 9 * k, seen_at=timezone.now(), via='socket')
+        with mock.patch('requests.get', fake.get), mock.patch('requests.post', fake.post):
+            said = client.post('/api/voice/narrate/', json.dumps({'mood': 'general', 'emergent': 'magent', 'still': True}),
+                               content_type='application/json')
+        self.assertEqual(said.status_code, 200)
+        self.assertEqual(fake.asked[-1][2]['json']['text'], 'Magent is still thinking: 21 blocks in, 1 step so far.')
 
     def test_speak_can_say_who_speaks_first_or_only_that(self):
         fake = FakeQuartet()

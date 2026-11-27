@@ -105,10 +105,11 @@ def _bloom(_title, _user):
 
 
 def _card(title, _user):
-    from . import wiki_preview
+    from . import voice_aliases, wiki_preview
     from .emergent_powers import FRAMES_KEY
     wiki_preview.forget(title)
     cache.delete(FRAMES_KEY)
+    voice_aliases.forget()
     got = wiki_preview.preview(title)
     return 'card read again' if got else 'no such User page: card forgotten'
 
@@ -129,16 +130,20 @@ def _mood_doc(title, _user):
     return f'#{slug}: instructions read again'
 
 
-def _todo(title, _user):
+def _todo(title, user):
     from conversations.models import Mood
-    from . import todo
+    from . import ticker, todo
     from .wiki_feed import home_of
     slug = home_of(title)
     mood = Mood.by_slug(slug) if slug else None
     if mood is None:
         return 'no such Mood: nothing kept'
+    previous = ticker.previous_from_wiki(title, mood.slug) if not ticker.has_state(mood.slug) else None
     todo.forget(mood)
-    return f'#{mood.slug}: to-do list forgotten; open pages ask for it now'
+    # Read now (one GET of the page): a deploy item's first sighting is its writing, and any non-merge,
+    # non-deploy item just marked done reaches everyone's announcement bar (services/ticker.py).
+    todo.for_mood(mood, by=user, previous_items=previous)
+    return f'#{mood.slug}: to-do list forgotten and read again; open pages ask for it now'
 
 
 def _journals(_title, _user):
@@ -209,6 +214,13 @@ def run(title, user='', revid=None, via='sweep'):
         return []
     rows = []
     wiki_changes.forget(title, user)
+    try:
+        from . import todo_types
+        slugs = todo_types.page_changed(title)  # a verify item linking it ticks now
+        if slugs:
+            todo_types.refresh_lists(slugs, by=user)
+    except Exception:  # noqa: BLE001 -- never stops the page's own hooks
+        pass
     for hook in hooks_for(title):
         started = time.monotonic()
         failed, result = False, ''

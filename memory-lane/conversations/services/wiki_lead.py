@@ -16,6 +16,13 @@ claim-unverified) is left out, words and pictures; a proposal to remove somethin
 without the proposal's badge. And the page's "Listen in Rabbithole" (Template:Listen in Rabbithole, drawn
 pp-listen-stack) is taken out of the words and drawn as a button above them ("a fully rendered button to play on
 rabbithole, as the first bit of content here"): `listen`, {'play': {href, text}, 'trail': {...}}.
+
+A post (somebody's own writing, User:Name/Title, read on the wiki in its Broadside skin) opens here under the
+same masthead it has there: `post`, {'headline', 'kicker', 'dek', 'author': {'name', 'url', 'avatar'},
+'published', 'reads', 'cap'}, from the wiki's own card of the page (api.php?action=pagecard). Justin, 13 Nov
+(#pickipedia-style-and-main-page): "it needs to preview really nicely on its tidings page and then be a smooth
+cognitive transition when the user then visits the full page." What that masthead says, the dek and the kicker
+a post writes in its own body (pp-dek-source, pp-kicker-source), isn't said again in the words under it.
 """
 
 import hashlib
@@ -27,17 +34,21 @@ from urllib.parse import unquote
 LEAD_CHARS = 500
 LEAD_PARAGRAPHS = 3
 SHORT = 40           # fewer characters than this: a dateline or a byline, not one of the paragraphs counted
+CAP_CHARS = 80       # a post's paragraph of fewer characters is a line, not the one its large first letter stands on
 PICTURE_MIN = 120    # the file's width in pixels, at least
 PICTURE_RATIO = 3.0  # longer side over shorter, at most
 KEPT, MISS = 600, 60  # seconds: an edit shows within ten minutes; a wiki that didn't answer is asked again soon
 # Bump when lead_of reads a page differently: its key changes, so a deploy shows the new reading at once,
 # not after an opening the old code kept runs out (Justin, 12 Nov: merged and redeployed, "why no refreshed?").
-SHAPE = 2
+SHAPE = 3
 NOT_ARTICLES = ('special', 'file', 'image', 'release', 'media')  # a Release has its own page (tiding_links._release_of)
 
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'}
 KEPT_TAGS = {'b': 'b', 'strong': 'b', 'i': 'i', 'em': 'i'}
 UNVERIFIED = {'bot-proposal', 'claim-unverified', 'pv-proposed__badge', 'pv-proposed__byline', 'pv-verify-all'}
+# The line under a post's headline and the line over it, which the post writes in its own body and its masthead
+# says (PickiPedia's Posts/Post::sourced). Under that masthead here they aren't its opening's words too.
+MASTHEAD = {'pp-dek-source', 'pp-kicker-source'}
 
 
 def unverified(classes):
@@ -63,9 +74,16 @@ class _Lead(HTMLParser):
     """The top-level paragraphs of a parsed page (as escaped HTML, and their length as text) and its first
     picture worth showing."""
 
-    def __init__(self, base):
+    def __init__(self, base, post=False):
         super().__init__(convert_charrefs=True)
         self.base = base
+        self.post = post      # read for a post drawn under its masthead: what the masthead says isn't read again
+        self.raw = 0          # inside this many <style>s and <script>s: not words
+        self.plain = []       # the paragraph being read, as the wiki counts its characters (all its words)
+        self.source = False   # it is one of the masthead's
+        self.cap = None       # which of blocks the large first letter stands on (-1: a paragraph not kept here)
+        self.cap_wait = None  # one long enough for it, until what follows shows it isn't a note over a rule
+        self.cap_done = False  # settled, or past the first heading
         self.depth = 0
         self.blocks = []      # ('p', html, chars) or ('h', '', 0), in page order
         self.para = None      # the paragraph being read: [html parts]
@@ -92,10 +110,16 @@ class _Lead(HTMLParser):
         if tag in VOID:
             if tag == 'br' and self.para is not None and self.skip_at is None:
                 self.para.append(' ')
+            if self.depth == 1:
+                self._follows(tag, classes)
             return
         self.depth += 1
+        if tag in ('style', 'script'):
+            self.raw += 1
+        if self.depth == 2 and tag not in ('style', 'script'):  # the wiki's rule doesn't see those either
+            self._follows(tag, classes)
         if self.skip_at is None and (tag in ('style', 'script') or 'reference' in classes or 'mw-editsection' in classes
-                                     or unverified(classes)):
+                                     or unverified(classes) or (self.post and MASTHEAD.intersection(classes))):
             self.skip_at = self.depth
         # The page's Listen in Rabbithole: a button of its own, above the words; not words in a paragraph.
         if self.skip_at is None and self.listen_at is None and 'pp-listen-stack' in classes and not self.listen:
@@ -118,6 +142,7 @@ class _Lead(HTMLParser):
             self.blocks.append(('h', '', 0))
         if self.para is None and self.depth == 2 and tag == 'p':
             self.para, self.para_depth, self.open, self.links, self.bare = [], self.depth, [], [], 0
+            self.plain, self.source = [], bool(MASTHEAD.intersection(classes))
             return
         if self.para is not None and tag == 'a':
             self.links.append(self.depth)
@@ -150,8 +175,11 @@ class _Lead(HTMLParser):
             html = re.sub(r'\s+', ' ', html).strip()
             text = re.sub(r'<[^>]+>', '', html)
             # Nothing but a link ("edit", from a template on the page): the page's furniture, not its words.
-            if text.strip() and self.bare:
+            kept = bool(text.strip() and self.bare)
+            if kept:
                 self.blocks.append(('p', html, len(text)))
+            if not self.cap_done and not self.source and len(re.sub(r'\s+', ' ', ''.join(self.plain)).strip()) >= CAP_CHARS:
+                self.cap_wait = len(self.blocks) - 1 if kept else -1
             self.para, self.para_depth, self.open = None, None, []
         elif self.para is not None and self.open:
             closer = self.open.pop()
@@ -177,9 +205,29 @@ class _Lead(HTMLParser):
             self.listen_at = None
         if self.skip_at == self.depth:
             self.skip_at = None
+        if tag in ('style', 'script') and self.raw:
+            self.raw -= 1
         self.depth -= 1
 
+    def _follows(self, tag, classes):
+        """One of the page's own elements opens: what that settles about a post's large first letter. The rule is
+        the wiki's, where the post's own page sets the letter (PickiPedia's Posts/Post::capAt; change one, change
+        the other): the first of the post's paragraphs that is one. Not a line (fewer than CAP_CHARS characters: a
+        note, a date, "Work in progress"), not a note set off by a rule under it, not what the masthead says, and
+        not past the first heading, which opens its own part."""
+        if self.cap_done:
+            return
+        if self.cap_wait is not None:
+            if tag != 'hr':
+                self.cap, self.cap_done, self.cap_wait = self.cap_wait, True, None
+                return
+            self.cap_wait = None
+        if re.fullmatch(r'h[1-6]', tag) or 'mw-heading' in classes:
+            self.cap_done = True
+
     def handle_data(self, data):
+        if self.para is not None and not self.raw:
+            self.plain.append(data)
         if self.listen_link:
             self.listen_link[2].append(data)
         if self.skip_at is not None:
@@ -232,13 +280,15 @@ class _Lead(HTMLParser):
                         '_figure': self.figure_at}
 
 
-def lead_of(html, base):
-    """{'paragraphs': [html], 'more': bool, 'picture': {...} or None} from a page's parsed HTML."""
-    reader = _Lead(base)
+def lead_of(html, base, post=False):
+    """{'paragraphs': [html], 'more': bool, 'picture': {...} or None} from a page's parsed HTML. post: the page is
+    a post and its masthead is drawn over this, so the dek and the kicker it wrote in its body are left out, and
+    'cap' says which paragraph its large first letter stands on (_Lead._follows)."""
+    reader = _Lead(base, post)
     reader.feed(html)
     reader.close()
-    paragraphs, chars, counted, more = [], 0, 0, False
-    for kind, words, length in reader.blocks:
+    paragraphs, chars, counted, more, shown = [], 0, 0, False, {}
+    for at, (kind, words, length) in enumerate(reader.blocks):
         if kind == 'h':
             if counted:
                 more = True
@@ -248,15 +298,21 @@ def lead_of(html, base):
             more = True
             break
         paragraphs.append(words)
+        shown[at] = len(paragraphs) - 1
         chars += length
         counted += length >= SHORT
     picture = reader.picture
     if picture:
         picture = {k: v for k, v in picture.items() if not k.startswith('_')}
     if not counted:
-        paragraphs = []  # only a dateline: nothing to read here
+        paragraphs, shown = [], {}  # only a dateline: nothing to read here
     listen = reader.listen if 'play' in reader.listen else None  # a trail alone isn't the button
-    return {'paragraphs': paragraphs, 'more': more, 'picture': picture, 'listen': listen}
+    lead = {'paragraphs': paragraphs, 'more': more, 'picture': picture, 'listen': listen}
+    if post:
+        # Which of the paragraphs shown the large first letter stands on, as on the post's own page; None if it
+        # has none, or stands on one that isn't shown here.
+        lead['cap'] = shown.get(reader.cap if reader.cap_done else reader.cap_wait)
+    return lead
 
 
 def _key(title):
@@ -293,6 +349,59 @@ def wiki_lead(url, http=None):
     return found or None
 
 
+def is_post(title):
+    """Whether a title is somebody's own writing, as the wiki reads it (PickiPedia's Posts/Post::isPostTitle): a
+    subpage of a user's."""
+    space, colon, rest = (title or '').partition(':')
+    return bool(colon) and space.strip().lower() == 'user' and '/' in rest.strip().strip('/')
+
+
+def post_of(card, base):
+    """A post's masthead from the wiki's card of its page (PickiPedia's Posts/PageCard.php), as the page there
+    draws it; None if the card isn't a post's. Words are kept as text and cut to size, an address only if it is
+    the wiki's own, the date and the reading time said as the wiki says them."""
+    from datetime import datetime
+    post = card.get('post') if isinstance(card, dict) and card.get('kind') == 'post' else None
+    if not isinstance(post, dict):
+        return None
+
+    def words(value, most):
+        return re.sub(r'\s+', ' ', value).strip()[:most] if isinstance(value, str) else ''
+
+    def own(value):
+        return value if isinstance(value, str) and value.startswith(base + '/') and len(value) <= 1000 else ''
+
+    headline = words(post.get('headline'), 300)
+    if not headline:
+        return None
+    author = post.get('author') if isinstance(post.get('author'), dict) else {}
+    published = ''
+    try:
+        at = datetime.fromisoformat(str(post.get('published') or '').replace('Z', '+00:00'))
+        published = f'{at.day} {at:%B} {at.year}'
+    except ValueError:
+        pass
+    minutes = post.get('minutes')
+    minutes = minutes if type(minutes) is int and 0 < minutes < 10000 else 0
+    return {'headline': headline, 'kicker': words(post.get('kicker'), 120), 'dek': words(post.get('dek'), 400),
+            'author': {'name': words(author.get('name'), 80), 'url': own(author.get('url')),
+                       'avatar': own(author.get('avatar'))},
+            'published': published,
+            'reads': ("a minute's read" if minutes == 1 else f"{minutes} minutes' read") if minutes else ''}
+
+
+def _post(title, base, http):
+    """The wiki's card of a post, as post_of reads it; None if the wiki has none to give (one older than its
+    Broadside skin answers an error) or doesn't answer: the page then opens as any article does."""
+    try:
+        got = http.get(f'{base}/api.php', timeout=4, headers={'User-Agent': 'memory-lane (magenta; tidings)'},
+                       params={'action': 'pagecard', 'titles': title, 'format': 'json', 'formatversion': 2}).json()
+        cards = got.get('pagecard') if isinstance(got, dict) else None
+        return post_of(cards[0], base) if isinstance(cards, list) and cards else None
+    except Exception:  # noqa: BLE001 -- the article opens without its masthead
+        return None
+
+
 def _fetch(title, base, http=None):
     import requests
     http = http or requests
@@ -302,7 +411,12 @@ def _fetch(title, base, http=None):
     html = (got.get('parse') or {}).get('text')
     if not html:
         return None
-    lead = lead_of(html, base)
-    if not lead['paragraphs'] and not lead['picture'] and not lead['listen']:
+    post = _post(title, base, http) if is_post(title) else None
+    lead = lead_of(html, base, post=bool(post))
+    if not lead['paragraphs'] and not lead['picture'] and not lead['listen'] and not post:
         return None
+    if post:
+        # The large first letter, on the paragraph its own page sets it on (lead_of's 'cap').
+        post['cap'] = lead.pop('cap')
+        lead['post'] = post
     return lead

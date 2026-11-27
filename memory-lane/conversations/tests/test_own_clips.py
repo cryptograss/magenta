@@ -86,10 +86,32 @@ class OwnClipsTest(TestCase):
                          f'/clips whole-point {link}\nand that\'s that')  # an agent's reply too
         with self.assertRaises(clips.Refused):
             clips.command('/clips nothing-saved\nwords', 'skyler')       # still a name it knows
-        # Its last line, after its words (blu, 28 Oct): moved to the top, the words under it.
+        # Its last line, after its words (blu, 28 Oct): where it stands, the words above it.
         self.assertEqual(clips.played_by("That's two of us.\n\n/clip whole-point"),
-                         f"/clips whole-point {link}\nThat's two of us.")
+                         f"That's two of us.\n\n/clips whole-point {link}")
         self.assertIsNone(clips.played_by('Use /clip whole-point like that.'))  # mid-sentence: words
+
+    def test_a_clip_in_the_middle_plays_where_it_sits(self):
+        # Justin, #connectome, 21 Nov 2026: "maybe we need to enable /clips to work in the middle of a
+        # message". blu had ended a write-up with a clip and then a merge ask, and nothing played.
+        link = self.make().json()['link']
+        said = 'Here it is.\n\n/clip whole-point\n\n<merge to="magenta:blu/thing"/>'
+        played = clips.played_by(said)
+        self.assertEqual(played, f'Here it is.\n\n/clips whole-point {link}\n\n<merge to="magenta:blu/thing"/>')
+        self.assertEqual(clips.command(said, 'skyler')[0], played)  # a person typing it, the same
+        html = render_html(played)
+        self.assertIn('data-own="1"', html)                                    # the clip, in its place
+        self.assertIn('<p>Here it is.</p>', html)                              # the words above it
+        self.assertLess(html.index('Here it is.'), html.index('data-own="1"'))
+        self.assertIn('magenta:blu/thing', html)                               # and the ask below it
+
+    def test_several_clips_each_play_and_a_fenced_one_does_not(self):
+        link = self.make().json()['link']
+        said = 'One:\n/clip whole-point\nand two:\n/clip whole-point\n\n```\n/clip whole-point\n```'
+        played = clips.played_by(said)
+        self.assertEqual(played.count(f'/clips whole-point {link}'), 2)
+        self.assertIn('```\n/clip whole-point\n```', played)                   # inside a fence: words
+        self.assertEqual(render_html(played).count('data-own="1"'), 2)
 
     def test_refused(self):
         self.make()
@@ -129,3 +151,36 @@ class MoodClipToolTest(TestCase):
         self.assertEqual(long, 'the-dude-abides-and-i-for-one-take-comfort-in-that-knowing-hes-out-there-taking')
         self.assertLessEqual(len(long), 80)
         self.assertEqual(self.tool.name_from('…', 'Old Crow 2019.mov'), 'old-crow-2019')
+
+
+class ClipPicturesTest(TestCase):
+    """/api/clips/ says each clip's picture, 'still', for the composer's list (Justin, 25 Nov)."""
+
+    def setUp(self):
+        cache.delete(clips.CACHE_KEY)
+        self.addCleanup(cache.delete, clips.CACHE_KEY)
+        ThinkingEntity.objects.create(name='justin', is_biological_human=True)
+        Mood.objects.create(slug='general')
+
+    def say(self, text):
+        _, token = mood_auth.enrol_device(ThinkingEntity.objects.get(name='justin'), 'test', tier='key')
+        client = Client(enforce_csrf_checks=False)
+        client.cookies[mood_auth.COOKIE] = token
+        return client.post('/api/moods/general/say/', json.dumps({'text': text}), content_type='application/json')
+
+    def clips_api(self):
+        return {c['name']: c for c in self.client.get('/api/clips/').json()['clips']}
+
+    def test_our_own_clips_picture_is_the_one_kept_here(self):
+        challenge = self.client.get('/api/auth/challenge/').json()['challenge']
+        body = {'challenge': challenge, 'signature': 'sig', 'name': 'whole-point', 'caption': 'The whole point.',
+                'video': base64.b64encode(MP4).decode(), 'still': base64.b64encode(JPEG).decode()}
+        with mock.patch.object(mood_auth, 'signer_of', return_value='justin'):
+            self.client.post('/api/clips/make/', json.dumps(body), content_type='application/json')
+        kept = YarnClip.objects.get(caption='The whole point.')
+        self.assertEqual(self.clips_api()['whole-point']['still'], kept.still.url)
+
+    def test_a_yarn_clips_picture_is_yarns_until_it_is_kept(self):
+        clip = 'ffb40a1a-a936-49ee-962a-ef53e0cb7237'
+        self.say(f'/clips save tony https://www.yarn.co/yarn-clip/{clip}')
+        self.assertEqual(self.clips_api()['tony']['still'], f'https://y.yarn.co/{clip}_text.gif')

@@ -267,9 +267,14 @@ def slots(schedule):
 
 
 def head(now, anchors=None):
-    """The chain's height at `now`, from the newest block anchor (eth_blocks, synced every five
-    minutes with the head) and 12-second slots after it; None if the newest is over an hour old."""
+    """The chain's height at `now`: the watcher's, block by block (services/chain_head), while it's feeding
+    us. Else from the newest block anchor (eth_blocks, synced every five minutes with the finalized head)
+    and 12-second slots after it; None if the newest is over an hour old."""
+    from . import chain_head
     from .eth_blocks import SECONDS_PER_SLOT, BlockClock
+    live = chain_head.height_at(now)
+    if live is not None:
+        return live
     clock = BlockClock(anchors)
     if not clock.numbers:
         return None

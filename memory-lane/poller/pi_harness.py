@@ -87,6 +87,13 @@ def _look_only_tools():
 
 
 LOOK_ONLY_TOOLS = _look_only_tools()
+# A full wake names its tools too, as additions to whatever Pi starts with. With no --tools at all, Pi 1.5
+# restores the loadout its session recorded (sdk.js usesDefaultTools; agent-session.js _restoreToolsFromTranscript),
+# so a full wake forked from a session whose last wake was look-only ran look-only: read, grep, find, ls and
+# codemode, no bash, edit or write (magent, #ramp, 15 Nov; re tried it on Pi 1.5.2: a plain fork of a
+# `--tools read,grep,ls` session recorded only those three, a fork with these added bash, edit and write). Only
+# +name entries: the restored loadout stays, nothing is allowlisted, so every MCP tool stays reachable.
+FULL_TOOL_ADDITIONS = '+bash,+edit,+write'
 COMPACT = re.compile(r'/compact(?:\s+(.+))?\Z', re.S)  # what the runner sends for "/compact re [what to keep]"
 # Seconds to let a stopped turn wind down, its in-flight tool included, before SIGKILL.
 TURN_STOP_GRACE = 10
@@ -127,7 +134,7 @@ class LoopGuard:
                  window_size=TOOL_LOOP_WINDOW, max_calls=None):
         self.limit = limit
         self.window_limit = window_limit
-        self.max_calls = TOOL_LOOP_MAX_CALLS if max_calls is None else max_calls
+        self.max_calls = TOOL_LOOP_MAX_CALLS if max_calls is None else max_calls  # 0: no ceiling
         self.warn_at = (self.max_calls * 2) // 3  # where the wrap-up warning goes out (2/3 of the budget)
         self.warn = None  # set once, at warn_at: the pi harness delivers it as an RPC steer
         self.streak, self.last = 0, None
@@ -156,9 +163,9 @@ class LoopGuard:
             return f'tool loop: {name} called {self.streak}× with identical arguments'
         if self.window_limit and window_count >= self.window_limit:
             return f'tool loop: {name} called {window_count}× within last {len(self.recent)} calls'
-        if self.total >= self.max_calls:
+        if self.max_calls and self.total >= self.max_calls:
             return f'tool loop: turn exceeded maximum tool calls limit ({self.total})'
-        if self.warn is None and self.total >= self.warn_at:
+        if self.max_calls and self.warn is None and self.total >= self.warn_at:
             self.warn = (f'tool budget: {self.total} of {self.max_calls} tool calls used this turn. '
                          'Wrap up soon: finish what is in hand, then post your reply and stop calling tools.')
         return ''
@@ -467,6 +474,9 @@ class PiWaker:
         """{'harness', 'vendors': [{'name', 'usable', 'models': [[id, context], ...]}]}: every model this
         Pi knows, and whether the keys here reach each vendor (what `pi --list-models` lists is what
         it can run). Never the keys themselves. None if Pi says nothing."""
+        # `--list-models` reads ~/.pi/agent/models-store.json without touching the network, so an
+        # emergent running only Claude Code turns never picks up new OpenRouter models unless we refresh.
+        self.run_quietly([self.pi, 'update', '--models'])
         known = {}
         package = self.package()
         if package is not None:
@@ -488,8 +498,9 @@ class PiWaker:
         for name in sorted(set(known) | set(usable)):
             models = [list(m)[:2] for m in known.get(name, [])]
             ids = {m[0] for m in models}
-            models += [[m, None] for m in usable.get(name, []) if m not in ids]  # a vendor of its own (models.json)
+            models += [[m, None] for m in usable.get(name, []) if m not in ids]  # a vendor of its own, or newer than compat
             models = [m for m in models if not is_router(f'{name}/{m[0]}')]
+            models.sort(key=lambda m: (m[0].lstrip('~').split('/', 1)[0], not m[0].startswith('~'), m[0].lstrip('~')))
             vendors.append({'name': name, 'usable': name in usable, 'models': models})
         return {'harness': self.harness(), 'vendors': vendors}
 
@@ -631,8 +642,8 @@ class PiWaker:
             cmd += ['--model', ALIASES.get(model, model)]
         if effort:
             cmd += ['--thinking', EFFORTS.get(effort, effort)]
-        if not full:
-            cmd += ['--tools', LOOK_ONLY_TOOLS]  # look-only: reads and the allowlisted MCP tools (wake_policy.py)
+        # Look-only: reads and the allowlisted MCP tools (wake_policy.py). Full: Pi's own, added to what it restores.
+        cmd += ['--tools', FULL_TOOL_ADDITIONS if full else LOOK_ONLY_TOOLS]
         if system:  # its instructions (mood_poller.MoodPoller.instructions_for): after Pi's own, never in the session
             cmd += ['--append-system-prompt', system]
         return cmd

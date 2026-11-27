@@ -1,0 +1,301 @@
+"""To-do types, and the deploy and verify items that tick themselves (services/todo_types.py; Justin, #ramp,
+13-14 Nov)."""
+
+from unittest import mock
+
+from django.core.cache import cache
+from django.test import TestCase
+
+from conversations.models import Mood
+from conversations.services import todo, todo_types as tt
+
+WIKI = 'https://pickipedia.xyz/wiki/'
+
+
+class TypeTest(TestCase):
+
+    def test_the_kinds_written_are_read_as_eight_types(self):
+        for kind, want in (('decision', 'decide'), ('Decide', 'decide'), ('docs', 'work'), ('document', 'work'),
+                           ('infra', 'hands'), ('secret', 'hands'), ('writing', 'make'), ('music', 'make'),
+                           ('check', 'verify'), ('redeploy', 'deploy'), ('promote', 'merge'), ('whatever', 'work')):
+            self.assertEqual(tt.type_of({'kind': kind}), want, kind)
+
+    def test_no_kind_but_a_branch_page_is_a_merge(self):
+        self.assertEqual(tt.type_of({'link': 'https://magenta.cryptograss.live/ramp/magenta/magent/foo/'}), 'merge')
+        self.assertEqual(tt.type_of({'link': 'https://example.com/'}), 'work')
+
+    def test_summary_counts_open_per_type(self):
+        rows = {r['type']: r for r in tt.summary(tt.with_types([
+            {'kind': 'deploy', 'done': False}, {'kind': 'deploy', 'done': True}, {'kind': 'decision', 'done': False}]))}
+        self.assertEqual(list(rows), list(tt.TYPES))
+        self.assertEqual((rows['deploy']['open'], rows['deploy']['total']), (1, 2))
+        self.assertEqual(rows['decide']['open'], 1)
+
+
+class SaidTest(TestCase):
+    """Each item says which message asked for it, and is written short (Justin, 21 Nov, #at-a-glance: "a maximum
+    of 120 characters and a link to a message, so that the human can see the conversation that prompted the
+    todo")."""
+
+    UUID = '0b5f2e14-1c3d-4a7b-9e21-6f8a5c4d3b2a'
+
+    def said(self, value):
+        return tt.with_types([{'task': 'Merge it', 'said': value}])[0]['said_url']
+
+    def test_a_message_link_is_where_it_came_from(self):
+        self.assertEqual(self.said(f'#m-{self.UUID}'), f'/messages/{self.UUID}')
+        self.assertEqual(self.said(f'https://magenta.cryptograss.live/moods/interfaces/#m-{self.UUID}'),
+                         f'https://magenta.cryptograss.live/moods/interfaces/#m-{self.UUID}')
+        self.assertEqual(self.said(f'/moods/interfaces/#m-{self.UUID}'), f'/moods/interfaces/#m-{self.UUID}')
+
+    def test_an_id_on_its_own_or_cut_short_is_read_too(self):
+        self.assertEqual(self.said(self.UUID), f'/messages/{self.UUID}')
+        self.assertEqual(self.said('#m-0b5f2e14'), '/messages/0b5f2e14')
+        self.assertEqual(self.said(f'/messages/{self.UUID}'), f'/messages/{self.UUID}')
+
+    def test_nothing_to_go_to_is_empty(self):
+        for value in ('', None, 'because Justin asked', 'see the Mood'):
+            self.assertEqual(self.said(value), '', repr(value))
+
+    def test_a_task_past_120_characters_is_marked_long(self):
+        short = tt.with_types([{'task': 'x' * tt.TASK_MAX}])[0]
+        long = tt.with_types([{'task': 'x' * (tt.TASK_MAX + 1)}])[0]
+        self.assertFalse(short['long'])
+        self.assertTrue(long['long'])
+
+    def test_the_page_carries_said_and_long_to_a_row(self):
+        items = todo.parse('<todo>\n- task: Merge magenta:magent/foo\n  said: "#m-0b5f2e14"\n</todo>')
+        self.assertEqual(items[0]['said'], '#m-0b5f2e14')
+        self.assertEqual(tt.with_types(items)[0]['said_url'], '/messages/0b5f2e14')
+
+
+class HeadlineTest(TestCase):
+    """A row is a glyph and a headline (Justin, 21 Nov, #at-a-glance: "_realllly_ terse headlines")."""
+
+    def line(self, task, kind=''):
+        return tt.with_types([{'task': task, 'kind': kind}])[0]['headline']
+
+    def test_a_short_task_is_its_own_headline(self):
+        self.assertEqual(self.line('Get into Backblaze', 'hands'), 'Get into Backblaze')
+        self.assertEqual(self.line('Gate gap: a removal is unchecked', 'verify'), 'Gate gap: a removal is unchecked')
+
+    def test_the_type_s_own_verb_is_left_to_its_glyph(self):
+        self.assertEqual(self.line('Merge magenta:magent/at-a-glance: the right pane\'s second leaf, who\'s on what',
+                                   'merge'), 'magenta:magent/at-a-glance')
+        self.assertEqual(self.line('Redeploy maybelle', 'deploy'), 'maybelle')
+        self.assertEqual(self.line('Decide: unpin all 11 Coconut remnants?', 'decide'), 'unpin all 11 Coconut remnants?')
+        self.assertEqual(self.line('Merge', 'merge'), 'Merge')                       # nothing else to show
+        self.assertEqual(self.line('Merge the two lists by hand', 'work'), 'Merge the two lists by hand')  # not a merge
+
+    def test_a_long_task_is_cut_at_its_first_clause(self):
+        self.assertEqual(self.line('Decide the burn element: naming, what a burn attaches to, and whether it ships '
+                                   'with epoch 1 or later', 'decide'), 'the burn element')
+        self.assertEqual(self.line("BETA: the pane's display selector (content / skin / header): one consistent "
+                                   'style, or drop the selector', 'decide'), "BETA: the pane's display selector")
+        self.assertEqual(self.line('Promote [[Candidate:Common.js]] to [[MediaWiki:Common.js|the live one]]: the '
+                                   'site-wide night toggle', 'merge'), 'Promote Candidate:Common.js to the live one')
+
+    def test_with_no_clause_it_is_cut_at_a_word(self):
+        line = self.line('Make a bot password for the connectome walk and put it in the vault as `connectome_walk`')
+        self.assertEqual(line, 'Make a bot password for the connectome walk and put it…')
+        self.assertLessEqual(len(line), tt.HEADLINE_MAX)
+        for task in ('x' * 300, 'word ' * 80, 'a: ' + 'b' * 200, ''):
+            self.assertLessEqual(len(self.line(task)), tt.HEADLINE_MAX)
+
+    def test_what_holds_someone_up_ranks_first_and_a_priority_before_all(self):
+        merge, decide, work, urgent = tt.with_types([
+            {'task': 'a', 'kind': 'merge'}, {'task': 'b', 'kind': 'decide'}, {'task': 'c', 'kind': 'code'},
+            {'task': 'd', 'kind': 'music', 'priority': 2}])
+        self.assertEqual(sorted([work, decide, urgent, merge], key=lambda i: i['rank']), [urgent, merge, decide, work])
+        self.assertEqual(set(tt.NEED_ORDER), set(tt.TYPES))
+
+
+class VerifyTest(TestCase):
+
+    def setUp(self):
+        cache.clear()
+
+    def ask(self, pages, normalized=()):
+        return lambda titles: {'query': {'normalized': list(normalized), 'pages': pages}}
+
+    def test_a_trusted_editor_s_revision_and_no_unverified_claim_is_verified(self):
+        got = tt.verified(['Main Page', 'Kyle Tuttle', 'Rabbithole', 'Gone'], ask=self.ask([
+            {'title': 'Main Page', 'revisions': [{'user': 'JMyles'}]},
+            {'title': 'Kyle Tuttle', 'revisions': [{'user': 'Blu'}]},                        # an emergent's, waiting
+            {'title': 'Rabbithole', 'revisions': [{'user': 'JMyles'}],
+             'categories': [{'title': tt.UNVERIFIED_CATEGORY}]},                             # a claim still wrapped
+            {'title': 'Gone', 'missing': True}]))
+        self.assertEqual(got, {'Main Page': True, 'Kyle Tuttle': False, 'Rabbithole': False})
+
+    def test_a_title_written_otherwise_is_followed(self):
+        got = tt.verified(['main_page'], ask=self.ask([{'title': 'Main Page', 'revisions': [{'user': 'SkymanJenkins'}]}],
+                                                      normalized=[{'from': 'main_page', 'to': 'Main Page'}]))
+        self.assertEqual(got, {'main_page': True})
+
+    def test_the_link_names_the_page(self):
+        self.assertEqual(tt.wiki_title(WIKI + "Song:Reuben's_Train"), "Song:Reuben's Train")
+        self.assertEqual(tt.wiki_title(WIKI + 'Kuba%27s_Last_Merged_Commits#top'), "Kuba's Last Merged Commits")
+        self.assertIsNone(tt.wiki_title('https://pickipedia.xyz/stats/'))
+        self.assertIsNone(tt.wiki_title(''))
+
+    def test_an_item_ticks_and_the_page_s_change_forgets_its_list(self):
+        mood = Mood.objects.create(slug='connectome', title='connectome')
+        items = [{'task': 'Verify Kyle Tuttle', 'kind': 'verify', 'link': WIKI + 'Kyle_Tuttle', 'done': False}]
+        with mock.patch.object(tt, 'verified', lambda titles: {'Kyle Tuttle': False}):
+            self.assertFalse(tt.with_closes('connectome', items)[0]['done'])
+        with mock.patch.object(tt, 'verified', lambda titles: {'Kyle Tuttle': True}):
+            done = tt.with_closes('connectome', items)[0]
+        self.assertEqual((done['done'], done['verified'], done['type']), (True, True, 'verify'))
+        cache.set('todo:connectome', {'items': []}, 60)
+        self.assertEqual(tt.page_changed('Kyle_Tuttle'), ['connectome'])
+        self.assertIsNone(cache.get('todo:connectome'))
+        self.assertEqual(tt.page_changed('Some Other Page'), [])
+        mood.delete()
+
+
+class DeployTest(TestCase):
+
+    def setUp(self):
+        cache.clear()
+
+    def item(self, task):
+        return {'task': task, 'kind': 'deploy', 'done': False, 'type': 'deploy'}
+
+    def test_servers_are_named_apart_from_repositories(self):
+        self.assertEqual(tt._servers('Redeploy maybelle once pickipedia:magent/x has merged'), ['maybelle'])
+        self.assertEqual(tt._servers('Then redeploy hunter and pickipedia'), ['hunter', 'pickipedia'])
+        self.assertEqual(tt._servers('Deploy MemoryCommitments from the cryptograss wallet'), [])
+
+    def test_the_pickipedia_box_is_named_pickipedia_vps_too(self):
+        # Three open items on 25 Nov 2026 said "Redeploy pickipedia-vps" -- the name of that box's deploy logic
+        # in maybelle-config. They named no server, so they could never tick themselves (Justin, #ramp).
+        self.assertEqual(tt._servers('Redeploy pickipedia-vps, for rabbithole:blu/fx-instruments'), ['pickipedia'])
+        item = self.item('Redeploy pickipedia-vps')
+        tt.note_seen('connectome', [item], now=1000)
+        self.assertEqual(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 1100}),
+                         'deployed')
+
+    def test_the_branch_it_waits_for_may_be_in_its_note(self):
+        # "Redeploy pickipedia-vps, so the soloist's card goes live", with "After rabbithole:blu/soloist-card
+        # merges" in the note: the note is where the branch is written.
+        item = {**self.item('Redeploy pickipedia, so the soloist card goes live'),
+                'note': 'After rabbithole:blu/soloist-card merges.'}
+        with mock.patch.object(tt, '_merge_time', lambda repo, branch: None):
+            self.assertIsNone(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 10 ** 10}))
+        with mock.patch.object(tt, '_merge_time', lambda repo, branch: ('h', 500)), \
+                mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: None):
+            self.assertIsNone(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 400}))
+            self.assertEqual(tt.deployed('connectome', item, runs={}, last_finished=lambda s: {'at_ts': 600}),
+                             'deployed')
+
+    def test_naming_no_branch_it_counts_from_when_it_was_first_seen(self):
+        item = self.item('Redeploy maybelle (migration 0053)')
+        tt.note_seen('radicle', [item], now=1000)
+        tt.note_seen('radicle', [item], now=5000)  # seen again later: the first sighting stands
+        before = lambda name: {'at_ts': 900}
+        after = lambda name: {'at_ts': 1100}
+        self.assertIsNone(tt.deployed('radicle', item, runs={}, last_finished=before))
+        self.assertEqual(tt.deployed('radicle', item, runs={}, last_finished=after), 'deployed')
+        self.assertIsNone(tt.deployed('radicle', self.item('Redeploy maybelle, never seen'), runs={}, last_finished=after))
+
+    def test_every_named_server_must_have_run(self):
+        item = self.item('Then redeploy hunter and pickipedia')
+        tt.note_seen('radicle', [item], now=1000)
+        one = lambda name: {'at_ts': 1100} if name == 'hunter' else {'at_ts': 900}
+        self.assertIsNone(tt.deployed('radicle', item, runs={}, last_finished=one))
+
+    def test_a_pull_number_or_no_server_waits_for_a_person(self):
+        after = lambda name: {'at_ts': 10 ** 10}
+        for task in ('Redeploy delivery-kid: #298 is merged', 'Deploy MemoryCommitments from the cryptograss wallet',
+                     'Redeploy maybelle, after both merges', 'Redeploy hunter once magent/pi-1.5 is merged'):
+            item = self.item(task)
+            tt.note_seen('m', [item], now=1)
+            self.assertIsNone(tt.deployed('m', item, runs={}, last_finished=after), task)
+
+    def test_naming_a_branch_the_server_must_run_it(self):
+        item = self.item('Redeploy maybelle (magenta) once magenta:magent/dialogs-command has merged')
+        runs = {'magenta': {'maybelle': 'abc'}}
+        with mock.patch('conversations.services.tools_ask.named_branches', lambda t: [('magenta', 'magent/dialogs-command')]), \
+                mock.patch.object(tt, '_merge_time', lambda repo, branch: None):
+            self.assertIsNone(tt.deployed('m', item, runs=runs))                       # not merged yet
+        with mock.patch('conversations.services.tools_ask.named_branches', lambda t: [('magenta', 'magent/dialogs-command')]), \
+                mock.patch.object(tt, '_merge_time', lambda repo, branch: ('h', 500)):
+            with mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: []):
+                self.assertIsNone(tt.deployed('m', item, runs=runs))                   # merged, maybelle runs older
+            with mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: ['maybelle']):
+                self.assertEqual(tt.deployed('m', item, runs=runs), 'deployed')        # maybelle runs it
+
+    def test_a_note_saying_after_both_merges_waits_for_a_person(self):
+        # re, 26 Nov: branches are read from the task and the note, so the merge-word check reads both too --
+        # "Redeploy pickipedia-vps" with "after both merges" in the note is not ticked by any later deploy.
+        item = {**self.item('Redeploy pickipedia-vps'), 'note': 'after both merges'}
+        tt.note_seen('m', [item], now=1000)
+        self.assertIsNone(tt.deployed('m', item, runs={}, last_finished=lambda s: {'at_ts': 10 ** 10}))
+
+    def test_a_deploy_that_started_before_the_merge_is_not_read_as_carrying_it(self):
+        # re, 26 Nov: a deploy that began before a merge landed may finish after it (the pickipedia box clones
+        # mid-playbook), so the clock reads its start -- at_ts less took -- not its finish.
+        item = self.item('Redeploy pickipedia after pickipedia:magent/x merges')
+        with mock.patch('conversations.services.tools_ask.named_branches', lambda t: [('pickipedia', 'magent/x')]), \
+                mock.patch.object(tt, '_merge_time', lambda repo, branch: ('h', 500)), \
+                mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: None):
+            self.assertIsNone(tt.deployed(
+                'm', item, runs={}, last_finished=lambda s: {'at_ts': 700, 'took': 300}))  # started at 400
+            self.assertEqual(tt.deployed(
+                'm', item, runs={}, last_finished=lambda s: {'at_ts': 700, 'took': 100}), 'deployed')  # at 600
+
+    def test_a_server_that_doesn_t_report_the_repository_needs_a_deploy_after_the_merge(self):
+        item = self.item('Redeploy pickipedia after pickipedia:magent/x merges')
+        with mock.patch('conversations.services.tools_ask.named_branches', lambda t: [('pickipedia', 'magent/x')]), \
+                mock.patch.object(tt, '_merge_time', lambda repo, branch: ('h', 500)), \
+                mock.patch('conversations.services.ramp.live_on', lambda repo, head, runs: None):
+            self.assertIsNone(tt.deployed('m', item, runs={}, last_finished=lambda s: {'at_ts': 400}))
+            self.assertEqual(tt.deployed('m', item, runs={}, last_finished=lambda s: {'at_ts': 600}), 'deployed')
+
+    def test_a_finished_deploy_forgets_every_list(self):
+        from conversations.services import servers
+        Mood.objects.create(slug='ops', title='ops')
+        cache.set('todo:ops', {'items': []}, 60)
+        servers.record_deploy('maybelle', 'started')
+        self.assertIsNotNone(cache.get('todo:ops'))       # started: nothing to tick yet
+        servers.record_deploy('maybelle', 'finished', commit='a' * 40)
+        self.assertIsNone(cache.get('todo:ops'))
+        self.assertEqual(servers.last_finished('maybelle')['state'], 'finished')
+
+
+class PageTest(TestCase):
+
+    def test_the_page_filters_by_type(self):
+        cache.clear()
+        Mood.objects.create(slug='m1', title='Mood One')
+        state = {'items': [{**tt.with_types([{'task': 'Redeploy hunter', 'kind': 'deploy', 'who': ['justin'],
+                                              'link': '', 'note': '', 'done': False}])[0], 'mood': 'm1',
+                            'mood_title': 'Mood One'}], 'total': 1, 'open': 1, 'done': 0,
+                 'moods': [{'slug': 'm1', 'title': 'Mood One', 'count': 1, 'open': 1}]}
+        state['types'] = tt.summary(state['items'])
+        with mock.patch.object(todo, 'all_todos', lambda http=None: state):
+            html = self.client.get('/todo/?embed=1').content.decode()
+        self.assertIn('data-type="deploy"', html)
+        self.assertIn('class="t-btn" data-type="deploy"', html)
+        self.assertIn('class="t-btn none" data-type="merge"', html)   # none open: dimmed
+        self.assertIn('🖥️ deploy', html)
+
+    def test_the_page_carries_each_item_s_headline_and_who_under_one_name(self):
+        cache.clear()
+        m = Mood.objects.create(slug='m1', title='Mood One')
+        page = ('<todo>\n- task: "Merge magenta:magent/foo: a long account of what it does and why it matters"\n'
+                '  who: jMyles, JMyles\n  kind: merge\n- task: Chart a song\n  kind: music\n</todo>')
+
+        class Wiki:
+            def get(self, url, params=None, **kwargs):
+                found = (params or {}).get('title') == 'Cryptograss:Moods/m1/todo'
+                return mock.Mock(status_code=200 if found else 404, text=page)
+        make, merge = todo.all_todos(http=Wiki())['items']   # newest first: the page's last
+        self.assertEqual((merge['headline'], merge['type'], merge['who_keys']), ('magenta:magent/foo', 'merge', ['justin']))
+        self.assertEqual((make['headline'], make['who_keys']), ('Chart a song', []))
+        self.assertLess(merge['rank'], make['rank'])
+        html = self.client.get('/todo/?embed=1').content.decode()
+        self.assertIn('id="todo-items"', html)                 # the items, for the page to group, sort and filter
+        self.assertIn('"headline": "magenta:magent/foo"', html)
+        self.assertIn('id="todoWhos"', html)
+        self.assertEqual(self.client.get(f'/api/moods/{m.slug}/todo/').json()['types']['merge'][0], '🪢')

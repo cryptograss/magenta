@@ -23,6 +23,7 @@ Usage: magenta.sh [TARGET] [OPTIONS]
        magenta.sh banner "message" <background color> <foreground color>
        magenta.sh banner --clear
        magenta.sh recovery [--fresh] [--openrouter | --subscription]
+       magenta.sh rescue-disk
 
 Connect to a container and drop into a tmux + Claude Code session.
 
@@ -71,11 +72,14 @@ SUBCOMMANDS:
                         subtitle burned in, and save it under a name, as
                         /clips save does for a Yarn link: /clips <name>
                         plays it. Times: seconds, m:ss or h:mm:ss. Signed
-                        with your SSH key. --name (default: the subtitle's
-                        first words), --mood (default: general), --out FILE
-                        to cut only and look first. Runs mood_clip.py.
-  clips list            Every clip: its name, what it's for (from the
-                        Magenta:Clips page on PickiPedia) and its link.
+                        with your SSH key. Its row lands on Magenta:Clips,
+                        where you write what it's for. --name (default: the
+                        subtitle's first words), --mood to say it in one
+                        (default: none), --out FILE to cut only and look
+                        first. Runs mood_clip.py.
+  clips list            Every clip: its name, what it's for and its link,
+                        from the Magenta:Clips page on PickiPedia, which is
+                        the list itself.
   merge <repo>:<branch> [--into B] [--yes]
                         Merge a branch without a pull request. Fetches it and
                         its target from GitHub itself, shows you git log and
@@ -123,11 +127,18 @@ SUBCOMMANDS:
                         credits, Anthropic's models or any vendor's by /model;
                         --subscription: Claude Code, on the Claude
                         subscription. Opening one never closes the other.
-                        --fresh starts the chosen one over. Only Justin's key
-                        opens it
+                        --fresh starts the chosen one over. Every person whose
+                        key is in hunter's inventory may open it
                         (maybelle-config hunter/ansible/roles/recovery). Plain
                         ssh, not mosh; MAGENTA_RECOVERY_HOST overrides the host
                         (say, 5.78.83.4 when DNS is the trouble).
+  rescue-disk           hunter's disk is full, and recovery won't open (its
+                        tmux and its agent need a disk to write to). Through
+                        the same login, with no agent: frees Docker's build
+                        cache, then dangling images, then images no container
+                        uses, stopping at 25GB free. Never volumes, never
+                        /opt/magenta. Then redeploy hunter. The procedure:
+                        Cryptograss:Hunter/Disk full on PickiPedia.
 
 OTHER OPTIONS:
   --dangerously-skip-permissions
@@ -166,6 +177,7 @@ EXAMPLES:
   magenta.sh AZ5 --lift                       # back to normal
   magenta.sh recovery                         # nothing answers: magent on hunter's host
   magenta.sh recovery --subscription          # ...in Claude Code on the subscription, not Pi on OpenRouter
+  magenta.sh rescue-disk                      # hunter's disk is full: free Docker's space, no agent
 
 MENTAL MODEL:
   * tmux session name = what shows in `tmux list-sessions`
@@ -251,6 +263,13 @@ case "${1:-}" in
         done
         [ -n "$RECOVERY_ROUTE" ] && RECOVERY_WORDS+=("$RECOVERY_ROUTE")
         exec ssh -t "recovery@${MAGENTA_RECOVERY_HOST:-hunter.cryptograss.live}" "${RECOVERY_WORDS[@]}"
+        ;;
+    rescue-disk)
+        shift
+        # The recovery login's one other word: no tmux, no agent, so it works
+        # when hunter's disk is full (17 Nov 2026). hunter-rescue-disk there.
+        [ $# -eq 0 ] || { echo "Usage: magenta.sh rescue-disk"; exit 1; }
+        exec ssh "recovery@${MAGENTA_RECOVERY_HOST:-hunter.cryptograss.live}" rescue-disk
         ;;
     AZ5|az5)
         shift

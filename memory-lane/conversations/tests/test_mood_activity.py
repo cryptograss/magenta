@@ -67,6 +67,37 @@ class ActivityTest(TestCase):
             self.add(self.magent, 299 - i, {}, model=ToolUse, tool_name='Bash', tool_id=f't{i}', stop_reason='tool_use')
         self.assertEqual(self.now()['since'], NOW - 300)
 
+    def test_a_long_turn_begun_by_a_wake_counts_from_its_wake_not_the_day_before(self):
+        # Justin, 16 Nov (#interfaces): magent "thinking" 1 minute in, 2, ... 8, then 1,400-odd. Its turn began
+        # with a wake (no post), ran past RECENT rows, and was dated from its last end_turn here, a day earlier;
+        # its runs since had ended with turn-results, which the long-turn search never looked at.
+        system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        poller, _ = ConversationParticipant.objects.get_or_create(name='mood-poller')
+        self.add(self.justin, 90_000, '@magent go', source_file='mood-web')
+        self.add(self.magent, 89_990, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn')
+        self.add(system, 89_989, {'type': 'turn-result', 'agent': 'magent', 'subtype': 'success'})
+        self.add(poller, 3_600, 'a quiet look')  # a later run, its last line no end_turn (Pi)
+        self.add(self.magent, 3_590, {}, model=ToolUse, tool_name='Bash', tool_id='q1', stop_reason='tool_use')
+        self.add(system, 3_580, {'type': 'turn-result', 'agent': 'magent', 'subtype': 'success'})
+        self.add(poller, 600, 'a wake')
+        for i in range(80):
+            self.add(self.magent, 599 - i, {}, model=ToolUse, tool_name='Bash', tool_id=f'w{i}', stop_reason='tool_use')
+        self.assertEqual(activity(self.mood, now=NOW, only='magent')['since'], NOW - 600)
+        self.assertEqual(self.now()['since'], NOW - 600)
+
+    def test_the_start_its_runner_noted_wins_over_the_record(self):
+        # Justin, 17 Nov: note when a turn starts, and read the record only when that can't be had.
+        system, _ = ConversationParticipant.objects.get_or_create(name='system', defaults={'participant_type': 'system'})
+        self.add(self.magent, 5_000, [{'type': 'text', 'text': 'done'}], stop_reason='end_turn')
+        for i in range(80):  # a long turn, its first rows past what the record search can be sure of
+            self.add(self.magent, 479 - i, {}, model=ToolUse, tool_name='Bash', tool_id=f'n{i}', stop_reason='tool_use')
+        self.assertEqual(self.now()['since'], NOW - 479)  # no word from the runner: the record
+        set_running('m26', 'magent', since=NOW - 490, now=NOW)
+        self.assertEqual(self.now()['since'], NOW - 490)  # the runner's own note
+        self.add(system, 950, {'type': 'turn-result', 'agent': 'magent'})  # a note older than the last run's end: stale
+        set_running('m26', 'magent', since=NOW - 1_000, now=NOW)
+        self.assertEqual(self.now()['since'], NOW - 479)
+
     def test_background_tasks_show_until_they_end(self):
         from conversations.services.mood_view import background_tasks
         session = uuid.uuid4()

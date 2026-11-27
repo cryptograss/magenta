@@ -250,9 +250,13 @@ def _title_from(draft):
 
 
 def _block_now():
-    """The Ethereum block as the draft is made (upload_blockheight), or None: never worth failing over."""
+    """The Ethereum block as the draft is made (upload_blockheight), or None: never worth failing over.
+    The watcher's head (services/chain_head); a node asked only when the watcher isn't feeding us."""
     try:
-        from . import eth_blocks
+        from . import chain_head, eth_blocks
+        live = chain_head.height_at()
+        if live is not None:
+            return live
         return eth_blocks.fetch_head(eth_blocks.rpc_url())[0]
     except Exception:
         return None

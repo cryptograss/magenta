@@ -730,6 +730,28 @@ class ClaudeCodeWaker:
             cmd += ['--append-system-prompt', system]
         return cmd + ['--', prompt]
 
+    def environment(self):
+        """The environment a turn runs in: ours, and the settings a Mood needs
+        that a terminal doesn't.
+
+        Claude Code nudges an agent that has gone several tool calls without
+        saying anything: "The user hasn't heard from you in a while. As you
+        continue, keep them updated." In a terminal that is one line in a
+        scrollback. In a Mood every answer is a post, so a long piece of work
+        turns into a column of running commentary nobody asked for -- blu
+        answered the nudge five times while writing one journal entry, and
+        Justin asked what had happened (#connectome, 27 Nov 2026). The work
+        itself is already visible: the Mood shows each tool call as it goes.
+
+        CLAUDE_CODE_SILENT_TURN_REMINDER is read as a tri-state boolean --
+        "0", "false", "no" and "off" are all false -- and the gate returns the
+        environment's answer before it asks anything else, so this turns the
+        nudge off, both its every-few-turns and its timed form (checked
+        against the binary of Claude Code 2.1.x, the env table's triBool and
+        the gate that reads it).
+        """
+        return {**os.environ, 'CLAUDE_CODE_SILENT_TURN_REMINDER': '0'}
+
     def wake(self, session_id, prompt, new_session_id=None, on_event=None, grant=(), budget=None, effort=None,
              model=None, full=False, stop=None, ultracode=False, system=None, cwd=None):
         """Run one turn; (new session id, its reply). `on_event` sees every
@@ -738,8 +760,10 @@ class ClaudeCodeWaker:
         result event: its cost, its duration, how it ended."""
         try:  # lazy, matching how this module loads the Pi harness elsewhere
             from poller.pi_harness import LoopGuard
+            from poller.wake_policy import CLAUDE_TOOL_MAX_CALLS
         except ImportError:  # running outside the repo's layout (tests import it directly)
             from pi_harness import LoopGuard
+            from wake_policy import CLAUDE_TOOL_MAX_CALLS
         if session_id is None:  # a new session: in its Mood's directory (`cwd`), else where new ones start
             cwd = cwd or str(Path(self.new_cwd).expanduser())
             spent_before = 0.0
@@ -753,8 +777,9 @@ class ClaudeCodeWaker:
                            full=full, ultracode=ultracode, system=system)
         # Its own process group, so ending it ends everything it started: a
         # child left holding the output pipe would keep the turn open.
-        proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True)
+        proc = subprocess.Popen(cmd, cwd=cwd, env=self.environment(), stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
+                                start_new_session=True)
         stderr = []
         drain = threading.Thread(target=lambda: stderr.append(proc.stderr.read()), daemon=True)
         drain.start()
@@ -764,10 +789,10 @@ class ClaudeCodeWaker:
         watchdog.start()
         result = None
         said = ''  # the last text the agent itself wrote (not a helper's)
-        # The tool-loop tripwire (pi_harness.LoopGuard): the attractor detectors kill, and the
-        # per-turn ceiling is a 150-call budget that still ends the turn -- Claude Code's `-p`
-        # has no stdin, so unlike pi there is no mid-turn warning here (pi_harness, 31 Oct).
-        guard, killed = LoopGuard(), None
+        # The tool-loop tripwire (pi_harness.LoopGuard): the attractor detectors kill. No ceiling on how
+        # many calls a turn makes (wake_policy.CLAUDE_TOOL_MAX_CALLS, 13 Nov): Claude Code's `-p` has no
+        # stdin to warn through, so a ceiling here only ended long turns unanswered.
+        guard, killed = LoopGuard(max_calls=CLAUDE_TOOL_MAX_CALLS), None
         asked = {}  # tool_use id -> (name, input): judged when its result comes back (LoopGuard.see)
         final = FinalUsage()
         try:
@@ -1797,6 +1822,29 @@ def since_last_word(turns, agent, before_id=None, silences=()):
         if turns[i]['sender'] == agent or (last and parse_time(turns[i]['created_at']) <= last):
             return turns[i + 1:]
     return turns
+
+
+# A crashed Node harness (Pi) prints where it threw first ("node:events:497"), then the line that says what
+# happened ("Error: read ECONNRESET"). The Mood's dot keeps one line, so it keeps that one (re, 15 Nov: magent's
+# two dots read only "node:events:497", and the rest was in a log nobody else can read).
+_TRACE_AT = re.compile(r'\s*(?:node:[\w/]+|/\S+\.m?[jt]s):\d+(?::\d+)?\s*$')
+_ERROR_LINE = re.compile(r'^\s*(?:[A-Z]\w*)?(?:Error|Exception)\b|^\s*\w+ \[ERR_\w+\]')
+
+
+def failure_why(e):
+    """One line for the Mood's dot saying why a wake failed: the exception's first line, or, when that is only
+    a Node stack location, its prefix and the error line under it."""
+    text = str(e)
+    if not text:
+        return 'it failed to run'
+    lines = text.splitlines()
+    head = lines[0]
+    at = _TRACE_AT.search(head)
+    if at:
+        cause = next((line.strip() for line in lines[1:] if _ERROR_LINE.match(line)), None)
+        if cause:
+            head = f'{head[:at.start()].rstrip()} {cause}'
+    return head[:200]
 
 
 class MoodPoller:
@@ -2851,8 +2899,7 @@ class MoodPoller:
                 poster.put({'type': 'result', 'subtype': subtype, 'is_error': True,
                             'session_id': new_session, 'uuid': str(uuid.uuid4())})
                 poster.close()
-            return 'failed', None, 0.0, {'why': str(e).splitlines()[0][:200] if str(e) else 'it failed to run',
-                                         'retry': False}
+            return 'failed', None, 0.0, {'why': failure_why(e), 'retry': False}
         finally:
             beating.set()
             for info in (limits.values() if not self.dry_run else ()):

@@ -317,7 +317,32 @@ class WorkPageNeverWaitsTest(WorkRepo):
         old = cache.get(ramp.KEY)
         cache.set(ramp.KEY, {**old, 'open': []}, None)     # built before re/foo was pushed
         WorkTiding.objects.all().delete()
-        self.assertEqual(self.open_().status_code, 200)    # asked a fresh board for it
+        self.assertEqual(self.open_().status_code, 200)    # read straight from githouse/cards, no full rebuild
+
+    def test_a_branch_pushed_into_a_fresh_board_opens_at_once_with_its_diff(self):
+        # Pushed seconds after the board was built (< BOARD_FOR), with no PR card: neither 404s nor says
+        # "githouse no longer has this work's commits", nor rebuilds every repository's board.
+        board = ramp.board()
+        self.cards['open'] = []
+        cache.set(ramp.KEY, {**board, 'open': [], 'built': time.time() - 5}, None)
+        WorkTiding.objects.all().delete()
+        with mock.patch.object(ramp, 'clashes', side_effect=AssertionError('must not rebuild the board')):
+            got = self.client.get('/ramp/magenta/re/foo/', {'embed': 1}, HTTP_SEC_FETCH_DEST='iframe')
+        self.assertEqual(got.status_code, 200)
+        html = got.content.decode()
+        self.assertIn('the foo work', html)
+        self.assertIn('data-path="app.py"', html)
+        self.assertNotIn("no longer has this work's commits", html)
+
+    def test_moving_a_stale_ramp_frame_into_a_candidate_does_not_strand_its_veil(self):
+        # Skyler, #interfaces, 14 Nov: clicking "More details →" into a CB got stuck on the loading spinner.
+        # When the ramp frame was > STALE_MS old (or a data-fresh redraw was already in flight), showSection
+        # started refreshSection('ramp', true) right after rampFrameTo: fresh loaded the old /ramp/ URL, called
+        # old.remove() mid-navigation, and stranded .loading.moving forever.
+        html = self.client.get('/moods/', HTTP_SEC_FETCH_DEST='document').content.decode()
+        self.assertIn('sectionFrames.querySelectorAll(\'iframe[data-section="ramp"][data-fresh]\').forEach(f => f.remove());', html)
+        self.assertIn('delete frame.dataset.loaded;\n    frame.dataset.want = path;', html)
+        self.assertIn('if (!old.isConnected || old.dataset.want) { fresh.remove(); return; }', html)
 
 
 class CandidatesTest(WorkRepo):

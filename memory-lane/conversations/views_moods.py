@@ -657,8 +657,52 @@ def media_file(request, sha256, ext):
     return response
 
 
-PREVIEW_EDGE = 288  # a tidings thumbnail's longest side, in pixels
+PICTURE_MIMES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
+AS_IT_IS = 'as it is'  # media_fit: this picture is served as it was stored, not made smaller
 PREVIEW_CACHE_SECONDS = 7 * 86400  # kept made here; a browser keeps it for good (named by its hash, it never changes)
+
+
+@require_GET
+def media_fit(request, sha256, ext, kb):
+    """A stored picture under `kb` kilobytes: what a Mood shows (100) and what its lightbox opens
+    (800), made once and cached (services/media.shown_at). The stored bytes are untouched, and a
+    person who wants the picture whole follows "full size" to it, or to PickiPedia where it went.
+
+    Only the sizes we ask for: anyone could otherwise have the server make a hundred of each
+    picture. Named by the hash as the file itself is, so a browser may keep it for good.
+    """
+    from django.core.cache import cache
+    from django.http import HttpResponse
+
+    from .models import Media
+    from .services import media as pictures
+
+    if kb not in pictures.SHOWN_AT:
+        raise Http404('no such size')
+    item = Media.objects.filter(sha256=sha256).first()
+    if item is None or Media.EXTENSIONS.get(item.mime) != ext or item.mime not in PICTURE_MIMES:
+        raise Http404('no such image')
+    made = cache.get(f'media-fit:{sha256}:{kb}')
+    if made is None:
+        data = bytes(item.data)
+        body, mime = pictures.shown_at(data, item.mime, kb)
+        # One already under the budget, or one that can't be shrunk (an animation), is the file
+        # itself: sent there rather than kept a second time under another name.
+        made = AS_IT_IS if body is data else (body, mime)
+        cache.set(f'media-fit:{sha256}:{kb}', made, PREVIEW_CACHE_SECONDS)
+    if made == AS_IT_IS:
+        response = HttpResponseRedirect(item.url)
+        response['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return response
+    body, mime = made
+    response = HttpResponse(body, content_type=mime)
+    response['Cache-Control'] = 'public, max-age=31536000, immutable'
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    return response
+
+
+PREVIEW_EDGE = 288  # a tidings thumbnail's longest side, in pixels
 
 
 @require_GET
@@ -675,7 +719,7 @@ def media_preview(request, sha256, ext):
 
     item = Media.objects.filter(sha256=sha256).first()
     if (item is None or Media.EXTENSIONS.get(item.mime) != ext
-            or item.mime not in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')):
+            or item.mime not in PICTURE_MIMES):
         raise Http404('no such image')
     cached = cache.get(f'media-preview:{sha256}')
     if cached is None:
@@ -1388,13 +1432,22 @@ def api_wiki_tiding(request):
     """?title=: whether a PickiPedia page is a tiding here, for the banner the wiki draws atop it (Justin,
     #interfaces, 13 Nov 2026). {"tiding": its page here, "words": Magenta:Interface's wiki-tiding-banner}, or
     {"tiding": null}. Asked by the wiki's page in a reader's browser, so any site may read it: it's what
-    Tidings shows anyone."""
+    Tidings shows anyone. With ?recent=N (a post's page on the wiki asks, from its server: Justin,
+    #pickipedia-style-and-main-page, 13 Nov 2026), also its "title", "score", how many "comments", and the last
+    N things said, "recent" (tiding_links.recent)."""
     from django.conf import settings
     from .services import interface_words, tiding_links
     found = tiding_links.on_wiki(request.GET.get('title', '')[:300])
     base = getattr(settings, 'MAGENTA_PUBLIC_URL', 'https://magenta.cryptograss.live').rstrip('/')
-    answer = JsonResponse({'tiding': f'{base}/tidings/{found}/', 'id': found,
-                           'words': interface_words.words()['wiki-tiding-banner']} if found else {'tiding': None})
+    said = {'tiding': f'{base}/tidings/{found}/', 'id': found,
+            'words': interface_words.words()['wiki-tiding-banner']} if found else {'tiding': None}
+    most = request.GET.get('recent', '')
+    if found and most.isascii() and most.isdigit() and 0 < int(most[:4]):
+        from .models import Tiding
+        tiding = Tiding.objects.select_related('message').filter(id=found).first()
+        if tiding is not None:
+            said.update(tiding_links.recent(tiding, int(most[:4])))
+    answer = JsonResponse(said)
     answer['Access-Control-Allow-Origin'] = '*'
     answer['Cache-Control'] = 'public, max-age=120'
     return answer
@@ -1411,6 +1464,37 @@ def api_wiki_preview(request):
     response = JsonResponse(found)
     response['Cache-Control'] = 'public, max-age=3600'
     return response
+
+
+@require_GET
+def api_glance(request):
+    """At a glance (services/glance.py; R.J., 13 Nov): who's on what, what needs people, and what each person
+    means to do. ?window=day (7,200 blocks) or week. The same for everyone: the page puts its reader's own first."""
+    from .services import glance
+    from .services.todo_types import TYPES
+    return JsonResponse({**glance.glance(request.GET.get('window') or 'day'), 'types': TYPES})
+
+
+@require_POST
+def api_glance_intention(request):
+    """{"text"}: what you mean to do today or this week, for the pane (services/glance.py). Your own only, from
+    any device you're signed in on; empty clears it."""
+    from .services import glance, settings as knobs
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None or not device.entity.is_biological_human:
+        return JsonResponse({'error': 'sign in to say what you mean to do'}, status=401)
+    try:
+        text = json.loads(request.body).get('text')
+    except (ValueError, AttributeError):
+        return JsonResponse({'error': 'expected {"text": ...}'}, status=400)
+    try:
+        row = glance.intend(device.entity, text if text is not None else '')
+    except knobs.Invalid as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'name': device.entity_id, 'text': row.value, 'at': row.created_at.isoformat()})
 
 
 @require_GET
@@ -1777,7 +1861,9 @@ def api_mood_todo(request, slug):
     if request.GET.get('fresh'):
         todo.forget(mood)
     # And what GitHub's webhook last said, and when: whether merges are being told at once.
-    return JsonResponse({**todo.for_mood(mood), 'hook': todo.last_heard(), 'hook_refused': todo.last_refused()})
+    from .services.todo_types import TYPES
+    return JsonResponse({**todo.for_mood(mood), 'types': TYPES, 'hook': todo.last_heard(),
+                         'hook_refused': todo.last_refused()})
 
 
 @csrf_exempt  # GitHub's call, proven by its signature, not a browser's session
@@ -1970,7 +2056,7 @@ def api_moods_live(request):
             if working:
                 entry['busy'] = working[-1]  # the one that started last, as before: one, for what reads one
                 entry['busy_all'] = working  # every agent at work there, each pulsing in the list
-    from .services import banner, listening, watchers
+    from .services import banner, listening, ticker, watchers
     for slug in list(live):  # who's listening by voice there, 🎧 beside their names (Justin, 22 Oct)
         heard_by = listening.in_mood(slug)
         if heard_by:
@@ -1978,24 +2064,40 @@ def api_moods_live(request):
     for slug, n in watchers.by_mood().items():  # who's reading without signing in: a count beside the Mood
         live.setdefault(slug, {'speakers': [], 'typing': [], 'busy': None})['watching'] = n
     b_data = banner.get_banner()
-    body = {'moods': live, 'blocks': AROUND_BLOCKS, 'banner': b_data}
+    try:
+        tick_items = ticker.items()
+    except Exception:  # noqa: BLE001 -- never lose the live poll
+        tick_items = []
+    try:  # the chain's head with it, as the watcher has it: a page needn't ask separately (services/chain_head)
+        from .services import chain_head
+        head = chain_head.latest()
+    except Exception:  # noqa: BLE001 -- never lose the live poll
+        head = None
+    body = {'moods': live, 'blocks': AROUND_BLOCKS, 'banner': b_data, 'ticker': tick_items, 'head': head}
     cache.set('moods-live', body, 3)
     return JsonResponse(body)
 
 
 @require_GET
 def api_block(request):
-    """Ethereum mainnet's newest block -- height and time -- from a public
-    explorer, cached a minute; the page counts on from it, a block every
-    12 seconds."""
+    """Ethereum mainnet's newest block: height, its time, and how we have it ('via'). From the watcher
+    (services/chain_head) when it's feeding us: 'socket' when the node pushes each block, 'polling' when
+    that's dropped and we ask every 12 s. Else from a public explorer, cached a minute: 'explorer'. Pages
+    count on from it, a block every 12 s. Anyone may read it, PickiPedia's pages included."""
     from django.core.cache import cache
-    block = cache.get('eth-head')
+    from .services import chain_head
+    block = chain_head.latest()
     if block is None:
-        try:
-            import requests
-            head = requests.get('https://eth.blockscout.com/api/v2/main-page/blocks', timeout=5).json()[0]
-            block = {'height': int(head['height']), 'at': head['timestamp'], 'seconds': SECONDS_PER_BLOCK}
-        except Exception:
-            block = {'height': None}
-        cache.set('eth-head', block, 60 if block['height'] else 15)
-    return JsonResponse(block)
+        block = cache.get('eth-head')
+        if block is None:
+            try:
+                import requests
+                head = requests.get('https://eth.blockscout.com/api/v2/main-page/blocks', timeout=5).json()[0]
+                block = {'height': int(head['height']), 'at': head['timestamp'], 'seconds': SECONDS_PER_BLOCK, 'via': 'explorer'}
+            except Exception:
+                block = {'height': None}
+            cache.set('eth-head', block, 60 if block['height'] else 15)
+    response = JsonResponse(block)
+    response['Access-Control-Allow-Origin'] = '*'
+    response['Cache-Control'] = 'no-store'
+    return response

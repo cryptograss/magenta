@@ -123,7 +123,11 @@ class CommandTest(TestCase):
                          ('create', 'update', 'delete', 'move', 'protect', 'upload', 'browser'))])
         self.assertNotIn('mcp__pickipedia__update_page', mcp)
         self.assertEqual(cmd[cmd.index('--thinking') + 1], 'xhigh')
-        self.assertNotIn('--tools', waker.command(None, 'new', full=True))
+        # A full wake adds the shell and the editors, rather than naming nothing: with no --tools, Pi restores
+        # the session's last loadout, look-only if the last wake was (magent, re, 15 Nov).
+        full = waker.command('old', 'new', full=True)
+        self.assertEqual(full[full.index('--tools') + 1], '+bash,+edit,+write')
+        self.assertTrue(all(t.startswith('+') for t in full[full.index('--tools') + 1].split(',')))  # no allowlist
         self.assertEqual(cmd[1:3], ['--mode', 'rpc'])
         self.assertNotIn('hi', cmd)  # the prompt never rides the command line: stdin carries it
 
@@ -268,6 +272,15 @@ class LoopGuardTest(PlainCase):
         for _ in range(9):
             self.assertEqual(guard.see('read', {'path': 'x'}), '')
         self.assertIn('maximum tool calls limit (10)', guard.see('read', {'path': 'x'}))
+
+    def test_no_ceiling_at_zero(self):
+        """Claude Code turns run with max_calls=0 (13 Nov): many calls, all different, never trip it."""
+        guard = LoopGuard(max_calls=0)
+        self.assertEqual([guard.see(f'read_{i}', {'path': f'f{i}'}) for i in range(1000)], [''] * 1000)
+        self.assertIsNone(guard.warn)
+        for _ in range(2):
+            guard.see('read', {'path': 'same'})
+        self.assertIn('identical arguments', guard.see('read', {'path': 'same'}))  # a real loop still does
 
     def test_default_max_calls_is_150(self):
         guard = LoopGuard()

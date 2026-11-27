@@ -79,7 +79,7 @@ class RunTest(TestCase):
         got = self.client.get('/api/wiki-hooks/').json()
         self.assertEqual([h['name'] for h in got['hooks']][:2], ['words', 'faq'])
         self.assertEqual((got['runs'][0]['hook'], got['runs'][0]['result']),
-                         ('todo', '#interfaces: to-do list forgotten; open pages ask for it now'))
+                         ('todo', '#interfaces: to-do list forgotten and read again; open pages ask for it now'))
         self.assertFalse(got['push']['configured'])
         page = self.client.get('/wiki-hooks/')
         self.assertEqual(page.status_code, 200)
