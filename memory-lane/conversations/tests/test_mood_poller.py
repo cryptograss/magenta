@@ -2519,6 +2519,17 @@ class NewMoodTest(TestCase):
                    only_poller=True).poll_once()
         self.assertEqual(waker.woken, [])
 
+    def test_a_turn_is_not_nudged_to_narrate_itself(self):
+        # Claude Code's silent-turn nudge asks an agent that has gone quiet to
+        # keep the user updated; in a Mood each of those lands as a post (blu,
+        # five of them in one journal entry, #connectome, 27 Nov 2026).
+        env = ClaudeCodeWaker(claude='claude').environment()
+        self.assertEqual(env['CLAUDE_CODE_SILENT_TURN_REMINDER'], '0')
+        # Everything else the turn needs is still there: its key, its PATH.
+        for name in ('PATH', 'HOME'):
+            if name in os.environ:
+                self.assertEqual(env[name], os.environ[name])
+
     def test_the_command_for_a_new_session_resumes_nothing(self):
         cmd = ClaudeCodeWaker(claude='claude').command(None, 'n-1', 'hi')
         self.assertNotIn('--resume', cmd)
