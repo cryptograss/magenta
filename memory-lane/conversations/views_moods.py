@@ -657,8 +657,52 @@ def media_file(request, sha256, ext):
     return response
 
 
-PREVIEW_EDGE = 288  # a tidings thumbnail's longest side, in pixels
+PICTURE_MIMES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
+AS_IT_IS = 'as it is'  # media_fit: this picture is served as it was stored, not made smaller
 PREVIEW_CACHE_SECONDS = 7 * 86400  # kept made here; a browser keeps it for good (named by its hash, it never changes)
+
+
+@require_GET
+def media_fit(request, sha256, ext, kb):
+    """A stored picture under `kb` kilobytes: what a Mood shows (100) and what its lightbox opens
+    (800), made once and cached (services/media.shown_at). The stored bytes are untouched, and a
+    person who wants the picture whole follows "full size" to it, or to PickiPedia where it went.
+
+    Only the sizes we ask for: anyone could otherwise have the server make a hundred of each
+    picture. Named by the hash as the file itself is, so a browser may keep it for good.
+    """
+    from django.core.cache import cache
+    from django.http import HttpResponse
+
+    from .models import Media
+    from .services import media as pictures
+
+    if kb not in pictures.SHOWN_AT:
+        raise Http404('no such size')
+    item = Media.objects.filter(sha256=sha256).first()
+    if item is None or Media.EXTENSIONS.get(item.mime) != ext or item.mime not in PICTURE_MIMES:
+        raise Http404('no such image')
+    made = cache.get(f'media-fit:{sha256}:{kb}')
+    if made is None:
+        data = bytes(item.data)
+        body, mime = pictures.shown_at(data, item.mime, kb)
+        # One already under the budget, or one that can't be shrunk (an animation), is the file
+        # itself: sent there rather than kept a second time under another name.
+        made = AS_IT_IS if body is data else (body, mime)
+        cache.set(f'media-fit:{sha256}:{kb}', made, PREVIEW_CACHE_SECONDS)
+    if made == AS_IT_IS:
+        response = HttpResponseRedirect(item.url)
+        response['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return response
+    body, mime = made
+    response = HttpResponse(body, content_type=mime)
+    response['Cache-Control'] = 'public, max-age=31536000, immutable'
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    return response
+
+
+PREVIEW_EDGE = 288  # a tidings thumbnail's longest side, in pixels
 
 
 @require_GET
@@ -675,7 +719,7 @@ def media_preview(request, sha256, ext):
 
     item = Media.objects.filter(sha256=sha256).first()
     if (item is None or Media.EXTENSIONS.get(item.mime) != ext
-            or item.mime not in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')):
+            or item.mime not in PICTURE_MIMES):
         raise Http404('no such image')
     cached = cache.get(f'media-preview:{sha256}')
     if cached is None:

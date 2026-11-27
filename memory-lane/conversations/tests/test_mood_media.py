@@ -56,7 +56,9 @@ def drawn(width, height, form='JPEG', alpha=False, frames=1, blocks=False, **how
                       for y in range(height) for x in range(width)])
     out = io.BytesIO()
     if frames > 1:
-        made.convert('P').save(out, form, save_all=True, append_images=[made.convert('P')] * (frames - 1), **how)
+        # Each frame different from the last: a GIF whose frames are the same picture is written as one.
+        rest = [made.rotate(90 * (i + 1)).convert('P') for i in range(frames - 1)]
+        made.convert('P').save(out, form, save_all=True, append_images=rest, **how)
     else:
         made.save(out, form, **how)
     return out.getvalue()
@@ -122,6 +124,58 @@ class ShrinkToFitTest(TestCase):
         self.assertIsNone(media.fit_bytes(moving, 'image/gif', limit=10))
         with mock.patch.object(media, 'MAX_BYTES', 10):
             self.assertIsNone(media.store(moving))
+
+
+class ShownSizesTest(TestCase):
+    """Justin, #interfaces, 27 Nov 2026: "photos in the mood to max out around 100k, and then let the
+    user click on them and get a lightbox variant that maxes out at like 800k, and then have a button
+    there for full size"."""
+
+    def setUp(self):
+        cache.clear()
+
+    def test_a_photo_is_served_under_each_budget(self):
+        photo = drawn(3000, 2000, quality=95)
+        self.assertGreater(len(photo), 800 * 1024)
+        kept = Media.objects.create(sha256='c' * 64, mime='image/jpeg', data=photo, size=len(photo))
+        sizes = {}
+        for kb in (100, 800):
+            answer = self.client.get(f'{kept.url}/fit/{kb}')
+            self.assertEqual(answer.status_code, 200)
+            self.assertLessEqual(len(answer.content), kb * 1024)
+            self.assertEqual(answer['Cache-Control'], 'public, max-age=31536000, immutable')
+            sizes[kb] = len(answer.content)
+        self.assertLess(sizes[100], sizes[800])         # each budget is spent, not undercut
+        self.assertGreater(sizes[800], 100 * 1024)
+        self.assertEqual(len(self.client.get(kept.url).content), len(photo))  # the stored bytes untouched
+
+    def test_only_the_sizes_we_ask_for(self):
+        kept = Media.objects.create(sha256='d' * 64, mime='image/png', data=PNG, size=len(PNG))
+        self.assertEqual(self.client.get(f'{kept.url}/fit/400').status_code, 404)
+        self.assertEqual(self.client.get(f'{kept.url}/fit/0').status_code, 404)
+        self.assertEqual(self.client.get(f'/moods/media/{"e" * 64}.png/fit/100').status_code, 404)
+
+    def test_a_sound_has_no_size_to_be_shown_at(self):
+        sound = Media.objects.create(sha256='f' * 64, mime='audio/webm', data=b'\x1a\x45\xdf\xa3x',
+                                     size=5)
+        self.assertEqual(self.client.get(f'{sound.url}/fit/100').status_code, 404)
+
+    def test_what_already_fits_and_what_moves_are_served_as_they_are(self):
+        small = drawn(120, 90, quality=85)
+        self.assertEqual(media.shown_at(small, 'image/jpeg', 100), (small, 'image/jpeg'))
+        moving = drawn(500, 400, form='GIF', frames=3)   # re-encoding would still it: left moving
+        self.assertEqual(media.shown_at(moving, 'image/gif', 100), (moving, 'image/gif'))
+        # Served from its own address, so it isn't kept a second time under another name.
+        kept = Media.objects.create(sha256='9' * 64, mime='image/gif', data=moving, size=len(moving))
+        answer = self.client.get(f'{kept.url}/fit/100')
+        self.assertEqual(answer.status_code, 302)
+        self.assertEqual(answer['Location'], kept.url)
+
+    def test_the_lightbox_offers_full_size(self):
+        page = self.client.get('/moods/').content.decode()
+        self.assertIn("'full size on PickiPedia ↗'", page)   # where it went up
+        self.assertIn("'full size ↗'", page)                 # else the file itself
+        self.assertIn('original: a.dataset.original', page)
 
 
 class UploadAndServeTest(TestCase):
@@ -201,7 +255,10 @@ class RenderImagesTest(TestCase):
     def test_stored_media_and_trusted_hosts_embed_others_link(self):
         sha = 'a' * 64
         out = render_html(f'look ![the stage](/moods/media/{sha}.png) here')
-        self.assertIn(f'<img src="/moods/media/{sha}.png" alt="the stage" loading="lazy">', out)
+        # Shown at SHOWN_KB, opened at LARGE_KB, the file itself behind "full size".
+        self.assertIn(f'<img src="/moods/media/{sha}.png/fit/100" alt="the stage" loading="lazy">', out)
+        self.assertIn(f'<a class="img" href="/moods/media/{sha}.png" '
+                      f'data-full="/moods/media/{sha}.png/fit/800" data-original="/moods/media/{sha}.png">', out)
         with override_settings(MOOD_IMAGE_HOSTS={'pickipedia.xyz'}):
             self.assertIn('<img src="https://pickipedia.xyz/images/a/ab/Banjo.jpg"',
                           render_html('![banjo](https://pickipedia.xyz/images/a/ab/Banjo.jpg)'))

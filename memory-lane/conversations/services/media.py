@@ -48,6 +48,15 @@ MAX_SENT_BYTES = 32 * 1024 * 1024
 SHRINK_STEPS = (1, 0.75, 0.5, 0.35, 0.25)
 SHRINK_FLOOR = 480         # px: below this it stops trying; better to refuse than to send a thumbnail
 SHRINK_QUALITY = (85, 75)  # the JPEG/WebP qualities tried at each step
+# How large a picture is fetched to be looked at, as against how large it is kept (Justin,
+# #interfaces, 27 Nov 2026: "photos in the mood to max out around 100k, and then let the user click
+# on them and get a lightbox variant that maxes out at like 800k, and then have a button there for
+# 'full size'"). Each: a budget in kilobytes, and the longest side the picture is drawn down to
+# first, so the budget is met by making it smaller before making it coarser. The stored bytes stay
+# what was shared -- these are made on the way out (views_moods.media_fit) and cached.
+SHOWN_KB, LARGE_KB = 100, 800
+SHOWN_AT = {SHOWN_KB: 1024, LARGE_KB: 2048}  # KB -> px on its long side
+SHOWN_FLOOR = 240          # px: a variant is made as small as its budget takes, never below this
 # What a picture's sharer lets others do with it: CC BY-SA 4.0 unless they
 # say CC0, told so where they attach it (models.Media.license). It goes with
 # the picture to PickiPedia (services/wiki_upload.py).
@@ -140,9 +149,13 @@ def _frames(opened):
     return getattr(opened, 'n_frames', 1)
 
 
-def fit_bytes(data, mime, limit=None):
+def fit_bytes(data, mime, limit=None, edge=None, floor=None):
     """The picture no larger than `limit` bytes (MAX_BYTES by default), shrunk as far as it takes;
     the bytes as they came if they already fit, or None if they can't be made to.
+
+    `edge` is where the shrinking starts, on the long side (MAX_EDGE by default), and `floor` where
+    it stops (SHRINK_FLOOR): a variant made to be looked at starts and stops smaller than one being
+    stored (SHOWN_AT).
 
     Tried in turn: the long sides of SHRINK_STEPS, and at each the qualities of SHRINK_QUALITY, so a
     picture is made no smaller than it has to be. A JPEG stays a JPEG and a WebP a WebP; a PNG stays
@@ -151,6 +164,8 @@ def fit_bytes(data, mime, limit=None):
     out, and it is refused rather than quietly stilled.
     """
     limit = MAX_BYTES if limit is None else limit
+    edge = MAX_EDGE if edge is None else edge
+    floor = SHRINK_FLOOR if floor is None else floor
     if len(data) <= limit:
         return data
     try:
@@ -160,8 +175,8 @@ def fit_bytes(data, mime, limit=None):
                 return None
             # A JPEG is decoded straight to the biggest size we would keep, which the decoder can do in
             # halves without ever holding the whole thing: a 36 MP photo costs a quarter of the memory
-            # and half the time, and nothing is lost, since the first step is MAX_EDGE anyway.
-            opened.draft('RGB', (MAX_EDGE, MAX_EDGE))
+            # and half the time, and nothing is lost, since the first step is `edge` anyway.
+            opened.draft('RGB', (edge, edge))
             picture = ImageOps.exif_transpose(opened) or opened
             alpha = picture.mode in ('RGBA', 'LA', 'P') and (picture.mode != 'P' or 'transparency' in picture.info)
             ways = [('PNG', None)] if mime == 'image/png' and alpha else []
@@ -173,12 +188,12 @@ def fit_bytes(data, mime, limit=None):
                 ways += [('JPEG', q) for q in SHRINK_QUALITY]
             if mime == 'image/png' and alpha:
                 ways += [('WEBP', q) for q in SHRINK_QUALITY]  # keeps the transparency, far smaller
-            longest = min(max(picture.size), MAX_EDGE)
+            longest = min(max(picture.size), edge)
             for step in SHRINK_STEPS:
-                edge = max(round(longest * step), SHRINK_FLOOR)
+                side = max(round(longest * step), floor)
                 # Resized rather than thumbnailed, so the picture is never copied whole: one of 36 MP
                 # is 110 MB in memory, and a copy a step would be that again each time.
-                scale = min(1.0, edge / max(picture.size))
+                scale = min(1.0, side / max(picture.size))
                 size = (max(1, round(picture.width * scale)), max(1, round(picture.height * scale)))
                 smaller = picture if size == picture.size else picture.resize(size, Image.LANCZOS, reducing_gap=2.0)
                 for form, quality in ways:
@@ -195,6 +210,21 @@ def fit_bytes(data, mime, limit=None):
     except Exception:
         return None
     return None
+
+
+def shown_at(data, mime, kb):
+    """(bytes, mime) for the picture under `kb` kilobytes, one of SHOWN_AT: what a Mood shows and
+    what its lightbox opens.
+
+    The stored bytes where they are already under it, or where they can't be shrunk at all -- an
+    animated GIF or WebP, which is left moving rather than quietly stilled (fit_bytes). So a caller
+    always has something to serve, and a small picture is served as it was shared.
+    """
+    limit = kb * 1024
+    if len(data) <= limit:
+        return data, mime
+    smaller = fit_bytes(data, mime, limit=limit, edge=SHOWN_AT[kb], floor=SHOWN_FLOOR)
+    return (smaller, sniff(smaller) or mime) if smaller else (data, mime)
 
 
 def _jpeg_orientation(data):

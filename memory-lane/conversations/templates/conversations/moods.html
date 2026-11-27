@@ -1560,10 +1560,15 @@
   #lightbox.whole .lbfoot { display: none; }
   #lightbox .lbfoot { color: #eee; font-size: 14px; text-align: center; max-width: 90vw; }
   #lightbox .lbfoot a { color: #ffb3d9; margin-left: 10px; white-space: nowrap; }
-  /* "→ PickiPedia" where the picture is seen whole: when a pickipedian use for it comes to mind. */
-  #lightbox .lbup { margin-left: 12px; font: inherit; font-size: 13px; padding: 4px 12px; border: 1px solid #ffb3d9; border-radius: 14px;
+  /* "→ PickiPedia" where the picture is seen whole: when a pickipedian use for it comes to mind.
+     "full size" beside it, which is a link, dressed the same (Justin, 27 Nov 2026: "a button there
+     for full size"). */
+  #lightbox .lbup, #lightbox .lbpage { margin-left: 12px; font: inherit; font-size: 13px; padding: 4px 12px;
+                    border: 1px solid #ffb3d9; border-radius: 14px;
                     background: rgba(255,255,255,.08); color: #ffb3d9; cursor: pointer; }
-  #lightbox .lbup:hover { background: rgba(255,179,217,.18); }
+  #lightbox .lbpage { text-decoration: none; }
+  #lightbox .lbpage:empty { display: none; }
+  #lightbox .lbup:hover, #lightbox .lbpage:hover { background: rgba(255,179,217,.18); }
   #lightbox .lbup[hidden] { display: none; }
   /* Who's in it (services/faces.py): a box on each face faces found, and under it the name someone
      here gave it, or whose it looks like, with a question mark, for a person to say yes to. */
@@ -3704,6 +3709,7 @@
   window.addEventListener('popstate', () => closeLightbox(true));
   lightbox.querySelector('img').addEventListener('click', e => { e.stopPropagation(); lightbox.classList.toggle('whole'); });
   // {full: the picture, href: its page (or the file), alt, caption, onwiki: its PickiPedia page if it's there,
+  // original: the file itself where what's shown is a made-smaller copy of it (services/media.SHOWN_AT),
   // upload: what "→ PickiPedia" sends it up as, if it may go}: from the thread, or from Tidings' frame.
   // The pictures a clicked one is among: the ones beside it in its message, and in the messages of
   // nothing-but-pictures it runs with -- so ‹ › step through the whole gallery (Justin, 27 Nov 2026).
@@ -3748,14 +3754,18 @@
     lightbox.querySelector('img').alt = o.alt || '';
     lightbox.querySelector('.lbcap').textContent = o.caption || '';
     const page = lightbox.querySelector('.lbpage');
-    page.href = o.onwiki || o.href || o.full;
+    page.href = o.onwiki || o.original || o.href || o.full;
     const host = new URL(page.href, location.href).hostname;
-    page.textContent = o.onwiki ? 'its page on PickiPedia ↗' : !o.href || o.href === o.full ? 'the picture itself ↗'
+    // What's shown here is at most SHOWN_AT[LARGE_KB]; "full size" is the picture whole -- on
+    // PickiPedia where it went, else the file itself (Justin, 27 Nov 2026).
+    page.textContent = o.onwiki ? 'full size on PickiPedia ↗' : o.original ? 'full size ↗'
+      : !o.href || o.href === o.full ? 'the picture itself ↗'
       : host.endsWith('wikimedia.org') ? 'its page on Commons ↗' : 'its page on PickiPedia ↗';
     lightbox._upload = o.upload || null;
     lightbox.querySelector('.lbup').hidden = !lightbox._upload;
     lightbox.classList.remove('whole');
-    whoIsIn(o.full);
+    lightbox._src = o.original || o.full;  // the file's own address: whose faces these are
+    whoIsIn(lightbox._src);
     if (lightbox.hidden) history.pushState({ ...(history.state || {}), lightbox: true }, '', location.href);
     lightbox.hidden = false;
   }
@@ -3768,7 +3778,8 @@
     // Under the picture in the thread: "→ PickiPedia" (here too), or where it already is on the wiki.
     const topp = next && next.classList.contains('topp') ? next : null;
     const among = a.closest('.turn') ? picturesAround(a) : [];
-    openPicture({ full: a.dataset.full || a.href, href: a.href, alt: img ? img.alt : '',
+    openPicture({ full: a.dataset.full || a.href, href: a.href, original: a.dataset.original || '',
+                  alt: img ? img.alt : '',
                   caption: next && next.classList.contains('caption') ? next.textContent : '',
                   onwiki: next && next.classList.contains('onwiki') ? next.href : '',
                   upload: topp && uploadOf(topp), among, at: Math.max(0, among.indexOf(a)) });
@@ -3864,7 +3875,7 @@
       };
       input.addEventListener('keydown', ev => {
         if (ev.key === 'Enter' && !composing(ev)) { ev.preventDefault(); go(); }
-        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); whoIsIn(lightbox.querySelector('img').src); }
+        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); whoIsIn(lightbox._src); }
       });
       tag.querySelector('.ok').addEventListener('click', ev => { ev.stopPropagation(); go(); });
     }

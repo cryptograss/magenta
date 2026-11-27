@@ -356,9 +356,23 @@ def pickipedia_page(url):
 
 def _image(match):
     alt, url = match.group(1), match.group(2)
+    if _ours(url):
+        # A picture stored here is shown small and opened larger, neither of them the whole file:
+        # SHOWN_KB in the thread, LARGE_KB in the lightbox, the stored bytes behind "full size"
+        # (Justin, #interfaces, 27 Nov 2026). Made on the way out, views_moods.media_fit.
+        from .media import LARGE_KB, SHOWN_KB
+        return (f'<a class="img" href="{url}" data-full="{url}/fit/{LARGE_KB}" data-original="{url}">'
+                f'<img src="{url}/fit/{SHOWN_KB}" alt="{alt}" loading="lazy"></a>')
     if url.startswith('/') or _image_host_allowed(url):
         return f'<a class="img" href="{url}"><img src="{url}" alt="{alt}" loading="lazy"></a>'
     return f'<a href="{url}"{_OUT}>{alt or url}</a>'
+
+
+def _ours(url):
+    """A picture stored here, by its address alone: /moods/media/<sha256>.<ext> (or /motions/, as
+    they were addressed before Moods were Moods)."""
+    from .media import MEDIA_PATH
+    return bool(MEDIA_PATH.fullmatch(html.unescape(url)))
 
 
 def _image_host_allowed(url):
