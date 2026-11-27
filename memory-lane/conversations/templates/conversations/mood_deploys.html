@@ -50,6 +50,9 @@
   .chip.gone, .chip.closed { opacity: .7; }
   .chip.mood { font-weight: 600; color: var(--ink); }
   li.pin { border-style: dashed; }
+  li.soon { font-size: 13px; padding: 6px 8px; border: 1px dashed var(--line); border-radius: 7px; background: var(--bg);
+            opacity: .92; }
+  li.soon .what { font-weight: 600; }
   .foot { color: var(--muted); font-size: 12px; margin-top: 18px; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 </style>
@@ -88,9 +91,10 @@
 <main>
   <h1>Deploys</h1>
   <p class="lede">One box for each server, and what each is waiting for: every merge that has landed on something
-    the box runs and isn't in what it last deployed. One deploy of a box carries all of them. The Moods' own
-    redeploy items are folded into their box, so a list of seven asks reads as the {{ queue.boxes|length }} boxes
-    they're really about.</p>
+    the box runs and isn't in what it last deployed. One deploy of a box carries all of them. Under each, the
+    open work that will want it once it merges — so nobody writes down "redeploy these three when those two
+    land". The Moods' remaining redeploy items are folded into their box, so a list of seven asks reads as the
+    {{ queue.boxes|length }} boxes they're really about.</p>
 
   <div class="boxes">
     {% for box in queue.boxes %}
@@ -130,6 +134,19 @@
         </ul>
         {% endfor %}
 
+        {% if box.coming %}
+          <h3>When these merge, this box will want a deploy</h3>
+          <ul>
+            {% for c in box.coming %}
+            <li class="soon">
+              <span class="chip repo">{{ c.repo }}</span>
+              <span class="what"><a href="{{ c.link }}">{{ c.branch }}</a></span>
+              <div class="meta">{{ c.subject }}{% if c.who %} · {{ c.who }}{% endif %}{% if c.at %} · <span class="when" data-at="{{ c.at }}"></span>{% endif %}</div>
+            </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+
         {% if box.asks %}
         <h3>Asked for in the Moods</h3>
         <ul>
@@ -165,8 +182,10 @@
   <p class="foot">Read from githouse and from what the boxes themselves reported — no list is trusted for it.
     A merge in <code>maybelle-config</code> is a box's when it touched that box's own paths (<code>hunter/</code>,
     <code>maybelle/</code>, <code>pickipedia-vps/</code>, <code>delivery-kid/</code>) or <code>shared/</code>;
-    everything else there owes no box a deploy. The redeploy itself is a person's: say
-    <em>redeploy &lt;server&gt;</em>. <a href="/todo/#type=deploy">The deploy items as a list</a>.</p>
+    everything else there owes no box a deploy — read from a candidate branch's own diff before it merges, too,
+    which is how the <em>when these merge</em> lines know whose they are. The redeploy itself is a person's: say
+    <em>redeploy &lt;server&gt;</em>. No deploy item is written by hand any more: both halves, merged and coming,
+    are derived here. <a href="/todo/#type=deploy">The deploy items still open</a>.</p>
 </main>
 <script>
 (() => {

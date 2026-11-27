@@ -50,7 +50,9 @@
   .deploystrip .dbox .n { font-weight: 400; color: var(--muted); margin-left: 5px; }
   .deploystrip .dbox.ready .n { color: var(--accent); }
   .deploystrip .dbox .n.asks { font-style: italic; }
+  .deploystrip .dbox .n.soon { opacity: .8; }
   .deploystrip .dbox.all { color: var(--accent); font-weight: 500; }
+  .deploystrip .dnote { font-size: 12px; color: var(--muted); align-self: center; }
   .stats a { cursor: pointer; }
   /* A group (a type, a Mood, a person): its name and how many, folding. A row is one line: the type's glyph, a
      headline (services/todo_types.py, headline), who, where. The task as written is a click away. */
@@ -153,8 +155,10 @@
        server, what has merged and waits for it, and how many of these items are about it. /deploys/ has it all. -->
   <div class="deploystrip" id="deployStrip" hidden>
     {% for box in queue.boxes %}<a class="dbox{% if box.ready %} ready{% endif %}" href="/deploys/#{{ box.name }}"
-      title="{{ box.about }}">{{ box.name }}<span class="n">{% if box.owed %}{{ box.owed|length }} merged, waiting{% else %}current{% endif %}</span>{% if box.asks %}<span class="n asks">{{ box.asks|length }} here</span>{% endif %}</a>{% endfor %}
+      title="{{ box.about }}">{{ box.name }}<span class="n">{% if box.owed %}{{ box.owed|length }} merged, waiting{% else %}current{% endif %}</span>{% if box.coming %}<span class="n soon" title="Open work that will want this box once it merges — no need to write a deploy item for it">+{{ box.coming|length }} coming</span>{% endif %}{% if box.asks %}<span class="n asks">{{ box.asks|length }} here</span>{% endif %}</a>{% endfor %}
     <a class="dbox all" href="/deploys/">the whole queue →</a>
+    <span class="dnote">Don't write a new one: <a href="/deploys/">/deploys/</a> derives both what each box is
+      owed and what will want it when open work merges.</span>
   </div>
   <div class="stats" id="todoStats"></div>
   <div id="todoGroups">{% if not todos.items %}<p class="none">No to-do items found on PickiPedia.</p>{% endif %}</div>
