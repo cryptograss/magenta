@@ -778,7 +778,8 @@ def hear(data, mime, mood, by, http=requests, sha='', budget_minutes=10):
 HEARD_FOR = 86400       # seconds a memo's words are kept, waiting for it to be sent
 HEARING_FOR = 300       # seconds one transcription may take before another may try
 WAIT_TO_POST = 240      # seconds a sent memo waits for its words before going without
-_MEMO = re.compile(r'🎙 \[voice memo[^\]]*\]\(/(?:moods|motions)/media/([0-9a-f]{64})\.[a-z0-9]+\)')
+# 🎙 [voice memo · 0:12](...) as recorded here, or 🎙 [audio · take-3.mp3](...) as uploaded and asked to be heard.
+_MEMO = re.compile(r'🎙 \[(?:voice memo|audio)[^\]]*\]\(/(?:moods|motions)/media/([0-9a-f]{64})\.[a-z0-9]+\)')
 
 
 def _in_background(fn, *args):
