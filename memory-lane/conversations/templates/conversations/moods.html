@@ -58,6 +58,8 @@
   header .crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   header .crumb::before { content: '›'; margin-right: .3em; color: var(--muted); font-weight: 400; }
   header .crumb:empty { display: none; }
+  header .crumb a.parent { color: var(--muted); font-weight: 500; text-decoration: none; }
+  header .crumb a.parent:hover { color: var(--accent); }
   header .crumb #rename { margin-left: 4px; border: 0; background: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 0 2px; }
   header .crumb #rename:hover { color: var(--accent); }
   /* magenta › moods › the Mood ✎, then the page's other sections beside it (Justin, 21 Oct). */
@@ -2701,10 +2703,11 @@
       const trailMark = onTrail
         ? `<span class="trailpip" title="Visited ${trailIdx} mood${trailIdx > 1 ? 's' : ''} ago (${ago(new Date(trailItem.at).toISOString())})${trailItem.posted ? ' · you sent a message here' : ''}"><span class="step">${trailIdx}</span>${trailItem.posted ? '<span class="pen">✎</span>' : ''}</span>`
         : (trailIdx === 0 && pathTrail[0] && pathTrail[0].posted ? `<span class="trailpip current" title="You sent a message here"><span class="pen">✎</span></span>` : '');
+      const label = !depth && m.thread_of ? m.slug : m.title;
       return `
       <a class="mood ${m.slug === current ? 'active' : ''}${onTrail ? ' on-trail' : ''}${depth ? ' sub' : ''}${depth && (!m.forked_at || m.compacted) ? ' fresh' : depth && m.incorporated ? ' back' : ''}" style="--depth: ${depth}; ${onTrail ? `--trail-pct: ${trailPct}%; --trail-op: ${trailOp};` : ''}" href="/moods/${encodeURIComponent(m.slug)}/" data-slug="${esc(m.slug)}">
         ${trailMark}
-        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(m.title)}${foldBtn}${askGroups(m.asked || [])
+        <div class="title">${m.pinned && !m.archived ? '<span class="pin" title="Pinned">📌</span>' : ''}${esc(label)}${foldBtn}${askGroups(m.asked || [])
           ? `<span class="toolsask" title="${esc(m.asked.map(askLine).join('; '))}">${askGroups(m.asked)}</span>` : ''}${badgeHtml(m.slug)}</div>
         <div class="meta">${moodWarmth(m)}</div>${askGroups(m.asked || [], true)
           ? `<div class="toolsask cands">${askGroups(m.asked, true)}</div>` : ''}
@@ -2935,7 +2938,7 @@
   function linkOf(link) {
     if (/^https?:\/\//i.test(link)) return link;
     if (/^#m-[0-9a-f-]{8,36}$/i.test(link)) return link;
-    if (/^#[\w-]+$/.test(link)) return '/moods/' + link.slice(1) + '/';
+    if (/^#[\w-]+(?:\.[\w-]+)*$/.test(link)) return '/moods/' + link.slice(1) + '/';
     return link ? `${WIKI}/wiki/${encodeURIComponent(link.replace(/ /g, '_'))}` : '';
   }
   // `code` in a task or a note, as in a message; [[Page]] and [[Page|label]] links to the page, as
@@ -5776,9 +5779,11 @@
   const renameBox = document.getElementById('renameBox');
   function showMoodName(m) {
     headMood = m;
-    crumb.innerHTML = m ? `<span class="title">${esc(m.title)}</span>` + (keyHolder ? '<button type="button" id="rename" title="Rename this Mood" aria-label="Rename this Mood">✎</button>' : '') : '';
+    const parent = m && (m.thread_of || (moods.find(x => x.slug === m.slug) || {}).thread_of);
+    const ns = parent ? `<a class="moodlink parent" data-mood="${esc(parent)}" href="/moods/${encodeURIComponent(parent)}/">${esc(parent)}</a>.` : '';
+    crumb.innerHTML = m ? `${ns}<span class="title">${esc(m.title)}</span>` + (keyHolder ? '<button type="button" id="rename" title="Rename this Mood" aria-label="Rename this Mood">✎</button>' : '') : '';
     drawMoodbar(m);
-    if (m) { baseTitle = m.title + ' · magenta'; setTitle(); }
+    if (m) { baseTitle = (parent ? m.slug : m.title) + ' · magenta'; setTitle(); }
   }
   const isArchived = slug => !!(moods.find(m => m.slug === slug) || {}).archived;
   // What the server just said, before the list comes back with it (Justin, 29 Oct: reopening "took quite a while").
@@ -5991,7 +5996,9 @@
         compact: document.getElementById('moveCompact').checked, inform: document.getElementById('moveInform').checked }),
     }).finally(() => { go.disabled = false; });
     if (!r.ok) { showError('move: ' + ((await r.json().catch(() => ({}))).error || r.status)); return; }
+    const moved = await r.json();
     document.getElementById('moveBox').close();
+    if (moved.slug && moved.slug !== current) { location.href = '/moods/' + encodeURIComponent(moved.slug) + '/'; return; }
     const m = moods.find(x => x.slug === current);
     if (m) m.thread_of = to;
     if (headMood) headMood.thread_of = to;
@@ -6667,11 +6674,12 @@
     const rows = [...fresh.filter(n => n.from !== 'agent').sort(newest), ...fresh.filter(n => n.from === 'agent').sort(newest)];
     const seen = all.filter(n => !isNew(n)).sort(newest).slice(0, Math.max(0, BELL_ROWS - rows.length));
     const row = (n, old) => {
-      const title = (moods.find(m => m.slug === n.mood) || {}).title || n.mood;
+      const found = moods.find(m => m.slug === n.mood);
+      const where = found && !found.thread_of ? (found.title || n.mood) : n.mood;
       const what = n.kind === 'answer' ? 'answered you' : n.kind === 'talk' ? 'on your talk page' : '';
       return `<a class="note${old ? ' seen' : ''}" href="/moods/${encodeURIComponent(n.mood)}/#m-${esc(n.turn.id)}" data-mood="${esc(n.mood)}" data-id="${esc(n.turn.id)}">`
         + `<span class="who">${icon(n.turn.sender, n.from !== 'agent')}<b>${esc(shown(n.turn.sender))}</b>${what ? ' ' + what : ''}</span>`
-        + ` <span class="where">#${esc(title)} · ${esc(ago(n.turn.created_at))}</span>`
+        + ` <span class="where">#${esc(where)} · ${esc(ago(n.turn.created_at))}</span>`
         + `<span class="said">${esc(plainText(n.turn.text).slice(0, 300))}</span></a>`;
     };
     document.getElementById('bellList').innerHTML = (rows.length ? rows.map(n => row(n, false)).join('') : '<div class="none">Nothing new for you.</div>')
@@ -6832,7 +6840,7 @@
     if (!notifying()) return;
     const mood = moods.find(m => m.slug === n.mood);
     // Who and where in the title; the body, only what they said (Justin, 29 Oct: a phone's fill up fast).
-    const where = mood ? mood.title || mood.slug : n.mood;
+    const where = mood ? (mood.thread_of ? '#' + mood.slug : mood.title || mood.slug) : n.mood;
     const title = n.kind === 'answer' ? `${n.turn.sender} answered you in ${where}` : n.kind === 'talk' ? `${n.turn.sender} edited your talk page`
       : n.kind === 'mention' ? `${n.turn.sender} mentioned you in ${where}`
       : `${n.turn.sender} in ${where}`;
@@ -6995,7 +7003,7 @@
       qMore = next;
       const where = scope === 'threads' ? 'in this Mood or its threads' : here ? 'in this Mood' : 'in any Mood';
       const html = hits.map(h => `<a class="hit" href="/moods/${encodeURIComponent(h.mood)}/#m-${esc(h.id)}" data-slug="${esc(h.mood)}" data-id="${esc(h.id)}">`
-        + `<b>${esc(h.sender)}</b>${h.mood === current ? '' : ' in ' + esc(h.title)} · ${esc(stamp(h.created_at))}<span class="txt">${marked(h.text, terms, qWord.checked)}</span></a>`).join('');
+        + `<b>${esc(h.sender)}</b>${h.mood === current ? '' : ' in #' + esc(h.mood)} · ${esc(stamp(h.created_at))}<span class="txt">${marked(h.text, terms, qWord.checked)}</span></a>`).join('');
       if (moreBtn) moreBtn.remove();
       if (!more) qResults.innerHTML = html || (next ? '' : `<div class="note">Nothing said ${where} has “${esc(q)}”.</div>`);
       else qResults.insertAdjacentHTML('beforeend', html);
@@ -7158,6 +7166,7 @@
   // `at`: a message it's opened to (a notification, a link). Not drawn here yet, it's asked for as the page
   // at it, in one ask, and the newest waits for the next poll -- not the newest first, then the page at it.
   async function open(slug, push, at = null) {
+    slug = (moods.find(m => m.slug === slug || (m.aliases || []).includes(slug)) || {}).slug || slug;
     if (!at) dismissReaching();
     if (slug === current && document.getElementById('turns')) return;
     const opening = Date.now();
@@ -8795,8 +8804,8 @@
     // #t-: a link on Tidings, found by the words of its title or address.
     m = upto.match(/(^|[^\w&#\/;=])#t-([^\s#\[\]]{0,80})$/i);
     if (m) return { kind: 'tiding', start: upto.length - m[2].length - 2, prefix: m[2] };
-    // #mood, as mood_view._HASH links it: not after a word, an & or a / (a URL's #anchor, &#39;).
-    m = upto.match(/(^|[^\w&#\/;=])#([a-z0-9][a-z0-9-]{0,79})?$/i);
+    // #mood or #mood.thread, as mood_view._HASH links it: not after a word, a '.', an & or a / (a URL's #anchor, &#39;).
+    m = upto.match(/(^|[^\w&#\/;=.])#([a-z0-9][a-z0-9-.]{0,120})?$/i);
     if (m) return { kind: 'mood', start: upto.length - (m[2] || '').length, prefix: (m[2] || '').toLowerCase() };
     // ~ opens every mergeable at once (Justin, 7 Nov: "you have to type the whole name of the repo before it
     // kicks in"), narrowed by any words of <repo>:<branch>; the ~ goes when one is chosen. Not after a word,
@@ -8927,15 +8936,21 @@
       choices = people.filter(p => !p.is_human && p.name.startsWith(at.prefix)).map(p => p.name).sort()
         .map(n => ({ insert: n + ' ', html: `${icon(n)}${esc(n)}<small>emergent · more with a comma: ${esc(n)},…</small>` }));
     } else if (at.kind === 'mood') {
-      // By its name (the slug a link takes) or the words of its title; the most lately active first, as the list has them.
+      // By its slug (#interfaces.threads), its thread name, or the words of its title; open first, local threads prioritized.
       const p = at.prefix;
       const byTitle = m => (m.title || '').toLowerCase().split(/[^a-z0-9]+/).some(w => w && w.startsWith(p));
-      const open = moods.filter(m => !m.archived), shut = moods.filter(m => m.archived);
-      const hits = [...open, ...shut].filter(m => m.slug.startsWith(p))
-        .concat(p ? [...open, ...shut].filter(m => !m.slug.startsWith(p) && (byTitle(m) || m.slug.includes(p))) : [])
-        .slice(0, 8);
-      choices = hits.map(m => ({ insert: m.slug + ' ', html: `<span class="emo">#</span>${esc(m.slug)}`
-        + `<small>${m.title && m.title !== m.slug ? esc(m.title) : ''}${m.archived ? (m.title && m.title !== m.slug ? ' · ' : '') + 'archived' : ''}</small>` }));
+      const byLocal = m => m.slug.includes('.') && m.slug.split('.').pop().startsWith(p);
+      const hereFirst = list => [...list.filter(m => m.thread_of === current), ...list.filter(m => m.thread_of !== current)];
+      const pool = [...moods.filter(m => !m.archived), ...moods.filter(m => m.archived)];
+      const exact = pool.filter(m => m.slug.startsWith(p));
+      const local = p && !p.includes('.') ? hereFirst(pool.filter(m => !m.slug.startsWith(p) && byLocal(m))) : [];
+      const rest = p ? pool.filter(m => !m.slug.startsWith(p) && !byLocal(m) && (byTitle(m) || m.slug.includes(p))) : [];
+      const hits = [...exact, ...local, ...rest].slice(0, 8);
+      choices = hits.map(m => {
+        const sub = m.title && m.title !== m.slug && m.title !== m.slug.split('.').pop() ? m.title : '';
+        return { insert: m.slug + ' ', html: `<span class="emo">#</span>${esc(m.slug)}`
+          + `<small>${esc(sub)}${m.archived ? (sub ? ' · ' : '') + 'archived' : ''}</small>` };
+      });
     } else if (at.kind === 'emoji') {
       // The favourites by their short names first, then every emoji Unicode has, by any word of its name.
       const p = at.prefix.toLowerCase(), words = p.split(/[_+-]+/).filter(Boolean);
@@ -12252,7 +12267,8 @@
     if (readMode === 'everywhere') {
       for (const [slug, d] of Object.entries(liveData)) {
         for (const agent of d.busy_all || (d.busy ? [d.busy] : [])) {
-          out.push(`<b>${esc(shown(agent))}</b> at work · ${esc((moods.find(m => m.slug === slug) || {}).title || slug)}`);
+          const m = moods.find(x => x.slug === slug);
+          out.push(`<b>${esc(shown(agent))}</b> at work · ${esc(m ? (m.thread_of ? '#' + m.slug : m.title || slug) : slug)}`);
         }
       }
     } else {
@@ -12262,7 +12278,8 @@
   }
   function renderVoiceMode() {
     if (!document.body.classList.contains('voice-mode')) return;
-    const here = (moods.find(m => m.slug === current) || {}).title || current || '';
+    const curMood = moods.find(m => m.slug === current);
+    const here = curMood ? (curMood.thread_of ? '#' + curMood.slug : curMood.title || current) : (current || '');
     const now = readNow && readNow.item;
     const bar = (cls, when, html, i) => `<div class="bar ${cls}"><span class="when">${when}</span><span class="say">${html}</span>`
       + (i >= 0 ? `<button type="button" class="drop" data-i="${i}" aria-label="Don't read this one">✕</button>` : '') + '</div>';

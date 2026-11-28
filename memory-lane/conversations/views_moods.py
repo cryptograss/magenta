@@ -1130,7 +1130,7 @@ def api_search(request):
     before = parse_datetime(request.GET.get('before') or '')
     if before:
         rows = rows.filter(created_at__lt=before)
-    titles = dict(Mood.objects.values_list('slug', 'title'))
+    titles = {m.slug: m.label for m in Mood.objects.all()}
     hits, last, done = [], None, False
     rows = rows.select_related('sender').order_by('-created_at')
     for _ in range(SEARCH_READS):
@@ -1187,7 +1187,7 @@ def api_recent(request):
     order = 'created_at' if oldest else '-created_at'
     names = known_names()
     agents = set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
-    titles = dict(Mood.objects.values_list('slug', 'title'))
+    titles = {m.slug: m.label for m in Mood.objects.all()}
     events = []
 
     progress = request.GET.get('progress') == '1'
@@ -1243,7 +1243,7 @@ def api_recent(request):
 
     for mood in Mood.objects.filter(created_at__gt=since).order_by(order)[:limit]:
         events.append({'kind': 'opened', 'at': mood.created_at.isoformat(), 'mood': mood.slug, 'who': '',
-                       'text': mood.title or mood.slug})
+                       'text': mood.label})
 
     events.sort(key=lambda e: e['at'], reverse=not oldest)
     for e in events:

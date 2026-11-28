@@ -150,7 +150,7 @@ class OpenThreadTest(TestCase):
     def test_forked_by_default_with_its_settings_and_a_line_in_both(self):
         from conversations.services import settings as knobs
         made = self.open(thread_of='jams').json()
-        self.assertEqual((made['thread_of'], made['kind']), ('jams', 'fork'))
+        self.assertEqual((made['slug'], made['thread_of'], made['kind']), ('jams.setlist', 'jams', 'fork'))
         thread = Mood.objects.get(slug=made['slug'])
         self.assertEqual(thread.thread_of, self.jams)
         self.assertIsNotNone(thread.forked_at)
@@ -269,14 +269,15 @@ class MoveThreadTest(TestCase):
         ThinkingEntity.objects.update_or_create(name='re', defaults={'is_biological_human': False})
         self.jams = Mood.objects.create(slug='jams', title='jams')
         self.shows = Mood.objects.create(slug='shows', title='shows')
-        self.thread = Mood.objects.create(slug='jams-setlist', thread_of=self.jams, forked_at=timezone.now())
+        self.thread = Mood.objects.create(slug='jams.setlist', title='setlist', thread_of=self.jams,
+                                          forked_at=timezone.now())
         Message.objects.create(id=uuid.uuid4(), sender_id='re', mood=self.thread, content='Salt Creek opens.',
                                timestamp=1)
         _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
         self.client.cookies[mood_auth.COOKIE] = token
 
     def move(self, **body):
-        return self.client.post('/api/moods/jams-setlist/move-thread/', json.dumps(body), content_type='application/json')
+        return self.client.post('/api/moods/jams.setlist/move-thread/', json.dumps(body), content_type='application/json')
 
     def said(self, slug):
         return [t['text'] for t in self.client.get(f'/api/moods/{slug}/turns/').json()['turns']
@@ -285,47 +286,54 @@ class MoveThreadTest(TestCase):
     def test_every_box_in_its_order(self):
         r = self.move(to='shows', incorporate_from=True, incorporate_to=True, compact=True, inform=True, note='the set')
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual((r.json()['thread_of'], r.json()['from'], len(r.json()['posted'])), ('shows', 'jams', 4))
+        self.assertEqual((r.json()['slug'], r.json()['thread_of'], r.json()['from'], len(r.json()['posted'])),
+                         ('shows.setlist', 'shows', 'jams', 4))
         self.thread.refresh_from_db()
-        self.assertEqual(self.thread.thread_of, self.shows)
-        self.assertEqual(self.said('jams'), ['/incorporate #jams-setlist the set'])
-        self.assertEqual(self.said('shows'), ['/incorporate #jams-setlist the set'])
-        compact, inform = self.said('jams-setlist')
+        self.assertEqual((self.thread.slug, self.thread.thread_of), ('shows.setlist', self.shows))
+        self.assertEqual(Mood.by_slug('jams.setlist'), self.thread)  # old namespace kept as alias
+        self.assertEqual(self.said('jams'), ['/incorporate #jams.setlist the set'])
+        self.assertEqual(self.said('shows'), ['/incorporate #shows.setlist the set'])
+        compact, inform = self.said('shows.setlist')
         self.assertEqual(compact, '/compact re the set')  # who has spoken in it; magent hasn't
         self.assertIn('moved from #jams to #shows', inform)
-        self.assertIn('/moods/shows/threads/jams-setlist/', inform)
+        self.assertIn('/moods/shows/threads/setlist/', inform)
         # A line in it, and in both Moods; the ↩ mark doesn't outlive a move.
-        for slug in ('jams-setlist', 'jams', 'shows'):
+        for slug in ('shows.setlist', 'jams', 'shows'):
             events = self.client.get(f'/api/moods/{slug}/turns/').json()['events']
             self.assertEqual([(e['thread'], e['from_mood'], e['to_mood']) for e in events if e['type'] == 'moved'],
-                             [('jams-setlist', 'jams', 'shows')])
-        listed = next(m for m in self.client.get('/api/moods/').json()['moods'] if m['slug'] == 'jams-setlist')
+                             [('shows.setlist', 'jams', 'shows')])
+        listed = next(m for m in self.client.get('/api/moods/').json()['moods'] if m['slug'] == 'shows.setlist')
         self.assertEqual(listed['thread_of'], 'shows')
 
     def test_no_boxes_is_the_move_alone(self):
         r = self.move(to='shows')
-        self.assertEqual((r.status_code, r.json()['posted']), (200, []))
-        self.assertEqual(self.said('jams-setlist') + self.said('jams') + self.said('shows'), [])
+        self.assertEqual((r.status_code, r.json()['slug'], r.json()['posted']), (200, 'shows.setlist', []))
+        self.assertEqual(self.said('shows.setlist') + self.said('jams') + self.said('shows'), [])
 
     def test_its_worktrees_go_under_the_mood_its_turns_run_in(self):
-        Mood.objects.create(slug='shows-fall', thread_of=self.shows)
-        r = self.move(to='shows-fall', inform=True)
+        Mood.objects.create(slug='shows.fall', title='fall', thread_of=self.shows)
+        r = self.move(to='shows.fall', inform=True)
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertIn('/moods/shows/threads/jams-setlist/', self.said('jams-setlist')[0])
+        self.assertEqual(r.json()['slug'], 'shows.fall.setlist')
+        self.assertIn('/moods/shows/threads/setlist/', self.said('shows.fall.setlist')[0])
 
     def test_refused_and_nothing_done(self):
         from conversations.services import settings as knobs
-        Mood.objects.create(slug='jams-setlist-encore', thread_of=self.thread)
+        Mood.objects.create(slug='jams.setlist.encore', title='encore', thread_of=self.thread)
         knobs.change('archived', True, mood=Mood.objects.create(slug='old-shows'), by=self.justin)
-        for to, why in (('jams', 'already'), ('nowhere', 'no Mood'), ('jams-setlist', 'under itself'),
-                        ('jams-setlist-encore', 'under itself'), ('old-shows', 'archived')):
+        for to, why in (('jams', 'already'), ('nowhere', 'no Mood'), ('jams.setlist', 'under itself'),
+                        ('jams.setlist.encore', 'under itself'), ('old-shows', 'archived')):
             with self.subTest(to=to):
                 r = self.move(to=to, incorporate_from=True, inform=True)
                 self.assertEqual(r.status_code, 400)
                 self.assertIn(why, r.json()['error'])
+        # Moving into a Mood that already has a thread of the same name is 409, before posting anything.
+        Mood.objects.create(slug='shows.setlist', title='setlist', thread_of=self.shows)
+        r = self.move(to='shows', incorporate_from=True, inform=True)
+        self.assertEqual(r.status_code, 409)
         self.thread.refresh_from_db()
-        self.assertEqual(self.thread.thread_of, self.jams)
-        self.assertEqual(self.said('jams') + self.said('jams-setlist'), [])
+        self.assertEqual((self.thread.slug, self.thread.thread_of), ('jams.setlist', self.jams))
+        self.assertEqual(self.said('jams') + self.said('jams.setlist'), [])
         self.assertEqual(self.client.post('/api/moods/jams/move-thread/', json.dumps({'to': 'shows'}),
                                           content_type='application/json').status_code, 400)  # not a thread
 
@@ -334,3 +342,91 @@ class MoveThreadTest(TestCase):
         self.assertIn(self.move(to='shows').status_code, (401, 403))
         self.thread.refresh_from_db()
         self.assertEqual(self.thread.thread_of, self.jams)
+
+
+@override_settings(MOOD_RUNNER_KEYS={'magent': KEY})
+class ThreadNamespaceTest(TestCase):
+    """Threads are namespaced under their Mood (#interfaces.threads: Justin, 18 Nov), not universally unique."""
+
+    def setUp(self):
+        from conversations.services import mood_auth
+        self.justin = ThinkingEntity.objects.update_or_create(name='justin', defaults={'is_biological_human': True})[0]
+        ThinkingEntity.objects.update_or_create(name='magent', defaults={'is_biological_human': False})
+        self.interfaces = Mood.objects.create(slug='interfaces', title='interfaces')
+        self.ops = Mood.objects.create(slug='ops', title='ops')
+        _, token = mood_auth.enrol_device(self.justin, 'laptop', tier='key')
+        self.client.cookies[mood_auth.COOKIE] = token
+
+    def open_thread(self, parent, title='threads'):
+        return self.client.post('/api/moods/new/', json.dumps({'title': title, 'thread_of': parent}),
+                                content_type='application/json')
+
+    def test_same_thread_name_in_different_moods_and_dotted_links(self):
+        from conversations.services.mood_view import render_html
+        a = self.open_thread('interfaces', 'threads')
+        b = self.open_thread('ops', 'threads')
+        self.assertEqual((a.status_code, a.json()['slug']), (201, 'interfaces.threads'))
+        self.assertEqual((b.status_code, b.json()['slug']), (201, 'ops.threads'))
+        # Both URLs serve the page and APIs.
+        self.assertEqual(self.client.get('/moods/interfaces.threads/').status_code, 200)
+        self.assertEqual(self.client.get('/api/moods/ops.threads/turns/').json()['mood']['slug'], 'ops.threads')
+        # #interfaces.threads links cleanly, leaving sentence punctuation outside; #interfaces.Then links #interfaces.
+        html = render_html('Take it to #interfaces.threads. We started in #interfaces.Then moved on.')
+        self.assertIn('<a class="moodlink" href="/moods/interfaces.threads/" data-mood="interfaces.threads">#interfaces.threads</a>.', html)
+        self.assertIn('<a class="moodlink" href="/moods/interfaces/" data-mood="interfaces">#interfaces</a>.Then', html)
+
+    def test_incorporate_and_handoff_accept_namespaced_or_local_thread_refs(self):
+        from poller.mood_poller import MoodPoller
+        self.open_thread('interfaces', 'threads')
+        for text in ('/incorporate #interfaces.threads carry it back', '/incorporate #threads carry it back',
+                     '/handoff #interfaces.threads about names', '/handoff #threads about names'):
+            r = self.client.post('/api/moods/interfaces/say/', json.dumps({'text': text}),
+                                 content_type='application/json')
+            self.assertEqual(r.status_code, 201, (text, r.content))
+        # Another Mood's thread cannot be incorporated into #ops.
+        bad = self.client.post('/api/moods/ops/say/', json.dumps({'text': '/incorporate #interfaces.threads'}),
+                               content_type='application/json')
+        self.assertEqual(bad.status_code, 400)
+        # Poller resolves both #interfaces.threads and shorthand #threads under parent='interfaces'.
+        poller = MoodPoller.__new__(MoodPoller)
+        poller.texts = None
+        poller.api = mock.Mock()
+        poller.api.recent.side_effect = lambda s, limit=1000: (
+            {'mood': {'slug': 'interfaces.threads'}, 'turns': []} if s == 'interfaces.threads'
+            else (_ for _ in ()).throw(RuntimeError('not found'))
+        )
+        brief = '\n'.join(poller.incorporate_brief('threads', 'the key', parent='interfaces'))
+        self.assertIn('#interfaces.threads', brief)
+
+    def test_migration_namespaces_existing_threads_and_keeps_legacy_aliases(self):
+        from importlib import import_module
+        from django.apps import apps
+        from conversations.models import MoodAlias
+        from conversations.services.mood_view import render_html
+        from conversations.mcp.tools import list_moods_text, read_mood_text
+        legacy = Mood.objects.create(slug='threads', title='threads', thread_of=self.interfaces)
+        mig = import_module('conversations.migrations.0055_thread_namespaces')
+        mig.namespace_threads(apps, None)
+        legacy.refresh_from_db()
+        self.assertEqual(legacy.slug, 'interfaces.threads')
+        self.assertEqual(MoodAlias.objects.filter(mood=legacy).values_list('slug', flat=True)[0], 'threads')
+        # Legacy URL redirects to the namespaced address; read_mood finds both.
+        self.assertRedirects(self.client.get('/moods/threads/'), '/moods/interfaces.threads/',
+                             fetch_redirect_response=False)
+        self.assertIn('interfaces.threads -- threads (thread of #interfaces)', list_moods_text())
+        self.assertIn('(interfaces.threads)', read_mood_text('interfaces.threads'))
+        self.assertIn('(interfaces.threads)', read_mood_text('threads'))
+        # Once #ops also opens a 'threads' thread, bare #threads in prose is ambiguous and not hijacked.
+        self.assertIn('data-mood="interfaces.threads">#threads</a>', render_html('back in #threads'))
+        self.open_thread('ops', 'threads')
+        self.assertNotIn('moodlink', render_html('which #threads?'))
+
+    def test_voice_and_mood_switch_with_namespaced_threads(self):
+        from conversations.services import mood_switch, voice
+        t1 = Mood.objects.get(slug=self.open_thread('interfaces', 'threads').json()['slug'])
+        t2 = Mood.objects.get(slug=self.open_thread('ops', 'threads').json()['slug'])
+        moods = [self.interfaces, self.ops, t1, t2]
+        self.assertIn('pound interfaces dot threads', voice.plain('See #interfaces.threads.'))
+        self.assertIsNone(mood_switch.match('go to threads', moods))  # ambiguous across two Moods
+        self.assertEqual(mood_switch.match('go to interfaces threads', moods), 'interfaces.threads')
+        self.assertEqual(mood_switch.match('go to ops dot threads', moods), 'ops.threads')

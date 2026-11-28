@@ -23,7 +23,7 @@ WAIT_FOR_BUILD = 40  # seconds a request with nothing cached waits on another's 
 def bust_moods_cache():
     """A Mood was created, renamed, archived, pinned, closed, reforked or deleted: dropped, so whoever asks
     next sees it as it is now. The next ask builds it; any others meanwhile wait for that build."""
-    cache.delete(API_MOODS_CACHE_KEY)
+    cache.delete_many([API_MOODS_CACHE_KEY, 'links:moods'])
 
 
 def moods_list(build):

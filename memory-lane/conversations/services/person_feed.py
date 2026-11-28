@@ -142,7 +142,7 @@ def messages(name):
         if not text or text == '[deleted]':
             continue
         out.append({'kind': 'message', 'id': str(post.id), 'mood': post.mood.slug,
-                    'mood_title': post.mood.title or post.mood.slug, 'at': post.created_at,
+                    'mood_title': post.mood.label, 'at': post.created_at,
                     'block': post.eth_blockheight, 'text': text if len(text) <= TEXT else text[:TEXT - 1].rstrip() + '…',
                     'url': f'/moods/{post.mood.slug}/#m-{post.id}'})
         if len(out) == MESSAGES:

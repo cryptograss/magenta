@@ -222,7 +222,7 @@ def all_todos(http=None):
                 parsed_dates[idx] = curr
 
         m_open = sum(1 for it in items if not it.get('done') and not it.get('merged'))
-        mood_summaries.append({'slug': m.slug, 'title': m.title or m.slug, 'count': len(items), 'open': m_open})
+        mood_summaries.append({'slug': m.slug, 'title': m.label, 'count': len(items), 'open': m_open})
 
         for idx, it in enumerate(items):
             all_items.append({
@@ -231,7 +231,7 @@ def all_todos(http=None):
                 # filter. Where it stands among what's needed is its 'rank' (todo_types.with_types), for its sort.
                 'who_keys': list(dict.fromkeys(person_key(w) for w in it.get('who') or [])),
                 'mood': m.slug,
-                'mood_title': m.title or m.slug,
+                'mood_title': m.label,
                 'archived': m.slug in archived,
                 '_sort_key': (*parsed_dates[idx], idx),
             })

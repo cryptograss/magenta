@@ -37,7 +37,7 @@ def pane(slug, now=None):
         if msg.mood.slug == slug and who not in [h['name'] for h in here]:
             here.append({'name': who, 'at': msg.created_at})
         if who not in latest:
-            latest[who] = (msg.created_at, 'mood', msg.mood.title or msg.mood.slug,
+            latest[who] = (msg.created_at, 'mood', msg.mood.label,
                            f'/moods/{msg.mood.slug}/#m-{msg.id}')
     for c in (TidingComment.objects.filter(by_id__in=people).exclude(changed='deleted')
               .select_related('tiding').order_by('-at')[:500]):

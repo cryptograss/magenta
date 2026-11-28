@@ -38,9 +38,14 @@ def mood_names():
     """{a Mood's name, now or before a rename: its slug now}. Kept a few seconds."""
     names = cache.get('links:moods')
     if names is None:
+        from collections import Counter
         from conversations.models import Mood, MoodAlias
-        names = dict(Mood.objects.values_list('slug', 'slug'))
+        slugs = list(Mood.objects.values_list('slug', flat=True))
+        names = {s: s for s in slugs}
+        local_counts = Counter(s.rsplit('.', 1)[-1] for s in slugs if '.' in s)
         for alias, slug in MoodAlias.objects.values_list('slug', 'mood__slug'):
+            if '.' not in alias and '.' in slug and local_counts[alias] > 1:
+                continue  # two threads share this local name now: bare #name is ambiguous
             names.setdefault(alias, slug)
         cache.set('links:moods', names, 10)
     return names

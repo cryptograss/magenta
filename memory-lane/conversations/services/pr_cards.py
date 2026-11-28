@@ -66,7 +66,7 @@ def foot(body):
     split = re.search(r'(?:,\s*|\s+)in\s+(?=#)', line) or re.search(r',\s*in\s+', line)
     people, moods = (line[:split.start()], line[split.end():]) if split else (line, '')
     who = [w.strip(' .*_`') for w in re.split(r',|\band\b|&', people)]
-    where = re.findall(r'#([\w-]+)', moods) or [m.strip(' .*_`') for m in re.split(r',|\band\b|&', moods)]
+    where = re.findall(r'#([\w-]+(?:\.[\w-]+)*)', moods) or [m.strip(' .*_`') for m in re.split(r',|\band\b|&', moods)]
     return ((deploy[-1] if deploy else '').strip(' *_`'),
             [w.lower() for w in who if w], [m.lower() for m in where if m])
 
