@@ -4733,10 +4733,12 @@
     el.querySelectorAll('a.yarn[data-yarn]').forEach(decorateYarn);
     markWikiLinks(el);
     if (el.querySelector('.body a[href^="http"]:not([class])')) cardsWatch.observe(el);  // a preview, as it nears the screen
-    // A memo whose words never came (ElevenLabs out of credit, say): its sender may have it heard again.
-    if (t.is_human && viewer && t.sender === viewer && !t.deleted && /🎙 \[(?:voice memo|audio)[^\]]*\]\([^)]*\)\n\n\(not transcribed: /.test(t.text || '')) {
+    // Audio of one's own with no words under it: its sender may ask for them (Justin, #interfaces,
+    // 28 Nov 2026: "let's call it transcribe, and put it on all audio that hasn't yet been
+    // transcribed"). services/voice.untranscribed() is the same rule, and has the last word.
+    if (t.is_human && viewer && t.sender === viewer && !t.deleted && untranscribed(t.text)) {
       el.querySelector('.body').insertAdjacentHTML('beforeend',
-        `<button type="button" class="hearagain" data-id="${esc(t.id)}" title="Ask for its words again; they take the place of this note, as an edit (which wakes no one)">↻ hear it again</button>`);
+        `<button type="button" class="hearagain" data-id="${esc(t.id)}" title="Write in its words: they go under the audio, as an edit (which wakes no one)">transcribe</button>`);
     }
     if (t.poll && !t.deleted) {  // its card, with no votes until the Mood's polls say otherwise
       el.querySelector(':scope > .body.poll')._asked = { id: t.id, mood: current, by: t.sender, closed: null, ...t.poll,
@@ -7650,12 +7652,20 @@
   // Each poll asks what changed since the last (per Mood: a Mood left and come
   // back to is asked from when it was last looked at), and redraws those messages.
   const changesAt = {};
+  // Audio with no words under it: a memo whose words were refused, or a file posted as it was. Words
+  // typed by its sender can't be told from a transcript, so audio posted with words beside it is left
+  // alone, and so is a message with two recordings in it (services/voice.untranscribed says the same).
+  function untranscribed(text) {
+    const said = text || '', links = /🎙 \[(?:voice memo|audio)[^\]]*\]\(\/(?:moods|motions)\/media\/[0-9a-f]{64}\.[a-z0-9]+\)/g;
+    if (/🎙 \[(?:voice memo|audio)[^\]]*\]\([^)]*\)\n\n\(not transcribed: /.test(said)) return true;
+    return (said.match(links) || []).length === 1 && said.replace(links, '').trim() === '';
+  }
   document.addEventListener('click', async e => {
     const btn = e.target.closest('.hearagain');
     if (!btn || btn.disabled) return;
     const url = `/api/moods/${encodeURIComponent(current)}/messages/${encodeURIComponent(btn.dataset.id)}/hear-again/`;
     const says = what => { btn.textContent = what; };
-    btn.disabled = true; says('hearing it again…');
+    btn.disabled = true; says('transcribing…');
     try {
       const r = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
@@ -7668,7 +7678,7 @@
       }
       throw new Error('still not heard: try again in a while');
     } catch (err) {
-      says(`↻ hear it again (${err.message})`);
+      says(`transcribe (${err.message})`);
       btn.disabled = false;
     }
   });

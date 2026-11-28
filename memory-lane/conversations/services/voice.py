@@ -877,17 +877,39 @@ def not_heard(text):
     return match.group(1) if match and _NOT_HEARD.match(text, match.end()) else None
 
 
+def untranscribed(text):
+    """The sha of audio in `text` that has no words under it, or None (Justin, #interfaces, 28 Nov
+    2026: "put it on all audio that hasn't yet been transcribed"). Two kinds have none: a memo whose
+    words were asked for and refused ("(not transcribed: ...)"), and audio posted as it was, which is
+    what an uploaded file is (api_memo?hear=no) unless its sender asked for words before sending.
+
+    Audio posted with words beside it is left alone: a transcript is prose under the link, and so is
+    anything its sender typed there, and nothing in the text tells one from the other. One link to a
+    message, too -- the words go under the link they are of, and with two there is no saying which.
+    """
+    text = text or ''
+    sha = not_heard(text)
+    if sha:
+        return sha
+    found = _MEMO.findall(text)
+    return found[0] if len(found) == 1 and not _MEMO.sub('', text).strip() else None
+
+
 def hear_again(message, by, mentionable, aliases=None):
-    """A memo posted without its words (ElevenLabs out of credit, say: Justin, 20 Oct), heard again in
-    the background; when its words come, they take the place of the "(not transcribed: ...)", as an
-    edit by its author (services/retract.edit). An edit wakes nobody: a name said in it is an @mention
-    on the page, but an agent it names isn't woken by it."""
+    """Audio posted without its words, transcribed in the background; when its words come they go
+    under the link, in the place of the "(not transcribed: ...)" where there is one, as an edit by its
+    author (services/retract.edit). An edit wakes nobody: a name said in it is an @mention on the
+    page, but an agent it names isn't woken by it.
+
+    For a memo whose words were refused (ElevenLabs out of credit: Justin, 20 Oct) and, since 28 Nov
+    2026, for a file posted as it was (untranscribed): "I uploaded audio ... I don't see Write in its
+    words" -- that button is under the box, and goes with the send."""
     from django.core.cache import cache
     from conversations.models import Media
     from .mood_view import prose
-    sha = not_heard(prose(message.content))
+    sha = untranscribed(prose(message.content))
     if sha is None:
-        raise VoiceError('this has no memo waiting for its words', status=400)
+        raise VoiceError('this has no audio waiting for its words', status=400)
     if not Media.objects.filter(sha256=sha).exists():
         raise VoiceError('the recording itself is gone', status=404)
     if not cache.add(f'memo:again:{message.id}', 1, HEARING_FOR):
@@ -908,9 +930,14 @@ def _hear_again(message_id, sha, by, mentionable, aliases):
         if not words:
             raise VoiceError('no words heard')
         text = prose(message.content)
-        if not_heard(text) != sha:
+        if untranscribed(text) != sha:
             raise VoiceError('the message changed meanwhile')
-        retract.edit(message, _NOT_HEARD.sub(lambda _: '\n\n' + words, text, count=1), by)
+        if _NOT_HEARD.search(text):
+            said_now = _NOT_HEARD.sub(lambda _: '\n\n' + words, text, count=1)
+        else:                                   # posted as it was: the words go under its link
+            at = _MEMO.search(text).end()
+            said_now = text[:at] + '\n\n' + words + text[at:]
+        retract.edit(message, said_now, by)
         said = {'done': True}
     except (VoiceError, retract.Refused) as e:
         said = {'error': str(e)}

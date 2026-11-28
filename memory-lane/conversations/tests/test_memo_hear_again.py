@@ -85,6 +85,41 @@ class HearAgainTest(TestCase):
         plain = Message.objects.filter(source_file='mood-web').order_by('-created_at').first()
         self.assertEqual(self.again(justin, plain).status_code, 400)
 
+    def posted_as_it_was(self, client, words=''):
+        """A file uploaded rather than recorded (api_memo?hear=no): stored, and sent as it is."""
+        url = client.post('/api/moods/general/memo/?hear=no', WEBM, content_type='audio/webm').json()['url']
+        said = f'🎙 [audio · Soulbinding inflation.m4a · 16:24]({url})' + (f'\n\n{words}' if words else '')
+        self.assertEqual(self.send(client, said).status_code, 201)
+        return url, Message.objects.filter(source_file='mood-web').order_by('-created_at').first()
+
+    def test_a_file_posted_as_it_was_is_transcribed_after_the_fact(self):
+        """Justin, 28 Nov 2026: he uploaded 16 minutes and sent it, and the composer's button went
+        with the send. The words go under the link, where there is no note to take the place of."""
+        client = self.client_for(self.justin)
+        url, message = self.posted_as_it_was(client)
+        self.assertIsNotNone(voice.untranscribed(message.content))
+        self.assertEqual(self.again(client, message).status_code, 202)
+        message.refresh_from_db()
+        self.assertEqual(message.content,
+                         f'🎙 [audio · Soulbinding inflation.m4a · 16:24]({url})\n\n@magent, bring the capo to soundcheck.')
+        self.assertEqual(MessageChange.objects.get(message=message).kind, 'edited')
+        self.assertIsNone(voice.untranscribed(message.content))   # and not offered again
+        self.assertEqual(self.again(client, message).status_code, 400)
+
+    def test_audio_with_words_beside_it_is_left_alone(self):
+        """A transcript is prose under the link, and so is anything its sender typed: nothing in the
+        text tells them apart, so audio sent with words keeps them."""
+        client = self.client_for(self.justin)
+        _, message = self.posted_as_it_was(client, words='from the barn, the bit I meant')
+        self.assertIsNone(voice.untranscribed(message.content))
+        self.assertEqual(self.again(client, message).status_code, 400)
+
+    def test_only_whoever_posted_it_may_ask(self):
+        client = self.client_for(self.justin)
+        _, message = self.posted_as_it_was(client)
+        self.assertEqual(self.again(self.client_for(self.skyler), message).status_code, 403)
+        self.assertEqual(self.again(Client(), message).status_code, 401)
+
     def test_the_page_offers_it_to_its_sender_only(self):
         justin = self.client_for(self.justin)
         _, message = self.unheard(justin)
@@ -92,3 +127,4 @@ class HearAgainTest(TestCase):
         self.assertIsNotNone(voice.not_heard(mine['text']))
         page = justin.get('/moods/general/').content.decode()
         self.assertIn('class="hearagain"', page)  # the button's markup, drawn by the page's script
+        self.assertIn('>transcribe</button>', page)    # Justin's word for it, 28 Nov 2026

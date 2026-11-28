@@ -1639,8 +1639,10 @@ def api_hear(request, slug, sha):
 
 @require_http_methods(['GET', 'POST'])
 def api_memo_again(request, slug, message_id):
-    """A memo posted without its words, heard again (services/voice.hear_again): POST to start, by
-    whoever sent it; GET for how it's going: {'working'}, {'done'} or {'error'}."""
+    """Audio posted without its words, transcribed (services/voice.hear_again): POST to start, by
+    whoever sent it; GET for how it's going: {'working'}, {'done'} or {'error'}. The page's button
+    says "transcribe" (Justin, #interfaces, 28 Nov 2026); it stands on any audio of one's own that
+    has no words under it, a memo refused and a file posted as it was alike."""
     from .services import voice
     from .services.mood_view import POSTED
     message = Message.objects.filter(id=_uuid_or_none(message_id), mood=Mood.by_slug(slug)).first()
@@ -1655,7 +1657,7 @@ def api_memo_again(request, slug, message_id):
     if device is None:
         return JsonResponse({'error': 'sign in first'}, status=401)
     if message.sender_id != device.entity_id or message.source_file not in POSTED:
-        return JsonResponse({'error': 'only whoever sent a memo can have it heard again'}, status=403)
+        return JsonResponse({'error': 'only whoever posted audio can have it transcribed'}, status=403)
     if not voice.enabled():
         return JsonResponse({'error': "voice isn't set up here (no ElevenLabs key)"}, status=503)
     if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
