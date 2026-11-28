@@ -22,9 +22,16 @@ anybody's list:
 * **pinned** -- pickipedia-mcp reaches hunter at a commit written into `hunter/Dockerfile`
   (`PICKIPEDIA_MCP_COMMIT`), so merging it onto master changes nothing on hunter until that line moves. The box
   says so rather than claiming a deploy would pick it up.
+* **coming** -- open candidate branches, not merged yet, in the repositories the box runs: what will owe it a
+  deploy once they land. In maybelle-config a branch is a box's by what *its own diff* touches, read before it
+  merges. This is the half a hand-written deploy item used to carry ("when these two land, these three boxes will
+  want it"), derived instead, so nothing depends on anybody remembering (Justin, #ramp, 27 Nov).
 * **asks** -- the open deploy items of every Mood (services/todo.py) that name the box, folded into it, with the
   branches each is still waiting on and whether githouse has merged them. An item naming three boxes shows in
-  all three; what it waits for is the same work.
+  all three; what it waits for is the same work. *No new deploy item is written*: with **owed** and **coming**
+  both derived, a written one can only go stale, which is what Justin was reading on 27 Nov -- seven items, three
+  of them already done and unable to say so. The ones still open tick themselves as they always did
+  (todo_types.deployed); when the last is gone, nothing here has an **asks** section.
 
 Nothing here deploys anything, and nothing ticks a list: todo_types.deployed still closes an item when its box
 runs what it named. This only puts the four boxes, and what each is owed, in one place.
@@ -221,6 +228,83 @@ def _link(repo, merge):
     return ''
 
 
+# --- coming: open work that will owe this box a deploy ------------------------------------------------
+
+def _branch_touches(held, sha, tip, server):
+    """Whether this unmerged branch, once merged, would owe the box anything: everywhere but maybelle-config,
+    yes; there, only if the branch's own diff touches that box's paths or shared/. Read from the branch before
+    it merges, which is the whole point -- the queue can say what is coming without anybody writing it down."""
+    base = _read_sha(held, 'merge-base', sha, tip)
+    if not base:
+        return True
+    touched = _touched(held, sha, base)
+    if touched is None:
+        return True
+    return bool(touched & set(PATHS.get(server, ()) + SHARED))
+
+
+def _read_sha(held, *args):
+    """The first line of git's answer here, stripped, or '' if it said nothing."""
+    from . import githouse
+    lines = githouse._git(held, *args).strip().splitlines()
+    return lines[0].strip() if lines else ''
+
+
+def _candidates(held, repo):
+    """[{'branch', 'head', 'at', 'who', 'subject'}] for every candidate branch githouse holds open here: the
+    branches under refs/heads/ that aren't GitHub's own (githouse.OWNED), newest first. A branch whose merge has
+    landed is in refs/merged/ instead, and a branch its owner dropped in refs/closed/, so neither shows up."""
+    from . import githouse
+    from .glance import person_key
+    out = githouse._git(held, 'for-each-ref', '--sort=-committerdate',
+                        '--format=%(refname:short)%00%(objectname)%00%(committerdate:unix)%00%(authorname)%00%(subject)',
+                        'refs/heads/')
+    owned = set(githouse.OWNED)
+    found = []
+    for line in out.splitlines():
+        parts = line.split('\x00')
+        if len(parts) != 5:
+            continue
+        branch, sha, at, who, subject = parts
+        if branch in owned or branch.startswith('release/') or branch == _deploy_branch(repo):
+            continue
+        found.append({'branch': branch, 'head': sha, 'at': int(at) if at.isdigit() else None,
+                      'who': person_key(who) or who, 'subject': subject})
+    return found
+
+
+def coming(server, limit=MERGES_SHOWN):
+    """[{'repo', 'branch', 'head', 'at', 'who', 'subject', 'link'}]: the open candidate branches that will owe
+    this box a deploy when they merge, newest first.
+
+    Justin, #ramp, 27 Nov 2026: "I don't think we want 'deploy' as a type of todo at all any more, right? It's
+    now its own thing." What a hand-written deploy item carried that the queue couldn't was *intent about work
+    that hasn't merged yet* -- "when these two land, these three boxes will want it". That is derived too: it is
+    the open branches of the repositories this box runs. Nobody writes a deploy item again, and the
+    forward-looking half stops depending on anybody remembering.
+    """
+    from . import githouse
+    from .work_pages import address
+    out = []
+    for repo, boxes in RUNS.items():
+        if server not in boxes:
+            continue
+        held = githouse.repository(repo)
+        if held is None:
+            continue
+        tip = githouse._sha(held, f'refs/heads/{_deploy_branch(repo)}')
+        if not tip:
+            continue
+        for one in _candidates(held, repo):
+            if githouse._is_ancestor(held, one['head'], tip):
+                continue          # already in what the box deploys from: owed, not coming
+            if repo in BY_PATH and not _branch_touches(held, one['head'], tip, server):
+                continue
+            out.append(dict(one, repo=repo, link=address(repo, one['branch'])))
+    out.sort(key=lambda b: b['at'] or 0, reverse=True)
+    return out[:limit]
+
+
 # --- pinned: merged, and still not on its way --------------------------------------------------------
 
 def pinned(server, runs=None):
@@ -300,8 +384,8 @@ def asks(items=None):
 
 def queue(fresh=False):
     """{'boxes': [...], 'owed': N, 'ready': N, 'asks': N}: one box for each server, in servers.py's order, with
-    what it last deployed, what has merged and waits for it, what it runs at a pin, and the Moods' asks folded
-    in. Kept KEEP seconds; a finished deploy drops it (servers.record_deploy)."""
+    what it last deployed, what has merged and waits for it, what it runs at a pin, what open work will want it
+    when it merges, and the Moods' asks folded in. Kept KEEP seconds; a finished deploy drops it (servers.record_deploy)."""
     if not fresh:
         kept = cache.get(KEY)
         if kept is not None:
@@ -331,12 +415,17 @@ def queue(fresh=False):
         except Exception as e:  # noqa: BLE001
             log.warning('deploys: pinned %s: %s', name, e)
             holds = []
+        try:
+            soon = coming(name)
+        except Exception as e:  # noqa: BLE001 -- githouse unreadable: the box still says what has merged
+            log.warning('deploys: coming %s: %s', name, e)
+            soon = []
         mine = all_asks.get(name) or []
         boxes.append({
             'name': name, 'about': server.get('about') or '', 'page': srv.page_url(name),
             'deploy': {k: v for k, v in last.items() if k in ('at', 'at_ts', 'by', 'commit', 'commits', 'note')},
             'running': {repo: (where or {}).get(name) for repo, where in runs.items() if (where or {}).get(name)},
-            'owed': waiting, 'pinned': holds, 'asks': mine,
+            'owed': waiting, 'pinned': holds, 'asks': mine, 'coming': soon,
             'held': sorted({f"{w['repo']}:{w['branch']}" for ask in mine for w in ask['held']}),
             'ready': bool(waiting),
         })
@@ -344,7 +433,8 @@ def queue(fresh=False):
     # servers.py's order, so the page doesn't shuffle under a reader.
     boxes.sort(key=lambda b: not (b['owed'] or any(p['behind'] for p in b['pinned'])))
     found = {'boxes': boxes, 'owed': sum(len(b['owed']) for b in boxes),
-             'ready': sum(1 for b in boxes if b['ready']), 'asks': sum(len(b['asks']) for b in boxes)}
+             'ready': sum(1 for b in boxes if b['ready']), 'asks': sum(len(b['asks']) for b in boxes),
+             'coming': sum(len(b['coming']) for b in boxes)}
     cache.set(KEY, found, KEEP)
     return found
 

@@ -38,6 +38,16 @@ def merge_branch(repo, branch, base, path, text, message=''):
     return head, git(repo.work, 'rev-parse', base)
 
 
+def open_branch(repo, branch, base, path, text):
+    """A candidate branch pushed and left open: githouse holds it under refs/heads/, unmerged."""
+    git(repo.work, 'checkout', '-q', base)
+    git(repo.work, 'checkout', '-q', '-b', branch)
+    head = commit_file(repo, path, text, f'work on {branch}')
+    git(repo.work, 'checkout', '-q', base)
+    repo.push()
+    return head
+
+
 class QueueTest(TestCase):
 
     def setUp(self):
@@ -250,3 +260,58 @@ class PageTest(QueueTest):
             self.assertIsNotNone(cache.get(deploys.KEY))
             todo.forget_all()        # servers.record_deploy and merge_orders both call this
             self.assertIsNone(cache.get(deploys.KEY))
+
+
+class ComingTest(QueueTest):
+    """What will owe a box a deploy once it merges, derived from the open candidate branches rather than written
+    down by hand (Justin, #ramp, 27 Nov: "I don't think we want 'deploy' as a type of todo at all any more")."""
+
+    def test_an_open_branch_in_what_the_box_runs_is_coming_to_it(self):
+        repo = Repo(self.mount)
+        head = open_branch(repo, 'magent/thread-namespaces', 'main', 'memory-lane/t.py', 't')
+        soon = deploys.coming('maybelle')
+        self.assertEqual([(c['repo'], c['branch'], c['head']) for c in soon],
+                         [('magenta', 'magent/thread-namespaces', head)])
+        self.assertEqual(soon[0]['link'], '/ramp/magenta/magent/thread-namespaces/')
+        self.assertEqual(soon[0]['subject'], 'work on magent/thread-namespaces')
+        self.assertEqual(deploys.coming('pickipedia'), [])     # the pickipedia box runs no magenta
+
+    def test_a_merged_branch_is_owed_not_coming(self):
+        # githouse retires a merged name to refs/merged/, but a copy left under refs/heads/ mustn't double-count:
+        # what settles it is whether the deploy branch already holds the work.
+        repo = Repo(self.mount)
+        merge_branch(repo, 'magent/landed', 'main', 'memory-lane/a.py', 'a')
+        self.assertEqual(deploys.coming('maybelle'), [])
+        self.assertIn('magent/landed', [m['branch'] for m in deploys.owed('maybelle', runs={},
+                                                                          finished={'at_ts': 0})])
+
+    def test_github_s_own_branches_are_not_coming_to_anybody(self):
+        repo = Repo(self.mount, name='pickipedia')
+        git(repo.work, 'checkout', '-q', '-b', 'production')
+        repo.push()                     # main and production both exist; neither is a candidate
+        open_branch(repo, 'magent/release-pending', 'production', 'extensions/x.php', 'x')
+        self.assertEqual([c['branch'] for c in deploys.coming('pickipedia')], ['magent/release-pending'])
+
+    def test_a_maybelle_config_branch_is_the_box_s_only_if_its_own_diff_touches_it(self):
+        repo = Repo(self.mount, name='maybelle-config')
+        git(repo.work, 'checkout', '-q', '-b', 'production')
+        repo.push()
+        open_branch(repo, 'magent/hunter-thing', 'production', 'hunter/Dockerfile', 'FROM ubuntu')
+        open_branch(repo, 'magent/a-script', 'production', 'scripts/tidy.py', 'print(1)')
+        open_branch(repo, 'magent/everyone', 'production', 'shared/ansible/roles/caddy/x.yml', 'x')
+        for box, wanted in (('hunter', ['magent/everyone', 'magent/hunter-thing']),
+                            ('maybelle', ['magent/everyone']),
+                            ('pickipedia', ['magent/everyone']),
+                            ('delivery-kid', ['magent/everyone'])):
+            self.assertEqual(sorted(c['branch'] for c in deploys.coming(box)), sorted(wanted), box)
+
+    def test_the_page_says_what_each_box_will_want(self):
+        repo = Repo(self.mount)
+        open_branch(repo, 'magent/thread-namespaces', 'main', 'memory-lane/t.py', 't')
+        with mock.patch('conversations.services.ramp.running', lambda: {}), \
+                mock.patch.object(deploys, 'asks', lambda items=None: {}):
+            found = deploys.queue(fresh=True)
+            html = self.client.get('/deploys/?embed=1').content.decode()
+        self.assertEqual(found['coming'], 2)        # maybelle and hunter both run magenta
+        self.assertIn('When these merge, this box will want a deploy', html)
+        self.assertIn('/ramp/magenta/magent/thread-namespaces/', html)
