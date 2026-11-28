@@ -288,7 +288,7 @@ class Mood(models.Model):
     still finds it. The id never changes. (Until October 2026 this was a "Motion".)
     """
 
-    slug = models.SlugField(max_length=100, unique=True)
+    slug = models.CharField(max_length=200, unique=True)
     title = models.CharField(max_length=200, blank=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -354,32 +354,75 @@ class Mood(models.Model):
         bust_moods_cache()
         super().delete(*args, **kwargs)
 
-    @classmethod
-    def free_slug(cls, title, mood=None):
-        """A slug for `title` that names no other Mood, now or before a rename.
-        `mood` may have it back: renamed back to an old name, it gets its old slug."""
+    _UNSET = object()
+
+    @staticmethod
+    def _part(title):
         from django.utils.text import slugify
-        base = slugify(title)[:60].strip('-') or 'mood'
+        return slugify(title)[:60].strip('-') or 'mood'
+
+    @property
+    def local_slug(self):
+        """The thread's own part of its namespaced slug, or a Mood's slug."""
+        return self.slug.rsplit('.', 1)[-1]
+
+    @property
+    def label(self):
+        """How it is named outside its parent's indented list: '#interfaces.threads' -> 'interfaces.threads'
+        for a thread, or its title for a Mood."""
+        return self.slug if self.thread_of_id else (self.title or self.slug)
+
+    @classmethod
+    def _scoped_base(cls, title, mood=None, thread_of=_UNSET):
+        parent = (mood.thread_of if mood is not None else None) if thread_of is cls._UNSET else thread_of
+        part = cls._part(title)
+        return f'{parent.slug}.{part}' if parent is not None else part
+
+    @classmethod
+    def free_slug(cls, title, mood=None, thread_of=_UNSET):
+        """A slug for `title` (namespaced as `<parent>.<name>` when a thread: Justin, 18 Nov) that names no
+        other Mood in the same namespace, now or before a rename. `mood` may have its own old name back."""
+        parent = (mood.thread_of if mood is not None else None) if thread_of is cls._UNSET else thread_of
+        base = cls._scoped_base(title, mood=mood, thread_of=parent)
         slug, n = base, 2
-        while (slug in PAGE_SLUGS or cls.objects.filter(slug=slug).exclude(pk=getattr(mood, 'pk', None)).exists()
-               or MoodAlias.objects.filter(slug=slug).exclude(mood=mood).exists()):
+        alias_scope = {'mood__thread_of__isnull': True} if parent is None else {}
+        while ((parent is None and slug in PAGE_SLUGS)
+               or cls.objects.filter(slug=slug).exclude(pk=getattr(mood, 'pk', None)).exists()
+               or MoodAlias.objects.filter(slug=slug, **alias_scope).exclude(mood=mood).exists()):
             slug, n = f'{base}-{n}', n + 1
         return slug
 
     @classmethod
-    def holder(cls, title, mood=None):
-        """Who already goes by `title`'s slug, other than `mood`: a Mood (by its name now or one from before a
-        rename), 'page' for a page of the site's own, or None when it's free. A name is had once, open or closed
-        (Justin, 29 Oct: "you can't open two threads with the same name; current or historical")."""
-        from django.utils.text import slugify
-        slug = slugify(title)[:60].strip('-') or 'mood'
-        if slug in PAGE_SLUGS:
+    def holder(cls, title, mood=None, thread_of=_UNSET):
+        """Who already goes by `title`'s slug in this namespace, other than `mood`: a Mood (by its name now or
+        one from before a rename), 'page' for a page of the site's own, or None when it's free. Within one Mood
+        a thread name is had once, open or closed; different Moods may have threads of the same name (Justin,
+        18 Nov: '#interfaces.threads')."""
+        parent = (mood.thread_of if mood is not None else None) if thread_of is cls._UNSET else thread_of
+        slug = cls._scoped_base(title, mood=mood, thread_of=parent)
+        if parent is None and slug in PAGE_SLUGS:
             return 'page'
         other = cls.objects.filter(slug=slug).exclude(pk=getattr(mood, 'pk', None)).first()
         if other is None:
-            alias = MoodAlias.objects.filter(slug=slug).exclude(mood=mood).select_related('mood').first()
+            alias_scope = {'mood__thread_of__isnull': True} if parent is None else {}
+            alias = MoodAlias.objects.filter(slug=slug, **alias_scope).exclude(mood=mood).select_related('mood').first()
             other = alias.mood if alias else None
         return other
+
+    def _reprefix_threads(self, seen=None):
+        """Keep every thread under this Mood namespaced under its slug now, with old slugs kept as aliases."""
+        seen = set() if seen is None else seen
+        if self.pk in seen:
+            return
+        seen.add(self.pk)
+        for child in list(self.threads.all()):
+            want = Mood.free_slug(child.title or child.local_slug, child, thread_of=self)
+            if want != child.slug:
+                MoodAlias.objects.update_or_create(slug=child.slug, defaults={'mood': child})
+                MoodAlias.objects.filter(slug=want, mood=child).delete()
+                child.slug = want
+                child.save(update_fields=['slug'])
+            child._reprefix_threads(seen)
 
     def rename(self, title, description=None):
         """A new title, and the slug that goes with it; the old slug becomes an alias."""
@@ -387,11 +430,29 @@ class Mood(models.Model):
         if description is not None:
             self.description = description
         slug = Mood.free_slug(title, self)
-        if slug != self.slug:
-            MoodAlias.objects.get_or_create(slug=self.slug, defaults={'mood': self})
+        changed = slug != self.slug
+        if changed:
+            MoodAlias.objects.update_or_create(slug=self.slug, defaults={'mood': self})
             MoodAlias.objects.filter(slug=slug, mood=self).delete()  # an old name of its own, taken back
             self.slug = slug
         self.save()
+        if changed:
+            self._reprefix_threads()
+
+    def move_to(self, parent):
+        """Move this thread under `parent`, updating its namespaced slug (and its own threads') and keeping
+        its old slug as an alias."""
+        self.thread_of = parent
+        slug = Mood.free_slug(self.title or self.local_slug, self, thread_of=parent)
+        changed = slug != self.slug
+        if changed:
+            MoodAlias.objects.update_or_create(slug=self.slug, defaults={'mood': self})
+            MoodAlias.objects.filter(slug=slug, mood=self).delete()
+            self.slug = slug
+            self.save(update_fields=['thread_of', 'slug'])
+        else:
+            self.save(update_fields=['thread_of'])
+        self._reprefix_threads()
 
     def __str__(self):
         return self.title or self.slug
@@ -419,7 +480,7 @@ def mood_slug(mood_id):
 class MoodAlias(models.Model):
     """A slug a Mood went by before it was renamed: still found by it."""
 
-    slug = models.SlugField(max_length=100, unique=True)
+    slug = models.CharField(max_length=200, unique=True)
     mood = models.ForeignKey(Mood, models.CASCADE, related_name='aliases')
     retired_at = models.DateTimeField(auto_now_add=True)
 
@@ -1727,7 +1788,7 @@ class SealedCopy(models.Model):
     back what it opened: only the very words that were sealed match it."""
 
     message_id = models.UUIDField(db_index=True)  # not a key: kept whatever happens to the message
-    mood_slug = models.CharField(max_length=100)
+    mood_slug = models.CharField(max_length=200)
     kind = models.CharField(max_length=10)  # 'deleted', 'edited', or 'replaced' (by a putting back)
     by = models.CharField(max_length=50, db_index=True)
     at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -1824,7 +1885,7 @@ class BundleRecord(models.Model):
 
     id = models.UUIDField(primary_key=True)  # the runner's, in the bundle's <instructions bundle="..."> tag
     emergent = models.CharField(max_length=60, db_index=True)
-    mood = models.CharField(max_length=120, blank=True, default='', db_index=True)
+    mood = models.CharField(max_length=200, blank=True, default='', db_index=True)
     session_id = models.CharField(max_length=80, blank=True, default='')
     harness = models.CharField(max_length=60, blank=True, default='')
     requested_at = models.DateTimeField(db_index=True)
@@ -1885,7 +1946,7 @@ class MergeOrder(models.Model):
     by = models.CharField(max_length=60)
     pressed = models.CharField(max_length=60, blank=True, default='')   # the merge button: whose press, if by is memory-lane
     expires = models.BigIntegerField()                       # unix time, as the order says
-    mood = models.CharField(max_length=100, blank=True, default='')
+    mood = models.CharField(max_length=200, blank=True, default='')
     received_at = models.DateTimeField(auto_now_add=True, db_index=True)
     announced_at = models.DateTimeField(null=True, blank=True)   # when its merge was said in its Mood: once
 

@@ -173,7 +173,8 @@ def from_message(message):
         rows, made = [], []
         for block in _BLOCK.finditer(text):
             slug, changes = parse(block.group(1))
-            mood = Mood.by_slug(slug) if slug else message.mood
+            mood = (Mood.by_slug(slug) or (Mood.by_slug(f'{message.mood.slug}.{slug}')
+                    if '.' not in slug and message.mood else None)) if slug else message.mood
             if mood is None:
                 raise Refused(f'no Mood {slug!r}')
             for who, knob, value in changes:

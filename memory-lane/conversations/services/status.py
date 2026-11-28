@@ -347,7 +347,7 @@ def agents_across_moods():
             }
         moods_out.append({
             'slug': mood.slug,
-            'title': mood.title or mood.slug,
+            'title': mood.label,
             'archived': mood.slug in archived,
             'pinned': mood.slug in pinned,
             'emergents': mood_agents,

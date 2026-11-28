@@ -289,7 +289,7 @@ def list_moods_text():
     from conversations.models import Mood
     lines = []
     moods = []
-    for mood in Mood.objects.all():
+    for mood in Mood.objects.select_related('thread_of').all():
         said = mood.messages.exclude(sender_id='system')
         last = said.aggregate(last=Max('created_at'))['last']
         moods.append((last, mood, said.count()))
@@ -297,7 +297,8 @@ def list_moods_text():
     lines.append(f"{len(moods)} Moods, most recently active first:\n")
     for last, mood, count in moods:
         people = sorted(e.name for e in mood.thinking_entities())
-        lines.append(f"{mood.slug} -- {mood.title or mood.slug}")
+        of = f" (thread of #{mood.thread_of.slug})" if mood.thread_of_id else ''
+        lines.append(f"{mood.slug} -- {mood.title or mood.slug}{of}")
         if mood.description:
             lines.append(f"    {mood.description[:200]}")
         lines.append(f"    {count} messages · last {last.isoformat() if last else 'never'} · with {', '.join(people) or 'nobody yet'}\n")
@@ -311,7 +312,7 @@ def read_mood_text(slug, start=None, limit=60):
     from django.utils.dateparse import parse_datetime
     from conversations.models import Message, Mood
     from conversations.services.mood_view import turns
-    mood = Mood.objects.filter(slug=slug).first()
+    mood = Mood.by_slug((slug or '').lstrip('#'))
     if mood is None:
         return f"No Mood '{slug}'. list_moods names them all."
     limit = max(1, min(int(limit or 60), READ_MOOD_MAX))

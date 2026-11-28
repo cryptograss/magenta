@@ -25,22 +25,23 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
-        mood = Mood.by_slug(options['slug'])
+        mood = Mood.by_slug(options['slug'].lstrip('#'))
         if mood is None:
-            raise CommandError(f"no Mood #{options['slug']}")
+            raise CommandError(f"no Mood #{options['slug'].lstrip('#')}")
         heir = None
         if options['give_name_to']:
-            heir = Mood.by_slug(options['give_name_to'])
+            heir = Mood.by_slug(options['give_name_to'].lstrip('#'))
             if heir is None or heir.pk == mood.pk:
-                raise CommandError(f"no other Mood #{options['give_name_to']}")
+                raise CommandError(f"no other Mood #{options['give_name_to'].lstrip('#')}")
         posts = Message.objects.filter(mood=mood).exclude(sender_id='system')
         threads = list(mood.threads.values_list('slug', flat=True))
         if (posts.exists() or threads) and not options['with_posts']:
             raise CommandError(f'#{mood.slug} has {posts.count()} posts and threads {threads or "none"}; '
                                f'--with-posts to take it out anyway')
         own = Message.objects.filter(mood=mood, sender_id='system')
+        names = [mood.slug, *mood.aliases.values_list('slug', flat=True)]
         opened = Message.objects.filter(mood_id=mood.thread_of_id, sender_id='system', content__type='thread',
-                                        content__to_mood=mood.slug) if mood.thread_of_id else Message.objects.none()
+                                        content__to_mood__in=names) if mood.thread_of_id else Message.objects.none()
         self.stdout.write(f'#{mood.slug} ({mood.title!r}): {own.count()} system lines and {opened.count()} '
                           f'"opened a thread" lines go; {posts.count()} posts stay in the record, in no Mood'
                           + (f'; then #{heir.slug} is renamed to {heir.title!r}' if heir else ''))

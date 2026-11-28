@@ -31,8 +31,9 @@ def asked_for(heard):
 
 
 def names_of(mood):
-    """How a Mood may be said: its title and its slug, as words."""
-    return {name for name in (_plain(mood.title), _plain(mood.slug)) if name}
+    """How a Mood may be said: its title, its slug, and (for #interfaces.threads) 'interfaces dot threads'."""
+    dotted = (mood.slug or '').replace('.', ' dot ')
+    return {name for name in (_plain(mood.title), _plain(mood.slug), _plain(dotted)) if name}
 
 
 def match(heard, moods):
@@ -48,6 +49,6 @@ def match(heard, moods):
     scored.sort(reverse=True)
     if not scored or scored[0][0] < CLOSE_ENOUGH:
         return None
-    if len(scored) > 1 and scored[0][0] < 1.0 and scored[0][0] - scored[1][0] < CLEAR_BY:
-        return None  # two names about as alike: rather ask again than guess
+    if len(scored) > 1 and scored[0][0] - scored[1][0] < CLEAR_BY:
+        return None  # two names about as alike (or two threads with one title): rather ask again than guess
     return scored[0][1]
