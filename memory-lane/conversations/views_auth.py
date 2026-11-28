@@ -1542,6 +1542,16 @@ def _mood_flag(request, slug, key):
 VOICE_PER_MINUTE = 6
 
 
+def _mentionable_for(device):
+    """The names a name said aloud may become an @mention of -- an agent's only
+    from an SSH-key sign-in, as typing one would be (api_say)."""
+    from .services.mood_view import known_names
+    names = set(known_names())
+    if device.tier == 'wiki':
+        names -= set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
+    return names
+
+
 @require_POST
 def api_memo(request, slug):
     """A voice memo, as the device's person: the body is the recording.
@@ -1549,6 +1559,10 @@ def api_memo(request, slug):
     Stored like an image (by its bytes' hash), and answered at once with its
     URL, to go in the box ready to send. Scribe starts on it now, in the
     background (voice.hear_later): sent, it's posted when its words are in.
+
+    ?hear=no stores it and no more: a recording uploaded rather than recorded
+    is as often music as speech, so its words are written in only if asked
+    for (api_hear). Voice needn't be set up here for that.
     """
     from .services import media, voice
     from .views_admin import locked_response
@@ -1558,7 +1572,8 @@ def api_memo(request, slug):
     if device is None:
         return JsonResponse({'error': 'sign in to write'}, status=401)
     mood = Mood.by_slug_or_404(slug)
-    if not voice.enabled():
+    hear = request.GET.get('hear', 'yes') not in ('no', '0', 'false')
+    if hear and not voice.enabled():
         return JsonResponse({'error': "voice isn't set up here (no ElevenLabs key)"}, status=503)
     if len(request.body) > media.MAX_AUDIO_BYTES:
         return JsonResponse({'error': f'larger than {media.MAX_AUDIO_BYTES // (1024 * 1024)} MB'}, status=413)
@@ -1574,19 +1589,52 @@ def api_memo(request, slug):
     stored = media.store(data, added_by=device.entity, audio=True)
     if stored is None:
         return JsonResponse({'error': 'not a recording this understands (WebM, Ogg, MP4, MP3 or WAV)'}, status=400)
+    if not hear:
+        return JsonResponse({'url': stored.url, 'sha': stored.sha256, 'mime': stored.mime}, status=201)
     try:
         voice.check_budget(voice.STT_USD_PER_HOUR * 10 / 60)  # refused now, not after it's sent
     except voice.VoiceError as e:
-        return JsonResponse({'error': str(e), 'url': stored.url}, status=e.status)
-    # "Magent, ..." or "at Skyler" said aloud becomes an @mention -- of an agent
-    # only from an SSH-key sign-in, as typing one would be (api_say).
+        return JsonResponse({'error': str(e), 'url': stored.url, 'sha': stored.sha256}, status=e.status)
+    # "Magent, ..." or "at Skyler" said aloud becomes an @mention.
     from .services import wiki_auth
-    from .services.mood_view import known_names
-    mentionable = set(known_names())
-    if device.tier == 'wiki':
-        mentionable -= set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
-    voice.hear_later(stored, mood, device.entity_id, mentionable, wiki_auth.aliases())
-    return JsonResponse({'url': stored.url}, status=201)
+    voice.hear_later(stored, mood, device.entity_id, _mentionable_for(device), wiki_auth.aliases())
+    return JsonResponse({'url': stored.url, 'sha': stored.sha256, 'mime': stored.mime}, status=201)
+
+
+@require_POST
+def api_hear(request, slug, sha):
+    """A recording already stored here, transcribed now: its words go into the
+    message when it's sent, as a memo's do (voice.hear_later, api_say).
+
+    This is the Mood's "write in its words", for audio uploaded rather than
+    recorded (api_memo?hear=no). Once per recording: asked again while it's
+    being heard, or after it has been, it answers the same.
+    """
+    from .models import Media
+    from .services import voice, wiki_auth
+    from .views_admin import locked_response
+    if locked_response():
+        return locked_response()
+    device = mood_auth.device_for(request)
+    if device is None:
+        return JsonResponse({'error': 'sign in to write'}, status=401)
+    mood = Mood.by_slug_or_404(slug)
+    if not voice.enabled():
+        return JsonResponse({'error': "voice isn't set up here (no ElevenLabs key)"}, status=503)
+    stored = Media.objects.filter(sha256=sha, mime__startswith='audio/').first()
+    if stored is None:
+        return JsonResponse({'error': 'no recording here by that name'}, status=404)
+    if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
+        return JsonResponse({'error': 'slow down'}, status=429)
+    heard = voice.heard(sha)
+    if heard is not None:
+        return JsonResponse({'heard': True, 'error': heard.get('error', '')}, status=200)
+    try:
+        voice.check_budget(voice.STT_USD_PER_HOUR * 10 / 60)  # refused now, not after it's sent
+    except voice.VoiceError as e:
+        return JsonResponse({'error': str(e)}, status=e.status)
+    voice.hear_later(stored, mood, device.entity_id, _mentionable_for(device), wiki_auth.aliases())
+    return JsonResponse({'hearing': True}, status=202)
 
 
 @require_http_methods(['GET', 'POST'])
@@ -1613,10 +1661,7 @@ def api_memo_again(request, slug, message_id):
     if not _under_limit(f'voice:{device.pk}', VOICE_PER_MINUTE):
         return JsonResponse({'error': 'slow down'}, status=429)
     from .services import wiki_auth
-    from .services.mood_view import known_names
-    mentionable = set(known_names())
-    if device.tier == 'wiki':  # as when it was recorded: a PickiPedia sign-in can't address agents
-        mentionable -= set(ThinkingEntity.objects.filter(is_biological_human=False).values_list('name', flat=True))
+    mentionable = _mentionable_for(device)  # as when it was recorded: a PickiPedia sign-in can't address agents
     try:
         voice.check_budget(voice.STT_USD_PER_HOUR * 10 / 60)
         voice.hear_again(message, device.entity_id, mentionable, wiki_auth.aliases())

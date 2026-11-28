@@ -161,6 +161,7 @@ urlpatterns = [
     path('api/moods/<mood:slug>/refork/', views_auth.api_refork, name='api_refork'),
     path('api/moods/<mood:slug>/pin/', views_auth.api_pin, name='api_mood_pin'),
     path('api/moods/<mood:slug>/memo/', views_auth.api_memo, name='api_mood_memo'),
+    path('api/moods/<mood:slug>/memo/<str:sha>/hear/', views_auth.api_hear, name='api_mood_hear'),
     path('api/moods/<mood:slug>/speak/<str:message_id>/', views_auth.api_speak, name='api_mood_speak'),
     path('api/moods/<mood:slug>/verify/<str:message_id>/', views_auth.api_verify, name='api_mood_verify'),
     path('api/voice/voices/', views_auth.api_voices, name='api_voices'),

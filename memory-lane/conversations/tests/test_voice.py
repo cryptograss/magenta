@@ -306,9 +306,10 @@ class VoiceEndpointsTest(SignedInCase):
                 mock.patch('conversations.services.voice._in_background', lambda fn, *a: fn(*a)):
             self.assertEqual(self.post(client, '/api/moods/m26/memo/', b'not audio').status_code, 400)
             back = self.post(client, '/api/moods/m26/memo/', WEBM).json()
-        self.assertEqual(set(back), {'url'})
+        self.assertEqual(set(back), {'url', 'sha', 'mime'})  # its sha: the page asks for words by it (api_hear)
         self.assertTrue(back['url'].endswith('.webm'))
         sha = Media.objects.get(mime='audio/webm').sha256
+        self.assertEqual((back['sha'], back['mime']), (sha, 'audio/webm'))
         self.assertEqual(voice.heard(sha)['text'], 'Bring the capo to soundcheck.')
 
     def test_speak_reads_a_message_of_this_mood_only(self):

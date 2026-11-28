@@ -988,6 +988,10 @@
   /* The microphone went quiet partway: said plainly, with the way to record again. */
   #composer .note.memo-note.quiet { color: var(--ink); }
   #composer .note.memo-note.quiet .again { display: inline; min-width: 0; height: auto; border-radius: 0; font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+  /* A note that outlives the next word typed: a recording waiting to be heard, a file left out. */
+  #composer .note.left-out { color: var(--accent); }
+  #composer .note.audio-note .hear { display: inline; min-width: 0; height: auto; border-radius: 0; font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+  #composer .note.audio-note .hear[disabled] { color: var(--muted); text-decoration: none; cursor: default; }
   .turn .editbox { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
                    background: var(--panel); color: var(--ink); resize: vertical;
                    field-sizing: content; min-height: 60px; max-height: 400px; }
@@ -2259,13 +2263,13 @@
       <button type="button" id="expandComposer" class="expand" title="Expand the box to write at length" aria-label="Expand the message box" aria-expanded="false">▴</button>
       <button type="button" id="agentsBtn" data-tour="emergents-bar" title="Emergents here: listening, model, effort" aria-label="Emergent settings" aria-expanded="false">⚙</button>
       <div id="tray" hidden></div>
-      <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
+      <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif,audio/webm,audio/ogg,audio/mp4,audio/mpeg,audio/wav,.m4a,.mp3,.wav,.ogg,.oga,.weba" multiple hidden>
       <!-- One field, as Signal and WhatsApp have it: ＋ and 🎙 inside it, the words between. -->
       <div class="field">
-        <button type="button" id="attach" data-tour="attach" title="Add an image (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose." aria-label="Add an image">＋</button>
+        <button type="button" id="attach" data-tour="attach" title="Add a picture or a recording (or paste or drop one). Your pictures are shared under CC BY-SA 4.0, or CC0 if you choose; a recording can have its words written in once it's in the box." aria-label="Add a picture or a recording">＋</button>
         <textarea id="say" placeholder="Say something…" rows="1" aria-describedby="sayHelp"></textarea>
         <!-- What the box takes, out of it (Justin, 25 Oct: "the instructions in it are too verbose"): hover, or tap for it under the box. -->
-        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; repo: or re/ names a mergeable (repo:branch); / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture to add it." aria-label="How to write here">?</button>
+        <button type="button" id="sayHelp" title="@name addresses someone (@core, @humans, @emergents: a group); [[Page]] links PickiPedia; repo: or re/ names a mergeable (repo:branch); / starts a command (/poll, /clips); :name an emoji. Enter sends; Ctrl+Enter for a new line. Paste or drop a picture or a recording to add it." aria-label="How to write here">?</button>
         <button type="button" id="emojiBtn" popovertarget="emojiPicker" title="Every emoji: search them by name, or type :name in the box" aria-label="Add an emoji">🙂</button>
         <!-- ✕: throw away what's under way -- a recording, unsent; the words typed (Skyler, 31 Oct: "an x in the right corner to quick delete"). -->
         <button type="button" id="discardBtn" title="Discard: stops a recording without sending it, and clears the box" aria-label="Discard what you're writing or recording" hidden>✕</button>
@@ -4730,7 +4734,7 @@
     markWikiLinks(el);
     if (el.querySelector('.body a[href^="http"]:not([class])')) cardsWatch.observe(el);  // a preview, as it nears the screen
     // A memo whose words never came (ElevenLabs out of credit, say): its sender may have it heard again.
-    if (t.is_human && viewer && t.sender === viewer && !t.deleted && /🎙 \[voice memo[^\]]*\]\([^)]*\)\n\n\(not transcribed: /.test(t.text || '')) {
+    if (t.is_human && viewer && t.sender === viewer && !t.deleted && /🎙 \[(?:voice memo|audio)[^\]]*\]\([^)]*\)\n\n\(not transcribed: /.test(t.text || '')) {
       el.querySelector('.body').insertAdjacentHTML('beforeend',
         `<button type="button" class="hearagain" data-id="${esc(t.id)}" title="Ask for its words again; they take the place of this note, as an edit (which wakes no one)">↻ hear it again</button>`);
     }
@@ -9119,8 +9123,10 @@
 
   // Images into the composer: paste, drop, or the + button. Each is stored
   // first, then its markdown goes in at the caret.
+  // A .keep note stays where the others are swept: it holds something still to be done ("Write in
+  // its words") or something the box didn't take, and neither is old news just because a word was typed.
   function showError(message) {
-    document.querySelectorAll('#composer .err, #composer .note, dialog > .err').forEach(el => el.remove());
+    document.querySelectorAll('#composer .err, #composer .note:not(.keep), dialog > .err').forEach(el => el.remove());
     // Said in the box open over the page, if one is: the composer is dimmed behind it.
     (document.querySelector('dialog:modal') || composer).insertAdjacentHTML('beforeend', `<span class="err">${esc(message)}</span>`);
   }
@@ -9129,7 +9135,7 @@
   sayBox.addEventListener('input', () => { const err = composer.querySelector('.err'); if (err) err.remove(); });
   document.getElementById('sayHelp').addEventListener('click', e => { showNote(e.currentTarget.title, 9000); sayBox.focus(); });
   function showNote(message, ms, isHtml) {  // a word under the box, gone after a while (isHtml: already escaped, with a link)
-    composer.querySelectorAll('.err, .note').forEach(el => el.remove());
+    composer.querySelectorAll('.err, .note:not(.keep)').forEach(el => el.remove());
     composer.insertAdjacentHTML('beforeend', `<span class="note">${isHtml ? message : esc(message)}</span>`);
     const note = composer.querySelector('.note:last-of-type');
     setTimeout(() => note && note.remove(), ms || 8000);
@@ -9342,6 +9348,11 @@
     sayBox.value = sayBox.value.slice(0, at) + text + sayBox.value.slice(sayBox.selectionEnd ?? at);
     sayBox.selectionStart = sayBox.selectionEnd = at + text.length;
   }
+  // <mood-files>
+  // What a drop, a paste, ＋ or a share can put in a Mood: pictures stored here, videos sent on to
+  // delivery-kid, recordings stored like a voice memo. Anything else is named back to whoever dropped
+  // it (sortFiles().left): a silent thud is the worst answer (Justin, 28 Nov: "drag-and-dropping
+  // doesn't always seem to work; sometimes it thuds with no error").
   // HEIC (an iPhone's photos) too: the server turns it into a JPEG (services/media.py). Some
   // browsers give a .heic no type at all, so its name counts.
   function imagesIn(list) {
@@ -9356,6 +9367,26 @@
   function videosIn(list) {
     return dkUpload ? [...(list || [])].filter(f => /^video\//.test(f.type) || (!f.type && VIDEO_NAME.test(f.name || ''))) : [];
   }
+  // Recordings: what the server can read (services/media.sniff_audio). A .m4a or a .wav often arrives
+  // with no type at all, so names count here too; an .mp4 is read as a video, which it almost always is.
+  const AUDIO_NAME = /\.(webm|weba|ogg|oga|opus|m4a|mp3|wav)$/i;
+  function audiosIn(list) {
+    return [...(list || [])].filter(f => !videosIn([f]).length
+                                         && (/^audio\//.test(f.type) || (!f.type && AUDIO_NAME.test(f.name || ''))));
+  }
+  function sortFiles(list) {
+    const files = [...(list || [])];
+    const pictures = imagesIn(files), videos = videosIn(files), recordings = audiosIn(files);
+    const taken = new Set([...pictures, ...videos, ...recordings]);
+    return { pictures, videos, recordings, left: files.filter(f => !taken.has(f)) };
+  }
+  // Why those files didn't go, naming each one: a drop that does nothing teaches nothing.
+  function leftOutSays(left) {
+    const names = left.map(f => (f.name || 'that file') + (f.type ? ` (${f.type})` : '')).join(', ');
+    return `${names} — a Mood takes pictures (PNG, JPEG, GIF, WebP, HEIC)`
+      + `${dkUpload ? ', videos (MP4, MOV, MKV and the like)' : ''} and recordings (WebM, Ogg, M4A, MP3, WAV)`;
+  }
+  // </mood-files>
   function sizeOf(n) { return n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(n / 1e6)) + ' MB'; }
   function dkError(xhr) {
     try {
@@ -9875,33 +9906,69 @@
     // video/* alone isn't enough everywhere: Sky's Mac greyed out videos in the
     // picker with it (10 Oct). Extensions are what every picker understands.
     fileInput.accept += ',video/*,.mp4,.m4v,.mov,.webm,.mkv,.avi,.mts,.m2ts,.3gp';
-    document.getElementById('attach').title = 'Add an image or a video (or paste or drop one). Videos go to delivery-kid '
-      + 'and get a ReleaseDraft page on PickiPedia; pictures stay here, under CC BY-SA 4.0 or CC0 if you choose.';
+    document.getElementById('attach').title = 'Add a picture, a recording or a video (or paste or drop one). Videos go to '
+      + 'delivery-kid and get a ReleaseDraft page on PickiPedia; pictures and recordings stay here, under CC BY-SA 4.0 '
+      + 'or CC0 if you choose.';
   }
   // Android hands an image-only picker to its photo picker (Google Photos); with
   // no filter it offers its full chooser -- Files, Camera, Photos. Only images are taken either way.
   if (/Android/i.test(navigator.userAgent)) fileInput.removeAttribute('accept');
   document.getElementById('attach').addEventListener('click', () => fileInput.click());
+  // Each file on its way, and whatever couldn't go said where it was tried. How many were taken.
+  //   hear: a recording's words written in as it goes, without being asked for (a share: addRecording).
+  function takeFiles(list, where, { hear = false } = {}) {
+    const { pictures, videos, recordings, left } = sortFiles(list);
+    composer.querySelectorAll('.note.left-out').forEach(el => el.remove());
+    if (left.length) {
+      // Not showError: what else came in with it is on its way, and typing the next word mustn't
+      // sweep away the one thing the box didn't take.
+      const note = document.createElement('span');
+      note.className = 'note keep left-out';
+      note.textContent = `${where}: ${leftOutSays(left)}`;
+      composer.appendChild(note);
+    }
+    pictures.forEach(upload);
+    videos.forEach(sendVideo);
+    recordings.forEach(f => addRecording(f, { hear }));
+    return pictures.length + videos.length + recordings.length;
+  }
   fileInput.addEventListener('change', () => {
-    const skipped = [...fileInput.files].length - imagesIn(fileInput.files).length - videosIn(fileInput.files).length;
-    if (skipped) showError(`only ${dkUpload ? 'images and videos' : 'images'} can be added (PNG, JPEG, GIF, WebP, HEIC${dkUpload ? ', video' : ''}): ${skipped} file${skipped > 1 ? 's' : ''} left out`);
-  });
-  fileInput.addEventListener('change', () => {
-    imagesIn(fileInput.files).forEach(upload);
-    videosIn(fileInput.files).forEach(sendVideo);
+    takeFiles(fileInput.files, 'added');
     fileInput.value = '';
   });
   sayBox.addEventListener('paste', e => {
-    const files = imagesIn([...(e.clipboardData?.items || [])].map(i => i.getAsFile()).filter(Boolean));
-    if (files.length) { e.preventDefault(); files.forEach(upload); }
+    const files = [...(e.clipboardData?.items || [])].map(i => i.getAsFile()).filter(Boolean);
+    const { pictures, recordings } = sortFiles(files);  // pasted words stay words; a pasted file goes up
+    if (pictures.length || recordings.length) {
+      e.preventDefault();
+      pictures.forEach(upload);
+      recordings.forEach(f => addRecording(f));
+    }  // a pasted video is left alone: delivery-kid takes one from ＋, a drop or a share
   });
-  composer.addEventListener('dragover', e => { e.preventDefault(); composer.classList.add('dropping'); });
-  composer.addEventListener('dragleave', () => composer.classList.remove('dropping'));
-  composer.addEventListener('drop', e => {
+  // A file dropped anywhere on the page goes in the box. Only the composer took drops before, so a drop
+  // a few pixels out did nothing at all -- or, outside it, took the browser to the file (Justin, 28 Nov).
+  // Dragged words are left alone: the box takes them as it always has.
+  const dragFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+  let dragDepth = 0;
+  window.addEventListener('dragenter', e => { if (dragFiles(e)) { dragDepth++; composer.classList.add('dropping'); } });
+  window.addEventListener('dragover', e => { if (dragFiles(e)) { e.preventDefault(); composer.classList.add('dropping'); } });
+  window.addEventListener('dragleave', e => {
+    if (dragFiles(e) && --dragDepth <= 0) { dragDepth = 0; composer.classList.remove('dropping'); }
+  });
+  window.addEventListener('drop', e => {
+    dragDepth = 0;
+    if (!dragFiles(e)) return;
+    e.preventDefault();
     composer.classList.remove('dropping');
-    const files = imagesIn(e.dataTransfer?.files);
-    const videos = videosIn(e.dataTransfer?.files);
-    if (files.length || videos.length) { e.preventDefault(); files.forEach(upload); videos.forEach(sendVideo); }
+    const files = e.dataTransfer?.files;
+    // A drag from another tab, or from an app that hands over a promise rather than a file, arrives with
+    // nothing in it. Say so, rather than nothing: that is the thud.
+    if (!files || !files.length) {
+      showError('drop: nothing came with that drop — dragging straight out of another tab or app can do '
+                + 'that. Save the file first, or copy the picture and paste it here.');
+      return;
+    }
+    takeFiles(files, 'drop');
   });
 
   // A voice memo: recorded here, and in the box the moment it's stopped, ready
@@ -9936,6 +10003,7 @@
     if (recorder) { memoDiscard = true; memoThenSend = false; recorder.stop(); }
     if (memoPending) { memoPending.remove(); memoPending = null; }
     if (voicePending && (voicePending.state === 'ready' || voicePending.state === 'quiet')) voicePending = null;
+    composer.querySelectorAll('.note.keep').forEach(el => el.remove());
     sayBox.value = '';
     sayBox.dispatchEvent(new Event('input'));  // the draft, the box's size, its suggestions: as if typed away
     composer.querySelectorAll('.err, .note.memo-note').forEach(el => el.remove());
@@ -10241,30 +10309,70 @@
       insertAtCaret((sayBox.value && !/\s$/.test(sayBox.value) ? '\n' : '') + words);
       sayBox.dispatchEvent(new Event('input'));
     }
-    imagesIn(files).forEach(upload);
-    videosIn(files).forEach(sendVideo);
-    files.filter(f => /^audio\//.test(f.type)).forEach(shareRecording);
-    const left = files.length - imagesIn(files).length - videosIn(files).length - files.filter(f => /^audio\//.test(f.type)).length;
-    if (left) showError(`share: ${left} file${left > 1 ? 's' : ''} left out (only pictures${dkUpload ? ', videos' : ''} and recordings)`);
+    takeFiles(files, 'share', { hear: true });  // a recorder handing over what someone just said
     sayBox.focus();
   });
   document.getElementById('shareDrop').addEventListener('click', async () => { shared = null; renderShare(); await sharedKept(true); });
-  // A recording shared in goes as a voice memo does: its words written in once it's sent.
-  async function shareRecording(file) {
+  // A recording added rather than recorded: shared in from a phone's recorder, dropped, picked or
+  // pasted. Stored where a memo is stored (api_memo) and written into the box as one, so it plays in
+  // the thread, reads aloud and can be heard again just as a memo does.
+  //   hear: its words written in as it goes, as a memo's are. Shared in, yes -- that is a recorder
+  //   handing over what someone just said. Uploaded, no: a file is as often music as speech and Scribe
+  //   costs money, so the note's button asks for them (api_hear), and from there it goes as a memo goes.
+  async function recordingSeconds(url) {
+    return new Promise(resolve => {
+      const a = new Audio(); a.preload = 'metadata';
+      a.onloadedmetadata = () => resolve(isFinite(a.duration) ? a.duration : null);
+      a.onerror = () => resolve(null);
+      a.src = url;
+    });
+  }
+  function recordingNote(inner) {  // already escaped. Kept by reference: two recordings have a note each.
+    const note = document.createElement('span');
+    note.className = 'note keep audio-note';
+    note.innerHTML = inner;
+    composer.appendChild(note);
+    return note;
+  }
+  function askToHear(note, name, sha) {
+    note.innerHTML = `🎙 ${esc(name)} is in the box. <button type="button" class="hear">Write in its words</button>`;
+    const btn = note.querySelector('.hear');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; btn.textContent = 'asking…';
+      try {
+        const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/memo/' + encodeURIComponent(sha) + '/hear/',
+                              { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error || r.status);
+        note.textContent = `🎙 ${name}: its words are being written in now, and go in when you send it.`;
+      } catch (e) { note.remove(); showError('its words: ' + e.message); }
+    });
+  }
+  // Its name, fit to go inside a markdown label: no brackets to break the link, and not so long that
+  // it buries what was said (services/mood_view._AUDIO reads the link, whatever the label says).
+  function labelName(name) {
+    const clean = name.replace(/[[\]]/g, '').trim() || 'recording';  // ] would close the label early
+    return clean.length > 48 ? clean.slice(0, 45) + '…' : clean;
+  }
+  async function addRecording(file, { hear = false } = {}) {
+    const name = file.name || 'recording';
+    const note = recordingNote(`🎙 Adding ${esc(name)}…`);
     try {
-      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/memo/', {
+      const r = await fetch('/api/moods/' + encodeURIComponent(current) + '/memo/' + (hear ? '' : '?hear=no'), {
         method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: file });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || r.status);
-      const seconds = await new Promise(resolve => {
-        const a = new Audio(); a.preload = 'metadata';
-        a.onloadedmetadata = () => resolve(isFinite(a.duration) ? a.duration : null);
-        a.onerror = () => resolve(null);
-        a.src = body.url;
-      });
-      insertAtCaret(`🎙 [voice memo${seconds ? ' · ' + clock(seconds) : ''}](${body.url})`);
+      const seconds = await recordingSeconds(body.url);
+      const said = (hear ? 'voice memo' : `audio · ${labelName(name)}`) + (seconds ? ' · ' + clock(seconds) : '');
+      // On its own line: two recordings dropped together would otherwise run into each other.
+      insertAtCaret((sayBox.value && !/\s$/.test(sayBox.value) ? '\n' : '') + `🎙 [${said}](${body.url})`);
       sayBox.dispatchEvent(new Event('input'));
-    } catch (e) { showError('recording: ' + e.message); }
+      if (hear || !body.sha || !(voiceOn && viewer)) { note.remove(); return; }
+      askToHear(note, name, body.sha);
+    } catch (e) {
+      note.remove();
+      showError('recording: ' + e.message);
+    }
   }
 
   // A sent memo whose words aren't in yet: said under the box until it's in the thread.
@@ -10279,7 +10387,7 @@
         if (voicePending && voicePending.sha === sha) {
           const turnNode = arrived.closest('.turn');
           const rawText = (turnNode && turnNode._text) || (turnNode?.querySelector('.body')?.innerText || '');
-          const clean = rawText.replace(/🎙\s*\[voice memo[^\]]*\]\([^)]*\)/, '').trim();
+          const clean = rawText.replace(/🎙\s*\[(?:voice memo|audio)[^\]]*\]\([^)]*\)/, '').trim();
           const s = voicePending.seconds ? ` · ${clock(voicePending.seconds)}` : '';
           readLastDone = { who: viewer, mood: current, text: clean ? `🎙 voice memo${s}\n\n${clean}` : `🎙 voice memo${s}`, whenLabel: 'sent' };
           voicePending = null;
@@ -10325,7 +10433,7 @@
   const READ_EVERY_MS = 5000;
   const READ_TRIES = 3;  // asking for a message's clip, before it waits for ▶
   const READ_PAGE = 30;  // what /api/moods/recent/ gives at most (views_moods.RECENT_MAX)
-  const MEMO_AUDIO = /^🎙 \[voice memo[^\]]*\]\((\/moods\/media\/[0-9a-f]{64}\.[a-z0-9]+)\)/;
+  const MEMO_AUDIO = /^🎙 \[(?:voice memo|audio)[^\]]*\]\((\/moods\/media\/[0-9a-f]{64}\.[a-z0-9]+)\)/;
   const readQueue = [], readHeard = new Set();
   let readSeq = 0;  // arrival tie-breaker when grouping readQueue by Mood
   let readMode = 'off', readSinceMs = 0, readLast = null, readNow = null, readHeld = false, readBlocked = false, readWhy = '';
@@ -11475,7 +11583,7 @@
     const pending = memoPending || showPending(text);
     memoPending = null;
     if (pending) pendingSays(pending, 'sending…');
-    composer.querySelectorAll('.note.memo-note').forEach(el => el.remove());  // the thread says how it's going now
+    composer.querySelectorAll('.note.memo-note, .note.keep').forEach(el => el.remove());  // the thread says how it's going now
     sayBox.value = ''; showDiscard();
     tray = []; renderTray(); saveDraft();
     if (voicePending) { voicePending.state = 'sending'; renderVoiceMode(); }
